@@ -28,12 +28,12 @@ type Guardrails struct {
 
 type Execution struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
-	ScheduleID uint      `json:"scheduleId"`
+	ScheduleID uint      `gorm:"index" json:"scheduleId"`
 	Schedule   Schedule  `gorm:"foreignKey:ScheduleID" json:"schedule"`
-	StartedAt  time.Time `json:"startedAt"`
+	StartedAt  time.Time `gorm:"index" json:"startedAt"`
 	FinishedAt *time.Time `json:"finishedAt"`
-	Status     string    `json:"status"` // "running" | "success" | "failed"
-	Mode       string    `json:"mode"`   // "plan" | "apply"
+	Status     string    `gorm:"index" json:"status"` // "running" | "success" | "failed"
+	Mode       string    `json:"mode"`                // "plan" | "apply"
 
 	CountScaled  int `json:"countScaled"`
 	CountDrained int `json:"countDrained"`

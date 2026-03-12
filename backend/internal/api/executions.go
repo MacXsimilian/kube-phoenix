@@ -11,6 +11,12 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
+const (
+	wsWriteTimeout = 10 * time.Second
+	wsPingInterval = 30 * time.Second
+	wsPongTimeout  = 60 * time.Second
+)
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -115,10 +121,30 @@ func (h *Handler) wsExecutionLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
+	// Read pump: consume incoming frames (pings, pong, close) so the TCP
+	// buffer doesn't fill up and the connection can be cleanly torn down.
+	// Without this goroutine, an ungraceful client disconnect leaks the
+	// write-side goroutine until the next write times out.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn.SetReadDeadline(time.Now().Add(wsPongTimeout))
+		conn.SetPongHandler(func(string) error {
+			conn.SetReadDeadline(time.Now().Add(wsPongTimeout))
+			return nil
+		})
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}()
+
 	// Send existing log lines
 	existing, err := h.store.GetLogLines(id)
 	if err == nil {
 		for _, line := range existing {
+			conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
 			if err := conn.WriteJSON(line); err != nil {
 				return
 			}
@@ -134,15 +160,24 @@ func (h *Handler) wsExecutionLogs(w http.ResponseWriter, r *http.Request) {
 	sub := h.scheduler.Broker.Subscribe(id)
 	defer h.scheduler.Broker.Unsubscribe(id, sub)
 
-	conn.SetWriteDeadline(time.Time{}) // no deadline for streaming
+	ping := time.NewTicker(wsPingInterval)
+	defer ping.Stop()
 
 	for {
 		select {
+		case <-done:
+			return // client disconnected
 		case line, ok := <-sub:
 			if !ok {
 				return // broker closed — execution finished
 			}
+			conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
 			if err := conn.WriteJSON(line); err != nil {
+				return
+			}
+		case <-ping.C:
+			conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
 		case <-r.Context().Done():

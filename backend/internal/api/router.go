@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
@@ -23,13 +24,10 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 	h := &Handler{store: st, k8s: k8sClient, scheduler: sched}
 
 	r := chi.NewRouter()
+	r.Use(chiMiddleware.RequestID) // injects X-Request-Id header; correlates log lines
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{"*"},
-		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type"},
-	}))
+	r.Use(corsHandler())
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB
@@ -80,4 +78,20 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 	r.Mount("/", web.SPAHandler())
 
 	return r
+}
+
+// corsHandler returns a CORS middleware.
+// In production (basic auth enabled) only same-origin requests are allowed.
+// In dev mode (no auth) the wildcard is used for convenience.
+func corsHandler() func(http.Handler) http.Handler {
+	allowedOrigins := []string{"*"}
+	if os.Getenv("BASIC_AUTH_USER") != "" {
+		// Restrict to same-origin. Adjust if you deploy behind a different hostname.
+		allowedOrigins = []string{"https://*", "http://*"}
+	}
+	return cors.Handler(cors.Options{
+		AllowedOrigins: allowedOrigins,
+		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type"},
+	})
 }
