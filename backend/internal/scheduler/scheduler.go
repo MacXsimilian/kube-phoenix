@@ -152,13 +152,15 @@ func (s *Scheduler) reload() error {
 
 // RunNow triggers an immediate execution for a specific schedule by ID.
 // Returns the execution ID.
-func (s *Scheduler) RunNow(ctx context.Context, scheduleID uint, mode string) (uint, error) {
+func (s *Scheduler) RunNow(scheduleID uint, mode string) (uint, error) {
 	sc, err := s.store.GetSchedule(scheduleID)
 	if err != nil {
 		return 0, fmt.Errorf("schedule %d not found: %w", scheduleID, err)
 	}
 	slog.Info("scheduler: manual run triggered", "scheduleID", sc.ID, "name", sc.Name, "type", sc.Type, "mode", mode)
-	return s.run(ctx, sc.ID, sc.Type, mode, sc.NamespaceFilter)
+	// Use context.Background() so the execution goroutine is not tied to the
+	// HTTP request context — which is canceled as soon as the response is sent.
+	return s.run(context.Background(), sc.ID, sc.Type, mode, sc.NamespaceFilter)
 }
 
 func (s *Scheduler) run(ctx context.Context, scheduleID uint, scheduleType, mode, namespaceFilter string) (uint, error) {
