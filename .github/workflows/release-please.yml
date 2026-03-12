@@ -13,6 +13,24 @@ jobs:
     name: Release please
     runs-on: ubuntu-24.04
     steps:
-      - uses: google-github-actions/release-please-action@e4dc86ba9405554aeba3c6bb2d169500e7d3b4ee  # v4.1.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          node-version: "22"
+
+      - name: Open / update release PR
+        run: |
+          npx --yes release-please@16 release-pr \
+            --token="${{ secrets.GITHUB_TOKEN }}" \
+            --repo-url="${{ github.repository }}" \
+            --target-branch=master \
+            --config-file=release-please-config.json \
+            --manifest-file=.release-please-manifest.json
+
+      - name: Tag release if PR was merged
+        run: |
+          npx --yes release-please@16 github-release \
+            --token="${{ secrets.GITHUB_TOKEN }}" \
+            --repo-url="${{ github.repository }}" \
+            --target-branch=master \
+            --config-file=release-please-config.json \
+            --manifest-file=.release-please-manifest.json
