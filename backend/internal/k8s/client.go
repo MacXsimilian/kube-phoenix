@@ -1,0 +1,221 @@
+package k8s
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"time"
+
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+)
+
+type Client struct {
+	cs *kubernetes.Clientset
+}
+
+func New() (*Client, error) {
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		// Fall back to kubeconfig
+		kubeconfig := os.Getenv("KUBECONFIG")
+		if kubeconfig == "" {
+			home, _ := os.UserHomeDir()
+			kubeconfig = home + "/.kube/config"
+		}
+		cfg, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+		if err != nil {
+			return nil, fmt.Errorf("k8s config: %w", err)
+		}
+	}
+	cs, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("k8s client: %w", err)
+	}
+	return &Client{cs: cs}, nil
+}
+
+// ─── Deployments ─────────────────────────────────────────────────────────────
+
+func (c *Client) ListDeployments(ctx context.Context, namespace string) ([]appsv1.Deployment, error) {
+	list, err := c.cs.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+func (c *Client) ScaleDeployment(ctx context.Context, namespace, name string, replicas int32) error {
+	scale, err := c.cs.AppsV1().Deployments(namespace).GetScale(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	scale.Spec.Replicas = replicas
+	_, err = c.cs.AppsV1().Deployments(namespace).UpdateScale(ctx, name, scale, metav1.UpdateOptions{})
+	return err
+}
+
+func (c *Client) AnnotateDeployment(ctx context.Context, namespace, name, key, value string) error {
+	d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if d.Annotations == nil {
+		d.Annotations = map[string]string{}
+	}
+	d.Annotations[key] = value
+	_, err = c.cs.AppsV1().Deployments(namespace).Update(ctx, d, metav1.UpdateOptions{})
+	return err
+}
+
+func (c *Client) RemoveDeploymentAnnotation(ctx context.Context, namespace, name, key string) error {
+	d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	delete(d.Annotations, key)
+	_, err = c.cs.AppsV1().Deployments(namespace).Update(ctx, d, metav1.UpdateOptions{})
+	return err
+}
+
+// ─── StatefulSets ─────────────────────────────────────────────────────────────
+
+func (c *Client) ListStatefulSets(ctx context.Context, namespace string) ([]appsv1.StatefulSet, error) {
+	list, err := c.cs.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+func (c *Client) ScaleStatefulSet(ctx context.Context, namespace, name string, replicas int32) error {
+	scale, err := c.cs.AppsV1().StatefulSets(namespace).GetScale(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	scale.Spec.Replicas = replicas
+	_, err = c.cs.AppsV1().StatefulSets(namespace).UpdateScale(ctx, name, scale, metav1.UpdateOptions{})
+	return err
+}
+
+func (c *Client) AnnotateStatefulSet(ctx context.Context, namespace, name, key, value string) error {
+	ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if ss.Annotations == nil {
+		ss.Annotations = map[string]string{}
+	}
+	ss.Annotations[key] = value
+	_, err = c.cs.AppsV1().StatefulSets(namespace).Update(ctx, ss, metav1.UpdateOptions{})
+	return err
+}
+
+func (c *Client) RemoveStatefulSetAnnotation(ctx context.Context, namespace, name, key string) error {
+	ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	delete(ss.Annotations, key)
+	_, err = c.cs.AppsV1().StatefulSets(namespace).Update(ctx, ss, metav1.UpdateOptions{})
+	return err
+}
+
+// ─── Nodes ────────────────────────────────────────────────────────────────────
+
+func (c *Client) ListNodes(ctx context.Context) ([]corev1.Node, error) {
+	list, err := c.cs.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+func (c *Client) CordonNode(ctx context.Context, name string) error {
+	node, err := c.cs.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	node.Spec.Unschedulable = true
+	_, err = c.cs.CoreV1().Nodes().Update(ctx, node, metav1.UpdateOptions{})
+	return err
+}
+
+func (c *Client) DrainNode(ctx context.Context, name string) error {
+	// Cordon first
+	if err := c.CordonNode(ctx, name); err != nil {
+		return fmt.Errorf("cordon %s: %w", name, err)
+	}
+
+	// List all non-daemonset pods on the node
+	pods, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{
+		FieldSelector: "spec.nodeName=" + name,
+	})
+	if err != nil {
+		return fmt.Errorf("list pods on %s: %w", name, err)
+	}
+
+	for _, pod := range pods.Items {
+		// Skip daemonset pods
+		isDaemonSet := false
+		for _, ref := range pod.OwnerReferences {
+			if ref.Kind == "DaemonSet" {
+				isDaemonSet = true
+				break
+			}
+		}
+		if isDaemonSet {
+			continue
+		}
+
+		// Try eviction first, fall back to delete
+		eviction := &policyv1.Eviction{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      pod.Name,
+				Namespace: pod.Namespace,
+			},
+		}
+		if err := c.cs.PolicyV1().Evictions(pod.Namespace).Evict(ctx, eviction); err != nil {
+			// Fall back to force delete
+			grace := int64(0)
+			_ = c.cs.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+				GracePeriodSeconds: &grace,
+			})
+		}
+	}
+
+	// Wait briefly for pods to terminate
+	time.Sleep(5 * time.Second)
+	return nil
+}
+
+func (c *Client) DeleteNode(ctx context.Context, name string) error {
+	return c.cs.CoreV1().Nodes().Delete(ctx, name, metav1.DeleteOptions{})
+}
+
+// ─── Pods ─────────────────────────────────────────────────────────────────────
+
+func (c *Client) ListPods(ctx context.Context, namespace string) ([]corev1.Pod, error) {
+	list, err := c.cs.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+func (c *Client) ListAllPods(ctx context.Context) ([]corev1.Pod, error) {
+	return c.ListPods(ctx, "")
+}
+
+func (c *Client) ListNamespaces(ctx context.Context) ([]corev1.Namespace, error) {
+	list, err := c.cs.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}

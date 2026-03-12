@@ -1,0 +1,127 @@
+# Default values for kube-phoenix.
+
+image:
+  repository: ghcr.io/macxsimilian/kube-phoenix
+  tag: latest
+  pullPolicy: Always
+
+replicaCount: 1
+
+# Namespace to deploy into. If createNamespace is true, the chart creates it.
+namespaceOverride: ""   # defaults to .Release.Namespace
+createNamespace: true
+
+serviceAccount:
+  create: true
+  name: ""   # defaults to release-chart name
+
+# RBAC — ClusterRole + ClusterRoleBinding so the app can manage nodes cluster-wide
+rbac:
+  create: true
+
+# ── Database ──────────────────────────────────────────────────────────────────
+#
+# By default an in-cluster PostgreSQL StatefulSet is deployed and the app is
+# wired to it automatically — no DATABASE_URL configuration needed.
+#
+# To use an external database set postgresql.enabled=false and fill in
+# externalDatabase fields (or a full url).
+
+postgresql:
+  enabled: true
+
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+
+  auth:
+    username: kube_phoenix
+    password: kube_phoenix   # change in production
+    database: kube_phoenix
+
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""   # "" = cluster default StorageClass
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Used only when postgresql.enabled = false.
+# Provide either a full DSN in `url`, or fill in the individual fields.
+externalDatabase:
+  url: ""   # e.g. "host=mydb.example.com user=foo password=bar dbname=kube_phoenix port=5432 sslmode=require"
+  # Individual fields — used when url is empty:
+  host: "postgres-host"
+  port: 5432
+  username: kube_phoenix
+  password: ""
+  database: kube_phoenix
+  sslmode: require
+
+# ── App secret ────────────────────────────────────────────────────────────────
+#
+# DATABASE_URL is auto-computed from postgresql.* or externalDatabase.* above.
+# Set existingSecret to skip Secret creation and use your own (must contain
+# DATABASE_URL, BASIC_AUTH_USER, BASIC_AUTH_PASSWORD).
+secret:
+  existingSecret: ""
+  basicAuthUser: "admin"
+  basicAuthPassword: "kube-phoenix"   # change in production
+
+# ── Service ───────────────────────────────────────────────────────────────────
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
+  tls: []
+
+# ── App resources / probes ────────────────────────────────────────────────────
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 15
+  periodSeconds: 20
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+terminationGracePeriodSeconds: 30
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+podAnnotations: {}
+podLabels: {}

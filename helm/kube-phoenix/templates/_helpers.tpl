@@ -1,0 +1,102 @@
+{{/*
+Expand the name of the chart.
+*/}}
+{{- define "kube-phoenix.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Full name — release + chart, truncated to 63 chars.
+*/}}
+{{- define "kube-phoenix.fullname" -}}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+
+{{/*
+The namespace to deploy into.
+*/}}
+{{- define "kube-phoenix.namespace" -}}
+{{- if .Values.namespaceOverride }}
+{{- .Values.namespaceOverride }}
+{{- else }}
+{{- .Release.Namespace }}
+{{- end }}
+{{- end }}
+
+{{/*
+Service account name.
+*/}}
+{{- define "kube-phoenix.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create }}
+{{- default (include "kube-phoenix.fullname" .) .Values.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Secret name to use (existing or chart-managed).
+*/}}
+{{- define "kube-phoenix.secretName" -}}
+{{- if .Values.secret.existingSecret }}
+{{- .Values.secret.existingSecret }}
+{{- else }}
+{{- include "kube-phoenix.fullname" . }}
+{{- end }}
+{{- end }}
+
+{{/*
+PostgreSQL service hostname (internal).
+*/}}
+{{- define "kube-phoenix.postgresqlHost" -}}
+{{- printf "%s-postgresql" (include "kube-phoenix.fullname" .) }}
+{{- end }}
+
+{{/*
+Compute the DATABASE_URL for the app secret.
+Priority:
+  1. postgresql.enabled=true  → build DSN from postgresql.auth.*
+  2. externalDatabase.url set → use it verbatim
+  3. externalDatabase fields  → build DSN from them
+*/}}
+{{- define "kube-phoenix.databaseUrl" -}}
+{{- if .Values.postgresql.enabled -}}
+{{- printf "host=%s user=%s password=%s dbname=%s port=5432 sslmode=disable"
+    (include "kube-phoenix.postgresqlHost" .)
+    .Values.postgresql.auth.username
+    .Values.postgresql.auth.password
+    .Values.postgresql.auth.database -}}
+{{- else if .Values.externalDatabase.url -}}
+{{- .Values.externalDatabase.url -}}
+{{- else -}}
+{{- printf "host=%s user=%s password=%s dbname=%s port=%d sslmode=%s"
+    .Values.externalDatabase.host
+    .Values.externalDatabase.username
+    .Values.externalDatabase.password
+    .Values.externalDatabase.database
+    (.Values.externalDatabase.port | int)
+    .Values.externalDatabase.sslmode -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Common labels.
+*/}}
+{{- define "kube-phoenix.labels" -}}
+helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{ include "kube-phoenix.selectorLabels" . }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+
+{{/*
+Selector labels.
+*/}}
+{{- define "kube-phoenix.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "kube-phoenix.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
