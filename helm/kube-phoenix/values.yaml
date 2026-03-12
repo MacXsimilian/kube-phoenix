@@ -89,6 +89,37 @@ ingress:
   host: ""
   tls: []
 
+# ── AWS TargetGroupBinding (AWS Load Balancer Controller) ─────────────────────
+#
+# Use this instead of (or alongside) the Ingress when running on EKS and you
+# want to attach the app to an existing ALB listener/target group.
+#
+# Pre-requisites:
+#   1. AWS Load Balancer Controller installed in the cluster
+#      https://kubernetes-sigs.github.io/aws-load-balancer-controller
+#   2. An ALB + HTTPS listener already created (via Terraform, CDK, or console)
+#   3. A Target Group created with:
+#        - target type : ip   (routes directly to pod IPs via VPC CNI)
+#        - protocol    : HTTP
+#        - port        : 8080 (must match the container port)
+#        - health check: HTTP  /healthz  (200 OK)
+#   4. A listener rule on the ALB pointing to the target group
+#      (e.g. host-header = kube-phoenix.example.com → forward to TG)
+#
+# The controller registers/deregisters pod IPs automatically as pods
+# are created or terminated. No NodePort or LoadBalancer service needed —
+# the ClusterIP service is sufficient.
+
+targetGroupBinding:
+  enabled: false
+  # ARN of the pre-created AWS Target Group
+  targetGroupARN: ""   # arn:aws:elasticloadbalancing:eu-central-1:ACCOUNT:targetgroup/kube-phoenix/ID
+  # ip       - register pod IPs directly (requires VPC CNI, recommended for EKS)
+  # instance - register node instance IDs (requires service.type: NodePort)
+  targetType: ip
+  # vpcID is required when targetType=ip and the controller cannot auto-detect it
+  vpcID: ""   # vpc-0abc123def456
+
 # ── App resources / probes ────────────────────────────────────────────────────
 
 resources:
