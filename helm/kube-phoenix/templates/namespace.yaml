@@ -1,0 +1,8 @@
+{{- if .Values.createNamespace }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "kube-phoenix.namespace" . }}
+  labels:
+    {{- include "kube-phoenix.labels" . | nindent 4 }}
+{{- end }}
