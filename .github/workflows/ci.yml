@@ -118,12 +118,12 @@ jobs:
           version: "3.16.3"
 
       - name: Log in to GHCR (OCI)
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
 
       - name: Package chart
         run: helm package helm/kube-phoenix --destination /tmp/chart
 
       - name: Push chart to GHCR
-        run: helm push /tmp/chart/kube-phoenix-*.tgz oci://${{ env.CHART_REPO }}
-        env:
-          CHART_REPO: ghcr.io/${{ github.repository_owner }}/helm
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          helm push /tmp/chart/kube-phoenix-*.tgz oci://ghcr.io/${OWNER}/helm
