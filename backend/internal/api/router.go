@@ -1,0 +1,83 @@
+package api
+
+import (
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	chiMiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
+	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	"github.com/macxsimilian/kube-phoenix/backend/web"
+)
+
+type Handler struct {
+	store     *store.Store
+	k8s       *k8s.Client
+	scheduler *scheduler.Scheduler
+}
+
+func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Scheduler) *chi.Mux {
+	h := &Handler{store: st, k8s: k8sClient, scheduler: sched}
+
+	r := chi.NewRouter()
+	r.Use(chiMiddleware.Logger)
+	r.Use(chiMiddleware.Recoverer)
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins: []string{"*"},
+		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type"},
+	}))
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB
+			next.ServeHTTP(w, r)
+		})
+	})
+
+	// Health endpoint — no auth, used by K8s liveness/readiness probes
+	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		if err := st.Ping(); err != nil {
+			http.Error(w, `{"error":"database unavailable"}`, http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	r.Use(authmw.BasicAuth)
+
+	r.Route("/api", func(r chi.Router) {
+		// Schedules — full CRUD
+		r.Get("/schedules", h.listSchedules)
+		r.Post("/schedules", h.createSchedule)
+		r.Get("/schedules/{id}", h.getSchedule)
+		r.Put("/schedules/{id}", h.updateSchedule)
+		r.Delete("/schedules/{id}", h.deleteSchedule)
+
+		// Guardrails
+		r.Get("/guardrails", h.getGuardrails)
+		r.Put("/guardrails", h.updateGuardrails)
+
+		// Executions
+		r.Get("/executions", h.listExecutions)
+		r.Get("/executions/{id}", h.getExecution)
+		r.Get("/executions/{id}/logs", h.getExecutionLogs)
+
+		// Cluster state
+		r.Get("/cluster/workloads", h.getWorkloads)
+		r.Get("/cluster/nodes", h.getNodes)
+
+		// Manual trigger
+		r.Post("/trigger", h.trigger)
+	})
+
+	// WebSocket — live log streaming
+	r.Get("/ws/executions/{id}/logs", h.wsExecutionLogs)
+
+	// Embedded Next.js static export — SPA fallback for all other routes
+	r.Mount("/", web.SPAHandler())
+
+	return r
+}
