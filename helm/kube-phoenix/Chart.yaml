@@ -1,0 +1,13 @@
+apiVersion: v2
+name: kube-phoenix
+description: Kubernetes cluster sleep/wake schedule manager
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - kubernetes
+  - scaling
+  - scheduler
+home: https://github.com/MacXsimilian/kube-phoenix
+sources:
+  - https://github.com/MacXsimilian/kube-phoenix
