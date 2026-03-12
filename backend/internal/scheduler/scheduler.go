@@ -3,7 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -51,6 +51,7 @@ func (b *Broker) Publish(execID uint, line store.LogLine) {
 		select {
 		case ch <- line:
 		default:
+			slog.Warn("broker: log line dropped — subscriber channel full", "execID", execID, "seq", line.Seq)
 		}
 	}
 }
@@ -91,7 +92,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		return err
 	}
 	s.cron.Start()
-	log.Println("[scheduler] started")
+	slog.Info("scheduler started")
 	return nil
 }
 
@@ -130,7 +131,7 @@ func (s *Scheduler) reload() error {
 
 		_, err := time.LoadLocation(sc.Timezone)
 		if err != nil {
-			log.Printf("[scheduler] invalid timezone %q for schedule %d: %v", sc.Timezone, sc.ID, err)
+			slog.Warn("scheduler: invalid timezone, skipping schedule", "timezone", sc.Timezone, "scheduleID", sc.ID, "err", err)
 			continue
 		}
 
@@ -138,11 +139,11 @@ func (s *Scheduler) reload() error {
 			s.run(context.Background(), sc.ID, sc.Type, sc.Mode, sc.NamespaceFilter)
 		})
 		if err != nil {
-			log.Printf("[scheduler] failed to add schedule %d (%s): %v", sc.ID, sc.CronExpr, err)
+			slog.Error("scheduler: failed to register schedule", "scheduleID", sc.ID, "cronExpr", sc.CronExpr, "err", err)
 			continue
 		}
 		s.entryID[sc.ID] = eid
-		log.Printf("[scheduler] registered schedule %d (%s) %s tz=%s", sc.ID, sc.Name, sc.CronExpr, sc.Timezone)
+		slog.Info("scheduler: registered schedule", "scheduleID", sc.ID, "name", sc.Name, "cronExpr", sc.CronExpr, "timezone", sc.Timezone)
 	}
 	return nil
 }
@@ -168,9 +169,13 @@ func (s *Scheduler) run(ctx context.Context, scheduleID uint, scheduleType, mode
 		return 0, fmt.Errorf("create execution: %w", err)
 	}
 	execID := exec.ID
-	log.Printf("[scheduler] starting execution %d (type=%s mode=%s)", execID, scheduleType, mode)
+	slog.Info("scheduler: starting execution", "execID", execID, "type", scheduleType, "mode", mode)
 
 	go func() {
+		// Cap individual execution runs at 2 hours to prevent hung goroutines.
+		runCtx, cancel := context.WithTimeout(ctx, 2*time.Hour)
+		defer cancel()
+
 		logCh := make(chan scaler.LogLine, 512)
 		seq := 0
 
@@ -189,7 +194,7 @@ func (s *Scheduler) run(ctx context.Context, scheduleID uint, scheduleType, mode
 					Timestamp:   line.Time,
 				}
 				if err := s.store.AppendLogLine(&dbLine); err != nil {
-					log.Printf("[scheduler] log persist error: %v", err)
+					slog.Error("scheduler: log persist error", "execID", execID, "err", err)
 				}
 				s.Broker.Publish(execID, dbLine)
 			}
@@ -200,9 +205,9 @@ func (s *Scheduler) run(ctx context.Context, scheduleID uint, scheduleType, mode
 
 		switch scheduleType {
 		case "scale_down":
-			counts, runErr = s.runner.RunScaleDown(ctx, mode, namespaceFilter, logCh)
+			counts, runErr = s.runner.RunScaleDown(runCtx, mode, namespaceFilter, logCh)
 		case "scale_up":
-			counts, runErr = s.runner.RunScaleUp(ctx, mode, namespaceFilter, logCh)
+			counts, runErr = s.runner.RunScaleUp(runCtx, mode, namespaceFilter, logCh)
 		default:
 			runErr = fmt.Errorf("unknown schedule type: %s", scheduleType)
 		}
@@ -214,7 +219,7 @@ func (s *Scheduler) run(ctx context.Context, scheduleID uint, scheduleType, mode
 		status := "success"
 		if runErr != nil {
 			status = "failed"
-			log.Printf("[scheduler] execution %d failed: %v", execID, runErr)
+			slog.Error("scheduler: execution failed", "execID", execID, "err", runErr)
 		}
 
 		countMap := map[string]int{}
@@ -228,9 +233,9 @@ func (s *Scheduler) run(ctx context.Context, scheduleID uint, scheduleType, mode
 			}
 		}
 		if err := s.store.FinishExecution(execID, status, countMap); err != nil {
-			log.Printf("[scheduler] finish execution error: %v", err)
+			slog.Error("scheduler: finish execution error", "execID", execID, "err", err)
 		}
-		log.Printf("[scheduler] execution %d finished status=%s", execID, status)
+		slog.Info("scheduler: execution finished", "execID", execID, "status", status)
 	}()
 
 	return execID, nil
