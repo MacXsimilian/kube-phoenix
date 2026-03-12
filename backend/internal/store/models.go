@@ -44,8 +44,8 @@ type Execution struct {
 
 type LogLine struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
-	ExecutionID uint      `json:"executionId"`
-	Seq         int       `json:"seq"`
+	ExecutionID uint      `gorm:"index:idx_logline_exec_seq" json:"executionId"`
+	Seq         int       `gorm:"index:idx_logline_exec_seq" json:"seq"`
 	Level       string    `json:"level"` // "info" | "ok" | "plan" | "error" | "warn"
 	Message     string    `json:"message"`
 	Timestamp   time.Time `json:"timestamp"`
