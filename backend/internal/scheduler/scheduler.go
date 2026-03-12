@@ -136,7 +136,9 @@ func (s *Scheduler) reload() error {
 		}
 
 		eid, err := s.cron.AddFunc("CRON_TZ="+sc.Timezone+" "+sc.CronExpr, func() {
-			s.run(context.Background(), sc.ID, sc.Type, sc.Mode, sc.NamespaceFilter)
+			if _, err := s.run(context.Background(), sc.ID, sc.Type, sc.Mode, sc.NamespaceFilter); err != nil {
+				slog.Error("scheduler: failed to start execution", "scheduleID", sc.ID, "err", err)
+			}
 		})
 		if err != nil {
 			slog.Error("scheduler: failed to register schedule", "scheduleID", sc.ID, "cronExpr", sc.CronExpr, "err", err)
