@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-//go:embed static
+//go:embed all:static
 var staticFiles embed.FS
 
 // SPAHandler returns an http.Handler that serves the embedded Next.js static
