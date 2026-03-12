@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -31,8 +30,7 @@ type NodeResponse struct {
 
 func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 	if h.k8s == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"error": "kubernetes client unavailable"})
+		jsonError(w, "kubernetes client unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	ctx := r.Context()
@@ -116,8 +114,7 @@ func workloadStatus(current int32, saved *int32) string {
 
 func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 	if h.k8s == nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"error": "kubernetes client unavailable"})
+		jsonError(w, "kubernetes client unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	ctx := r.Context()
