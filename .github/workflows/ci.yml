@@ -9,6 +9,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE: ghcr.io/${{ github.repository_owner }}/kube-phoenix
+  CHART: ghcr.io/${{ github.repository_owner }}/helm/kube-phoenix
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -98,3 +99,30 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ── Helm package & push ───────────────────────────────────────────────────────
+  helm-publish:
+    name: Helm package & push
+    runs-on: ubuntu-latest
+    needs: [helm, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: "3.16.3"
+
+      - name: Log in to GHCR (OCI)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
+
+      - name: Package chart
+        run: helm package helm/kube-phoenix --destination /tmp/chart
+
+      - name: Push chart to GHCR
+        run: helm push /tmp/chart/kube-phoenix-*.tgz oci://${{ env.CHART_REPO }}
+        env:
+          CHART_REPO: ghcr.io/${{ github.repository_owner }}/helm
