@@ -1,0 +1,21 @@
+run:
+  timeout: 5m
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck       # unchecked errors
+    - govet          # suspicious constructs
+    - staticcheck    # broad static analysis (supersedes gosimple, stylecheck)
+    - unused         # unexported declarations never used
+    - ineffassign    # assignments whose values are never used
+    - bodyclose      # HTTP response bodies not closed
+    - noctx          # HTTP requests without context
+    - sqlclosecheck  # sql.Rows / sql.Stmt not closed
+
+linters-settings:
+  errcheck:
+    # Ignore errors from common write operations where callers rarely handle them.
+    exclude-functions:
+      - (net/http.ResponseWriter).Write
+      - (*github.com/gorilla/websocket.Conn).WriteMessage
