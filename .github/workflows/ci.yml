@@ -22,9 +22,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Minimal default — individual jobs grant only what they need.
+# Default grants packages: write so the reusable docker-build workflow can push.
+# Jobs that don't need it override with an explicit permissions block.
 permissions:
   contents: read
+  packages: write
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/kube-phoenix
