@@ -28,7 +28,7 @@ func SPAHandler() http.Handler {
 		// Try to open the requested path
 		f, err := fsys.Open(path)
 		if err == nil {
-			f.Close()
+			_ = f.Close()
 			fileServer.ServeHTTP(w, r)
 			return
 		}
