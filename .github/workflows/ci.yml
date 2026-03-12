@@ -62,9 +62,9 @@ jobs:
 
       - run: helm lint helm/kube-phoenix
 
-  # ── Docker build & push ──────────────────────────────────────────────────────
-  docker:
-    name: Docker build & push
+  # ── Docker build — amd64 ────────────────────────────────────────────────────
+  docker-amd64:
+    name: Docker build & push (amd64)
     runs-on: ubuntu-latest
     needs: [frontend, backend]
     permissions:
@@ -89,23 +89,90 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=sha,prefix=,format=short
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+            type=sha,prefix=,format=short,suffix=-amd64
+            type=raw,value=latest-amd64,enable=${{ github.ref == 'refs/heads/master' }}
 
       - uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ── Docker build — arm64 ────────────────────────────────────────────────────
+  docker-arm64:
+    name: Docker build & push (arm64)
+    runs-on: ubuntu-latest
+    needs: [frontend, backend]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=sha,prefix=,format=short,suffix=-arm64
+            type=raw,value=latest-arm64,enable=${{ github.ref == 'refs/heads/master' }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Docker merge manifest ────────────────────────────────────────────────────
+  docker-merge:
+    name: Docker merge manifest
+    runs-on: ubuntu-latest
+    needs: [docker-amd64, docker-arm64]
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifest
+        run: |
+          SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          docker buildx imagetools create \
+            --tag ${{ env.IMAGE }}:${SHA} \
+            --tag ${{ env.IMAGE }}:latest \
+            ${{ env.IMAGE }}:${SHA}-amd64 \
+            ${{ env.IMAGE }}:${SHA}-arm64
+
   # ── Helm package & push ───────────────────────────────────────────────────────
   helm-publish:
     name: Helm package & push
     runs-on: ubuntu-latest
-    needs: [helm, docker]
+    needs: [helm, docker-merge]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     permissions:
       contents: read
