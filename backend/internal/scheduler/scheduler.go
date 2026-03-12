@@ -157,6 +157,7 @@ func (s *Scheduler) RunNow(ctx context.Context, scheduleID uint, mode string) (u
 	if err != nil {
 		return 0, fmt.Errorf("schedule %d not found: %w", scheduleID, err)
 	}
+	slog.Info("scheduler: manual run triggered", "scheduleID", sc.ID, "name", sc.Name, "type", sc.Type, "mode", mode)
 	return s.run(ctx, sc.ID, sc.Type, mode, sc.NamespaceFilter)
 }
 
@@ -237,7 +238,15 @@ func (s *Scheduler) run(ctx context.Context, scheduleID uint, scheduleType, mode
 		if err := s.store.FinishExecution(execID, status, countMap); err != nil {
 			slog.Error("scheduler: finish execution error", "execID", execID, "err", err)
 		}
-		slog.Info("scheduler: execution finished", "execID", execID, "status", status)
+		slog.Info("scheduler: execution finished",
+			"execID", execID,
+			"status", status,
+			"scaled", countMap["scaled"],
+			"drained", countMap["drained"],
+			"deleted", countMap["deleted"],
+			"skipped", countMap["skipped"],
+			"errors", countMap["errors"],
+		)
 	}()
 
 	return execID, nil
