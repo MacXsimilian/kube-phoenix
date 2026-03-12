@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -143,7 +144,9 @@ func (s *Store) CountLogLines(executionID uint) (int64, error) {
 
 func (s *Store) SeedDefaults() error {
 	var count int64
-	s.db.Model(&Schedule{}).Count(&count)
+	if err := s.db.Model(&Schedule{}).Count(&count).Error; err != nil {
+		return fmt.Errorf("seed: count schedules: %w", err)
+	}
 	if count == 0 {
 		defaults := []Schedule{
 			{Name: "Weekday Sleep", Type: "scale_down", CronExpr: "5 19 * * 1-5", Timezone: "Europe/Budapest", Mode: "plan", Enabled: false, NamespaceFilter: ""},
@@ -157,7 +160,9 @@ func (s *Store) SeedDefaults() error {
 	}
 
 	var gCount int64
-	s.db.Model(&Guardrails{}).Count(&gCount)
+	if err := s.db.Model(&Guardrails{}).Count(&gCount).Error; err != nil {
+		return fmt.Errorf("seed: count guardrails: %w", err)
+	}
 	if gCount == 0 {
 		g := Guardrails{
 			SkipNamespaces: "default,kube-system,kube-public,karpenter,vault,velero,istio-gateway,istio-system,kyverno,kyverno-notation-aws,victoriametrics,monitoring,gitlab",
