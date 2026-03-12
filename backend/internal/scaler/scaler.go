@@ -1,7 +1,6 @@
 package scaler
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
