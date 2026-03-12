@@ -134,6 +134,7 @@ func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 	// Pod counts per node (excluding daemonsets)
 	allPods, err := h.k8s.ListAllPods(ctx)
 	if err != nil {
+		slog.Error("get nodes: failed to list pods — pod counts will be zero", "err", err)
 		allPods = []corev1.Pod{}
 	}
 	podCounts := map[string]int{}

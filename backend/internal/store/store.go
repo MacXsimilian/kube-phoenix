@@ -1,6 +1,7 @@
 package store
 
 import (
+	"log/slog"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -19,6 +20,7 @@ func New(dsn string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	slog.Info("store: connected to database")
 
 	// Configure the underlying connection pool to avoid exhausting PostgreSQL
 	// max_connections (default: 100). Keep the pool small — this is a low-QPS
@@ -34,6 +36,7 @@ func New(dsn string) (*Store, error) {
 	if err := db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{}); err != nil {
 		return nil, err
 	}
+	slog.Info("store: schema migration complete")
 	return &Store{db: db}, nil
 }
 

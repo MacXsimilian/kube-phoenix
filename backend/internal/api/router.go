@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -38,41 +39,45 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 	// Health endpoint — no auth, used by K8s liveness/readiness probes
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := st.Ping(); err != nil {
+			slog.Error("healthz: database ping failed", "err", err)
 			http.Error(w, `{"error":"database unavailable"}`, http.StatusServiceUnavailable)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
 	})
 
-	r.Use(authmw.BasicAuth)
+	// All routes below require basic auth
+	r.Group(func(r chi.Router) {
+		r.Use(authmw.BasicAuth)
 
-	r.Route("/api", func(r chi.Router) {
-		// Schedules — full CRUD
-		r.Get("/schedules", h.listSchedules)
-		r.Post("/schedules", h.createSchedule)
-		r.Get("/schedules/{id}", h.getSchedule)
-		r.Put("/schedules/{id}", h.updateSchedule)
-		r.Delete("/schedules/{id}", h.deleteSchedule)
+		r.Route("/api", func(r chi.Router) {
+			// Schedules — full CRUD
+			r.Get("/schedules", h.listSchedules)
+			r.Post("/schedules", h.createSchedule)
+			r.Get("/schedules/{id}", h.getSchedule)
+			r.Put("/schedules/{id}", h.updateSchedule)
+			r.Delete("/schedules/{id}", h.deleteSchedule)
 
-		// Guardrails
-		r.Get("/guardrails", h.getGuardrails)
-		r.Put("/guardrails", h.updateGuardrails)
+			// Guardrails
+			r.Get("/guardrails", h.getGuardrails)
+			r.Put("/guardrails", h.updateGuardrails)
 
-		// Executions
-		r.Get("/executions", h.listExecutions)
-		r.Get("/executions/{id}", h.getExecution)
-		r.Get("/executions/{id}/logs", h.getExecutionLogs)
+			// Executions
+			r.Get("/executions", h.listExecutions)
+			r.Get("/executions/{id}", h.getExecution)
+			r.Get("/executions/{id}/logs", h.getExecutionLogs)
 
-		// Cluster state
-		r.Get("/cluster/workloads", h.getWorkloads)
-		r.Get("/cluster/nodes", h.getNodes)
+			// Cluster state
+			r.Get("/cluster/workloads", h.getWorkloads)
+			r.Get("/cluster/nodes", h.getNodes)
 
-		// Manual trigger
-		r.Post("/trigger", h.trigger)
+			// Manual trigger
+			r.Post("/trigger", h.trigger)
+		})
+
+		// WebSocket — live log streaming
+		r.Get("/ws/executions/{id}/logs", h.wsExecutionLogs)
 	})
-
-	// WebSocket — live log streaming
-	r.Get("/ws/executions/{id}/logs", h.wsExecutionLogs)
 
 	// Embedded Next.js static export — SPA fallback for all other routes
 	r.Mount("/", web.SPAHandler())
