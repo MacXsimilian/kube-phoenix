@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -117,9 +118,14 @@ func (h *Handler) wsExecutionLogs(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		slog.Warn("ws: upgrade failed", "execID", id, "err", err)
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	slog.Info("ws: client connected", "execID", id, "remote_addr", conn.RemoteAddr())
+	defer func() {
+		slog.Info("ws: client disconnected", "execID", id, "remote_addr", conn.RemoteAddr())
+		_ = conn.Close()
+	}()
 
 	// Read pump: consume incoming frames (pings, pong, close) so the TCP
 	// buffer doesn't fill up and the connection can be cleanly torn down.
@@ -141,14 +147,15 @@ func (h *Handler) wsExecutionLogs(w http.ResponseWriter, r *http.Request) {
 
 	// Send existing log lines
 	existing, err := h.store.GetLogLines(id)
-	if err == nil {
-		for _, line := range existing {
-			if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
-				return
-			}
-			if err := conn.WriteJSON(line); err != nil {
-				return
-			}
+	if err != nil {
+		slog.Error("ws: failed to fetch existing log lines", "execID", id, "err", err)
+	}
+	for _, line := range existing {
+		if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
+			return
+		}
+		if err := conn.WriteJSON(line); err != nil {
+			return
 		}
 	}
 

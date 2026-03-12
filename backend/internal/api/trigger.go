@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 )
 
@@ -29,11 +30,14 @@ func (h *Handler) trigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	slog.Info("manual trigger requested", "scheduleID", req.ScheduleID, "mode", req.Mode)
 	execID, err := h.scheduler.RunNow(r.Context(), req.ScheduleID, req.Mode)
 	if err != nil {
+		slog.Error("manual trigger failed", "scheduleID", req.ScheduleID, "mode", req.Mode, "err", err)
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	slog.Info("manual trigger accepted", "scheduleID", req.ScheduleID, "execID", execID, "mode", req.Mode)
 	w.WriteHeader(http.StatusAccepted)
 	jsonOK(w, triggerResponse{ExecutionID: execID})
 }
