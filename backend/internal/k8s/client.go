@@ -189,8 +189,37 @@ func (c *Client) DrainNode(ctx context.Context, name string) error {
 		}
 	}
 
-	// Wait briefly for pods to terminate
-	time.Sleep(5 * time.Second)
+	// Wait up to 30 s for evictable pods to terminate, honouring context cancellation.
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		remaining, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{
+			FieldSelector: "spec.nodeName=" + name,
+		})
+		if err != nil {
+			break
+		}
+		evictable := 0
+		for _, pod := range remaining.Items {
+			isDaemon := false
+			for _, ref := range pod.OwnerReferences {
+				if ref.Kind == "DaemonSet" {
+					isDaemon = true
+					break
+				}
+			}
+			if !isDaemon {
+				evictable++
+			}
+		}
+		if evictable == 0 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
 	return nil
 }
 

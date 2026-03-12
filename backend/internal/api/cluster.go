@@ -3,7 +3,9 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -49,9 +51,12 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 		}
 		var saved *int32
 		if v, ok := d.Annotations["previous-replicas"]; ok {
-			var n int32
-			fmt.Sscanf(v, "%d", &n)
-			saved = &n
+			if n, err := strconv.ParseInt(v, 10, 32); err == nil {
+				n32 := int32(n)
+				saved = &n32
+			} else {
+				slog.Warn("malformed previous-replicas annotation", "workload", d.Namespace+"/"+d.Name, "value", v)
+			}
 		}
 		result = append(result, WorkloadResponse{
 			Namespace:       d.Namespace,
@@ -76,9 +81,12 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 		}
 		var saved *int32
 		if v, ok := ss.Annotations["previous-replicas"]; ok {
-			var n int32
-			fmt.Sscanf(v, "%d", &n)
-			saved = &n
+			if n, err := strconv.ParseInt(v, 10, 32); err == nil {
+				n32 := int32(n)
+				saved = &n32
+			} else {
+				slog.Warn("malformed previous-replicas annotation", "workload", ss.Namespace+"/"+ss.Name, "value", v)
+			}
 		}
 		result = append(result, WorkloadResponse{
 			Namespace:       ss.Namespace,
