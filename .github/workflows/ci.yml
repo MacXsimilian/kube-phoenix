@@ -3,27 +3,47 @@ name: CI
 on:
   push:
     branches: [master]
+    paths:
+      - "frontend/**"
+      - "backend/**"
+      - "Dockerfile"
+      - "helm/**"
+      - ".github/workflows/**"
   pull_request:
     branches: [master]
+    paths:
+      - "frontend/**"
+      - "backend/**"
+      - "Dockerfile"
+      - "helm/**"
+      - ".github/workflows/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Minimal default — individual jobs grant only what they need.
+permissions:
+  contents: read
 
 env:
-  REGISTRY: ghcr.io
   IMAGE: ghcr.io/${{ github.repository_owner }}/kube-phoenix
-  CHART: ghcr.io/${{ github.repository_owner }}/helm/kube-phoenix
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ── Frontend ────────────────────────────────────────────────────────────────
   frontend:
     name: Frontend build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: "22"
 
@@ -32,31 +52,42 @@ jobs:
 
   # ── Backend ─────────────────────────────────────────────────────────────────
   backend:
-    name: Backend build & vet
-    runs-on: ubuntu-latest
+    name: Backend build, vet, test & lint
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5  # v5.5.0
         with:
           go-version: "1.25"
           cache-dependency-path: backend/go.sum
 
       - run: go mod download
       - run: go vet ./...
+      - run: go test ./...
       - run: go build ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@55c2c1448f86e01eaae002a5a3a9624417608d84  # v6.5.2
+        with:
+          version: v1.64.8
+          working-directory: backend
 
   # ── Helm lint ───────────────────────────────────────────────────────────────
   helm:
     name: Helm lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4  # v4.3.1
         with:
           version: "3.16.3"
 
@@ -65,95 +96,40 @@ jobs:
   # ── Docker build — amd64 ────────────────────────────────────────────────────
   docker-amd64:
     name: Docker build & push (amd64)
-    runs-on: ubuntu-latest
     needs: [frontend, backend]
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
+    uses: ./.github/workflows/_docker-build.yml
+    with:
+      arch: amd64
+      image: ghcr.io/${{ github.repository_owner }}/kube-phoenix
+      push: ${{ github.event_name == 'push' }}
+    secrets: inherit
 
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        if: github.event_name == 'push'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=sha,prefix=,format=short,suffix=-amd64
-            type=raw,value=latest-amd64,enable=${{ github.ref == 'refs/heads/master' }}
-
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ── Docker build — arm64 ────────────────────────────────────────────────────
-  docker-arm64:
-    name: Docker build & push (arm64)
-    runs-on: ubuntu-latest
-    needs: [frontend, backend]
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        if: github.event_name == 'push'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=sha,prefix=,format=short,suffix=-arm64
-            type=raw,value=latest-arm64,enable=${{ github.ref == 'refs/heads/master' }}
-
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/arm64
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+  # ── Docker build — arm64 (disabled — re-enable when needed) ─────────────────
+  # docker-arm64:
+  #   name: Docker build & push (arm64)
+  #   needs: [frontend, backend]
+  #   uses: ./.github/workflows/_docker-build.yml
+  #   with:
+  #     arch: arm64
+  #     image: ghcr.io/${{ github.repository_owner }}/kube-phoenix
+  #     push: ${{ github.event_name == 'push' }}
+  #   secrets: inherit
 
   # ── Docker merge manifest ────────────────────────────────────────────────────
   docker-merge:
     name: Docker merge manifest
-    runs-on: ubuntu-latest
-    needs: [docker-amd64, docker-arm64]
+    runs-on: ubuntu-24.04
+    needs: [docker-amd64]
+    # needs: [docker-amd64, docker-arm64]  # uncomment when arm64 is re-enabled
     if: github.event_name == 'push'
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -165,22 +141,48 @@ jobs:
           docker buildx imagetools create \
             --tag ${{ env.IMAGE }}:${SHA} \
             --tag ${{ env.IMAGE }}:latest \
-            ${{ env.IMAGE }}:${SHA}-amd64 \
-            ${{ env.IMAGE }}:${SHA}-arm64
+            ${{ env.IMAGE }}:${SHA}-amd64
+            # ${{ env.IMAGE }}:${SHA}-arm64  # uncomment when arm64 is re-enabled
+
+  # ── Trivy image scan ─────────────────────────────────────────────────────────
+  trivy:
+    name: Trivy image scan
+    runs-on: ubuntu-24.04
+    needs: [docker-merge]
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
+        with:
+          image-ref: ${{ env.IMAGE }}:latest
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
 
   # ── Helm package & push ───────────────────────────────────────────────────────
   helm-publish:
     name: Helm package & push
-    runs-on: ubuntu-latest
-    needs: [helm, docker-merge]
+    runs-on: ubuntu-24.04
+    needs: [helm, trivy]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4  # v4.3.1
         with:
           version: "3.16.3"
 
