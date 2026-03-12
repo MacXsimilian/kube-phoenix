@@ -51,7 +51,7 @@ export default function SchedulePanel({ schedule }: { schedule: Schedule }) {
   })
 
   const trigger = useMutation({
-    mutationFn: () => triggerRun(schedule.type, runMode),
+    mutationFn: () => triggerRun(schedule.id, runMode),
     onSuccess: () => {
       setRunDialog(false)
       qc.invalidateQueries({ queryKey: ['executions'] })
