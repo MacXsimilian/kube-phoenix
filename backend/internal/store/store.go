@@ -1,6 +1,8 @@
 package store
 
 import (
+	"time"
+
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -17,6 +19,18 @@ func New(dsn string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Configure the underlying connection pool to avoid exhausting PostgreSQL
+	// max_connections (default: 100). Keep the pool small — this is a low-QPS
+	// internal tool.
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, err
+	}
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+
 	if err := db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{}); err != nil {
 		return nil, err
 	}
