@@ -1,6 +1,7 @@
 # ── Go ────────────────────────────────────────────────────────────────────────
 backend/bin/
-backend/web/static/
+backend/web/static/*
+!backend/web/static/.gitkeep
 
 # ── Node ──────────────────────────────────────────────────────────────────────
 frontend/node_modules/
