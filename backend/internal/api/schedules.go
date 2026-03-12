@@ -2,7 +2,7 @@ package api
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/robfig/cron/v3"
@@ -43,12 +43,12 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if sc.Type != "scale_down" && sc.Type != "scale_up" {
-		http.Error(w, `{"error":"type must be scale_down or scale_up"}`, http.StatusBadRequest)
+		jsonError(w, "type must be scale_down or scale_up", http.StatusBadRequest)
 		return
 	}
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	if _, err := parser.Parse(sc.CronExpr); err != nil {
-		http.Error(w, `{"error":"invalid cron expression"}`, http.StatusBadRequest)
+		jsonError(w, "invalid cron expression", http.StatusBadRequest)
 		return
 	}
 	if sc.Timezone == "" {
@@ -62,12 +62,14 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.scheduler.Reload(); err != nil {
-		log.Printf("scheduler reload: %v", err)
-		http.Error(w, `{"error":"schedule saved but scheduler reload failed"}`, http.StatusInternalServerError)
+		slog.Error("scheduler reload after create failed", "err", err)
+		jsonError(w, "schedule saved but scheduler reload failed", http.StatusInternalServerError)
 		return
 	}
+	// Set Content-Type before WriteHeader so the header is actually sent.
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	jsonOK(w, sc)
+	json.NewEncoder(w).Encode(sc)
 }
 
 func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +86,8 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updates := map[string]interface{}{}
+	// Note: "type" is intentionally excluded — schedule type is immutable after creation
+	// to preserve the semantic integrity of historical executions.
 	for _, f := range []string{"name", "cron_expr", "timezone", "mode", "enabled", "namespace_filter"} {
 		if v, ok := body[f]; ok {
 			updates[f] = v
@@ -96,8 +100,8 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.scheduler.Reload(); err != nil {
-		log.Printf("scheduler reload: %v", err)
-		http.Error(w, `{"error":"schedule saved but scheduler reload failed"}`, http.StatusInternalServerError)
+		slog.Error("scheduler reload after update failed", "scheduleID", id, "err", err)
+		jsonError(w, "schedule saved but scheduler reload failed", http.StatusInternalServerError)
 		return
 	}
 	jsonOK(w, sc)
@@ -114,8 +118,8 @@ func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.scheduler.Reload(); err != nil {
-		log.Printf("scheduler reload: %v", err)
-		http.Error(w, `{"error":"schedule saved but scheduler reload failed"}`, http.StatusInternalServerError)
+		slog.Error("scheduler reload after delete failed", "scheduleID", id, "err", err)
+		jsonError(w, "schedule deleted but scheduler reload failed", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -23,9 +23,10 @@ func (s *Store) CreateSchedule(sc *Schedule) error {
 }
 
 func (s *Store) UpdateSchedule(id uint, updates map[string]interface{}) (*Schedule, error) {
+	// "type" is intentionally excluded — schedule type is immutable after creation.
 	allowed := map[string]bool{
 		"name": true, "cron_expr": true, "timezone": true,
-		"type": true, "mode": true, "enabled": true, "namespace_filter": true,
+		"mode": true, "enabled": true, "namespace_filter": true,
 	}
 	for k := range updates {
 		if !allowed[k] {
