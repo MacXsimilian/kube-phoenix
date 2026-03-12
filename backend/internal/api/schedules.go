@@ -69,7 +69,9 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 	// Set Content-Type before WriteHeader so the header is actually sent.
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(sc)
+	if err := json.NewEncoder(w).Encode(sc); err != nil {
+		slog.Error("json encode created schedule", "err", err)
+	}
 }
 
 func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
