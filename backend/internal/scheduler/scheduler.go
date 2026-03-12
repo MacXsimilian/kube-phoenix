@@ -104,6 +104,26 @@ func (s *Scheduler) Stop() {
 	}
 }
 
+// NextRun returns the next scheduled time for a given schedule, or nil if the
+// schedule is disabled or not registered in the cron engine.
+func (s *Scheduler) NextRun(scheduleID uint) *time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cron == nil {
+		return nil
+	}
+	eid, ok := s.entryID[scheduleID]
+	if !ok {
+		return nil
+	}
+	entry := s.cron.Entry(eid)
+	if entry.ID == 0 {
+		return nil
+	}
+	t := entry.Next
+	return &t
+}
+
 // Reload re-reads all schedules from the DB and re-registers cron entries.
 func (s *Scheduler) Reload() error {
 	s.mu.Lock()

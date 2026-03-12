@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Paper from '@mui/material/Paper'
 import Table from '@mui/material/Table'
@@ -53,15 +53,31 @@ function StatusChip({ status }: { status: Execution['status'] }) {
   )
 }
 
-export default function ExecutionTable({ onSelect }: { onSelect: (e: Execution) => void }) {
+export default function ExecutionTable({
+  onSelect,
+  initialExecId,
+}: {
+  onSelect: (e: Execution) => void
+  initialExecId?: number
+}) {
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(20)
+  const [autoOpened, setAutoOpened] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['executions', page, rowsPerPage],
     queryFn: () => getExecutions({ page, pageSize: rowsPerPage }),
     refetchInterval: 10_000,
   })
+
+  useEffect(() => {
+    if (autoOpened || !initialExecId || !data?.items?.length) return
+    const exec = data.items.find((e) => e.id === initialExecId)
+    if (exec) {
+      setAutoOpened(true)
+      onSelect(exec)
+    }
+  }, [data, initialExecId, autoOpened, onSelect])
 
   return (
     <Paper>

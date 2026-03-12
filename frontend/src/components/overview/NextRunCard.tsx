@@ -13,6 +13,16 @@ import { getSchedules } from '@/lib/api'
 import { cronToText } from '@/lib/cronToText'
 import type { Schedule } from '@/lib/types'
 
+function timeUntil(iso: string): string {
+  const diff = new Date(iso).getTime() - Date.now()
+  if (diff <= 0) return 'now'
+  const m = Math.floor(diff / 60000)
+  if (m < 60) return `in ${m}m`
+  const h = Math.floor(m / 60)
+  const rem = m % 60
+  return rem > 0 ? `in ${h}h ${rem}m` : `in ${h}h`
+}
+
 function ScheduleRow({ schedule }: { schedule: Schedule }) {
   const isSleep = schedule.type === 'scale_down'
   return (
@@ -49,18 +59,28 @@ function ScheduleRow({ schedule }: { schedule: Schedule }) {
           )}
         </Box>
         <Typography variant="caption" color="text.secondary" display="block">
-          {cronToText(schedule.cronExpr)}
+          {cronToText(schedule.cronExpr)} · {schedule.timezone}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
-          {schedule.timezone} · <code style={{ fontSize: 11 }}>{schedule.cronExpr}</code>
-        </Typography>
+        {schedule.nextRun ? (
+          <Typography
+            variant="caption"
+            fontWeight={600}
+            sx={{ color: isSleep ? 'primary.light' : 'warning.light' }}
+          >
+            Next run {timeUntil(schedule.nextRun)}
+          </Typography>
+        ) : (
+          <Typography variant="caption" color="text.disabled">
+            Not scheduled
+          </Typography>
+        )}
       </Box>
     </Box>
   )
 }
 
 export default function NextRunCard() {
-  const { data: schedules = [] } = useQuery({ queryKey: ['schedules'], queryFn: getSchedules })
+  const { data: schedules = [] } = useQuery({ queryKey: ['schedules'], queryFn: getSchedules, refetchInterval: 60_000 })
 
   const sleep = schedules.find((s) => s.type === 'scale_down')
   const wake = schedules.find((s) => s.type === 'scale_up')

@@ -66,7 +66,7 @@ export default function ActivityFeed() {
           {data?.items?.map((exec) => (
             <ListItemButton
               key={exec.id}
-              onClick={() => router.push('/history')}
+              onClick={() => router.push(`/history?exec=${exec.id}`)}
               sx={{ borderRadius: 2, px: 1.5, py: 1, mb: 0.5 }}
             >
               <Box
