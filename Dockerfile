@@ -1,5 +1,6 @@
 # ── Stage 1: Build frontend ───────────────────────────────────────────────────
-FROM node:22-alpine AS frontend-builder
+# Always build on the host platform — Next.js output is arch-independent.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 COPY frontend/package.json ./
@@ -9,7 +10,9 @@ COPY frontend/ ./
 RUN npm run build
 
 # ── Stage 2: Build backend ────────────────────────────────────────────────────
-FROM golang:1.25-alpine AS backend-builder
+# Always compile on the host platform using Go cross-compilation (no QEMU).
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
+ARG TARGETARCH
 
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
@@ -20,7 +23,7 @@ COPY backend/ ./
 # Copy the built frontend into the embed directory
 COPY --from=frontend-builder /app/frontend/out ./web/static/
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/kube-phoenix ./cmd/server/...
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -o /bin/kube-phoenix ./cmd/server/...
 
 # ── Stage 3: Final minimal image ──────────────────────────────────────────────
 FROM gcr.io/distroless/static-debian12:nonroot
