@@ -8,6 +8,7 @@ export interface Schedule {
   enabled: boolean
   namespaceFilter: string  // comma-separated; empty = all namespaces
   updatedAt: string
+  nextRun?: string  // ISO timestamp from cron engine; absent when schedule is disabled
 }
 
 export interface ScheduleInput {
