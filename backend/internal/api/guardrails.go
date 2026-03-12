@@ -2,12 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 )
 
 func (h *Handler) getGuardrails(w http.ResponseWriter, r *http.Request) {
 	g, err := h.store.GetGuardrails()
 	if err != nil {
+		slog.Error("get guardrails failed", "err", err)
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -30,8 +32,10 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 
 	g, err := h.store.UpdateGuardrails(updates)
 	if err != nil {
+		slog.Error("update guardrails failed", "err", err)
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	slog.Info("guardrails updated")
 	jsonOK(w, g)
 }
