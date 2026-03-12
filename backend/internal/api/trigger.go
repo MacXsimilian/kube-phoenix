@@ -31,7 +31,7 @@ func (h *Handler) trigger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("manual trigger requested", "scheduleID", req.ScheduleID, "mode", req.Mode)
-	execID, err := h.scheduler.RunNow(r.Context(), req.ScheduleID, req.Mode)
+	execID, err := h.scheduler.RunNow(req.ScheduleID, req.Mode)
 	if err != nil {
 		slog.Error("manual trigger failed", "scheduleID", req.ScheduleID, "mode", req.Mode, "err", err)
 		jsonError(w, err.Error(), http.StatusInternalServerError)
