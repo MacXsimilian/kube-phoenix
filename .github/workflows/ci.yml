@@ -22,14 +22,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Default grants packages: write so the reusable docker-build workflow can push.
-# Jobs that don't need it override with an explicit permissions block.
+# Jobs that push to GHCR override with packages: write; everything else gets read-only.
 permissions:
   contents: read
-  packages: write
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/kube-phoenix
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -95,83 +92,60 @@ jobs:
 
       - run: helm lint helm/kube-phoenix
 
-  # ── Docker build — amd64 ────────────────────────────────────────────────────
-  docker-amd64:
-    name: Docker build & push (amd64)
-    needs: [frontend, backend]
-    uses: ./.github/workflows/_docker-build.yml
-    with:
-      arch: amd64
-      image: ghcr.io/${{ github.repository_owner }}/kube-phoenix
-      push: ${{ github.event_name == 'push' }}
-    secrets: inherit
-
-  # ── Docker build — arm64 (disabled — re-enable when needed) ─────────────────
-  # docker-arm64:
-  #   name: Docker build & push (arm64)
-  #   needs: [frontend, backend]
-  #   uses: ./.github/workflows/_docker-build.yml
-  #   with:
-  #     arch: arm64
-  #     image: ghcr.io/${{ github.repository_owner }}/kube-phoenix
-  #     push: ${{ github.event_name == 'push' }}
-  #   secrets: inherit
-
-  # ── Docker merge manifest ────────────────────────────────────────────────────
-  docker-merge:
-    name: Docker merge manifest
+  # ── Docker build, push & scan ────────────────────────────────────────────────
+  # The Dockerfile uses --platform=$BUILDPLATFORM + GOARCH=$TARGETARCH so both
+  # arches compile natively (no QEMU). To re-enable arm64, change platforms to:
+  #   linux/amd64,linux/arm64
+  docker:
+    name: Docker build & push
     runs-on: ubuntu-24.04
-    needs: [docker-amd64]
-    # needs: [docker-amd64, docker-arm64]  # uncomment when arm64 is re-enabled
-    if: github.event_name == 'push'
+    needs: [frontend, backend]
     permissions:
       contents: read
       packages: write
     steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
 
       - name: Log in to GHCR
+        if: github.event_name == 'push'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create and push multi-arch manifest
-        run: |
-          IMAGE=$(echo "${{ env.IMAGE }}" | tr '[:upper:]' '[:lower:]')
-          SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          docker buildx imagetools create \
-            --tag ${IMAGE}:${SHA} \
-            --tag ${IMAGE}:latest \
-            ${IMAGE}:${SHA}-amd64
-            # ${IMAGE}:${SHA}-arm64  # uncomment when arm64 is re-enabled
-
-  # ── Trivy image scan ─────────────────────────────────────────────────────────
-  trivy:
-    name: Trivy image scan
-    runs-on: ubuntu-24.04
-    needs: [docker-merge]
-    if: github.event_name == 'push'
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compute lowercase image ref
+      # Compute once — OCI references must be fully lowercase.
+      - name: Compute image name
         id: image
-        run: echo "ref=$(echo '${{ env.IMAGE }}' | tr '[:upper:]' '[:lower:]'):latest" >> $GITHUB_OUTPUT
+        run: |
+          echo "name=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/kube-phoenix" >> $GITHUB_OUTPUT
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051  # v5.10.0
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+
+      - name: Build & push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
+        with:
+          context: .
+          platforms: linux/amd64
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Scan image for vulnerabilities
+        if: github.event_name == 'push'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
         with:
-          image-ref: ${{ steps.image.outputs.ref }}
+          image-ref: ${{ steps.image.outputs.name }}:latest
           format: table
           severity: CRITICAL,HIGH
           exit-code: "1"
@@ -181,7 +155,7 @@ jobs:
   helm-publish:
     name: Helm package & push
     runs-on: ubuntu-24.04
-    needs: [helm, trivy]
+    needs: [helm, docker]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     permissions:
       contents: read
