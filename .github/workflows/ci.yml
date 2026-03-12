@@ -67,6 +67,7 @@ jobs:
     name: Docker build & push
     runs-on: ubuntu-latest
     needs: [frontend, backend]
+    environment: docker-publish   # requires manual approval — configure in repo Settings → Environments
     permissions:
       contents: read
       packages: write
