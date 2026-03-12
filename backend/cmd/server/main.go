@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +19,9 @@ import (
 )
 
 func main() {
+	// Structured JSON logging — compatible with Kubernetes log aggregators.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
 	port := flag.Int("port", 8080, "HTTP listen port")
 	flag.Parse()
 
@@ -28,16 +32,18 @@ func main() {
 	}
 	st, err := store.New(dsn)
 	if err != nil {
-		log.Fatalf("store: %v", err)
+		slog.Error("store init failed", "err", err)
+		os.Exit(1)
 	}
 	if err := st.SeedDefaults(); err != nil {
-		log.Fatalf("seed: %v", err)
+		slog.Error("seed failed", "err", err)
+		os.Exit(1)
 	}
 
 	// ── Kubernetes client ─────────────────────────────────────────────────
 	k8s, err := k8sclient.New()
 	if err != nil {
-		log.Printf("WARNING: k8s client unavailable (%v) — cluster endpoints will be non-functional", err)
+		slog.Warn("k8s client unavailable — cluster endpoints will be non-functional", "err", err)
 		k8s = nil
 	}
 
@@ -45,7 +51,8 @@ func main() {
 	sched := scheduler.New(st, k8s)
 	if k8s != nil {
 		if err := sched.Start(context.Background()); err != nil {
-			log.Fatalf("scheduler: %v", err)
+			slog.Error("scheduler failed to start", "err", err)
+			os.Exit(1)
 		}
 		defer sched.Stop()
 	}
@@ -61,9 +68,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("kube-phoenix listening on :%d", *port)
+		slog.Info("kube-phoenix listening", "port", *port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server: %v", err)
+			slog.Error("server error", "err", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -71,12 +79,12 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("shutting down...")
+	slog.Info("shutting down...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("shutdown error: %v", err)
+		slog.Error("shutdown error", "err", err)
 	}
-	log.Println("bye")
+	slog.Info("bye")
 }
