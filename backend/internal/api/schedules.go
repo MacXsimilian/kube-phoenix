@@ -58,9 +58,11 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 		sc.Mode = "plan"
 	}
 	if err := h.store.CreateSchedule(&sc); err != nil {
+		slog.Error("create schedule failed", "name", sc.Name, "err", err)
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	slog.Info("schedule created", "scheduleID", sc.ID, "name", sc.Name, "type", sc.Type, "cronExpr", sc.CronExpr)
 	if err := h.scheduler.Reload(); err != nil {
 		slog.Error("scheduler reload after create failed", "err", err)
 		jsonError(w, "schedule saved but scheduler reload failed", http.StatusInternalServerError)
@@ -116,9 +118,11 @@ func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.DeleteSchedule(id); err != nil {
+		slog.Error("delete schedule failed", "scheduleID", id, "err", err)
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	slog.Info("schedule deleted", "scheduleID", id)
 	if err := h.scheduler.Reload(); err != nil {
 		slog.Error("scheduler reload after delete failed", "scheduleID", id, "err", err)
 		jsonError(w, "schedule deleted but scheduler reload failed", http.StatusInternalServerError)
