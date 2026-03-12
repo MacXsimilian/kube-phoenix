@@ -139,12 +139,13 @@ jobs:
 
       - name: Create and push multi-arch manifest
         run: |
+          IMAGE=$(echo "${{ env.IMAGE }}" | tr '[:upper:]' '[:lower:]')
           SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           docker buildx imagetools create \
-            --tag ${{ env.IMAGE }}:${SHA} \
-            --tag ${{ env.IMAGE }}:latest \
-            ${{ env.IMAGE }}:${SHA}-amd64
-            # ${{ env.IMAGE }}:${SHA}-arm64  # uncomment when arm64 is re-enabled
+            --tag ${IMAGE}:${SHA} \
+            --tag ${IMAGE}:latest \
+            ${IMAGE}:${SHA}-amd64
+            # ${IMAGE}:${SHA}-arm64  # uncomment when arm64 is re-enabled
 
   # ── Trivy image scan ─────────────────────────────────────────────────────────
   trivy:
@@ -163,10 +164,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute lowercase image ref
+        id: image
+        run: echo "ref=$(echo '${{ env.IMAGE }}' | tr '[:upper:]' '[:lower:]'):latest" >> $GITHUB_OUTPUT
+
       - name: Scan image for vulnerabilities
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
         with:
-          image-ref: ${{ env.IMAGE }}:latest
+          image-ref: ${{ steps.image.outputs.ref }}
           format: table
           severity: CRITICAL,HIGH
           exit-code: "1"
