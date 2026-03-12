@@ -119,7 +119,7 @@ func (h *Handler) wsExecutionLogs(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Read pump: consume incoming frames (pings, pong, close) so the TCP
 	// buffer doesn't fill up and the connection can be cleanly torn down.
@@ -128,10 +128,9 @@ func (h *Handler) wsExecutionLogs(w http.ResponseWriter, r *http.Request) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		conn.SetReadDeadline(time.Now().Add(wsPongTimeout))
+		_ = conn.SetReadDeadline(time.Now().Add(wsPongTimeout))
 		conn.SetPongHandler(func(string) error {
-			conn.SetReadDeadline(time.Now().Add(wsPongTimeout))
-			return nil
+			return conn.SetReadDeadline(time.Now().Add(wsPongTimeout))
 		})
 		for {
 			if _, _, err := conn.ReadMessage(); err != nil {
@@ -144,7 +143,9 @@ func (h *Handler) wsExecutionLogs(w http.ResponseWriter, r *http.Request) {
 	existing, err := h.store.GetLogLines(id)
 	if err == nil {
 		for _, line := range existing {
-			conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+			if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
+				return
+			}
 			if err := conn.WriteJSON(line); err != nil {
 				return
 			}
@@ -171,12 +172,16 @@ func (h *Handler) wsExecutionLogs(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return // broker closed — execution finished
 			}
-			conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+			if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
+				return
+			}
 			if err := conn.WriteJSON(line); err != nil {
 				return
 			}
 		case <-ping.C:
-			conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+			if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
+				return
+			}
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
