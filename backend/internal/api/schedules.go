@@ -4,10 +4,16 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/robfig/cron/v3"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
+
+type scheduleResponse struct {
+	store.Schedule
+	NextRun *time.Time `json:"nextRun,omitempty"`
+}
 
 func (h *Handler) listSchedules(w http.ResponseWriter, r *http.Request) {
 	schedules, err := h.store.ListSchedules()
@@ -15,7 +21,11 @@ func (h *Handler) listSchedules(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonOK(w, schedules)
+	resp := make([]scheduleResponse, len(schedules))
+	for i, sc := range schedules {
+		resp[i] = scheduleResponse{Schedule: sc, NextRun: h.scheduler.NextRun(sc.ID)}
+	}
+	jsonOK(w, resp)
 }
 
 func (h *Handler) getSchedule(w http.ResponseWriter, r *http.Request) {
