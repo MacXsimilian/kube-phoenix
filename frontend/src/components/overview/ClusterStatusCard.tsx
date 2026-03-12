@@ -57,7 +57,11 @@ export default function ClusterStatusCard() {
   const running = workloads.filter((w) => w.status === 'running').length
   const activeNodes = nodes.filter((n) => n.status === 'active' || n.status === 'would-drain').length
 
-  const isSleeping = sleeping > 0 && sleeping > running
+  const isPartial = sleeping > 0 && running > 0
+  const isSleeping = sleeping > 0 && running === 0
+
+  const statusColor = isSleeping ? '#F59E0B' : isPartial ? '#F97316' : '#22C55E'
+  const statusLabel = isSleeping ? 'Cluster Sleeping' : isPartial ? 'Partially Sleeping' : 'Cluster Awake'
 
   return (
     <>
@@ -74,14 +78,12 @@ export default function ClusterStatusCard() {
                 width: 10,
                 height: 10,
                 borderRadius: '50%',
-                bgcolor: isSleeping ? 'warning.main' : 'success.main',
-                boxShadow: isSleeping
-                  ? '0 0 8px #F59E0B'
-                  : '0 0 8px #22C55E',
+                bgcolor: statusColor,
+                boxShadow: `0 0 8px ${statusColor}`,
               }}
             />
             <Typography variant="h6" fontWeight={700}>
-              {isSleeping ? 'Cluster Sleeping' : 'Cluster Awake'}
+              {statusLabel}
             </Typography>
           </Box>
 
