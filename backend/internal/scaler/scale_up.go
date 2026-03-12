@@ -33,6 +33,7 @@ func (r *Runner) RunScaleUp(ctx context.Context, mode, namespaceFilter string, l
 			}
 			savedStr, ok := d.Annotations[annotationKey]
 			if !ok {
+				counts.Skipped++
 				continue
 			}
 			saved, err := strconv.ParseInt(savedStr, 10, 32)
@@ -75,6 +76,7 @@ func (r *Runner) RunScaleUp(ctx context.Context, mode, namespaceFilter string, l
 			}
 			savedStr, ok := ss.Annotations[annotationKey]
 			if !ok {
+				counts.Skipped++
 				continue
 			}
 			saved, err := strconv.ParseInt(savedStr, 10, 32)
