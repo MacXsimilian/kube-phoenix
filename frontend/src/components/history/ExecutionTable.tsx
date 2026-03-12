@@ -1,0 +1,156 @@
+'use client'
+
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import Paper from '@mui/material/Paper'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import TablePagination from '@mui/material/TablePagination'
+import Chip from '@mui/material/Chip'
+import Box from '@mui/material/Box'
+import CircularProgress from '@mui/material/CircularProgress'
+import Typography from '@mui/material/Typography'
+import BedtimeIcon from '@mui/icons-material/Bedtime'
+import WbSunnyIcon from '@mui/icons-material/WbSunny'
+import { getExecutions } from '@/lib/api'
+import type { Execution } from '@/lib/types'
+
+function duration(exec: Execution): string {
+  if (!exec.finishedAt) return 'Running...'
+  const ms = new Date(exec.finishedAt).getTime() - new Date(exec.startedAt).getTime()
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  return `${Math.floor(s / 60)}m ${s % 60}s`
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function StatusChip({ status }: { status: Execution['status'] }) {
+  if (status === 'running') {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+        <CircularProgress size={12} />
+        <Chip label="Running" color="info" size="small" sx={{ height: 20, fontSize: 11 }} />
+      </Box>
+    )
+  }
+  return (
+    <Chip
+      label={status === 'success' ? 'Success' : 'Failed'}
+      color={status === 'success' ? 'success' : 'error'}
+      size="small"
+      sx={{ height: 20, fontSize: 11 }}
+    />
+  )
+}
+
+export default function ExecutionTable({ onSelect }: { onSelect: (e: Execution) => void }) {
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(20)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['executions', page, rowsPerPage],
+    queryFn: () => getExecutions({ page, pageSize: rowsPerPage }),
+    refetchInterval: 10_000,
+  })
+
+  return (
+    <Paper>
+      {isLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>STARTED</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>SCHEDULE</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>MODE</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>STATUS</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>DURATION</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>SUMMARY</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {!data?.items?.length ? (
+                  <TableRow>
+                    <TableCell colSpan={6}>
+                      <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
+                        No executions yet.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  data.items.map((exec) => (
+                    <TableRow
+                      key={exec.id}
+                      hover
+                      sx={{ cursor: 'pointer' }}
+                      onClick={() => onSelect(exec)}
+                    >
+                      <TableCell sx={{ fontSize: 13 }}>{formatDate(exec.startedAt)}</TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          {exec.schedule?.type === 'scale_down' ? (
+                            <BedtimeIcon sx={{ fontSize: 14, color: 'primary.main' }} />
+                          ) : (
+                            <WbSunnyIcon sx={{ fontSize: 14, color: 'warning.main' }} />
+                          )}
+                          <Typography variant="body2">{exec.schedule?.name ?? '—'}</Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={exec.mode.toUpperCase()}
+                          size="small"
+                          sx={{
+                            height: 18, fontSize: 10,
+                            bgcolor: exec.mode === 'apply' ? 'rgba(245,158,11,0.15)' : 'rgba(59,130,246,0.15)',
+                            color: exec.mode === 'apply' ? 'warning.main' : 'info.main',
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell><StatusChip status={exec.status} /></TableCell>
+                      <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{duration(exec)}</TableCell>
+                      <TableCell>
+                        <Typography variant="caption" color="text.secondary">
+                          {`↓${exec.countScaled} ⌀${exec.countDrained} 🗑${exec.countDeleted}`}
+                          {exec.countErrors > 0 && (
+                            <Box component="span" sx={{ color: 'error.main', ml: 0.5 }}>
+                              ✕{exec.countErrors}
+                            </Box>
+                          )}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <TablePagination
+            component="div"
+            count={data?.total ?? 0}
+            page={page}
+            onPageChange={(_, p) => setPage(p)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0) }}
+            rowsPerPageOptions={[10, 20, 50]}
+          />
+        </>
+      )}
+    </Paper>
+  )
+}
