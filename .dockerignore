@@ -1,0 +1,23 @@
+# Git
+.git
+.gitignore
+
+# Node
+frontend/node_modules
+frontend/.next
+frontend/out
+
+# Go build artifacts
+backend/bin
+backend/web/static
+
+# Dev files
+docker-compose.yml
+docker-compose.override.yml
+.env
+.env.*
+.claude
+README.md
+helm
+k8s
+.github
