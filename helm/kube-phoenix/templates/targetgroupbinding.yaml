@@ -1,0 +1,18 @@
+{{- if .Values.targetGroupBinding.enabled }}
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: {{ include "kube-phoenix.fullname" . }}
+  namespace: {{ include "kube-phoenix.namespace" . }}
+  labels:
+    {{- include "kube-phoenix.labels" . | nindent 4 }}
+spec:
+  serviceRef:
+    name: {{ include "kube-phoenix.fullname" . }}
+    port: {{ .Values.service.port }}
+  targetGroupARN: {{ .Values.targetGroupBinding.targetGroupARN | required "targetGroupBinding.targetGroupARN is required when targetGroupBinding.enabled=true" }}
+  targetType: {{ .Values.targetGroupBinding.targetType }}
+  {{- if .Values.targetGroupBinding.vpcID }}
+  vpcID: {{ .Values.targetGroupBinding.vpcID }}
+  {{- end }}
+{{- end }}
