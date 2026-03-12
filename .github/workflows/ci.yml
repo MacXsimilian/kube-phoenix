@@ -45,8 +45,11 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
 
       - run: npm install
+      - run: npm audit --audit-level=high --omit=dev
       - run: npm run build
 
   # ── Backend ─────────────────────────────────────────────────────────────────
@@ -68,7 +71,8 @@ jobs:
 
       - run: go mod download
       - run: go vet ./...
-      - run: go test ./...
+      - run: go test -coverprofile=coverage.out ./...
+      - run: go tool cover -func=coverage.out
       - run: go build ./...
 
       - name: golangci-lint
@@ -129,6 +133,7 @@ jobs:
           images: ${{ steps.image.outputs.name }}
           tags: |
             type=sha,prefix=,format=short
+            type=semver,pattern={{version}}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
 
       - name: Build & push
@@ -136,6 +141,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
+          provenance: false
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
