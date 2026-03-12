@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "next": "^15.2.0",
-    "@mui/material": "^6.0.0",
+    "@mui/material": "^7.3.9",
     "@mui/icons-material": "^6.0.0",
     "@emotion/react": "^11.13.0",
     "@emotion/styled": "^11.13.0",
