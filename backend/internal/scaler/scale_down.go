@@ -19,8 +19,6 @@ func (r *Runner) RunScaleDown(ctx context.Context, mode, namespaceFilter string,
 
 	skipNS := splitCSV(g.SkipNamespaces)
 	skipNsNode := splitCSV(g.SkipNsNode)
-	skipNodeLabels := splitCSV(g.SkipNodeLabels)
-	skipNodeTaints := splitCSV(g.SkipNodeTaints)
 
 	// ── Scale Deployments ──────────────────────────────────────────────────
 	r.info(logCh, "Fetching Deployments...")
