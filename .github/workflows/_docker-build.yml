@@ -1,0 +1,56 @@
+name: Docker build (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        description: "Target architecture (amd64 or arm64)"
+        required: true
+        type: string
+      image:
+        description: "Full image name (e.g. ghcr.io/owner/repo)"
+        required: true
+        type: string
+      push:
+        description: "Whether to push the image"
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build ${{ inputs.arch }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+
+      - name: Log in to GHCR
+        if: inputs.push
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051  # v5.10.0
+        with:
+          images: ${{ inputs.image }}
+          tags: |
+            type=sha,prefix=,format=short,suffix=-${{ inputs.arch }}
+            type=raw,value=latest-${{ inputs.arch }},enable=${{ github.ref == 'refs/heads/master' }}
+
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
+        with:
+          context: .
+          platforms: linux/${{ inputs.arch }}
+          push: ${{ inputs.push }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha,scope=docker-${{ inputs.arch }}
+          cache-to: type=gha,mode=max,scope=docker-${{ inputs.arch }}
