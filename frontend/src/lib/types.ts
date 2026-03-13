@@ -79,6 +79,19 @@ export interface Node {
   cordoned: boolean
 }
 
+export interface NodePod {
+  name: string
+  namespace: string
+  ownerKind: string
+  ownerName: string
+  status: string
+  readyContainers: number
+  totalContainers: number
+  cpuRequest: number
+  memRequest: number
+  startedAt: string
+}
+
 export interface ExecutionPage {
   items: Execution[]
   total: number
