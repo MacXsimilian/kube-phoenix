@@ -102,7 +102,7 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 	updates := map[string]interface{}{}
 	// Note: "type" is intentionally excluded — schedule type is immutable after creation
 	// to preserve the semantic integrity of historical executions.
-	for _, f := range []string{"name", "cron_expr", "timezone", "mode", "enabled", "namespace_filter"} {
+	for _, f := range []string{"name", "cron_expr", "timezone", "mode", "enabled", "namespace_filter", "timeout_minutes"} {
 		if v, ok := body[f]; ok {
 			updates[f] = v
 		}

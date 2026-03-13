@@ -11,6 +11,7 @@ type Schedule struct {
 	Mode            string `json:"mode"` // "plan" | "apply"
 	Enabled         bool   `json:"enabled"`
 	NamespaceFilter string `json:"namespaceFilter"` // comma-separated; empty = all namespaces
+	TimeoutMinutes  int    `json:"timeoutMinutes"`  // 0 = use server default (120 min)
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
