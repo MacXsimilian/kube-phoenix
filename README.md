@@ -1,6 +1,6 @@
-# kube-phoenix
+# kube-phoenix 🐦‍🔥
 
-A self-hosted web app for managing Kubernetes cluster sleep/wake schedules. Replaces a bash-based CronJob scaler with a proper UI and audit trail.
+A hobby project — a self-hosted web app for managing Kubernetes cluster sleep/wake schedules. Built to replace a bash-based CronJob scaler with something actually usable.
 
 Scale down your cluster at night, wake it up in the morning. No more paying for idle nodes.
 
@@ -121,7 +121,7 @@ All `/api/*` and `/ws/*` endpoints require Basic Auth when configured. `/healthz
 
 ## Deployment
 
-The Helm chart deploys the app, an in-cluster PostgreSQL StatefulSet, RBAC, and a namespace.
+The Helm chart deploys the app, an in-cluster PostgreSQL StatefulSet, RBAC, and a dedicated namespace.
 
 ### Install
 
@@ -143,71 +143,98 @@ helm upgrade --install kube-phoenix helm/kube-phoenix \
   --set externalDatabase.url="host=my-rds.example.com user=kube_phoenix password=secret dbname=kube_phoenix port=5432 sslmode=require"
 ```
 
+Alternatively, populate the individual `externalDatabase.*` fields (`host`, `port`, `username`, `password`, `database`, `sslmode`) instead of a full DSN.
+
 ### Key values
 
 | Value | Default | Description |
 |---|---|---|
 | `image.repository` | `ghcr.io/macxsimilian/kube-phoenix` | Image repository |
 | `image.tag` | `latest` | Image tag to deploy |
-| `postgresql.enabled` | `true` | Deploy in-cluster PostgreSQL |
-| `postgresql.auth.password` | `kube_phoenix` | **Change in production** |
-| `postgresql.persistence.size` | `1Gi` | PVC size for PostgreSQL |
+| `replicaCount` | `1` | Number of app replicas |
+| `postgresql.enabled` | `true` | Deploy in-cluster PostgreSQL StatefulSet |
+| `postgresql.auth.username` | `kube_phoenix` | PostgreSQL username |
+| `postgresql.auth.password` | `kube_phoenix` | PostgreSQL password — **change in production** |
+| `postgresql.auth.database` | `kube_phoenix` | PostgreSQL database name |
+| `postgresql.persistence.enabled` | `true` | Persist PostgreSQL data via a PVC |
+| `postgresql.persistence.size` | `1Gi` | PVC size |
+| `postgresql.persistence.storageClass` | `""` | StorageClass — `""` uses the cluster default |
 | `externalDatabase.url` | `""` | Full DSN when `postgresql.enabled=false` |
 | `secret.basicAuthUser` | `admin` | Basic Auth username |
-| `secret.basicAuthPassword` | `kube-phoenix` | **Change in production** |
-| `secret.existingSecret` | `""` | Use a pre-existing K8s Secret (must contain `DATABASE_URL`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD`) |
+| `secret.basicAuthPassword` | `kube-phoenix` | Basic Auth password — **change in production** |
+| `secret.existingSecret` | `""` | Pre-existing K8s Secret (must contain `DATABASE_URL`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD`) |
 | `ingress.enabled` | `false` | Enable Kubernetes Ingress |
-| `ingress.host` | `""` | Hostname |
-| `targetGroupBinding.enabled` | `false` | Enable AWS TargetGroupBinding (EKS + ALB); disables the built‑in LoadBalancer/Ingress and uses a `ClusterIP` service instead |
-| `targetGroupBinding.targetGroupARN` | `""` | ARN of the **existing** AWS Target Group to register pods with (must be created ahead of time) |
-| `targetGroupBinding.targetType` | `ip` | `ip` (recommended for VPC CNI; pods are registered by IP) or `instance` (use when running NodePort/host‑networked pods) |
-| `targetGroupBinding.vpcID` | `""` | VPC ID – only needed if the AWS Load Balancer Controller can’t auto‑detect it (e.g. cross‑account) |
+| `ingress.className` | `""` | Ingress class name (e.g. `nginx`, `alb`) |
+| `ingress.annotations` | `{}` | Annotations to add to the Ingress resource |
+| `ingress.host` | `""` | Hostname to expose the app on |
+| `ingress.tls` | `[]` | TLS configuration for the Ingress |
+| `targetGroupBinding.enabled` | `false` | Enable AWS TargetGroupBinding (EKS + ALB) — uses a `ClusterIP` service, no LoadBalancer or Ingress needed |
+| `targetGroupBinding.targetGroupARN` | `""` | ARN of the **pre-created** AWS Target Group |
+| `targetGroupBinding.targetType` | `ip` | `ip` (VPC CNI, recommended) or `instance` (NodePort) |
+| `targetGroupBinding.vpcID` | `""` | VPC ID — only needed if the controller cannot auto-detect it |
+| `resources.requests.cpu` | `50m` | CPU request for the app container |
+| `resources.requests.memory` | `64Mi` | Memory request for the app container |
+| `resources.limits.cpu` | `200m` | CPU limit for the app container |
+| `resources.limits.memory` | `256Mi` | Memory limit for the app container |
 
-> The chart templates include a `Service` of type `ClusterIP` when TGB is enabled; **do not** manually create a `LoadBalancer` service or ingress on top of it.
->
-> Full reference: [helm/kube-phoenix/values.yaml](helm/kube-phoenix/values.yaml)
+Full reference: [helm/kube-phoenix/values.yaml](helm/kube-phoenix/values.yaml)
 
 ### Access via port-forward
 
 ```bash
 kubectl port-forward -n kube-phoenix svc/kube-phoenix 8080:80
+# Open http://localhost:8080
 ```
 
-### Access via AWS ALB (EKS)
+### Access via Kubernetes Ingress
 
-`TargetGroupBinding` attaches the app to an existing ALB without needing a LoadBalancer service or Ingress controller. The AWS Load Balancer Controller creates a `TargetGroupBinding` CR and registers/deregisters pod IPs as pods scale, keeping the target group in sync.
+Enable Ingress in your values file and set your hostname:
 
-### How it works
+```yaml
+ingress:
+  enabled: true
+  className: nginx          # or "alb", "traefik", etc.
+  host: kube-phoenix.example.com
+  tls:
+    - hosts:
+        - kube-phoenix.example.com
+      secretName: kube-phoenix-tls
+```
 
-- Chart deploys a `ClusterIP` service on port 80/8080 (no LoadBalancer).  
-- The `TargetGroupBinding` resource references that service and the target group ARN.  
-- The ALB sends traffic to the target group; the controller maps it to pods by IP or node depending on `targetType`.
+### Access via AWS ALB (EKS + TargetGroupBinding)
 
-### Pre‑requisites
+`TargetGroupBinding` (TGB) attaches the app directly to an existing ALB target group without a `LoadBalancer` service or Ingress controller. The AWS Load Balancer Controller registers and deregisters pod IPs automatically as pods scale.
+
+**How it works:**
+- The chart deploys a `ClusterIP` service — no `LoadBalancer` or `NodePort` needed.
+- The `TargetGroupBinding` CR binds that service to the target group ARN.
+- The ALB forwards traffic to the target group; the controller maps it to pods by IP or instance depending on `targetType`.
+
+> Do **not** create a `LoadBalancer` service or Ingress on top of a TGB deployment — the service is intentionally `ClusterIP`.
+
+**Prerequisites:**
 
 1. [AWS Load Balancer Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller) installed in the cluster
 2. An ALB with an HTTPS listener (port 443) already provisioned
-3. A Target Group **created beforehand** with these settings:
-   * **Target type:** `ip` (for VPC CNI) *or* `instance` (for NodePort)
-   * **Protocol:** HTTP
-   * **Port:** `8080` (backend port hard-coded by the chart)
-   * **Health check path:** `/healthz` (interval 30s, success codes `200`)
-4. A listener rule forwarding your hostname to the target group
-5. DNS CNAME/alias pointing your domain to the ALB
+3. A Target Group **created beforehand** with:
+   - **Target type:** `ip` (VPC CNI, recommended for EKS) or `instance` (NodePort)
+   - **Protocol:** HTTP
+   - **Port:** `8080` (matches the container port)
+   - **Health check:** path `/healthz`, interval 30 s, success code `200`
+4. A listener rule forwarding traffic to the target group
+5. A DNS CNAME / alias pointing your domain to the ALB
 
-> If you need TLS between ALB and pods, create a `BackendConfig` or set the TG protocol to `HTTPS` and upload certs accordingly; the chart itself only speaks plain HTTP on 8080.
+> The chart speaks plain HTTP on port 8080. For TLS between the ALB and pods, set the target group protocol to `HTTPS` and configure certs accordingly.
 
-### Example values snippet
+**Example values:**
 
 ```yaml
 targetGroupBinding:
   enabled: true
   targetGroupARN: "arn:aws:elasticloadbalancing:eu-central-1:ACCOUNT:targetgroup/kube-phoenix/ID"
-  targetType: ip            # use "instance" when running NodePort pods
-  # vpcID: "vpc-YOUR_VPC_ID"  # omit if controller auto-detects it
+  targetType: ip        # use "instance" for NodePort-based setups
+  # vpcID: "vpc-0abc123def456"  # omit if the controller auto-detects it
 ```
-
-> If you're running on self‑managed nodes with `hostNetwork: true` or using the non‑default service port, adjust the `targetType`/port accordingly by editing `helm/kube-phoenix/templates/targetgroupbinding.yaml`.
 
 ---
 
