@@ -164,9 +164,31 @@ func (h *Handler) wsExecutionLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Subscribe to live lines
+	// Subscribe before the second status check so we don't miss lines published
+	// in the window between the first GetExecution call and Subscribe.
 	sub := h.scheduler.Broker.Subscribe(id)
 	defer h.scheduler.Broker.Unsubscribe(id, sub)
+
+	// Re-check: execution may have finished between the first GetExecution call
+	// and Subscribe above. If so, drain any buffered lines and exit cleanly.
+	if fresh, err := h.store.GetExecution(id); err == nil && fresh.Status != "running" {
+		for {
+			select {
+			case line, ok := <-sub:
+				if !ok {
+					return
+				}
+				if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
+					return
+				}
+				if err := conn.WriteJSON(line); err != nil {
+					return
+				}
+			default:
+				return
+			}
+		}
+	}
 
 	ping := time.NewTicker(wsPingInterval)
 	defer ping.Stop()
