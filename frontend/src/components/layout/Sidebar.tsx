@@ -11,9 +11,7 @@ import ListItemText from '@mui/material/ListItemText'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
-import IconButton from '@mui/material/IconButton'
 import Badge from '@mui/material/Badge'
-import Tooltip from '@mui/material/Tooltip'
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
 import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
 import SecurityOutlinedIcon from '@mui/icons-material/SecurityOutlined'
@@ -104,34 +102,32 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
 
       {/* Bell notification button */}
       <Divider />
-      <Box sx={{ px: 1.5, py: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Tooltip title="Notifications" placement="right">
-          <IconButton
-            onClick={() => setNotifOpen(true)}
-            size="small"
-            aria-label="Open notifications"
-            sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary' } }}
+      <ListItemButton
+        onClick={() => setNotifOpen(true)}
+        aria-label="Open notifications"
+        sx={{
+          mx: 1,
+          my: 0.5,
+          borderRadius: 2,
+          color: 'text.secondary',
+          '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', color: 'text.primary' },
+        }}
+      >
+        <ListItemIcon sx={{ minWidth: 36, color: 'inherit' }}>
+          <Badge
+            badgeContent={unreadCount > 9 ? '9+' : unreadCount}
+            color="error"
+            invisible={unreadCount === 0}
+            sx={{ '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16 } }}
           >
-            <Badge
-              badgeContent={unreadCount > 9 ? '9+' : unreadCount}
-              color="error"
-              invisible={unreadCount === 0}
-              sx={{
-                '& .MuiBadge-badge': {
-                  fontSize: 10,
-                  height: 16,
-                  minWidth: 16,
-                },
-              }}
-            >
-              <NotificationsNoneOutlinedIcon fontSize="small" />
-            </Badge>
-          </IconButton>
-        </Tooltip>
-        <Typography variant="caption" color="text.secondary">
-          Notifications
-        </Typography>
-      </Box>
+            <NotificationsNoneOutlinedIcon fontSize="small" />
+          </Badge>
+        </ListItemIcon>
+        <ListItemText
+          primary="Notifications"
+          primaryTypographyProps={{ fontSize: 14, fontWeight: 400 }}
+        />
+      </ListItemButton>
 
       {/* Version */}
       <Box sx={{ px: 2, pb: 1.5, pt: 0.5 }}>
