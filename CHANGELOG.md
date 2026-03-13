@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.15](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.14...v0.1.15) (2026-03-13)
+
+
+### Bug Fixes
+
+* **overview:** correct node count and make nodes chip navigate to cluster nodes tab ([3b4c8b5](https://github.com/MacXsimilian/kube-phoenix/commit/3b4c8b511f99ae9e681c004e7c7c59ca2a8459ed))
+
 ## [0.1.14](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.13...v0.1.14) (2026-03-13)
 
 
