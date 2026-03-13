@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.22](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.21...v0.1.22) (2026-03-13)
+
+
+### Bug Fixes
+
+* **frontend:** correct DoW cron range and add aria-current to sidebar nav ([567fde6](https://github.com/MacXsimilian/kube-phoenix/commit/567fde6c29714dd5eb912f8a5b0656c688bfaeed))
+
 ## [0.1.21](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.20...v0.1.21) (2026-03-13)
 
 
