@@ -25,10 +25,11 @@ import Tooltip from '@mui/material/Tooltip'
 import { getWorkloads, getGuardrails } from '@/lib/api'
 import type { Workload } from '@/lib/types'
 
-const STATUS_COLORS: Record<Workload['status'], { bgcolor: string; color: string; label: string }> = {
+const STATUS_COLORS: Record<string, { bgcolor: string; color: string; label: string }> = {
   running: { bgcolor: 'rgba(34,197,94,0.12)', color: '#22C55E', label: 'Running' },
   sleeping: { bgcolor: 'rgba(245,158,11,0.12)', color: '#F59E0B', label: 'Sleeping' },
   partial: { bgcolor: 'rgba(59,130,246,0.12)', color: '#3B82F6', label: 'Partial' },
+  unmanaged: { bgcolor: 'rgba(255,255,255,0.07)', color: '#94A3B8', label: 'Unmanaged' },
 }
 
 export default function WorkloadsTable() {
@@ -134,7 +135,7 @@ export default function WorkloadsTable() {
           onChange={(e) => setStatusFilter(e.target.value)}
           sx={{ minWidth: 140 }}
         >
-          {['all', 'running', 'sleeping', 'partial'].map((s) => (
+          {['all', 'running', 'sleeping', 'partial', 'unmanaged'].map((s) => (
             <MenuItem key={s} value={s}>
               {s === 'all' ? 'All Statuses' : s.charAt(0).toUpperCase() + s.slice(1)}
             </MenuItem>
@@ -190,12 +191,15 @@ export default function WorkloadsTable() {
                     STATUS
                   </TableSortLabel>
                 </TableCell>
+                <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>
+                  GOVERNED BY
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {sorted.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5}>
+                  <TableCell colSpan={6}>
                     <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
                       {affectedOnly ? 'No workloads would be affected by the next sleep run.' : 'No workloads match the current filters.'}
                     </Typography>
@@ -203,7 +207,8 @@ export default function WorkloadsTable() {
                 </TableRow>
               ) : (
                 sorted.map((w) => {
-                  const sc = STATUS_COLORS[w.status]
+                  const statusKey = w.status in STATUS_COLORS ? w.status : 'unmanaged'
+                  const sc = STATUS_COLORS[statusKey]
                   const unhealthy = w.readyReplicas < w.currentReplicas && w.currentReplicas > 0
                   return (
                     <TableRow key={`${w.namespace}/${w.name}/${w.kind}`} hover>
@@ -239,6 +244,25 @@ export default function WorkloadsTable() {
                           size="small"
                           sx={{ height: 20, fontSize: 11, bgcolor: sc.bgcolor, color: sc.color }}
                         />
+                      </TableCell>
+                      <TableCell>
+                        {w.governedBy ? (
+                          <Chip
+                            label={w.governedBy}
+                            size="small"
+                            sx={{
+                              height: 20,
+                              fontSize: 11,
+                              bgcolor: 'rgba(124,58,237,0.12)',
+                              color: 'primary.light',
+                              maxWidth: 160,
+                            }}
+                          />
+                        ) : (
+                          <Typography variant="caption" color="text.disabled">
+                            Unmanaged
+                          </Typography>
+                        )}
                       </TableCell>
                     </TableRow>
                   )

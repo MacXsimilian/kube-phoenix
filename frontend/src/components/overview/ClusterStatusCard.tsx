@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Typography from '@mui/material/Typography'
@@ -15,15 +16,17 @@ import DialogActions from '@mui/material/DialogActions'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import CircularProgress from '@mui/material/CircularProgress'
+import MenuItem from '@mui/material/MenuItem'
+import TextField from '@mui/material/TextField'
 import Snackbar from '@mui/material/Snackbar'
 import Alert from '@mui/material/Alert'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import Brightness4Icon from '@mui/icons-material/Brightness4'
-import { getWorkloads, getNodes, getSchedules, triggerRun } from '@/lib/api'
-import { useRouter } from 'next/navigation'
+import { getWorkloads, getNodes, policiesApi } from '@/lib/api'
+import type { SleepPolicy } from '@/lib/types'
 
-type TriggerType = 'scale_down' | 'scale_up'
+type RunEdge = 'sleep' | 'wake'
 
 export default function ClusterStatusCard() {
   const qc = useQueryClient()
@@ -31,28 +34,44 @@ export default function ClusterStatusCard() {
 
   const { data: workloads = [] } = useQuery({ queryKey: ['workloads'], queryFn: getWorkloads })
   const { data: nodes = [] } = useQuery({ queryKey: ['nodes'], queryFn: getNodes })
-  const { data: schedules = [] } = useQuery({ queryKey: ['schedules'], queryFn: getSchedules })
+  const { data: policiesData } = useQuery({ queryKey: ['policies'], queryFn: policiesApi.list })
 
-  const [dialog, setDialog] = useState<{ open: boolean; type: TriggerType } | null>(null)
+  const policies = policiesData?.policies ?? []
+  const enabledPolicies = policies.filter((p) => p.enabled)
+
+  const [dialog, setDialog] = useState<{ open: boolean; edge: RunEdge } | null>(null)
   const [mode, setMode] = useState<'plan' | 'apply'>('plan')
+  const [selectedPolicyId, setSelectedPolicyId] = useState<number | ''>('')
   const [triggerError, setTriggerError] = useState<string | null>(null)
 
   const trigger = useMutation({
-    mutationFn: ({ type, m }: { type: TriggerType; m: 'plan' | 'apply' }) => {
-      const sc = schedules.find((s) => s.type === type)
-      if (!sc) throw new Error(`No ${type} schedule found`)
-      return triggerRun(sc.id, m)
+    mutationFn: ({ edge, policyId, m }: { edge: RunEdge; policyId: number; m: 'plan' | 'apply' }) => {
+      return edge === 'sleep'
+        ? policiesApi.triggerSleep(policyId, m)
+        : policiesApi.triggerWake(policyId, m)
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       setDialog(null)
       qc.invalidateQueries({ queryKey: ['executions'] })
-      router.push('/history/')
+      router.push(`/history?exec=${data.executionId}`)
     },
     onError: (err: unknown) => {
       setDialog(null)
       setTriggerError(err instanceof Error ? err.message : 'Trigger failed')
     },
   })
+
+  function handleOpenDialog(edge: RunEdge) {
+    setMode('plan')
+    // Pre-select the first enabled policy
+    setSelectedPolicyId(enabledPolicies.length > 0 ? enabledPolicies[0].id : '')
+    setDialog({ open: true, edge })
+  }
+
+  function handleRun() {
+    if (!dialog || !selectedPolicyId) return
+    trigger.mutate({ edge: dialog.edge, policyId: Number(selectedPolicyId), m: mode })
+  }
 
   const sleeping = workloads.filter((w) => w.status === 'sleeping').length
   const running = workloads.filter((w) => w.status === 'running').length
@@ -118,7 +137,7 @@ export default function ClusterStatusCard() {
             <Button
               variant="outlined"
               startIcon={<BedtimeIcon fontSize="small" />}
-              onClick={() => { setMode('plan'); setDialog({ open: true, type: 'scale_down' }) }}
+              onClick={() => handleOpenDialog('sleep')}
               sx={{ borderColor: 'rgba(255,255,255,0.15)', color: 'text.secondary' }}
             >
               Run Sleep Now
@@ -126,7 +145,7 @@ export default function ClusterStatusCard() {
             <Button
               variant="outlined"
               startIcon={<WbSunnyIcon fontSize="small" />}
-              onClick={() => { setMode('plan'); setDialog({ open: true, type: 'scale_up' }) }}
+              onClick={() => handleOpenDialog('wake')}
               sx={{ borderColor: 'rgba(255,255,255,0.15)', color: 'text.secondary' }}
             >
               Run Wake Now
@@ -139,37 +158,58 @@ export default function ClusterStatusCard() {
       <Dialog
         open={dialog?.open ?? false}
         onClose={() => setDialog(null)}
-        PaperProps={{ sx: { bgcolor: 'background.paper', minWidth: 360 } }}
+        PaperProps={{ sx: { bgcolor: 'background.paper', minWidth: 380 } }}
       >
         <DialogTitle fontWeight={700}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {dialog?.type === 'scale_down'
+            {dialog?.edge === 'sleep'
               ? <BedtimeIcon sx={{ color: 'primary.main', fontSize: 20 }} />
               : <WbSunnyIcon sx={{ color: 'warning.main', fontSize: 20 }} />}
-            {dialog?.type === 'scale_down' ? 'Run Sleep' : 'Run Wake'}
+            {dialog?.edge === 'sleep' ? 'Run Sleep' : 'Run Wake'}
           </Box>
         </DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" mb={2}>
-            Choose execution mode:
-          </Typography>
-          <ToggleButtonGroup
-            value={mode}
-            exclusive
-            onChange={(_, v) => v && setMode(v)}
-            fullWidth
-            size="small"
-          >
-            <ToggleButton value="plan" sx={{ fontWeight: 600 }}>
-              Plan (dry-run)
-            </ToggleButton>
-            <ToggleButton
-              value="apply"
-              sx={{ fontWeight: 600, '&.Mui-selected': { bgcolor: 'rgba(245,158,11,0.2)', color: 'warning.main' } }}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {enabledPolicies.length > 1 && (
+              <TextField
+                select
+                label="Policy"
+                size="small"
+                fullWidth
+                value={selectedPolicyId}
+                onChange={(e) => setSelectedPolicyId(Number(e.target.value))}
+              >
+                {enabledPolicies.map((p) => (
+                  <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                ))}
+              </TextField>
+            )}
+            {enabledPolicies.length === 0 && (
+              <Typography variant="body2" color="text.secondary">
+                No enabled policies found. Enable a policy first.
+              </Typography>
+            )}
+            <Typography variant="body2" color="text.secondary">
+              Choose execution mode:
+            </Typography>
+            <ToggleButtonGroup
+              value={mode}
+              exclusive
+              onChange={(_, v) => v && setMode(v)}
+              fullWidth
+              size="small"
             >
-              Apply (live)
-            </ToggleButton>
-          </ToggleButtonGroup>
+              <ToggleButton value="plan" sx={{ fontWeight: 600 }}>
+                Plan (dry-run)
+              </ToggleButton>
+              <ToggleButton
+                value="apply"
+                sx={{ fontWeight: 600, '&.Mui-selected': { bgcolor: 'rgba(245,158,11,0.2)', color: 'warning.main' } }}
+              >
+                Apply (live)
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDialog(null)} sx={{ color: 'text.secondary' }}>
@@ -177,9 +217,9 @@ export default function ClusterStatusCard() {
           </Button>
           <Button
             variant="contained"
-            disabled={trigger.isPending}
+            disabled={trigger.isPending || !selectedPolicyId || enabledPolicies.length === 0}
             startIcon={trigger.isPending ? <CircularProgress size={14} /> : undefined}
-            onClick={() => dialog && trigger.mutate({ type: dialog.type, m: mode })}
+            onClick={handleRun}
           >
             Run
           </Button>

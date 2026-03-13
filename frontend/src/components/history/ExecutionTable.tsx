@@ -16,12 +16,18 @@ import Skeleton from '@mui/material/Skeleton'
 import CircularProgress from '@mui/material/CircularProgress'
 import Typography from '@mui/material/Typography'
 import Tooltip from '@mui/material/Tooltip'
+import MenuItem from '@mui/material/MenuItem'
+import TextField from '@mui/material/TextField'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import CloudOffIcon from '@mui/icons-material/CloudOff'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import TouchAppOutlinedIcon from '@mui/icons-material/TouchAppOutlined'
+import SyncOutlinedIcon from '@mui/icons-material/SyncOutlined'
+import SkipNextOutlinedIcon from '@mui/icons-material/SkipNextOutlined'
 import { getExecutions } from '@/lib/api'
 import type { Execution } from '@/lib/types'
 
@@ -59,6 +65,38 @@ function StatusChip({ status }: { status: Execution['status'] }) {
   )
 }
 
+function ExecutionTypeIcon({ type }: { type: Execution['executionType'] }) {
+  if (!type || type === 'scheduled') {
+    return (
+      <Tooltip title="Scheduled">
+        <AccessTimeIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+      </Tooltip>
+    )
+  }
+  if (type === 'manual') {
+    return (
+      <Tooltip title="Manual trigger">
+        <TouchAppOutlinedIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+      </Tooltip>
+    )
+  }
+  if (type === 'drift_correction') {
+    return (
+      <Tooltip title="Drift correction">
+        <SyncOutlinedIcon sx={{ fontSize: 14, color: 'info.main' }} />
+      </Tooltip>
+    )
+  }
+  if (type === 'skipped') {
+    return (
+      <Tooltip title="Skipped">
+        <SkipNextOutlinedIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+      </Tooltip>
+    )
+  }
+  return null
+}
+
 function SummaryCell({ exec }: { exec: Execution }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -92,6 +130,14 @@ function SummaryCell({ exec }: { exec: Execution }) {
   )
 }
 
+const EXECUTION_TYPE_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'scheduled', label: 'Scheduled' },
+  { value: 'manual', label: 'Manual' },
+  { value: 'drift_correction', label: 'Drift Correction' },
+  { value: 'skipped', label: 'Skipped' },
+]
+
 export default function ExecutionTable({
   onSelect,
   initialExecId,
@@ -102,10 +148,15 @@ export default function ExecutionTable({
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(20)
   const [autoOpened, setAutoOpened] = useState(false)
+  const [typeFilter, setTypeFilter] = useState('all')
 
   const { data, isLoading } = useQuery({
-    queryKey: ['executions', page, rowsPerPage],
-    queryFn: () => getExecutions({ page, pageSize: rowsPerPage }),
+    queryKey: ['executions', page, rowsPerPage, typeFilter],
+    queryFn: () => getExecutions({
+      page,
+      pageSize: rowsPerPage,
+      executionType: typeFilter !== 'all' ? typeFilter : undefined,
+    }),
     refetchInterval: 10_000,
   })
 
@@ -120,6 +171,22 @@ export default function ExecutionTable({
 
   return (
     <Paper>
+      {/* Type filter */}
+      <Box sx={{ p: 2, pb: 0 }}>
+        <TextField
+          select
+          label="Execution Type"
+          size="small"
+          value={typeFilter}
+          onChange={(e) => { setTypeFilter(e.target.value); setPage(0) }}
+          sx={{ minWidth: 180 }}
+        >
+          {EXECUTION_TYPE_OPTIONS.map((opt) => (
+            <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+          ))}
+        </TextField>
+      </Box>
+
       {isLoading ? (
         <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
           {[...Array(5)].map((_, i) => (
@@ -133,7 +200,8 @@ export default function ExecutionTable({
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>STARTED</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>SCHEDULE</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>TYPE</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>POLICY / SCHEDULE</TableCell>
                   <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>MODE</TableCell>
                   <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>STATUS</TableCell>
                   <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>DURATION</TableCell>
@@ -143,7 +211,7 @@ export default function ExecutionTable({
               <TableBody>
                 {!data?.items?.length ? (
                   <TableRow>
-                    <TableCell colSpan={6}>
+                    <TableCell colSpan={7}>
                       <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
                         No executions yet.
                       </Typography>
@@ -159,13 +227,18 @@ export default function ExecutionTable({
                     >
                       <TableCell sx={{ fontSize: 13 }}>{formatDate(exec.startedAt)}</TableCell>
                       <TableCell>
+                        <ExecutionTypeIcon type={exec.executionType} />
+                      </TableCell>
+                      <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                           {exec.schedule?.type === 'scale_down' ? (
                             <BedtimeIcon sx={{ fontSize: 14, color: 'primary.main' }} />
                           ) : (
                             <WbSunnyIcon sx={{ fontSize: 14, color: 'warning.main' }} />
                           )}
-                          <Typography variant="body2">{exec.schedule?.name ?? '—'}</Typography>
+                          <Typography variant="body2">
+                            {exec.schedule?.name ?? '—'}
+                          </Typography>
                         </Box>
                       </TableCell>
                       <TableCell>

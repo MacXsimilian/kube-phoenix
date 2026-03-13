@@ -11,9 +11,14 @@ import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
 import Skeleton from '@mui/material/Skeleton'
 import ButtonBase from '@mui/material/ButtonBase'
+import Tooltip from '@mui/material/Tooltip'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import TouchAppOutlinedIcon from '@mui/icons-material/TouchAppOutlined'
+import SyncOutlinedIcon from '@mui/icons-material/SyncOutlined'
+import SkipNextOutlinedIcon from '@mui/icons-material/SkipNextOutlined'
 import { getExecutions } from '@/lib/api'
 import type { Execution } from '@/lib/types'
 
@@ -35,6 +40,38 @@ function StatusChip({ status }: { status: Execution['status'] }) {
   }
   const { label, color } = map[status]
   return <Chip label={label} color={color} size="small" sx={{ height: 20, fontSize: 11 }} />
+}
+
+function ExecTypeIndicator({ type }: { type: Execution['executionType'] }) {
+  if (!type || type === 'scheduled') {
+    return (
+      <Tooltip title="Scheduled">
+        <AccessTimeIcon sx={{ fontSize: 12, color: 'text.disabled' }} />
+      </Tooltip>
+    )
+  }
+  if (type === 'manual') {
+    return (
+      <Tooltip title="Manual trigger">
+        <TouchAppOutlinedIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+      </Tooltip>
+    )
+  }
+  if (type === 'drift_correction') {
+    return (
+      <Tooltip title="Drift correction">
+        <SyncOutlinedIcon sx={{ fontSize: 12, color: 'info.main' }} />
+      </Tooltip>
+    )
+  }
+  if (type === 'skipped') {
+    return (
+      <Tooltip title="Skipped">
+        <SkipNextOutlinedIcon sx={{ fontSize: 12, color: 'text.disabled' }} />
+      </Tooltip>
+    )
+  }
+  return null
 }
 
 export default function ActivityFeed() {
@@ -119,11 +156,12 @@ export default function ActivityFeed() {
                       color: exec.mode === 'apply' ? 'warning.main' : 'info.main',
                     }}
                   />
+                  {exec.executionType && <ExecTypeIndicator type={exec.executionType} />}
                 </Box>
                 <Typography variant="caption" color="text.secondary">
                   {exec.status === 'running'
-                    ? `In progress… · ${timeAgo(exec.startedAt)}`
-                    : `Scaled ${exec.countScaled} · Drained ${exec.countDrained} · Errors ${exec.countErrors} · ${timeAgo(exec.startedAt)}`}
+                    ? `In progress\u2026 \u00B7 ${timeAgo(exec.startedAt)}`
+                    : `Scaled ${exec.countScaled} \u00B7 Drained ${exec.countDrained} \u00B7 Errors ${exec.countErrors} \u00B7 ${timeAgo(exec.startedAt)}`}
                 </Typography>
               </Box>
             </ListItemButton>
