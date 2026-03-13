@@ -8,6 +8,7 @@ import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
 import Chip from '@mui/material/Chip'
 import Divider from '@mui/material/Divider'
+import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Tooltip from '@mui/material/Tooltip'
 import Snackbar from '@mui/material/Snackbar'
@@ -59,6 +60,7 @@ export default function LogViewer({
 }) {
   const [liveLines, setLiveLines] = useState<LogLine[]>([])
   const [copied, setCopied] = useState(false)
+  const [wsError, setWsError] = useState(false)
   const [drawerWidth, setDrawerWidth] = useState(640)
   const bottomRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -93,6 +95,7 @@ export default function LogViewer({
   useEffect(() => {
     if (!execution || !isRunning) return
     setLiveLines([])
+    setWsError(false)
 
     const ws = new WebSocket(wsLogsUrl(execution.id))
     wsRef.current = ws
@@ -105,7 +108,10 @@ export default function LogViewer({
         // ignore parse errors
       }
     }
-    ws.onerror = () => ws.close()
+    ws.onerror = () => {
+      setWsError(true)
+      ws.close()
+    }
 
     return () => {
       ws.close()
@@ -211,12 +217,12 @@ export default function LogViewer({
               <Box sx={{ display: 'flex', gap: 0.5 }}>
                 <Tooltip title="Copy logs">
                   <span>
-                    <IconButton size="small" onClick={handleCopy} disabled={lines.length === 0}>
+                    <IconButton size="small" onClick={handleCopy} disabled={lines.length === 0} aria-label="Copy logs">
                       <ContentCopyIcon fontSize="small" />
                     </IconButton>
                   </span>
                 </Tooltip>
-                <IconButton size="small" onClick={onClose}>
+                <IconButton size="small" onClick={onClose} aria-label="Close log viewer">
                   <CloseIcon fontSize="small" />
                 </IconButton>
               </Box>
@@ -225,6 +231,11 @@ export default function LogViewer({
             <Divider />
 
             {/* Log area */}
+            {wsError && (
+              <Alert severity="error" sx={{ borderRadius: 0 }}>
+                WebSocket connection lost. Logs may be incomplete.
+              </Alert>
+            )}
             <Box sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: '#0A0A0F' }}>
               {lines.length === 0 && !isRunning && (
                 <Typography variant="body2" color="text.secondary">

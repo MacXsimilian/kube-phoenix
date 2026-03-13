@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import React from 'react'
 import Paper from '@mui/material/Paper'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
@@ -16,6 +17,7 @@ import Box from '@mui/material/Box'
 import TextField from '@mui/material/TextField'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Switch from '@mui/material/Switch'
+import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import LinearProgress from '@mui/material/LinearProgress'
 import Typography from '@mui/material/Typography'
@@ -138,7 +140,7 @@ interface ZoneStats {
 }
 
 export default function NodesTable() {
-  const { data: nodes = [], isLoading, dataUpdatedAt, refetch } = useQuery({
+  const { data: nodes = [], isLoading, isError, error, dataUpdatedAt, refetch } = useQuery({
     queryKey: ['nodes'],
     queryFn: getNodes,
     refetchInterval: 30_000,
@@ -261,14 +263,18 @@ export default function NodesTable() {
             {dataUpdatedAt ? `Updated ${sinceMs(dataUpdatedAt)}` : ''}
           </Typography>
           <Tooltip title="Refresh">
-            <IconButton size="small" onClick={() => refetch()}>
+            <IconButton size="small" onClick={() => refetch()} aria-label="Refresh nodes">
               <RefreshIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
         </Box>
       </Box>
 
-      {isLoading ? (
+      {isError ? (
+        <Alert severity="error">
+          Failed to load nodes: {error instanceof Error ? error.message : 'Unknown error'}
+        </Alert>
+      ) : isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
           <CircularProgress />
         </Box>
@@ -301,8 +307,8 @@ export default function NodesTable() {
                   const cpuZonePct = pct(stats.cpuRequested, stats.cpuAllocatable)
                   const memZonePct = pct(stats.memRequested, stats.memAllocatable)
                   return (
-                    <>
-                      <TableRow key={`zone-${zone}`} sx={{ bgcolor: 'rgba(124,58,237,0.06)' }}>
+                    <React.Fragment key={zone}>
+                      <TableRow sx={{ bgcolor: 'rgba(124,58,237,0.06)' }}>
                         <TableCell colSpan={7} sx={{ py: 1 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
                             <Typography variant="caption" fontWeight={700} sx={{ color: 'primary.light', textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -327,7 +333,7 @@ export default function NodesTable() {
                         </TableCell>
                       </TableRow>
                       {stats.nodes.map((node) => <NodeRow key={node.name} node={node} />)}
-                    </>
+                    </React.Fragment>
                   )
                 })
               ) : (
