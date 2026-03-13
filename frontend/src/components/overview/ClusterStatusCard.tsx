@@ -19,6 +19,7 @@ import Snackbar from '@mui/material/Snackbar'
 import Alert from '@mui/material/Alert'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
+import Brightness4Icon from '@mui/icons-material/Brightness4'
 import { getWorkloads, getNodes, getSchedules, triggerRun } from '@/lib/api'
 import { useRouter } from 'next/navigation'
 
@@ -62,6 +63,7 @@ export default function ClusterStatusCard() {
 
   const statusColor = isSleeping ? '#F59E0B' : isPartial ? '#F97316' : '#22C55E'
   const statusLabel = isSleeping ? 'Cluster Sleeping' : isPartial ? 'Partially Sleeping' : 'Cluster Awake'
+  const StatusIcon = isSleeping ? BedtimeIcon : isPartial ? Brightness4Icon : WbSunnyIcon
 
   return (
     <>
@@ -80,8 +82,10 @@ export default function ClusterStatusCard() {
                 borderRadius: '50%',
                 bgcolor: statusColor,
                 boxShadow: `0 0 8px ${statusColor}`,
+                flexShrink: 0,
               }}
             />
+            <StatusIcon sx={{ fontSize: 18, color: statusColor }} />
             <Typography variant="h6" fontWeight={700}>
               {statusLabel}
             </Typography>
@@ -135,7 +139,12 @@ export default function ClusterStatusCard() {
         PaperProps={{ sx: { bgcolor: 'background.paper', minWidth: 360 } }}
       >
         <DialogTitle fontWeight={700}>
-          {dialog?.type === 'scale_down' ? '🌙 Run Sleep' : '☀️ Run Wake'}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {dialog?.type === 'scale_down'
+              ? <BedtimeIcon sx={{ color: 'primary.main', fontSize: 20 }} />
+              : <WbSunnyIcon sx={{ color: 'warning.main', fontSize: 20 }} />}
+            {dialog?.type === 'scale_down' ? 'Run Sleep' : 'Run Wake'}
+          </Box>
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" mb={2}>
