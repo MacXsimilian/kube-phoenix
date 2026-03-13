@@ -33,11 +33,13 @@ export interface Guardrails {
 export interface Execution {
   id: number
   scheduleId: number
+  policyId?: number | null
   schedule: Schedule
   startedAt: string
   finishedAt: string | null
   status: 'running' | 'success' | 'failed'
   mode: 'plan' | 'apply'
+  executionType?: 'scheduled' | 'manual' | 'drift_correction' | 'skipped'
   countScaled: number
   countDrained: number
   countDeleted: number
@@ -61,7 +63,8 @@ export interface Workload {
   currentReplicas: number
   savedReplicas: number | null
   readyReplicas: number
-  status: 'running' | 'sleeping' | 'partial'
+  status: 'running' | 'sleeping' | 'partial' | 'unmanaged'
+  governedBy: string | null
 }
 
 export interface Node {
@@ -95,4 +98,111 @@ export interface NodePod {
 export interface ExecutionPage {
   items: Execution[]
   total: number
+}
+
+// ── Policies ──────────────────────────────────────────────────────────────────
+
+export interface SleepPolicy {
+  id: number
+  name: string
+  description?: string
+  tags: string  // comma-separated
+  timezone: string
+  mode: 'plan' | 'apply'
+  namespaceFilter: string
+  enabled: boolean
+  driftCorrectionMode: 'record' | 'silent'
+  timeoutMinutes: number
+  windows: PolicyWindow[]
+  guardrails?: PolicyGuardrails
+  overrides?: PolicyOverride[]
+  conflictTags: string[]  // ["CONFLICT", "ABSORBED", "NO-OP"]
+  nextSleep?: string | null  // ISO timestamp
+  nextWake?: string | null   // ISO timestamp
+  lastExecution?: { status: string; finishedAt: string } | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PolicyWindow {
+  id: number
+  policyId: number
+  daysOfWeek: string  // JSON array string: '["mon","tue","wed","thu","fri"]'
+  sleepAt: string     // "19:00"
+  wakeAt?: string | null  // "06:00" — null = sleep-only
+  advancedRules?: {
+    dateRanges?: { from: string; to: string }[]
+    exceptions?: string[]
+  } | null
+}
+
+export interface PolicyGuardrails {
+  id: number
+  policyId: number
+  skipWorkloads: string
+  skipNamespaces: string
+  skipNsNode: string
+  skipNodeLabels: string
+  skipNodeTaints: string
+  minReplicas: number
+}
+
+export interface PolicyOverride {
+  id: number
+  policyId: number
+  occurrenceDate: string  // YYYY-MM-DD
+  edge: 'sleep' | 'wake' | 'both'
+  action: 'skip'
+  createdAt: string
+}
+
+export interface Notification {
+  id: number
+  policyId?: number | null
+  executionId?: number | null
+  type: 'conflict' | 'no_op' | 'absorbed' | 'execution_failed' | 'drift_corrected' | 'guardrail_shadow'
+  severity: 'error' | 'warning' | 'info'
+  message: string
+  detail?: Record<string, unknown>
+  read: boolean
+  createdAt: string
+  dismissedAt?: string | null
+}
+
+export interface NotificationList {
+  notifications: Notification[]
+  unreadCount: number
+}
+
+export interface PolicyInput {
+  name: string
+  description?: string
+  tags: string
+  timezone: string
+  mode: 'plan' | 'apply'
+  namespaceFilter: string
+  enabled: boolean
+  driftCorrectionMode: 'record' | 'silent'
+  timeoutMinutes: number
+  windows: PolicyWindowInput[]
+  guardrails?: PolicyGuardrailsInput
+}
+
+export interface PolicyWindowInput {
+  daysOfWeek: string
+  sleepAt: string
+  wakeAt?: string | null
+  advancedRules?: {
+    dateRanges?: { from: string; to: string }[]
+    exceptions?: string[]
+  } | null
+}
+
+export interface PolicyGuardrailsInput {
+  skipWorkloads: string
+  skipNamespaces: string
+  skipNsNode: string
+  skipNodeLabels: string
+  skipNodeTaints: string
+  minReplicas: number
 }
