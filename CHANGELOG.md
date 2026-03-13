@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.4](https://github.com/MacXsimilian/kube-phoenix/compare/v0.2.3...v0.2.4) (2026-03-13)
+
+
+### Features
+
+* **policies:** rework mode UX — plan-first creation, clickable LIVE badge ([c65c538](https://github.com/MacXsimilian/kube-phoenix/commit/c65c53847db824c33285e82a67ea758964b12564))
+
+
+### Bug Fixes
+
+* **frontend:** remove stale exec.schedule references after v1 removal ([41df3c9](https://github.com/MacXsimilian/kube-phoenix/commit/41df3c9b9073ba8aed7070d86c86d4a7ff2f01ee))
+* **frontend:** remove stale schedule references in LogViewer ([fe9dd5e](https://github.com/MacXsimilian/kube-phoenix/commit/fe9dd5e44ab6379d1f1011bd35f684d40a94fbe1))
+* sidebar notification drawer, version display, and run-now trigger ([486d084](https://github.com/MacXsimilian/kube-phoenix/commit/486d0846e7ae72d88f1cd4f07ec7d9b03e8cc2b0))
+
 ## [0.2.3](https://github.com/MacXsimilian/kube-phoenix/compare/v0.2.2...v0.2.3) (2026-03-13)
 
 
