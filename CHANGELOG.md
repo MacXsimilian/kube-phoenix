@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.20](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.19...v0.1.20) (2026-03-13)
+
+
+### Features
+
+* **cluster:** node pod drawer, workload kind labels, chart version sync ([13ea6e0](https://github.com/MacXsimilian/kube-phoenix/commit/13ea6e05a7483eec94843a74627a4b6c4a4644d5))
+
 ## [0.1.19](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.18...v0.1.19) (2026-03-13)
 
 
