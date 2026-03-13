@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.19](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.18...v0.1.19) (2026-03-13)
+
+
+### Bug Fixes
+
+* **helm:** sync chart version to 0.1.17 ([942d113](https://github.com/MacXsimilian/kube-phoenix/commit/942d11313fe7a50b2a48f94914d63fc3ea8f45e0))
+
 ## [0.1.18](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.17...v0.1.18) (2026-03-13)
 
 
