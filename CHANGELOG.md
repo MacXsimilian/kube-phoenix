@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.17](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.16...v0.1.17) (2026-03-13)
+
+
+### Bug Fixes
+
+* **frontend:** wrap useSearchParams in Suspense boundary on cluster page ([a252a53](https://github.com/MacXsimilian/kube-phoenix/commit/a252a53d765e22f75e09e4625855e9d5e88ded78))
+
 ## [0.1.16](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.15...v0.1.16) (2026-03-13)
 
 
