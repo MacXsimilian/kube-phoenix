@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// ─── Schedules ────────────────────────────────────────────────────────────────
+// ─── Schedules (v1 legacy) ────────────────────────────────────────────────────
 
 func (s *Store) ListSchedules() ([]Schedule, error) {
 	var schedules []Schedule
@@ -44,15 +44,15 @@ func (s *Store) DeleteSchedule(id uint) error {
 	return s.db.Delete(&Schedule{}, id).Error
 }
 
-// ─── Guardrails ───────────────────────────────────────────────────────────────
+// ─── Global Guardrails ────────────────────────────────────────────────────────
 
-func (s *Store) GetGuardrails() (*Guardrails, error) {
-	var g Guardrails
+func (s *Store) GetGuardrails() (*GlobalGuardrails, error) {
+	var g GlobalGuardrails
 	return &g, s.db.First(&g).Error
 }
 
-func (s *Store) UpdateGuardrails(updates map[string]interface{}) (*Guardrails, error) {
-	if err := s.db.Model(&Guardrails{}).Where("id = 1").Updates(updates).Error; err != nil {
+func (s *Store) UpdateGuardrails(updates map[string]interface{}) (*GlobalGuardrails, error) {
+	if err := s.db.Model(&GlobalGuardrails{}).Where("id = 1").Updates(updates).Error; err != nil {
 		return nil, err
 	}
 	return s.GetGuardrails()
@@ -70,14 +70,16 @@ func (s *Store) UpdateExecution(id uint, updates map[string]interface{}) error {
 
 func (s *Store) GetExecution(id uint) (*Execution, error) {
 	var e Execution
-	return &e, s.db.Preload("Schedule").First(&e, id).Error
+	return &e, s.db.Preload("Schedule").Preload("Policy").First(&e, id).Error
 }
 
 type ExecutionFilter struct {
-	ScheduleID *uint
-	Status     string
-	Page       int
-	PageSize   int
+	ScheduleID    *uint
+	PolicyID      *uint
+	Status        string
+	ExecutionType string
+	Page          int
+	PageSize      int
 }
 
 type ExecutionPage struct {
@@ -86,12 +88,18 @@ type ExecutionPage struct {
 }
 
 func (s *Store) ListExecutions(f ExecutionFilter) (*ExecutionPage, error) {
-	q := s.db.Model(&Execution{}).Preload("Schedule")
+	q := s.db.Model(&Execution{}).Preload("Schedule").Preload("Policy")
 	if f.ScheduleID != nil {
 		q = q.Where("schedule_id = ?", *f.ScheduleID)
 	}
+	if f.PolicyID != nil {
+		q = q.Where("policy_id = ?", *f.PolicyID)
+	}
 	if f.Status != "" {
 		q = q.Where("status = ?", f.Status)
+	}
+	if f.ExecutionType != "" {
+		q = q.Where("execution_type = ?", f.ExecutionType)
 	}
 
 	var total int64
@@ -143,6 +151,7 @@ func (s *Store) CountLogLines(executionID uint) (int64, error) {
 // ─── Seeds ────────────────────────────────────────────────────────────────────
 
 func (s *Store) SeedDefaults() error {
+	// Seed v1 legacy schedules (kept for backward compat)
 	var count int64
 	if err := s.db.Model(&Schedule{}).Count(&count).Error; err != nil {
 		return fmt.Errorf("seed: count schedules: %w", err)
@@ -159,21 +168,58 @@ func (s *Store) SeedDefaults() error {
 		}
 	}
 
+	// Seed global guardrails (singleton ID=1)
 	var gCount int64
-	if err := s.db.Model(&Guardrails{}).Count(&gCount).Error; err != nil {
+	if err := s.db.Model(&GlobalGuardrails{}).Count(&gCount).Error; err != nil {
 		return fmt.Errorf("seed: count guardrails: %w", err)
 	}
 	if gCount == 0 {
-		g := Guardrails{
-			SkipNamespaces: "default,kube-system,kube-public,karpenter,vault,velero,istio-gateway,istio-system,kyverno,kyverno-notation-aws,victoriametrics,monitoring,gitlab",
-			SkipNsNode:     "victoriametrics,karpenter",
-			SkipNodeLabels: "karpenter.k8s.aws/ec2nodeclass=default",
-			SkipNodeTaints: "karpenter-eks-base=true:NoSchedule",
+		g := GlobalGuardrails{
+			ID:             1,
+			SkipNamespaces: "kube-system,kube-phoenix",
 		}
 		if err := s.db.Create(&g).Error; err != nil {
 			return err
 		}
 	}
+
+	// Seed v2 "Business Hours" policy
+	var pCount int64
+	if err := s.db.Model(&SleepPolicy{}).Count(&pCount).Error; err != nil {
+		return fmt.Errorf("seed: count sleep_policies: %w", err)
+	}
+	if pCount == 0 {
+		policy := SleepPolicy{
+			Name:                "Business Hours",
+			Description:         "Sleeps the cluster Mon–Fri at 19:00 UTC and wakes at 06:00. Friday sleep carries through to Monday.",
+			Timezone:            "UTC",
+			Mode:                "plan",
+			NamespaceFilter:     "",
+			Enabled:             true,
+			DriftCorrectionMode: "record",
+		}
+		if err := s.db.Create(&policy).Error; err != nil {
+			return fmt.Errorf("seed: create business hours policy: %w", err)
+		}
+
+		// Create the window: Mon–Fri, sleep 19:00, wake 06:00
+		window := PolicyWindow{
+			PolicyID:   policy.ID,
+			DaysOfWeek: `["mon","tue","wed","thu","fri"]`,
+			SleepAt:    "19:00",
+			WakeAt:     "06:00",
+		}
+		if err := s.db.Create(&window).Error; err != nil {
+			return fmt.Errorf("seed: create business hours window: %w", err)
+		}
+
+		// Create empty policy guardrails row
+		gr := PolicyGuardrails{PolicyID: policy.ID}
+		if err := s.db.Create(&gr).Error; err != nil {
+			return fmt.Errorf("seed: create business hours guardrails: %w", err)
+		}
+	}
+
 	return nil
 }
 
