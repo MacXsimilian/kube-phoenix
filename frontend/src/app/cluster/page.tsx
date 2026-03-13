@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Typography from '@mui/material/Typography'
 import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
@@ -9,7 +10,8 @@ import WorkloadsTable from '@/components/cluster/WorkloadsTable'
 import NodesTable from '@/components/cluster/NodesTable'
 
 export default function ClusterPage() {
-  const [tab, setTab] = useState(0)
+  const searchParams = useSearchParams()
+  const [tab, setTab] = useState(searchParams.get('tab') === 'nodes' ? 1 : 0)
 
   return (
     <>

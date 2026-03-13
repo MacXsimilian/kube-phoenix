@@ -56,7 +56,7 @@ export default function ClusterStatusCard() {
 
   const sleeping = workloads.filter((w) => w.status === 'sleeping').length
   const running = workloads.filter((w) => w.status === 'running').length
-  const activeNodes = nodes.filter((n) => n.status === 'active' || n.status === 'would-drain').length
+  const activeNodes = nodes.length
 
   const isPartial = sleeping > 0 && running > 0
   const isSleeping = sleeping > 0 && running === 0
@@ -96,7 +96,8 @@ export default function ClusterStatusCard() {
             <Chip
               label={`${activeNodes} Nodes Active`}
               size="small"
-              sx={{ bgcolor: 'rgba(34,197,94,0.1)', color: 'success.main', fontWeight: 600 }}
+              onClick={() => router.push('/cluster/?tab=nodes')}
+              sx={{ bgcolor: 'rgba(34,197,94,0.1)', color: 'success.main', fontWeight: 600, cursor: 'pointer' }}
             />
             <Chip
               label={`${running} Workloads Running`}
