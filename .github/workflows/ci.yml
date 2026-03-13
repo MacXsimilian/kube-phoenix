@@ -155,29 +155,3 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
 
-  # ── Helm package & push ───────────────────────────────────────────────────────
-  helm-publish:
-    name: Helm package & push
-    runs-on: ubuntu-24.04
-    needs: [helm, docker]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
-
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4  # v4.3.1
-        with:
-          version: "3.16.3"
-
-      - name: Log in to GHCR (OCI)
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
-
-      - name: Package chart
-        run: helm package helm/kube-phoenix --destination /tmp/chart
-
-      - name: Push chart to GHCR
-        run: |
-          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          helm push /tmp/chart/kube-phoenix-*.tgz oci://ghcr.io/${OWNER}/helm
