@@ -172,6 +172,7 @@ export default function PolicyCard({
   const router = useRouter()
 
   const [deleteDialog, setDeleteDialog] = useState(false)
+  const [modeDialog, setModeDialog] = useState(false)
   const [undoOpen, setUndoOpen] = useState(false)
   const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -184,6 +185,14 @@ export default function PolicyCard({
   const toggleEnabled = useMutation({
     mutationFn: () => policiesApi.update(policy.id, { enabled: !policy.enabled }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['policies'] }),
+  })
+
+  const toggleMode = useMutation({
+    mutationFn: () => policiesApi.update(policy.id, { mode: policy.mode === 'plan' ? 'apply' : 'plan' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['policies'] })
+      setModeDialog(false)
+    },
   })
 
   const deleteMutation = useMutation({
@@ -254,17 +263,22 @@ export default function PolicyCard({
                 {policy.name}
               </Typography>
 
-              {/* Mode chip */}
-              <Chip
-                label={policy.mode.toUpperCase()}
-                size="small"
-                sx={{
-                  height: 18,
-                  fontSize: 10,
-                  bgcolor: policy.mode === 'apply' ? 'rgba(245,158,11,0.18)' : 'rgba(59,130,246,0.18)',
-                  color: policy.mode === 'apply' ? 'warning.main' : 'info.main',
-                }}
-              />
+              {/* Mode chip — click to open activation dialog */}
+              <Tooltip title={policy.mode === 'plan' ? 'Dry-run mode — click to go live' : 'Live mode — click to switch to plan'}>
+                <Chip
+                  label={policy.mode === 'apply' ? 'LIVE' : 'PLAN'}
+                  size="small"
+                  onClick={() => setModeDialog(true)}
+                  sx={{
+                    height: 18,
+                    fontSize: 10,
+                    cursor: 'pointer',
+                    bgcolor: policy.mode === 'apply' ? 'rgba(245,158,11,0.18)' : 'rgba(59,130,246,0.18)',
+                    color: policy.mode === 'apply' ? 'warning.main' : 'info.main',
+                    '&:hover': { opacity: 0.75 },
+                  }}
+                />
+              </Tooltip>
 
               {!policy.enabled && (
                 <Chip
@@ -429,6 +443,71 @@ export default function PolicyCard({
           </Box>
         </Box>
       </Paper>
+
+      {/* Mode activation dialog */}
+      <Dialog
+        open={modeDialog}
+        onClose={() => setModeDialog(false)}
+        PaperProps={{ sx: { bgcolor: 'background.paper', minWidth: 360 } }}
+      >
+        {policy.mode === 'plan' ? (
+          <>
+            <DialogTitle fontWeight={700}>Activate &ldquo;{policy.name}&rdquo;</DialogTitle>
+            <DialogContent>
+              <Typography variant="body2" color="text.secondary" mb={2}>
+                Switching to Live mode means this policy will make real changes to your cluster on its next scheduled run.
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Run a dry-run first to verify the schedule is correct:
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<PlayArrowIcon sx={{ fontSize: 14 }} />}
+                onClick={() => { setModeDialog(false); router.push(`/policies?run=${policy.id}&edge=sleep`) }}
+                sx={{ mt: 1.5, borderColor: 'rgba(255,255,255,0.15)', color: 'text.secondary' }}
+              >
+                Run Plan Now
+              </Button>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+              <Button onClick={() => setModeDialog(false)} sx={{ color: 'text.secondary' }}>
+                Keep as Plan
+              </Button>
+              <Button
+                variant="contained"
+                color="warning"
+                disabled={toggleMode.isPending}
+                startIcon={toggleMode.isPending ? <CircularProgress size={14} /> : undefined}
+                onClick={() => toggleMode.mutate()}
+              >
+                Go Live →
+              </Button>
+            </DialogActions>
+          </>
+        ) : (
+          <>
+            <DialogTitle fontWeight={700}>Switch to Plan mode?</DialogTitle>
+            <DialogContent>
+              <Typography variant="body2" color="text.secondary">
+                Scheduled runs for <strong>{policy.name}</strong> will stop making real changes
+                and will dry-run instead. You can switch back to Live at any time.
+              </Typography>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+              <Button onClick={() => setModeDialog(false)} sx={{ color: 'text.secondary' }}>Cancel</Button>
+              <Button
+                variant="outlined"
+                disabled={toggleMode.isPending}
+                startIcon={toggleMode.isPending ? <CircularProgress size={14} /> : undefined}
+                onClick={() => toggleMode.mutate()}
+              >
+                Switch to Plan
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
 
       {/* Delete confirm dialog */}
       <Dialog

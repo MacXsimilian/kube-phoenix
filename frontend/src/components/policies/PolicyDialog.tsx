@@ -10,8 +10,6 @@ import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
-import ToggleButton from '@mui/material/ToggleButton'
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Switch from '@mui/material/Switch'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Button from '@mui/material/Button'
@@ -567,9 +565,12 @@ export default function PolicyDialog({
         description,
         tags,
         timezone,
-        mode,
+        // New policies always start in plan (dry-run) mode; mode is only
+        // editable after creation via the ACTIVATION section or card badge.
+        mode: isEdit ? mode : 'plan',
         namespaceFilter,
-        enabled,
+        // New policies are always created enabled; toggled on the card afterwards.
+        enabled: isEdit ? enabled : true,
         driftCorrectionMode,
         timeoutMinutes,
         windows: windowsPayload,
@@ -666,33 +667,6 @@ export default function PolicyDialog({
             ))}
           </TextField>
 
-          {/* Mode */}
-          <Box>
-            <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-              Execution Mode
-            </Typography>
-            <ToggleButtonGroup
-              value={mode}
-              exclusive
-              onChange={(_, v) => v && setMode(v)}
-              size="small"
-              fullWidth
-            >
-              <ToggleButton value="plan">Plan (dry-run)</ToggleButton>
-              <ToggleButton
-                value="apply"
-                sx={{ '&.Mui-selected': { bgcolor: 'rgba(245,158,11,0.18)', color: 'warning.main' } }}
-              >
-                Apply (live)
-              </ToggleButton>
-            </ToggleButtonGroup>
-            {mode === 'apply' && (
-              <Alert severity="warning" sx={{ mt: 1, py: 0.5 }}>
-                Apply mode will make real changes to your cluster.
-              </Alert>
-            )}
-          </Box>
-
           <TextField
             label="Namespace Filter"
             size="small"
@@ -704,16 +678,63 @@ export default function PolicyDialog({
             inputProps={{ style: { fontFamily: 'monospace' } }}
           />
 
-          <FormControlLabel
-            control={
-              <Switch
-                checked={enabled}
-                onChange={(e) => setEnabled(e.target.checked)}
-                color="primary"
+          {/* ACTIVATION — only shown when editing an existing policy.
+              New policies always start in plan mode and enabled. */}
+          {isEdit && (
+            <>
+              <Divider />
+              <Typography variant="subtitle2" color="text.secondary" fontWeight={700}>
+                ACTIVATION
+              </Typography>
+
+              <RadioGroup
+                value={mode}
+                onChange={(e) => setMode(e.target.value as 'plan' | 'apply')}
+              >
+                <FormControlLabel
+                  value="plan"
+                  control={<Radio size="small" />}
+                  label={
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>Plan (dry-run)</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Runs simulate changes only — nothing touches the cluster
+                      </Typography>
+                    </Box>
+                  }
+                />
+                <FormControlLabel
+                  value="apply"
+                  control={<Radio size="small" />}
+                  label={
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>Apply (live)</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Runs make real changes to your cluster
+                      </Typography>
+                    </Box>
+                  }
+                />
+              </RadioGroup>
+
+              {mode === 'apply' && (
+                <Alert severity="warning" sx={{ py: 0.5 }}>
+                  Apply mode will make real changes to your cluster on the next scheduled run.
+                </Alert>
+              )}
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={enabled}
+                    onChange={(e) => setEnabled(e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label="Enable policy"
               />
-            }
-            label="Enable policy"
-          />
+            </>
+          )}
 
           <Divider />
 
