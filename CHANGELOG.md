@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.14](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.13...v0.1.14) (2026-03-13)
+
+
+### Bug Fixes
+
+* **release:** run docker build and helm publish inside release-please workflow ([01f5001](https://github.com/MacXsimilian/kube-phoenix/commit/01f5001a40c04868180d8f1f2e9d47835930d153))
+
 ## [0.1.13](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.12...v0.1.13) (2026-03-13)
 
 
