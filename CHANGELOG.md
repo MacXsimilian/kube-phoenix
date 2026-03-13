@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.10...v0.1.11) (2026-03-13)
+
+
+### Bug Fixes
+
+* **ci:** remove helm publish from CI — release.yml owns versioned chart publishing ([30d2132](https://github.com/MacXsimilian/kube-phoenix/commit/30d21329799d5f54d0c0a50dc6d0654a1df03dad))
+
 ## [0.1.10](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.9...v0.1.10) (2026-03-13)
 
 
