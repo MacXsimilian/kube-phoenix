@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -204,6 +205,114 @@ func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 
 	if result == nil {
 		result = []NodeResponse{}
+	}
+	jsonOK(w, result)
+}
+
+type NodePodResponse struct {
+	Name            string `json:"name"`
+	Namespace       string `json:"namespace"`
+	OwnerKind       string `json:"ownerKind"`
+	OwnerName       string `json:"ownerName"`
+	Status          string `json:"status"` // Running | Pending | Failed | Succeeded | Unknown
+	ReadyContainers int    `json:"readyContainers"`
+	TotalContainers int    `json:"totalContainers"`
+	CPURequest      int64  `json:"cpuRequest"` // millicores
+	MemRequest      int64  `json:"memRequest"` // bytes
+	StartedAt       string `json:"startedAt"`  // RFC3339 or ""
+}
+
+func (h *Handler) getNodePods(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		jsonError(w, "kubernetes client unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	nodeName := chi.URLParam(r, "name")
+	ctx := r.Context()
+
+	pods, err := h.k8s.ListPodsOnNode(ctx, nodeName)
+	if err != nil {
+		jsonError(w, "failed to list pods: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Build ReplicaSet -> top-level owner map to resolve Deployment names
+	rss, err := h.k8s.ListAllReplicaSets(ctx)
+	if err != nil {
+		slog.Warn("getNodePods: failed to list replicasets — owners will show as ReplicaSet", "err", err)
+	}
+	type ownerRef struct{ kind, name string }
+	rsOwner := map[string]ownerRef{}
+	for _, rs := range rss {
+		for _, ref := range rs.OwnerReferences {
+			rsOwner[rs.Namespace+"/"+rs.Name] = ownerRef{ref.Kind, ref.Name}
+			break
+		}
+	}
+
+	var result []NodePodResponse
+	for _, pod := range pods {
+		ownerKind, ownerName := "", ""
+		isDaemon := false
+		for _, ref := range pod.OwnerReferences {
+			if ref.Kind == "DaemonSet" {
+				isDaemon = true
+				break
+			}
+			ownerKind = ref.Kind
+			ownerName = ref.Name
+		}
+		if isDaemon {
+			continue
+		}
+
+		// Resolve ReplicaSet -> Deployment (or other top-level owner)
+		if ownerKind == "ReplicaSet" {
+			if top, ok := rsOwner[pod.Namespace+"/"+ownerName]; ok {
+				ownerKind = top.kind
+				ownerName = top.name
+			}
+		}
+
+		ready := 0
+		for _, cs := range pod.Status.ContainerStatuses {
+			if cs.Ready {
+				ready++
+			}
+		}
+
+		var cpuReq, memReq int64
+		for _, c := range pod.Spec.Containers {
+			cpuReq += c.Resources.Requests.Cpu().MilliValue()
+			memReq += c.Resources.Requests.Memory().Value()
+		}
+
+		startedAt := ""
+		if pod.Status.StartTime != nil {
+			startedAt = pod.Status.StartTime.UTC().Format(time.RFC3339)
+		}
+
+		phase := string(pod.Status.Phase)
+		if phase == "" {
+			phase = "Unknown"
+		}
+
+		result = append(result, NodePodResponse{
+			Name:            pod.Name,
+			Namespace:       pod.Namespace,
+			OwnerKind:       ownerKind,
+			OwnerName:       ownerName,
+			Status:          phase,
+			ReadyContainers: ready,
+			TotalContainers: len(pod.Spec.Containers),
+			CPURequest:      cpuReq,
+			MemRequest:      memReq,
+			StartedAt:       startedAt,
+		})
+	}
+
+	if result == nil {
+		result = []NodePodResponse{}
 	}
 	jsonOK(w, result)
 }

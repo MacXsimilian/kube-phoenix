@@ -206,7 +206,7 @@ export default function WorkloadsTable() {
                       <TableCell sx={{ fontWeight: 500, fontSize: 13 }}>{w.name}</TableCell>
                       <TableCell>
                         <Chip
-                          label={w.kind === 'Deployment' ? 'Deploy' : 'SS'}
+                          label={w.kind === 'Deployment' ? 'Deployment' : 'StatefulSet'}
                           size="small"
                           sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(124,58,237,0.12)', color: 'primary.main' }}
                         />

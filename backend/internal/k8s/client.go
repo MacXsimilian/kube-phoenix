@@ -241,6 +241,24 @@ func (c *Client) ListAllPods(ctx context.Context) ([]corev1.Pod, error) {
 	return c.ListPods(ctx, "")
 }
 
+func (c *Client) ListPodsOnNode(ctx context.Context, nodeName string) ([]corev1.Pod, error) {
+	list, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{
+		FieldSelector: "spec.nodeName=" + nodeName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+func (c *Client) ListAllReplicaSets(ctx context.Context) ([]appsv1.ReplicaSet, error) {
+	list, err := c.cs.AppsV1().ReplicaSets("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
 func (c *Client) ListNamespaces(ctx context.Context) ([]corev1.Namespace, error) {
 	list, err := c.cs.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 	if err != nil {

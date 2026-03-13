@@ -1,4 +1,4 @@
-import type { Schedule, ScheduleInput, Guardrails, Execution, LogLine, Workload, Node, ExecutionPage } from './types'
+import type { Schedule, ScheduleInput, Guardrails, Execution, LogLine, Workload, Node, NodePod, ExecutionPage } from './types'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
 
@@ -97,6 +97,9 @@ export const getWorkloads = (): Promise<Workload[]> =>
 
 export const getNodes = (): Promise<Node[]> =>
   req<Node[]>('/api/cluster/nodes')
+
+export const getNodePods = (nodeName: string): Promise<NodePod[]> =>
+  req<NodePod[]>(`/api/cluster/nodes/${encodeURIComponent(nodeName)}/pods`)
 
 // ── Trigger ───────────────────────────────────────────────────────────────────
 
