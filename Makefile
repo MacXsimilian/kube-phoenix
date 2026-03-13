@@ -25,7 +25,7 @@ dev-backend:
 # ── Build ─────────────────────────────────────────────────────────────────────
 
 frontend:
-	cd frontend && npm install && npm run build
+	cd frontend && npm install && NEXT_PUBLIC_APP_VERSION=$(APP_VERSION) npm run build
 	rm -rf backend/web/static
 	cp -r frontend/out backend/web/static
 

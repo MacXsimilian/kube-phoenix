@@ -142,15 +142,15 @@ export const policiesApi = {
     req<void>(`/api/policies/${id}/overrides/${date}/${edge}`, { method: 'DELETE' }),
 
   triggerSleep: (id: number, mode: 'plan' | 'apply'): Promise<{ executionId: number }> =>
-    req<{ executionId: number }>(`/api/policies/${id}/trigger`, {
+    req<{ executionId: number }>(`/api/trigger`, {
       method: 'POST',
-      body: JSON.stringify({ edge: 'sleep', mode }),
+      body: JSON.stringify({ policyId: id, edge: 'sleep', mode }),
     }),
 
   triggerWake: (id: number, mode: 'plan' | 'apply'): Promise<{ executionId: number }> =>
-    req<{ executionId: number }>(`/api/policies/${id}/trigger`, {
+    req<{ executionId: number }>(`/api/trigger`, {
       method: 'POST',
-      body: JSON.stringify({ edge: 'wake', mode }),
+      body: JSON.stringify({ policyId: id, edge: 'wake', mode }),
     }),
 }
 

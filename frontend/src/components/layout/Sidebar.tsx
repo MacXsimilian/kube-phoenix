@@ -55,7 +55,8 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
   })
 
   const unreadCount = notifData?.unreadCount ?? 0
-  const appVersion = versionData?.version ?? 'dev'
+  // Prefer version baked in at build time (NEXT_PUBLIC_APP_VERSION); fall back to API response
+  const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? versionData?.version ?? 'dev'
 
   const content = (
     <>
@@ -136,7 +137,6 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
         </Typography>
       </Box>
 
-      <NotificationDrawer open={notifOpen} onClose={() => setNotifOpen(false)} />
     </>
   )
 
@@ -169,6 +169,9 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
       >
         {content}
       </Drawer>
+
+      {/* Rendered outside sidebar drawers to avoid nested Drawer/Portal stacking issues */}
+      <NotificationDrawer open={notifOpen} onClose={() => setNotifOpen(false)} />
     </>
   )
 }
