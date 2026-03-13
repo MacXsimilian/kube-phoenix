@@ -51,6 +51,7 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
           return (
             <ListItemButton
               key={href}
+              aria-current={active ? 'page' : undefined}
               onClick={() => { router.push(href); onMobileClose() }}
               sx={{
                 mx: 1,
