@@ -60,8 +60,11 @@ spec:
         app.kubernetes.io/component: postgresql
     spec:
       securityContext:
+        runAsNonRoot: true
         runAsUser: 999
         fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: postgresql
           image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"

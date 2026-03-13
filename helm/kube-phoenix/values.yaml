@@ -1,9 +1,12 @@
 # Default values for kube-phoenix.
 
+nameOverride: ""
+fullnameOverride: ""
+
 image:
   repository: ghcr.io/macxsimilian/kube-phoenix
   tag: latest
-  pullPolicy: Always
+  pullPolicy: IfNotPresent   # use Always when tag is "latest" or "main"
 
 replicaCount: 1
 
