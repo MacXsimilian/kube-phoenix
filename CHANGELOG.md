@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.13](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.12...v0.1.13) (2026-03-13)
+
+
+### Bug Fixes
+
+* **ci:** decouple Trivy scan from docker job — scan failure no longer marks build as failed ([a0e3525](https://github.com/MacXsimilian/kube-phoenix/commit/a0e3525dee262b6eeb19b97635d14ef69881625a))
+
 ## [0.1.12](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.11...v0.1.12) (2026-03-13)
 
 
