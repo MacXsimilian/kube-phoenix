@@ -86,7 +86,12 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
 
       - name: Package chart
-        run: helm package helm/kube-phoenix --destination /tmp/chart
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          helm package helm/kube-phoenix \
+            --version "${VERSION}" \
+            --app-version "${VERSION}" \
+            --destination /tmp/chart
 
       - name: Push chart to GHCR
         run: |

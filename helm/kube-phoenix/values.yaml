@@ -5,8 +5,8 @@ fullnameOverride: ""
 
 image:
   repository: ghcr.io/macxsimilian/kube-phoenix
-  tag: latest
-  pullPolicy: IfNotPresent   # use Always when tag is "latest" or "main"
+  tag: ""   # defaults to Chart.AppVersion; override to pin a specific tag
+  pullPolicy: IfNotPresent
 
 replicaCount: 1
 
