@@ -234,13 +234,13 @@ export default function ExecutionTable({
                       </TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                          {(exec.action ?? exec.schedule?.type) === 'scale_down' ? (
+                          {exec.action === 'scale_down' ? (
                             <BedtimeIcon sx={{ fontSize: 14, color: 'primary.main' }} />
                           ) : (
                             <WbSunnyIcon sx={{ fontSize: 14, color: 'warning.main' }} />
                           )}
                           <Typography variant="body2">
-                            {exec.policy?.name ?? exec.schedule?.name ?? '—'}
+                            {exec.policy?.name ?? '—'}
                           </Typography>
                         </Box>
                       </TableCell>

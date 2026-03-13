@@ -125,7 +125,7 @@ export default function ActivityFeed() {
                   width: 32,
                   height: 32,
                   borderRadius: 1.5,
-                  bgcolor: (exec.action ?? exec.schedule?.type) === 'scale_down'
+                  bgcolor: exec.action === 'scale_down'
                     ? 'rgba(124,58,237,0.12)'
                     : 'rgba(245,158,11,0.1)',
                   display: 'flex',
@@ -135,7 +135,7 @@ export default function ActivityFeed() {
                   flexShrink: 0,
                 }}
               >
-                {(exec.action ?? exec.schedule?.type) === 'scale_down' ? (
+                {exec.action === 'scale_down' ? (
                   <BedtimeIcon sx={{ fontSize: 16, color: 'primary.main' }} />
                 ) : (
                   <WbSunnyIcon sx={{ fontSize: 16, color: 'warning.main' }} />
@@ -144,7 +144,7 @@ export default function ActivityFeed() {
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="body2" fontWeight={500}>
-                    {exec.policy?.name ?? exec.schedule?.name ?? 'Unknown'}
+                    {exec.policy?.name ?? 'Unknown'}
                   </Typography>
                   <StatusChip status={exec.status} />
                   <Chip
