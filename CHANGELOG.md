@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/MacXsimilian/kube-phoenix/compare/v0.2.2...v0.2.3) (2026-03-13)
+
+
+### Bug Fixes
+
+* **ui:** hamburger toggle + notification full-row click target ([0c122a8](https://github.com/MacXsimilian/kube-phoenix/commit/0c122a8f0a8e97978da976d2251b1766ad120026))
+
 ## [0.2.2](https://github.com/MacXsimilian/kube-phoenix/compare/v0.2.1...v0.2.2) (2026-03-13)
 
 
