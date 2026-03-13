@@ -16,6 +16,23 @@ import type { Schedule } from '@/lib/types'
 import ScheduleCard from '@/components/schedules/ScheduleCard'
 import ScheduleDialog from '@/components/schedules/ScheduleDialog'
 
+function EmptySlot({ label }: { label: string }) {
+  return (
+    <Box
+      sx={{
+        border: '1px dashed rgba(255,255,255,0.12)',
+        borderRadius: 2,
+        p: 3,
+        textAlign: 'center',
+      }}
+    >
+      <Typography variant="body2" color="text.secondary">
+        {label}
+      </Typography>
+    </Box>
+  )
+}
+
 export default function SchedulesPage() {
   const qc = useQueryClient()
   const { data: schedules = [], isLoading, isError, error } = useQuery({
@@ -47,21 +64,6 @@ export default function SchedulesPage() {
       </Alert>
     )
   }
-
-  const EmptySlot = ({ label }: { label: string }) => (
-    <Box
-      sx={{
-        border: '1px dashed rgba(255,255,255,0.12)',
-        borderRadius: 2,
-        p: 3,
-        textAlign: 'center',
-      }}
-    >
-      <Typography variant="body2" color="text.secondary">
-        {label}
-      </Typography>
-    </Box>
-  )
 
   return (
     <>

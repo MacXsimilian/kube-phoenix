@@ -16,6 +16,7 @@ import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Switch from '@mui/material/Switch'
+import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
@@ -31,7 +32,7 @@ const STATUS_COLORS: Record<Workload['status'], { bgcolor: string; color: string
 }
 
 export default function WorkloadsTable() {
-  const { data: workloads = [], isLoading, dataUpdatedAt, refetch } = useQuery({
+  const { data: workloads = [], isLoading, isError, error, dataUpdatedAt, refetch } = useQuery({
     queryKey: ['workloads'],
     queryFn: getWorkloads,
     refetchInterval: 30_000,
@@ -150,14 +151,18 @@ export default function WorkloadsTable() {
             {dataUpdatedAt ? `Updated ${sinceMs(dataUpdatedAt)}` : ''}
           </Typography>
           <Tooltip title="Refresh">
-            <IconButton size="small" onClick={() => refetch()}>
+            <IconButton size="small" onClick={() => refetch()} aria-label="Refresh workloads">
               <RefreshIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
         </Box>
       </Box>
 
-      {isLoading ? (
+      {isError ? (
+        <Alert severity="error">
+          Failed to load workloads: {error instanceof Error ? error.message : 'Unknown error'}
+        </Alert>
+      ) : isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
           <CircularProgress />
         </Box>
