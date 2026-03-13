@@ -23,8 +23,6 @@ jobs:
         id: rp
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          repo-url: ${{ github.server_url }}/${{ github.repository }}
-          target-branch: master
 
   docker:
     name: Docker release build & push
