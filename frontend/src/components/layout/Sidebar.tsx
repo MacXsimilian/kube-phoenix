@@ -14,18 +14,6 @@ import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined'
 import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
 import SecurityOutlinedIcon from '@mui/icons-material/SecurityOutlined'
 import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined'
-import SvgIcon from '@mui/material/SvgIcon'
-
-function PhoenixIcon({ sx }: { sx?: object }) {
-  return (
-    <SvgIcon sx={sx} viewBox="0 0 24 24">
-      <path
-        fill="currentColor"
-        d="M12 2c0 0-1.5 2.5-1 4.5C8.5 5.5 7 3 7 3c-.5 3 1 5 1 5C6 8.5 4.5 7 4.5 7 5 10 7.5 11.5 7.5 11.5 6 12 4.5 11.5 4.5 11.5 5.5 14 8 15 8 15c-1 1.5-3 2-3 2 2 1 4.5.5 4.5.5L9 22h6l-.5-4.5c0 0 2.5.5 4.5-.5 0 0-2-.5-3-2 0 0 2.5-1 3.5-3.5 0 0-1.5.5-3 0 0 0 2.5-1.5 3-4.5C19 7 17.5 8.5 17.5 8.5s2-2 1-5c0 0-1.5 2.5-4 3.5.5-2-1-4.5-2.5-5z"
-      />
-    </SvgIcon>
-  )
-}
 
 const NAV = [
   { label: 'Overview', href: '/overview', icon: <DashboardOutlinedIcon fontSize="small" /> },
@@ -54,7 +42,7 @@ export default function Sidebar({ width }: { width: number }) {
     >
       {/* Logo */}
       <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <PhoenixIcon sx={{ color: 'primary.main', fontSize: 22 }} />
+        <Typography sx={{ fontSize: 22, lineHeight: 1, userSelect: 'none' }}>🐦‍🔥</Typography>
         <Typography variant="subtitle1" fontWeight={700} letterSpacing={-0.5}>
           kube-phoenix
         </Typography>
