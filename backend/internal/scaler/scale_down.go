@@ -29,7 +29,6 @@ func (r *Runner) RunScaleDown(ctx context.Context, policy *store.SleepPolicy, lo
 	// Build skip sets (guardrail evaluation order per FR-59):
 	// global skip_namespaces → global node rules → policy skip_workloads → policy skip_namespaces → policy min_replicas → policy node rules
 	globalSkipNS := splitCSV(g.SkipNamespaces)
-	globalSkipNsNode := splitCSV(g.SkipNsNode)
 
 	var policySkipWorkloads map[string]bool
 	var policySkipNS map[string]bool
