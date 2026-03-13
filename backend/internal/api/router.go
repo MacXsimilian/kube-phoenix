@@ -51,28 +51,54 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 		r.Use(authmw.BasicAuth)
 
 		r.Route("/api", func(r chi.Router) {
-			// Schedules — full CRUD
+			// ── V2: Sleep Policies ─────────────────────────────────────────────
+			r.Get("/policies", h.listPolicies)
+			r.Post("/policies", h.createPolicy)
+			r.Get("/policies/{id}", h.getPolicy)
+			r.Put("/policies/{id}", h.updatePolicy)
+			r.Delete("/policies/{id}", h.deletePolicy)
+
+			// Policy windows
+			r.Get("/policies/{id}/windows", h.listWindows)
+			r.Post("/policies/{id}/windows", h.createWindow)
+			r.Put("/policies/{id}/windows/{wid}", h.updateWindow)
+			r.Delete("/policies/{id}/windows/{wid}", h.deleteWindow)
+
+			// Per-policy guardrails
+			r.Get("/policies/{id}/guardrails", h.getPolicyGuardrails)
+			r.Put("/policies/{id}/guardrails", h.updatePolicyGuardrails)
+
+			// Policy overrides (skip next occurrence)
+			r.Post("/policies/{id}/overrides", h.createOverride)
+			r.Delete("/policies/{id}/overrides/{date}/{edge}", h.deleteOverride)
+
+			// ── V1 Legacy: Schedules — full CRUD (backward compat) ─────────────
 			r.Get("/schedules", h.listSchedules)
 			r.Post("/schedules", h.createSchedule)
 			r.Get("/schedules/{id}", h.getSchedule)
 			r.Put("/schedules/{id}", h.updateSchedule)
 			r.Delete("/schedules/{id}", h.deleteSchedule)
 
-			// Guardrails
+			// ── Guardrails (global) ────────────────────────────────────────────
 			r.Get("/guardrails", h.getGuardrails)
 			r.Put("/guardrails", h.updateGuardrails)
 
-			// Executions
+			// ── Executions ────────────────────────────────────────────────────
 			r.Get("/executions", h.listExecutions)
 			r.Get("/executions/{id}", h.getExecution)
 			r.Get("/executions/{id}/logs", h.getExecutionLogs)
 
-			// Cluster state
+			// ── Cluster state ─────────────────────────────────────────────────
 			r.Get("/cluster/workloads", h.getWorkloads)
 			r.Get("/cluster/nodes", h.getNodes)
 			r.Get("/cluster/nodes/{name}/pods", h.getNodePods)
 
-			// Manual trigger
+			// ── Notifications ─────────────────────────────────────────────────
+			r.Get("/notifications", h.listNotifications)
+			r.Patch("/notifications/{id}", h.patchNotification)
+			r.Delete("/notifications", h.dismissAllNotifications)
+
+			// ── Manual trigger (v2 + v1 compat) ───────────────────────────────
 			r.Post("/trigger", h.trigger)
 		})
 
@@ -97,7 +123,7 @@ func corsHandler() func(http.Handler) http.Handler {
 	}
 	return cors.Handler(cors.Options{
 		AllowedOrigins: allowedOrigins,
-		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type"},
 	})
 }

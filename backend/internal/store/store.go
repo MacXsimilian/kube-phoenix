@@ -33,7 +33,20 @@ func New(dsn string) (*Store, error) {
 	sqlDB.SetMaxIdleConns(5)
 	sqlDB.SetConnMaxLifetime(5 * time.Minute)
 
-	if err := db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{}); err != nil {
+	if err := db.AutoMigrate(
+		// v1 legacy tables
+		&Schedule{},
+		// v2 models
+		&GlobalGuardrails{},
+		&SleepPolicy{},
+		&PolicyWindow{},
+		&PolicyGuardrails{},
+		&PolicyOverride{},
+		&Execution{},
+		&WorkloadSnapshot{},
+		&LogLine{},
+		&Notification{},
+	); err != nil {
 		return nil, err
 	}
 	slog.Info("store: schema migration complete")

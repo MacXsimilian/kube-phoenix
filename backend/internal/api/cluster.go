@@ -9,17 +9,19 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	corev1 "k8s.io/api/core/v1"
 )
 
 type WorkloadResponse struct {
-	Namespace       string `json:"namespace"`
-	Name            string `json:"name"`
-	Kind            string `json:"kind"`
-	CurrentReplicas int32  `json:"currentReplicas"`
-	SavedReplicas   *int32 `json:"savedReplicas"`
-	ReadyReplicas   int32  `json:"readyReplicas"`
-	Status          string `json:"status"` // "running" | "sleeping" | "partial"
+	Namespace        string  `json:"namespace"`
+	Name             string  `json:"name"`
+	Kind             string  `json:"kind"`
+	CurrentReplicas  int32   `json:"currentReplicas"`
+	SavedReplicas    *int32  `json:"savedReplicas"`
+	ReadyReplicas    int32   `json:"readyReplicas"`
+	Status           string  `json:"status"`          // "running" | "sleeping" | "partial" | "unmanaged"
+	GoverningPolicy  *string `json:"governingPolicy"` // policy name or nil
 }
 
 type NodeResponse struct {
@@ -45,6 +47,24 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var result []WorkloadResponse
 
+	// Load workload snapshots from DB (FR-95, §11.5)
+	// This replaces annotation-based saved replicas for v2 workloads.
+	snapMap, err := h.store.UnrestoredSnapshotMap()
+	if err != nil {
+		slog.Warn("getWorkloads: failed to load snapshots — saved replicas will be annotation-based", "err", err)
+		snapMap = map[string]*store.WorkloadSnapshot{}
+	}
+
+	// Load governing policy names per workload key via DB JOIN
+	policyNameMap, err := h.store.UnrestoredSnapshotPolicyNameMap()
+	if err != nil {
+		slog.Warn("getWorkloads: failed to load policy names", "err", err)
+		policyNameMap = map[string]string{}
+	}
+
+	// Load all policies to determine which namespaces are managed
+	policies, _ := h.store.ListSleepPolicies()
+
 	// Deployments
 	deployments, err := h.k8s.ListDeployments(ctx, "")
 	if err != nil {
@@ -56,15 +76,35 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 		if d.Spec.Replicas != nil {
 			current = *d.Spec.Replicas
 		}
+
+		key := d.Namespace + "/" + d.Name
 		var saved *int32
-		if v, ok := d.Annotations["previous-replicas"]; ok {
+		var governingPolicy *string
+
+		// Prefer DB snapshot over annotation (v2 first, v1 fallback)
+		if snap, ok := snapMap[key]; ok {
+			n32 := int32(snap.ReplicasBefore)
+			saved = &n32
+		} else if v, ok := d.Annotations["previous-replicas"]; ok {
 			if n, err := strconv.ParseInt(v, 10, 32); err == nil {
 				n32 := int32(n)
 				saved = &n32
 			} else {
-				slog.Warn("malformed previous-replicas annotation", "workload", d.Namespace+"/"+d.Name, "value", v)
+				slog.Warn("malformed previous-replicas annotation", "workload", key, "value", v)
 			}
 		}
+
+		// Governing policy from DB JOIN snapshot map
+		if name, ok := policyNameMap[key]; ok && name != "" {
+			governingPolicy = &name
+		}
+
+		// Determine status — "unmanaged" if no policy governs this namespace (FR-99)
+		status := workloadStatus(current, saved)
+		if status == "running" && !isNamespaceManaged(d.Namespace, policies) {
+			status = "unmanaged"
+		}
+
 		result = append(result, WorkloadResponse{
 			Namespace:       d.Namespace,
 			Name:            d.Name,
@@ -72,7 +112,8 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 			CurrentReplicas: current,
 			SavedReplicas:   saved,
 			ReadyReplicas:   d.Status.ReadyReplicas,
-			Status:          workloadStatus(current, saved),
+			Status:          status,
+			GoverningPolicy: governingPolicy,
 		})
 	}
 
@@ -87,15 +128,32 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 		if ss.Spec.Replicas != nil {
 			current = *ss.Spec.Replicas
 		}
+
+		key := ss.Namespace + "/" + ss.Name
 		var saved *int32
-		if v, ok := ss.Annotations["previous-replicas"]; ok {
+		var governingPolicy *string
+
+		if snap, ok := snapMap[key]; ok {
+			n32 := int32(snap.ReplicasBefore)
+			saved = &n32
+		} else if v, ok := ss.Annotations["previous-replicas"]; ok {
 			if n, err := strconv.ParseInt(v, 10, 32); err == nil {
 				n32 := int32(n)
 				saved = &n32
 			} else {
-				slog.Warn("malformed previous-replicas annotation", "workload", ss.Namespace+"/"+ss.Name, "value", v)
+				slog.Warn("malformed previous-replicas annotation", "workload", key, "value", v)
 			}
 		}
+
+		if name, ok := policyNameMap[key]; ok && name != "" {
+			governingPolicy = &name
+		}
+
+		status := workloadStatus(current, saved)
+		if status == "running" && !isNamespaceManaged(ss.Namespace, policies) {
+			status = "unmanaged"
+		}
+
 		result = append(result, WorkloadResponse{
 			Namespace:       ss.Namespace,
 			Name:            ss.Name,
@@ -103,7 +161,8 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 			CurrentReplicas: current,
 			SavedReplicas:   saved,
 			ReadyReplicas:   ss.Status.ReadyReplicas,
-			Status:          workloadStatus(current, saved),
+			Status:          status,
+			GoverningPolicy: governingPolicy,
 		})
 	}
 
@@ -111,6 +170,24 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 		result = []WorkloadResponse{}
 	}
 	jsonOK(w, result)
+}
+
+// isNamespaceManaged returns true if any enabled policy governs the given namespace.
+func isNamespaceManaged(ns string, policies []store.SleepPolicy) bool {
+	for _, p := range policies {
+		if !p.Enabled {
+			continue
+		}
+		if p.NamespaceFilter == "" {
+			return true // all namespaces
+		}
+		for _, f := range strings.Split(p.NamespaceFilter, ",") {
+			if strings.TrimSpace(f) == ns {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func workloadStatus(current int32, saved *int32) string {

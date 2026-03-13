@@ -1,14 +1,18 @@
 package scaler
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
+
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
+// annotationKey is kept for v1 migration fallback only.
 const annotationKey = "previous-replicas"
 
 // LogLine is emitted during a run and sent to the log channel.
@@ -39,16 +43,20 @@ func New(k8sClient *k8s.Client, st *store.Store) *Runner {
 
 // emit sends a log line to the channel (non-blocking if full).
 func emit(ch chan<- LogLine, level, msg string) {
+	if ch == nil {
+		return
+	}
 	select {
 	case ch <- LogLine{Level: level, Message: msg, Time: time.Now()}:
 	default:
 	}
 }
 
-func (r *Runner) info(ch chan<- LogLine, msg string)  { emit(ch, "info", msg) }
-func (r *Runner) ok(ch chan<- LogLine, msg string)    { emit(ch, "ok", msg) }
-func (r *Runner) plan(ch chan<- LogLine, msg string)  { emit(ch, "plan", msg) }
+func (r *Runner) info(ch chan<- LogLine, msg string)   { emit(ch, "info", msg) }
+func (r *Runner) ok(ch chan<- LogLine, msg string)     { emit(ch, "ok", msg) }
+func (r *Runner) plan(ch chan<- LogLine, msg string)   { emit(ch, "plan", msg) }
 func (r *Runner) errLog(ch chan<- LogLine, msg string) { emit(ch, "error", msg) }
+func (r *Runner) warn(ch chan<- LogLine, msg string)   { emit(ch, "warn", msg) }
 
 // splitCSV splits a comma-separated string into a trimmed set.
 func splitCSV(s string) map[string]bool {
@@ -83,4 +91,70 @@ func namespaceAllowed(ns, filter string) bool {
 // formatWorkload returns "Deployment default/nginx" style.
 func formatWorkload(kind, ns, name string) string {
 	return fmt.Sprintf("%s %s/%s", kind, ns, name)
+}
+
+// ListNamespaces returns all namespaces from the cluster.
+func (r *Runner) ListNamespaces(ctx context.Context) ([]corev1.Namespace, error) {
+	if r.k8s == nil {
+		return nil, fmt.Errorf("k8s client unavailable")
+	}
+	return r.k8s.ListNamespaces(ctx)
+}
+
+// IsNamespaceSleeping returns true if all deployments and statefulsets in the namespace
+// are at 0 replicas (or there are no workloads at all).
+func (r *Runner) IsNamespaceSleeping(ctx context.Context, namespace string) (bool, error) {
+	if r.k8s == nil {
+		return false, fmt.Errorf("k8s client unavailable")
+	}
+
+	deployments, err := r.k8s.ListDeployments(ctx, namespace)
+	if err != nil {
+		return false, err
+	}
+	for _, d := range deployments {
+		if d.Spec.Replicas != nil && *d.Spec.Replicas > 0 {
+			return false, nil
+		}
+	}
+
+	statefulsets, err := r.k8s.ListStatefulSets(ctx, namespace)
+	if err != nil {
+		return false, err
+	}
+	for _, ss := range statefulsets {
+		if ss.Spec.Replicas != nil && *ss.Spec.Replicas > 0 {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+// RunScaleDownSilent runs scale-down without emitting to a log channel (drift correction, silent mode).
+func (r *Runner) RunScaleDownSilent(ctx context.Context, policy *store.SleepPolicy, execID *uint) (*Counts, error) {
+	logCh := make(chan LogLine, 16)
+	go func() {
+		for range logCh {
+			// discard
+		}
+	}()
+	defer close(logCh)
+	return r.RunScaleDown(ctx, policy, logCh)
+}
+
+// RunScaleUpSilent runs scale-up without emitting to a log channel (drift correction, silent mode).
+func (r *Runner) RunScaleUpSilent(ctx context.Context, policy *store.SleepPolicy, execID *uint) (*Counts, error) {
+	logCh := make(chan LogLine, 16)
+	var fakeExecID uint
+	if execID != nil {
+		fakeExecID = *execID
+	}
+	go func() {
+		for range logCh {
+			// discard
+		}
+	}()
+	defer close(logCh)
+	return r.RunScaleUp(ctx, policy, fakeExecID, logCh)
 }

@@ -48,7 +48,15 @@ func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 			f.ScheduleID = &uid
 		}
 	}
+	if pid := q.Get("policy_id"); pid != "" {
+		id, err := strconv.ParseUint(pid, 10, 64)
+		if err == nil {
+			uid := uint(id)
+			f.PolicyID = &uid
+		}
+	}
 	f.Status = q.Get("status")
+	f.ExecutionType = q.Get("execution_type")
 	if p := q.Get("page"); p != "" {
 		page, _ := strconv.Atoi(p)
 		f.Page = page
