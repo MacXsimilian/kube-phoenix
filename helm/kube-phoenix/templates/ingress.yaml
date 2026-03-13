@@ -19,6 +19,7 @@ spec:
     {{- toYaml .Values.ingress.tls | nindent 4 }}
   {{- end }}
   rules:
+    {{- if .Values.ingress.host }}
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
@@ -29,4 +30,15 @@ spec:
                 name: {{ include "kube-phoenix.fullname" . }}
                 port:
                   name: http
+    {{- else }}
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "kube-phoenix.fullname" . }}
+                port:
+                  name: http
+    {{- end }}
 {{- end }}
