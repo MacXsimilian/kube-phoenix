@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.21](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.20...v0.1.21) (2026-03-13)
+
+
+### Features
+
+* **frontend:** responsive layout with collapsible sidebar ([e0f2e4a](https://github.com/MacXsimilian/kube-phoenix/commit/e0f2e4af82a15f660fcdbe99ecf8db04acdcfdb3))
+
+
+### Bug Fixes
+
+* **frontend:** address UI audit findings ([82d1fa7](https://github.com/MacXsimilian/kube-phoenix/commit/82d1fa7aff11878f09811574a39ffb8a673de90d))
+
 ## [0.1.20](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.19...v0.1.20) (2026-03-13)
 
 
