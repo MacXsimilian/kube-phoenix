@@ -1,20 +1,56 @@
 'use client'
 
+import { useState } from 'react'
 import Box from '@mui/material/Box'
+import AppBar from '@mui/material/AppBar'
+import Toolbar from '@mui/material/Toolbar'
+import IconButton from '@mui/material/IconButton'
+import Typography from '@mui/material/Typography'
+import MenuIcon from '@mui/icons-material/Menu'
 import Sidebar from './Sidebar'
 
-const DRAWER_WIDTH = 240
+export const DRAWER_WIDTH = 240
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
+  const [mobileOpen, setMobileOpen] = useState(false)
+
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
-      <Sidebar width={DRAWER_WIDTH} />
+      {/* Mobile top bar — hidden on md+ */}
+      <AppBar
+        position="fixed"
+        sx={{
+          display: { md: 'none' },
+          bgcolor: 'background.paper',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          boxShadow: 'none',
+          zIndex: (t) => t.zIndex.drawer + 1,
+        }}
+      >
+        <Toolbar sx={{ minHeight: 52 }}>
+          <IconButton edge="start" onClick={() => setMobileOpen(true)} sx={{ mr: 1 }}>
+            <MenuIcon />
+          </IconButton>
+          <Typography variant="subtitle1" fontWeight={700} letterSpacing={-0.5}>
+            kube-phoenix
+          </Typography>
+        </Toolbar>
+      </AppBar>
+
+      <Sidebar
+        width={DRAWER_WIDTH}
+        mobileOpen={mobileOpen}
+        onMobileClose={() => setMobileOpen(false)}
+      />
+
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-          ml: `${DRAWER_WIDTH}px`,
-          p: 3,
+          minWidth: 0,
+          ml: { md: `${DRAWER_WIDTH}px` },
+          mt: { xs: '52px', md: 0 },
+          p: { xs: 2, sm: 2.5, md: 3 },
           minHeight: '100vh',
         }}
       >

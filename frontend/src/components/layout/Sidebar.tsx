@@ -23,23 +23,18 @@ const NAV = [
   { label: 'History', href: '/history', icon: <HistoryOutlinedIcon fontSize="small" /> },
 ]
 
-export default function Sidebar({ width }: { width: number }) {
+interface Props {
+  width: number
+  mobileOpen: boolean
+  onMobileClose: () => void
+}
+
+export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
   const pathname = usePathname()
   const router = useRouter()
 
-  return (
-    <Drawer
-      variant="permanent"
-      sx={{
-        width,
-        flexShrink: 0,
-        '& .MuiDrawer-paper': {
-          width,
-          boxSizing: 'border-box',
-          bgcolor: 'background.paper',
-        },
-      }}
-    >
+  const content = (
+    <>
       {/* Logo */}
       <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1 }}>
         <Typography sx={{ fontSize: 22, lineHeight: 1, userSelect: 'none' }}>🐦‍🔥</Typography>
@@ -56,7 +51,7 @@ export default function Sidebar({ width }: { width: number }) {
           return (
             <ListItemButton
               key={href}
-              onClick={() => router.push(href)}
+              onClick={() => { router.push(href); onMobileClose() }}
               sx={{
                 mx: 1,
                 mb: 0.5,
@@ -68,22 +63,43 @@ export default function Sidebar({ width }: { width: number }) {
                 },
               }}
             >
-              <ListItemIcon
-                sx={{ minWidth: 36, color: active ? 'primary.main' : 'text.secondary' }}
-              >
+              <ListItemIcon sx={{ minWidth: 36, color: active ? 'primary.main' : 'text.secondary' }}>
                 {icon}
               </ListItemIcon>
               <ListItemText
                 primary={label}
-                primaryTypographyProps={{
-                  fontSize: 14,
-                  fontWeight: active ? 600 : 400,
-                }}
+                primaryTypographyProps={{ fontSize: 14, fontWeight: active ? 600 : 400 }}
               />
             </ListItemButton>
           )
         })}
       </List>
-    </Drawer>
+    </>
+  )
+
+  const paperSx = { width, boxSizing: 'border-box' as const, bgcolor: 'background.paper' }
+
+  return (
+    <>
+      {/* Mobile: temporary drawer, slides in over content */}
+      <Drawer
+        variant="temporary"
+        open={mobileOpen}
+        onClose={onMobileClose}
+        ModalProps={{ keepMounted: true }}
+        sx={{ display: { xs: 'block', md: 'none' }, '& .MuiDrawer-paper': paperSx }}
+      >
+        {content}
+      </Drawer>
+
+      {/* Desktop: permanent drawer */}
+      <Drawer
+        variant="permanent"
+        open
+        sx={{ display: { xs: 'none', md: 'block' }, width, flexShrink: 0, '& .MuiDrawer-paper': paperSx }}
+      >
+        {content}
+      </Drawer>
+    </>
   )
 }
