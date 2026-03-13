@@ -91,6 +91,9 @@ type Scheduler struct {
 	// nextEvents cache — updated after each compute, used by API handlers
 	nextEventsCache []Event
 	nextEventsMu    sync.RWMutex
+
+	// lifecycle
+	cancel context.CancelFunc
 }
 
 func New(st *store.Store, k8sClient *k8s.Client) *Scheduler {
@@ -100,6 +103,23 @@ func New(st *store.Store, k8sClient *k8s.Client) *Scheduler {
 		Broker:    NewBroker(),
 		notifySvc: NewNotificationService(st),
 		notifyCh:  make(chan struct{}, 1),
+	}
+}
+
+// Start launches the event loop, drift ticker, and reconciler in background goroutines.
+// It stores a cancel function so Stop() can shut them all down.
+func (s *Scheduler) Start(ctx context.Context) error {
+	ctx, s.cancel = context.WithCancel(ctx)
+	go s.Run(ctx)
+	go s.StartDriftTicker(ctx)
+	go s.Reconcile(ctx)
+	return nil
+}
+
+// Stop cancels the context passed to Start, terminating all background goroutines.
+func (s *Scheduler) Stop() {
+	if s.cancel != nil {
+		s.cancel()
 	}
 }
 
