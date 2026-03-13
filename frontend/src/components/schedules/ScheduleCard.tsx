@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import Paper from '@mui/material/Paper'
@@ -47,6 +47,12 @@ export default function ScheduleCard({
   const [deleteDialog, setDeleteDialog] = useState(false)
   const [undoOpen, setUndoOpen] = useState(false)
   const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (deleteTimer.current) clearTimeout(deleteTimer.current)
+    }
+  }, [])
 
   const toggleEnabled = useMutation({
     mutationFn: () => updateSchedule(schedule.id, { enabled: !schedule.enabled }),
@@ -151,17 +157,17 @@ export default function ScheduleCard({
         {/* Actions */}
         <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
           <Tooltip title="Run Now">
-            <IconButton size="small" onClick={() => setRunDialog(true)}>
+            <IconButton size="small" onClick={() => setRunDialog(true)} aria-label="Run schedule now">
               <PlayArrowIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           <Tooltip title="Edit">
-            <IconButton size="small" onClick={onEdit}>
+            <IconButton size="small" onClick={onEdit} aria-label="Edit schedule">
               <EditOutlinedIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           <Tooltip title="Delete">
-            <IconButton size="small" color="error" onClick={() => setDeleteDialog(true)}>
+            <IconButton size="small" color="error" onClick={() => setDeleteDialog(true)} aria-label="Delete schedule">
               <DeleteOutlineIcon fontSize="small" />
             </IconButton>
           </Tooltip>

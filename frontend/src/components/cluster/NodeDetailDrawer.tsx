@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
+import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
 import Drawer from '@mui/material/Drawer'
@@ -157,7 +158,7 @@ function PodRow({ pod }: { pod: NodePod }) {
 export default function NodeDetailDrawer({ node, onClose }: { node: Node | null; onClose: () => void }) {
   const [search, setSearch] = useState('')
 
-  const { data: pods = [], isLoading, refetch, dataUpdatedAt } = useQuery({
+  const { data: pods = [], isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['node-pods', node?.name],
     queryFn: () => getNodePods(node!.name),
     enabled: node != null,
@@ -228,7 +229,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                   )}
                 </Box>
               </Box>
-              <IconButton size="small" onClick={onClose} sx={{ mt: -0.25, flexShrink: 0 }}>
+              <IconButton size="small" onClick={onClose} sx={{ mt: -0.25, flexShrink: 0 }} aria-label="Close node detail">
                 <CloseIcon sx={{ fontSize: 18 }} />
               </IconButton>
             </Box>
@@ -268,7 +269,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
               {dataUpdatedAt ? sinceMs(dataUpdatedAt) : ''}
             </Typography>
             <Tooltip title="Refresh">
-              <IconButton size="small" onClick={() => refetch()}>
+              <IconButton size="small" onClick={() => refetch()} aria-label="Refresh pod list">
                 <RefreshIcon sx={{ fontSize: 16 }} />
               </IconButton>
             </Tooltip>
@@ -278,7 +279,11 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
 
           {/* Pod list */}
           <Box sx={{ flex: 1, overflow: 'auto' }}>
-            {isLoading ? (
+            {isError ? (
+              <Alert severity="error" sx={{ m: 2 }}>
+                Failed to load pods: {error instanceof Error ? error.message : 'Unknown error'}
+              </Alert>
+            ) : isLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
                 <CircularProgress size={28} />
               </Box>

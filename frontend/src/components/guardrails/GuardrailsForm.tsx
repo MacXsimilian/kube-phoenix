@@ -48,7 +48,7 @@ function ChipInput({
 
   return (
     <Box>
-      <Typography variant="body2" fontWeight={600} mb={1}>
+      <Typography component="label" htmlFor={`chip-input-${label}`} variant="body2" fontWeight={600} mb={1} display="block">
         {label}
       </Typography>
       {hint && (

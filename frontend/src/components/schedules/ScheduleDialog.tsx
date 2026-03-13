@@ -49,10 +49,34 @@ const TIMEZONES = [
   'Pacific/Auckland',
 ]
 
+function isValidCronField(field: string, min: number, max: number): boolean {
+  if (field === '*') return true
+  // Handle step values like */5 or 1-5/2
+  const [range, step] = field.split('/')
+  if (step !== undefined && (!/^\d+$/.test(step) || Number(step) < 1)) return false
+  if (range === '*') return true
+  // Handle ranges like 1-5
+  if (range.includes('-')) {
+    const [lo, hi] = range.split('-')
+    if (!/^\d+$/.test(lo) || !/^\d+$/.test(hi)) return false
+    const n1 = Number(lo), n2 = Number(hi)
+    return n1 >= min && n2 <= max && n1 <= n2
+  }
+  // Handle lists like 1,2,3
+  return range.split(',').every((v) => /^\d+$/.test(v) && Number(v) >= min && Number(v) <= max)
+}
+
 function isValidCron(expr: string): boolean {
   const parts = expr.trim().split(/\s+/)
   if (parts.length !== 5) return false
-  return parts.every((p) => /^(\*|[0-9,\-\/]+)$/.test(p))
+  const [minute, hour, dom, month, dow] = parts
+  return (
+    isValidCronField(minute, 0, 59) &&
+    isValidCronField(hour, 0, 23) &&
+    isValidCronField(dom, 1, 31) &&
+    isValidCronField(month, 1, 12) &&
+    isValidCronField(dow, 0, 7)
+  )
 }
 
 const DEFAULTS: ScheduleInput = {
