@@ -9,13 +9,19 @@ import TableCell from '@mui/material/TableCell'
 import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
+import TableSortLabel from '@mui/material/TableSortLabel'
 import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
 import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
+import FormControlLabel from '@mui/material/FormControlLabel'
+import Switch from '@mui/material/Switch'
 import CircularProgress from '@mui/material/CircularProgress'
 import Typography from '@mui/material/Typography'
-import { getWorkloads } from '@/lib/api'
+import IconButton from '@mui/material/IconButton'
+import RefreshIcon from '@mui/icons-material/Refresh'
+import Tooltip from '@mui/material/Tooltip'
+import { getWorkloads, getGuardrails } from '@/lib/api'
 import type { Workload } from '@/lib/types'
 
 const STATUS_COLORS: Record<Workload['status'], { bgcolor: string; color: string; label: string }> = {
@@ -25,20 +31,47 @@ const STATUS_COLORS: Record<Workload['status'], { bgcolor: string; color: string
 }
 
 export default function WorkloadsTable() {
-  const { data: workloads = [], isLoading } = useQuery({
+  const { data: workloads = [], isLoading, dataUpdatedAt, refetch } = useQuery({
     queryKey: ['workloads'],
     queryFn: getWorkloads,
     refetchInterval: 30_000,
   })
 
+  const { data: guardrails } = useQuery({ queryKey: ['guardrails'], queryFn: getGuardrails })
+
   const [search, setSearch] = useState('')
   const [nsFilter, setNsFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [sortCol, setSortCol] = useState<'namespace' | 'name' | 'kind' | 'replicas' | 'status' | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [affectedOnly, setAffectedOnly] = useState(false)
+
+  function handleSort(col: typeof sortCol) {
+    if (sortCol === col) {
+      if (sortDir === 'asc') setSortDir('desc')
+      else { setSortCol(null); setSortDir('asc') }
+    } else {
+      setSortCol(col)
+      setSortDir('asc')
+    }
+  }
+
+  function sinceMs(ms: number): string {
+    const s = Math.floor((Date.now() - ms) / 1000)
+    if (s < 10) return 'just now'
+    if (s < 60) return `${s}s ago`
+    return `${Math.floor(s / 60)}m ago`
+  }
 
   const namespaces = useMemo(
     () => ['all', ...Array.from(new Set(workloads.map((w) => w.namespace))).sort()],
     [workloads]
   )
+
+  const skipNs = useMemo(() => {
+    if (!guardrails?.skipNamespaces) return new Set<string>()
+    return new Set(guardrails.skipNamespaces.split(',').map((s) => s.trim()).filter(Boolean))
+  }, [guardrails])
 
   const filtered = useMemo(
     () =>
@@ -46,15 +79,31 @@ export default function WorkloadsTable() {
         if (nsFilter !== 'all' && w.namespace !== nsFilter) return false
         if (statusFilter !== 'all' && w.status !== statusFilter) return false
         if (search && !w.name.toLowerCase().includes(search.toLowerCase())) return false
+        if (affectedOnly && (w.status !== 'running' || skipNs.has(w.namespace))) return false
         return true
       }),
-    [workloads, nsFilter, statusFilter, search]
+    [workloads, nsFilter, statusFilter, search, affectedOnly, skipNs]
   )
+
+  const sorted = useMemo(() => {
+    if (!sortCol) return filtered
+    return [...filtered].sort((a, b) => {
+      let cmp = 0
+      switch (sortCol) {
+        case 'namespace': cmp = a.namespace.localeCompare(b.namespace); break
+        case 'name': cmp = a.name.localeCompare(b.name); break
+        case 'kind': cmp = a.kind.localeCompare(b.kind); break
+        case 'replicas': cmp = a.currentReplicas - b.currentReplicas; break
+        case 'status': cmp = a.status.localeCompare(b.status); break
+      }
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [filtered, sortCol, sortDir])
 
   return (
     <>
       {/* Filters */}
-      <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap' }}>
+      <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           label="Search"
           size="small"
@@ -90,6 +139,22 @@ export default function WorkloadsTable() {
             </MenuItem>
           ))}
         </TextField>
+        <FormControlLabel
+          control={<Switch checked={affectedOnly} onChange={(e) => setAffectedOnly(e.target.checked)} size="small" />}
+          label={<Typography variant="body2">Would be affected</Typography>}
+          sx={{ ml: 0.5 }}
+        />
+        <Box sx={{ flex: 1 }} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Typography variant="caption" color="text.disabled">
+            {dataUpdatedAt ? `Updated ${sinceMs(dataUpdatedAt)}` : ''}
+          </Typography>
+          <Tooltip title="Refresh">
+            <IconButton size="small" onClick={() => refetch()}>
+              <RefreshIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
 
       {isLoading ? (
@@ -101,25 +166,40 @@ export default function WorkloadsTable() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>NAMESPACE</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>NAME</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>KIND</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>REPLICAS</TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>STATUS</TableCell>
+                {(['namespace', 'name', 'kind'] as const).map((col) => (
+                  <TableCell key={col} sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>
+                    <TableSortLabel active={sortCol === col} direction={sortCol === col ? sortDir : 'asc'} onClick={() => handleSort(col)}>
+                      {col.toUpperCase()}
+                    </TableSortLabel>
+                  </TableCell>
+                ))}
+                <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>
+                  <Tooltip title="Current replicas / Saved replicas (pre-sleep)" arrow>
+                    <TableSortLabel active={sortCol === 'replicas'} direction={sortCol === 'replicas' ? sortDir : 'asc'} onClick={() => handleSort('replicas')}>
+                      REPLICAS
+                    </TableSortLabel>
+                  </Tooltip>
+                </TableCell>
+                <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>
+                  <TableSortLabel active={sortCol === 'status'} direction={sortCol === 'status' ? sortDir : 'asc'} onClick={() => handleSort('status')}>
+                    STATUS
+                  </TableSortLabel>
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {filtered.length === 0 ? (
+              {sorted.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5}>
                     <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-                      No workloads match the current filters.
+                      {affectedOnly ? 'No workloads would be affected by the next sleep run.' : 'No workloads match the current filters.'}
                     </Typography>
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((w) => {
+                sorted.map((w) => {
                   const sc = STATUS_COLORS[w.status]
+                  const unhealthy = w.readyReplicas < w.currentReplicas && w.currentReplicas > 0
                   return (
                     <TableRow key={`${w.namespace}/${w.name}/${w.kind}`} hover>
                       <TableCell sx={{ color: 'text.secondary', fontSize: 13 }}>{w.namespace}</TableCell>
@@ -128,21 +208,25 @@ export default function WorkloadsTable() {
                         <Chip
                           label={w.kind === 'Deployment' ? 'Deploy' : 'SS'}
                           size="small"
-                          sx={{
-                            height: 20,
-                            fontSize: 10,
-                            bgcolor: 'rgba(124,58,237,0.12)',
-                            color: 'primary.main',
-                          }}
+                          sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(124,58,237,0.12)', color: 'primary.main' }}
                         />
                       </TableCell>
-                      <TableCell sx={{ fontSize: 13, fontFamily: 'monospace' }}>
-                        {w.currentReplicas}
-                        {w.savedReplicas !== null && (
-                          <Typography component="span" color="text.secondary" sx={{ fontSize: 12, ml: 0.5 }}>
-                            / {w.savedReplicas}
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          {unhealthy && (
+                            <Tooltip title={`Only ${w.readyReplicas}/${w.currentReplicas} replicas ready`} arrow>
+                              <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: '#F87171', flexShrink: 0 }} />
+                            </Tooltip>
+                          )}
+                          <Typography component="span" sx={{ fontSize: 13, fontFamily: 'monospace' }}>
+                            {w.currentReplicas}
                           </Typography>
-                        )}
+                          {w.savedReplicas !== null && (
+                            <Typography component="span" color="text.secondary" sx={{ fontSize: 12 }}>
+                              / {w.savedReplicas}
+                            </Typography>
+                          )}
+                        </Box>
                       </TableCell>
                       <TableCell>
                         <Chip

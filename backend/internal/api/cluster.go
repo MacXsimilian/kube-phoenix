@@ -6,17 +6,19 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 )
 
 type WorkloadResponse struct {
-	Namespace       string  `json:"namespace"`
-	Name            string  `json:"name"`
-	Kind            string  `json:"kind"`
-	CurrentReplicas int32   `json:"currentReplicas"`
-	SavedReplicas   *int32  `json:"savedReplicas"`
-	Status          string  `json:"status"` // "running" | "sleeping" | "partial"
+	Namespace       string `json:"namespace"`
+	Name            string `json:"name"`
+	Kind            string `json:"kind"`
+	CurrentReplicas int32  `json:"currentReplicas"`
+	SavedReplicas   *int32 `json:"savedReplicas"`
+	ReadyReplicas   int32  `json:"readyReplicas"`
+	Status          string `json:"status"` // "running" | "sleeping" | "partial"
 }
 
 type NodeResponse struct {
@@ -26,6 +28,12 @@ type NodeResponse struct {
 	PodCount         int    `json:"podCount"`
 	Status           string `json:"status"` // "active" | "protected" | "would-drain"
 	ProtectionReason string `json:"protectionReason"`
+	CpuAllocatable   int64  `json:"cpuAllocatable"` // millicores
+	CpuRequested     int64  `json:"cpuRequested"`   // millicores
+	MemAllocatable   int64  `json:"memAllocatable"` // bytes
+	MemRequested     int64  `json:"memRequested"`   // bytes
+	CreatedAt        string `json:"createdAt"`      // RFC3339
+	Cordoned         bool   `json:"cordoned"`
 }
 
 func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +70,7 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 			Kind:            "Deployment",
 			CurrentReplicas: current,
 			SavedReplicas:   saved,
+			ReadyReplicas:   d.Status.ReadyReplicas,
 			Status:          workloadStatus(current, saved),
 		})
 	}
@@ -92,6 +101,7 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 			Kind:            "StatefulSet",
 			CurrentReplicas: current,
 			SavedReplicas:   saved,
+			ReadyReplicas:   ss.Status.ReadyReplicas,
 			Status:          workloadStatus(current, saved),
 		})
 	}
@@ -139,6 +149,8 @@ func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 	}
 	podCounts := map[string]int{}
 	criticalNodes := map[string]bool{}
+	cpuRequested := map[string]int64{}
+	memRequested := map[string]int64{}
 	skipNsNode := splitCSVLocal(g.SkipNsNode)
 
 	for _, pod := range allPods {
@@ -151,6 +163,10 @@ func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 		}
 		if !isDaemon {
 			podCounts[pod.Spec.NodeName]++
+			for _, c := range pod.Spec.Containers {
+				cpuRequested[pod.Spec.NodeName] += c.Resources.Requests.Cpu().MilliValue()
+				memRequested[pod.Spec.NodeName] += c.Resources.Requests.Memory().Value()
+			}
 		}
 		if skipNsNode[pod.Namespace] {
 			criticalNodes[pod.Spec.NodeName] = true
@@ -177,6 +193,12 @@ func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 			PodCount:         podCounts[node.Name],
 			Status:           status,
 			ProtectionReason: reason,
+			CpuAllocatable:   node.Status.Allocatable.Cpu().MilliValue(),
+			CpuRequested:     cpuRequested[node.Name],
+			MemAllocatable:   node.Status.Allocatable.Memory().Value(),
+			MemRequested:     memRequested[node.Name],
+			CreatedAt:        node.CreationTimestamp.UTC().Format(time.RFC3339),
+			Cordoned:         node.Spec.Unschedulable,
 		})
 	}
 
