@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.1](https://github.com/MacXsimilian/kube-phoenix/compare/v0.2.0...v0.2.1) (2026-03-13)
+
+
+### Bug Fixes
+
+* **api:** fix legacy schedules handler for new scheduler interface ([b4cf310](https://github.com/MacXsimilian/kube-phoenix/commit/b4cf31079d03d0ae5c55e9edfab5b142574f2da6))
+* **scaler:** remove unused globalSkipNsNode variable ([5ee1049](https://github.com/MacXsimilian/kube-phoenix/commit/5ee1049a1598417b6705c03d889a65588687c595))
+* **scheduler:** add Start() and Stop() lifecycle methods ([102ca32](https://github.com/MacXsimilian/kube-phoenix/commit/102ca327a0971b1a007a23572584cad5a98e9d63))
+* **scheduler:** remove unused mu field and empty branch (golangci-lint) ([2e93137](https://github.com/MacXsimilian/kube-phoenix/commit/2e931377a2a6f2224983fe7a2c927af9231ce03f))
+
 ## [0.2.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.22...v0.2.0) (2026-03-13)
 
 
