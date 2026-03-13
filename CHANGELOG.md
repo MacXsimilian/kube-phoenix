@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.1.9](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.8...v0.1.9) (2026-03-13)
+
+
+### Features
+
+* **frontend:** UX improvements and README overhaul ([63874c1](https://github.com/MacXsimilian/kube-phoenix/commit/63874c1aabd712cf8b9645d558064d6bd347871b))
+* **helm:** add TargetGroupBinding support for EKS ALB integration ([286d883](https://github.com/MacXsimilian/kube-phoenix/commit/286d88368eb5d7044565a8da440a94aa0d9d077a))
+* **overview:** next-run countdown, partial state, deep-link activity feed ([a2c3b62](https://github.com/MacXsimilian/kube-phoenix/commit/a2c3b620f04649f2dabecd2c07d689f8a56fb92e))
+* **ui:** replace AutoAwesome icon with phoenix SVG icon ([fa46776](https://github.com/MacXsimilian/kube-phoenix/commit/fa467768955845c6ef997fedf4de15422c628a2e))
+
+
+### Bug Fixes
+
+* audit fixes — slog, execution timeout, annotation parsing, DB index, security context, node drain ([ccbc134](https://github.com/MacXsimilian/kube-phoenix/commit/ccbc134beb322f57db535aa7c2a0a59dfba000dd))
+* check json.Encode error in createSchedule 201 response ([83569bf](https://github.com/MacXsimilian/kube-phoenix/commit/83569bf958190e45eb8288204ae8d55e6a818dce))
+* grant packages: write at workflow level for reusable docker workflow ([e29c469](https://github.com/MacXsimilian/kube-phoenix/commit/e29c46927d4f9a9d3c896ef636546eb7a54f324b))
+* **helm:** address chart audit findings ([d3eba55](https://github.com/MacXsimilian/kube-phoenix/commit/d3eba553c63d2daac26367320cf70fcfcad01cad))
+* lowercase GHCR owner for OCI Helm chart push ([bf1689d](https://github.com/MacXsimilian/kube-phoenix/commit/bf1689d20fba5becccb757ad7fc9ab3ccf617813))
+* lowercase image name in docker-merge, trivy, and reusable build workflow ([e42fb64](https://github.com/MacXsimilian/kube-phoenix/commit/e42fb64a533f406acd6d0cf17c95537a3dddc399))
+* migrate release-please to googleapis/release-please-action v4.4.0 ([7eeacbd](https://github.com/MacXsimilian/kube-phoenix/commit/7eeacbdae330ce1fd84dafd5df23525b66d2ab90))
+* P1 audit — DB pool, indexes, slog, skipped counter, type immutability, WebSocket read pump, request ID, CORS ([ca70a55](https://github.com/MacXsimilian/kube-phoenix/commit/ca70a55e0823b69a6896f03ce091f7b89463fa39))
+* remove npm cache — no package-lock.json in repo ([a2a5ecc](https://github.com/MacXsimilian/kube-phoenix/commit/a2a5ecc6525cd2365053badc8b099af766aaf452))
+* replace release-please action with npx CLI to avoid action policy restriction ([1dc3f0c](https://github.com/MacXsimilian/kube-phoenix/commit/1dc3f0cfee80061b2907ad021d06babf71cd174d))
+* resolve all errcheck lint findings ([f1a9ca4](https://github.com/MacXsimilian/kube-phoenix/commit/f1a9ca4579f4fb2222ee227e767e5627080a822a))
+* resolve frontend and backend CI build failures ([9543231](https://github.com/MacXsimilian/kube-phoenix/commit/9543231525fdd79e8f6e530803d592207131e729))
+* resolve next.config.ts and go embed CI failures ([625c99c](https://github.com/MacXsimilian/kube-phoenix/commit/625c99c60299d269bfcae13b7da83df0f580b60d))
+* resolve TypeScript and go vet CI failures ([22ef85b](https://github.com/MacXsimilian/kube-phoenix/commit/22ef85b6bea6d647b4ae0b37900bf8c2aaa65beb))
+* restore release-please action now that policy allows google-github-actions/* ([1269fcd](https://github.com/MacXsimilian/kube-phoenix/commit/1269fcdd14bc022509093588f2e1603762b5e871))
+* **router:** move BasicAuth middleware before routes to prevent chi panic ([fb73890](https://github.com/MacXsimilian/kube-phoenix/commit/fb7389025ba7b809fb611e5c86185d33422fff32))
+* **scheduler:** detach manual trigger from HTTP request context ([2bbb3b5](https://github.com/MacXsimilian/kube-phoenix/commit/2bbb3b5807d95c8fcdcaf9c38c965f775af9e91c))
+* upgrade golangci-lint to v2.9.0 for Go 1.25 compatibility ([0b04fae](https://github.com/MacXsimilian/kube-phoenix/commit/0b04fae5da14f727c305802996c7a568dc173b2c))
+* upgrade golangci-lint-action to v7 for golangci-lint v2 support ([3a67668](https://github.com/MacXsimilian/kube-phoenix/commit/3a67668c3d11ef7cf61a0b1d2321c43f51c02201))
+* use npm install in Dockerfile (no package-lock.json) ([1acba58](https://github.com/MacXsimilian/kube-phoenix/commit/1acba58cda8c430d022f63b1b402558b274a660e))
+
 ## [0.1.8](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.7...v0.1.8) (2026-03-12)
 
 
