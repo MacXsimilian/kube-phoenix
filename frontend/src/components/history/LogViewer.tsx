@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Drawer from '@mui/material/Drawer'
 import Box from '@mui/material/Box'
@@ -59,8 +59,27 @@ export default function LogViewer({
 }) {
   const [liveLines, setLiveLines] = useState<LogLine[]>([])
   const [copied, setCopied] = useState(false)
+  const [drawerWidth, setDrawerWidth] = useState(640)
   const bottomRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
+
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = drawerWidth
+
+    const onMouseMove = (mv: MouseEvent) => {
+      const delta = startX - mv.clientX
+      const next = Math.min(Math.max(startWidth + delta, 360), window.innerWidth * 0.9)
+      setDrawerWidth(Math.round(next))
+    }
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }, [drawerWidth])
 
   const isRunning = execution?.status === 'running'
 
@@ -116,13 +135,30 @@ export default function LogViewer({
         onClose={onClose}
         PaperProps={{
           sx: {
-            width: { xs: '100vw', md: 640 },
+            width: { xs: '100vw', md: drawerWidth },
             bgcolor: 'background.paper',
             display: 'flex',
             flexDirection: 'column',
+            overflow: 'visible',
           },
         }}
       >
+        {/* Resize handle */}
+        <Box
+          onMouseDown={handleResizeMouseDown}
+          sx={{
+            position: 'absolute',
+            left: -4,
+            top: 0,
+            bottom: 0,
+            width: 8,
+            cursor: 'col-resize',
+            zIndex: 1,
+            '&:hover': { bgcolor: 'primary.main', opacity: 0.4 },
+            display: { xs: 'none', md: 'block' },
+          }}
+        />
+
         {execution && (
           <>
             {/* Header */}
