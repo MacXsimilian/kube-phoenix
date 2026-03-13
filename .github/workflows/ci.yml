@@ -94,7 +94,7 @@ jobs:
 
       - run: helm lint helm/kube-phoenix
 
-  # ── Docker build, push & scan ────────────────────────────────────────────────
+  # ── Docker build & push ──────────────────────────────────────────────────────
   # The Dockerfile uses --platform=$BUILDPLATFORM + GOARCH=$TARGETARCH so both
   # arches compile natively (no QEMU). To re-enable arm64, change platforms to:
   #   linux/amd64,linux/arm64
@@ -105,6 +105,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
@@ -145,11 +147,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ── Vulnerability scan ───────────────────────────────────────────────────────
+  scan:
+    name: Vulnerability scan
+    runs-on: ubuntu-24.04
+    needs: docker
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+    steps:
       - name: Scan image for vulnerabilities
-        if: github.event_name == 'push'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
         with:
-          image-ref: ${{ steps.image.outputs.name }}:latest
+          image-ref: ${{ needs.docker.outputs.image }}:latest
           format: table
           severity: CRITICAL,HIGH
           exit-code: "1"
