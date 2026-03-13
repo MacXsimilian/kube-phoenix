@@ -23,6 +23,7 @@ import IconButton from '@mui/material/IconButton'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodes } from '@/lib/api'
 import type { Node } from '@/lib/types'
+import NodeDetailDrawer from './NodeDetailDrawer'
 
 const STATUS_MAP: Record<Node['status'], { bgcolor: string; color: string; label: string }> = {
   active: { bgcolor: 'rgba(34,197,94,0.12)', color: '#22C55E', label: 'Active' },
@@ -147,6 +148,7 @@ export default function NodesTable() {
   const [groupByZone, setGroupByZone] = useState(false)
   const [sortCol, setSortCol] = useState<SortCol | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null)
 
   function handleSort(col: SortCol) {
     if (sortCol === col) {
@@ -192,11 +194,16 @@ export default function NodesTable() {
 
   function NodeRow({ node }: { node: Node }) {
     const sc = STATUS_MAP[node.status]
+    const isSelected = selectedNode?.name === node.name
     const statusChip = (
       <Chip label={sc.label} size="small" sx={{ height: 20, fontSize: 11, bgcolor: sc.bgcolor, color: sc.color }} />
     )
     return (
-      <TableRow hover>
+      <TableRow
+        hover
+        onClick={() => setSelectedNode(isSelected ? null : node)}
+        sx={{ cursor: 'pointer', ...(isSelected ? { bgcolor: 'rgba(124,58,237,0.08)' } : {}) }}
+      >
         <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>{node.name}</TableCell>
         <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{nodeAge(node.createdAt)}</TableCell>
         <TableCell sx={{ fontSize: 13 }}>{node.instanceType || '—'}</TableCell>
@@ -330,6 +337,7 @@ export default function NodesTable() {
           </Table>
         </TableContainer>
       )}
+      <NodeDetailDrawer node={selectedNode} onClose={() => setSelectedNode(null)} />
     </>
   )
 }
