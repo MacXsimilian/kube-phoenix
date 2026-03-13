@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -11,7 +11,7 @@ import Alert from '@mui/material/Alert'
 import AddIcon from '@mui/icons-material/Add'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
-import { getSchedules, deleteSchedule } from '@/lib/api'
+import { getSchedules } from '@/lib/api'
 import type { Schedule } from '@/lib/types'
 import ScheduleCard from '@/components/schedules/ScheduleCard'
 import ScheduleDialog from '@/components/schedules/ScheduleDialog'
@@ -28,11 +28,6 @@ export default function SchedulesPage() {
     schedule?: Schedule
     defaultType?: 'scale_down' | 'scale_up'
   }>({ open: false })
-
-  const deleteMutation = useMutation({
-    mutationFn: deleteSchedule,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
-  })
 
   const sleepSchedules = schedules.filter((s) => s.type === 'scale_down')
   const wakeSchedules = schedules.filter((s) => s.type === 'scale_up')
@@ -102,7 +97,7 @@ export default function SchedulesPage() {
                 key={sc.id}
                 schedule={sc}
                 onEdit={() => setDialog({ open: true, schedule: sc })}
-                onDelete={() => deleteMutation.mutate(sc.id)}
+                onDelete={() => qc.invalidateQueries({ queryKey: ['schedules'] })}
               />
             ))}
           </Box>
@@ -139,7 +134,7 @@ export default function SchedulesPage() {
                 key={sc.id}
                 schedule={sc}
                 onEdit={() => setDialog({ open: true, schedule: sc })}
-                onDelete={() => deleteMutation.mutate(sc.id)}
+                onDelete={() => qc.invalidateQueries({ queryKey: ['schedules'] })}
               />
             ))}
           </Box>
