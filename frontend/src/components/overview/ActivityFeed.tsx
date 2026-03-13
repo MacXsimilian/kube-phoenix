@@ -33,12 +33,13 @@ function timeAgo(iso: string): string {
 }
 
 function StatusChip({ status }: { status: Execution['status'] }) {
-  const map = {
-    running: { label: 'Running', color: 'info' as const },
-    success: { label: 'Success', color: 'success' as const },
-    failed: { label: 'Failed', color: 'error' as const },
+  const map: Record<string, { label: string; color: 'info' | 'success' | 'error' | 'default' }> = {
+    running: { label: 'Running', color: 'info' },
+    success: { label: 'Success', color: 'success' },
+    failed: { label: 'Failed', color: 'error' },
+    skipped: { label: 'Skipped', color: 'default' },
   }
-  const { label, color } = map[status]
+  const { label, color } = map[status] ?? { label: status, color: 'default' }
   return <Chip label={label} color={color} size="small" sx={{ height: 20, fontSize: 11 }} />
 }
 
@@ -124,7 +125,7 @@ export default function ActivityFeed() {
                   width: 32,
                   height: 32,
                   borderRadius: 1.5,
-                  bgcolor: exec.schedule?.type === 'scale_down'
+                  bgcolor: (exec.action ?? exec.schedule?.type) === 'scale_down'
                     ? 'rgba(124,58,237,0.12)'
                     : 'rgba(245,158,11,0.1)',
                   display: 'flex',
@@ -134,7 +135,7 @@ export default function ActivityFeed() {
                   flexShrink: 0,
                 }}
               >
-                {exec.schedule?.type === 'scale_down' ? (
+                {(exec.action ?? exec.schedule?.type) === 'scale_down' ? (
                   <BedtimeIcon sx={{ fontSize: 16, color: 'primary.main' }} />
                 ) : (
                   <WbSunnyIcon sx={{ fontSize: 16, color: 'warning.main' }} />
@@ -143,7 +144,7 @@ export default function ActivityFeed() {
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="body2" fontWeight={500}>
-                    {exec.schedule?.name ?? 'Unknown'}
+                    {exec.policy?.name ?? exec.schedule?.name ?? 'Unknown'}
                   </Typography>
                   <StatusChip status={exec.status} />
                   <Chip

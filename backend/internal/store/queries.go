@@ -184,43 +184,6 @@ func (s *Store) SeedDefaults() error {
 		}
 	}
 
-	// Seed v2 "Business Hours" policy
-	var pCount int64
-	if err := s.db.Model(&SleepPolicy{}).Count(&pCount).Error; err != nil {
-		return fmt.Errorf("seed: count sleep_policies: %w", err)
-	}
-	if pCount == 0 {
-		policy := SleepPolicy{
-			Name:                "Business Hours",
-			Description:         "Sleeps the cluster Mon–Fri at 19:00 UTC and wakes at 06:00. Friday sleep carries through to Monday.",
-			Timezone:            "UTC",
-			Mode:                "plan",
-			NamespaceFilter:     "",
-			Enabled:             true,
-			DriftCorrectionMode: "record",
-		}
-		if err := s.db.Create(&policy).Error; err != nil {
-			return fmt.Errorf("seed: create business hours policy: %w", err)
-		}
-
-		// Create the window: Mon–Fri, sleep 19:00, wake 06:00
-		window := PolicyWindow{
-			PolicyID:   policy.ID,
-			DaysOfWeek: `["mon","tue","wed","thu","fri"]`,
-			SleepAt:    "19:00",
-			WakeAt:     "06:00",
-		}
-		if err := s.db.Create(&window).Error; err != nil {
-			return fmt.Errorf("seed: create business hours window: %w", err)
-		}
-
-		// Create empty policy guardrails row
-		gr := PolicyGuardrails{PolicyID: policy.ID}
-		if err := s.db.Create(&gr).Error; err != nil {
-			return fmt.Errorf("seed: create business hours guardrails: %w", err)
-		}
-	}
-
 	return nil
 }
 

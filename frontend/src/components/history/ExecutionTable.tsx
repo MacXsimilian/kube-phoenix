@@ -55,6 +55,9 @@ function StatusChip({ status }: { status: Execution['status'] }) {
       </Box>
     )
   }
+  if (status === 'skipped') {
+    return <Chip label="Skipped" color="default" size="small" sx={{ height: 20, fontSize: 11 }} />
+  }
   return (
     <Chip
       label={status === 'success' ? 'Success' : 'Failed'}
@@ -231,13 +234,13 @@ export default function ExecutionTable({
                       </TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                          {exec.schedule?.type === 'scale_down' ? (
+                          {(exec.action ?? exec.schedule?.type) === 'scale_down' ? (
                             <BedtimeIcon sx={{ fontSize: 14, color: 'primary.main' }} />
                           ) : (
                             <WbSunnyIcon sx={{ fontSize: 14, color: 'warning.main' }} />
                           )}
                           <Typography variant="body2">
-                            {exec.schedule?.name ?? '—'}
+                            {exec.policy?.name ?? exec.schedule?.name ?? '—'}
                           </Typography>
                         </Box>
                       </TableCell>

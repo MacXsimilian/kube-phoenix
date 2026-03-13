@@ -234,9 +234,17 @@ func (s *Scheduler) fireEvent(ctx context.Context, e Event) {
 
 	if skipped {
 		slog.Info("scheduler: skip override active — recording skipped execution", "policyID", e.PolicyID, "edge", e.Edge, "date", dateStr)
+		var skippedAction string
+		switch e.Edge {
+		case "sleep":
+			skippedAction = "scale_down"
+		case "wake":
+			skippedAction = "scale_up"
+		}
 		exec := &store.Execution{
 			PolicyID:      &policy.ID,
 			ExecutionType: "skipped",
+			Action:        skippedAction,
 			StartedAt:     e.FireAt,
 			Status:        "skipped",
 			Mode:          policy.Mode,
@@ -271,6 +279,7 @@ func (s *Scheduler) runPolicy(ctx context.Context, policy *store.SleepPolicy, sc
 	exec := &store.Execution{
 		PolicyID:      &policy.ID,
 		ExecutionType: execType,
+		Action:        scheduleType, // "scale_down" | "scale_up"
 		StartedAt:     time.Now(),
 		Status:        "running",
 		Mode:          policy.Mode,
@@ -395,6 +404,7 @@ func (s *Scheduler) RunNowLegacy(scheduleID uint, mode string) (uint, error) {
 	exec := &store.Execution{
 		ScheduleID:    &sc.ID,
 		ExecutionType: "manual",
+		Action:        sc.Type, // "scale_down" | "scale_up"
 		StartedAt:     time.Now(),
 		Status:        "running",
 		Mode:          mode,

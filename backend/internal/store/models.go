@@ -135,6 +135,7 @@ type Execution struct {
 	PolicyID      *uint      `gorm:"index" json:"policyId"`   // v2 policy reference
 	Policy        *SleepPolicy `gorm:"foreignKey:PolicyID" json:"policy,omitempty"`
 	ExecutionType string     `gorm:"not null;default:'scheduled';index" json:"executionType"` // "scheduled" | "manual" | "drift_correction" | "skipped"
+	Action        string     `gorm:"not null;default:''" json:"action"`                       // "scale_down" | "scale_up" | "" (skipped/unknown)
 	StartedAt     time.Time  `gorm:"index" json:"startedAt"`
 	FinishedAt    *time.Time `json:"finishedAt"`
 	Status        string     `gorm:"index" json:"status"` // "running" | "success" | "failed" | "skipped"

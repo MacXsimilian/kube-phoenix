@@ -32,12 +32,14 @@ export interface Guardrails {
 
 export interface Execution {
   id: number
-  scheduleId: number
+  scheduleId?: number | null
   policyId?: number | null
-  schedule: Schedule
+  schedule?: Schedule | null
+  policy?: SleepPolicy | null
+  action?: 'scale_down' | 'scale_up' | null  // sleep or wake edge
   startedAt: string
   finishedAt: string | null
-  status: 'running' | 'success' | 'failed'
+  status: 'running' | 'success' | 'failed' | 'skipped'
   mode: 'plan' | 'apply'
   executionType?: 'scheduled' | 'manual' | 'drift_correction' | 'skipped'
   countScaled: number
