@@ -109,6 +109,9 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 
 			// ── Manual trigger (v2 + v1 compat) ───────────────────────────────
 			r.Post("/trigger", h.trigger)
+
+			// ── Admin ─────────────────────────────────────────────────────────
+			r.Post("/admin/reset-db", h.resetDB)
 		})
 
 		// WebSocket — live log streaming

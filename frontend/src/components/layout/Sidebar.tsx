@@ -20,6 +20,7 @@ import SecurityOutlinedIcon from '@mui/icons-material/SecurityOutlined'
 import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined'
 import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNoneOutlined'
 import CalendarTodayOutlinedIcon from '@mui/icons-material/CalendarTodayOutlined'
+import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined'
 import { notificationsApi } from '@/lib/api'
 import NotificationDrawer from '@/components/notifications/NotificationDrawer'
 
@@ -29,6 +30,7 @@ const NAV = [
   { label: 'Cluster State', href: '/cluster', icon: <HubOutlinedIcon fontSize="small" /> },
   { label: 'Guardrails', href: '/guardrails', icon: <SecurityOutlinedIcon fontSize="small" /> },
   { label: 'History', href: '/history', icon: <HistoryOutlinedIcon fontSize="small" /> },
+  { label: 'Settings', href: '/settings', icon: <SettingsOutlinedIcon fontSize="small" /> },
 ]
 
 interface Props {

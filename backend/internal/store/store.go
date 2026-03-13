@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -54,6 +55,42 @@ func New(dsn string) (*Store, error) {
 }
 
 func (s *Store) DB() *gorm.DB { return s.db }
+
+// ResetDB drops all application tables, re-runs AutoMigrate, seeds defaults,
+// and runs the v1→v2 migration. Intended for development and disaster recovery.
+func (s *Store) ResetDB() error {
+	tables := []interface{}{
+		&LogLine{}, &WorkloadSnapshot{}, &Notification{},
+		&PolicyOverride{}, &PolicyGuardrails{}, &PolicyWindow{},
+		&Execution{}, &SleepPolicy{}, &GlobalGuardrails{}, &Schedule{},
+	}
+	if err := s.db.Migrator().DropTable(tables...); err != nil {
+		return fmt.Errorf("reset: drop tables: %w", err)
+	}
+	// Re-create in dependency order (same as AutoMigrate)
+	if err := s.db.AutoMigrate(
+		&Schedule{},
+		&GlobalGuardrails{},
+		&SleepPolicy{},
+		&PolicyWindow{},
+		&PolicyGuardrails{},
+		&PolicyOverride{},
+		&Execution{},
+		&WorkloadSnapshot{},
+		&LogLine{},
+		&Notification{},
+	); err != nil {
+		return fmt.Errorf("reset: migrate: %w", err)
+	}
+	if err := s.SeedDefaults(); err != nil {
+		return fmt.Errorf("reset: seed: %w", err)
+	}
+	if err := s.MigrateSchedulesToPolicies(); err != nil {
+		return fmt.Errorf("reset: migrate schedules: %w", err)
+	}
+	slog.Info("store: database reset complete")
+	return nil
+}
 
 func (s *Store) Ping() error {
 	db, err := s.db.DB()

@@ -227,6 +227,13 @@ export const notificationsApi = {
     req<void>('/api/notifications', { method: 'DELETE' }),
 }
 
+// ── Admin ─────────────────────────────────────────────────────────────────────
+
+export const adminApi = {
+  resetDB: (): Promise<void> =>
+    req<void>('/api/admin/reset-db', { method: 'POST' }),
+}
+
 // ── WebSocket URL helper ──────────────────────────────────────────────────────
 
 export const wsLogsUrl = (executionId: number): string => {
