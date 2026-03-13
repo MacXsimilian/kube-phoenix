@@ -72,12 +72,21 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 			r.Post("/policies/{id}/overrides", h.createOverride)
 			r.Delete("/policies/{id}/overrides/{date}/{edge}", h.deleteOverride)
 
-			// ── V1 Legacy: Schedules — full CRUD (backward compat) ─────────────
-			r.Get("/schedules", h.listSchedules)
-			r.Post("/schedules", h.createSchedule)
-			r.Get("/schedules/{id}", h.getSchedule)
-			r.Put("/schedules/{id}", h.updateSchedule)
-			r.Delete("/schedules/{id}", h.deleteSchedule)
+			// ── V1 Legacy: Schedules — deprecated, use /api/policies ──────────
+			r.Group(func(r chi.Router) {
+				r.Use(func(next http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						w.Header().Set("X-Deprecated", "true")
+						w.Header().Set("X-Deprecated-Message", "Use /api/policies. Schedule endpoints will be removed in a future release.")
+						next.ServeHTTP(w, r)
+					})
+				})
+				r.Get("/schedules", h.listSchedules)
+				r.Post("/schedules", h.createSchedule)
+				r.Get("/schedules/{id}", h.getSchedule)
+				r.Put("/schedules/{id}", h.updateSchedule)
+				r.Delete("/schedules/{id}", h.deleteSchedule)
+			})
 
 			// ── Guardrails (global) ────────────────────────────────────────────
 			r.Get("/guardrails", h.getGuardrails)
