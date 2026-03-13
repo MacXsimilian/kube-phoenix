@@ -15,6 +15,7 @@ Scale down your cluster at night, wake it up in the morning. No more paying for 
 - **Notifications** — in-app bell with conflict alerts, execution failures, and drift corrections.
 - **Cluster State** — live view of all Deployments, StatefulSets, and nodes, with the governing policy shown per workload.
 - **History** — full execution log (scheduled, manual, drift correction, skipped) with live WebSocket streaming.
+- **Settings & Administration** — reset the database to defaults from the Settings page; useful during development and after failed migrations. Version number displayed in the sidebar.
 - **Manual triggers** — run any policy's sleep or wake edge immediately in plan (dry-run) or apply mode.
 
 ---
@@ -138,6 +139,8 @@ All `/api/*` and `/ws/*` endpoints require Basic Auth when configured. `/healthz
 | `PATCH` | `/api/notifications/:id` | Mark notification read/dismissed |
 | `DELETE` | `/api/notifications` | Dismiss all notifications |
 | `POST` | `/api/trigger` | Manual trigger `{"policyId": 1, "edge": "sleep", "mode": "plan"}` |
+| `GET` | `/api/version` | Returns `{"version":"x.y.z"}` — no auth required |
+| `POST` | `/api/admin/reset-db` | Drop all tables, re-migrate, re-seed, reload scheduler |
 
 ### v1 — Schedules (deprecated)
 
@@ -310,6 +313,7 @@ kube-phoenix/
 │   │   │   ├── policies.go         # v2 policy/window/guardrail/override handlers
 │   │   │   ├── notifications.go    # Notification handlers
 │   │   │   ├── schedules.go        # v1 legacy handlers (deprecated)
+│   │   │   ├── admin.go            # GET /api/version, POST /api/admin/reset-db
 │   │   │   └── router.go
 │   │   ├── scheduler/              # Native Go event loop + reconciler + conflict detection
 │   │   │   ├── scheduler.go        # Timer-based event loop, Start/Stop lifecycle
@@ -330,7 +334,7 @@ kube-phoenix/
 │       └── static/                 # Next.js output — generated at build time
 ├── frontend/
 │   └── src/
-│       ├── app/                    # Pages: overview, policies, cluster, guardrails, history
+│       ├── app/                    # Pages: overview, policies, cluster, guardrails, history, settings
 │       ├── components/
 │       │   ├── policies/           # PolicyCard, PolicyDialog, RunPolicyDialog
 │       │   ├── notifications/      # NotificationDrawer (bell icon + drawer)
@@ -352,12 +356,12 @@ kube-phoenix/
 
 On first startup, two sleep policies are seeded in **plan mode** — switch to apply when you're ready:
 
-| Policy | Sleep | Wake | Days |
-|---|---|---|---|
-| Weekday Nights | 19:00 | 06:00 | Mon–Fri |
-| Weekends | 00:00 | — | Sat–Sun |
+| Policy | Sleep | Wake | Days | Timezone |
+|---|---|---|---|---|
+| Weekday | 19:05 | 07:00 | Mon–Fri | Europe/Budapest |
+| Weekend | 00:00 | 07:00 | Sat–Sun | Europe/Budapest |
 
-Both cover the same intent as the original four cron schedules. Any existing v1 schedule rows are automatically paired into sleep policies on startup (idempotent migration).
+Both are seeded as v1 schedules on first startup and automatically migrated to Sleep Policies by `MigrateSchedulesToPolicies()`. Migrated policies start **disabled** — enable and switch to apply mode when you are ready. Any existing v1 schedule rows from a prior installation are paired into policies the same way (idempotent).
 
 ---
 

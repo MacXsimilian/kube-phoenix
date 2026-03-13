@@ -10,7 +10,9 @@ import (
 // GET /api/version — no auth required.
 func (h *Handler) getVersion(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"version": h.version})
+	if err := json.NewEncoder(w).Encode(map[string]string{"version": h.version}); err != nil {
+		slog.Error("version: encode failed", "err", err)
+	}
 }
 
 // resetDB drops all tables, re-migrates, re-seeds, and reloads the scheduler.

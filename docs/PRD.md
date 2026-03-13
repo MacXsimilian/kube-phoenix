@@ -1,6 +1,6 @@
 # Project Requirements Document — kube-phoenix
 
-**Version:** 2.0
+**Version:** 2.1
 **Date:** 2026-03-13
 **Status:** Active Development
 
@@ -44,6 +44,7 @@ v2 replaces the cron model entirely with a **desired-state engine** built on Sle
 | G8 | Detect and surface conflicts between overlapping policies in the UI |
 | G9 | Store workload replica state in PostgreSQL, not as Kubernetes annotations |
 | G10 | Notify SRE operators of policy conflicts, failures, and drift corrections in-app |
+| G11 | Expose application version via API and UI; provide database reset for development and disaster recovery |
 
 ---
 
@@ -82,7 +83,7 @@ v2 replaces the cron model entirely with a **desired-state engine** built on Sle
 | FR-06 | Each policy may filter to specific namespaces (comma-separated; empty = governs all namespaces) |
 | FR-07 | Policy tags are free-text organizational labels for SRE use; they carry no access-control meaning |
 | FR-08 | Policies must be configurable via the web UI and REST API without a restart |
-| FR-09 | One default policy must be seeded on first startup: "Business Hours" — Mon–Fri awake 07:00–19:00, UTC, plan mode |
+| FR-09 | On first startup, two v1 schedules must be seeded (Weekday and Weekend) and automatically migrated to Sleep Policies by `MigrateSchedulesToPolicies()`; seeded policies start in plan mode and disabled |
 | FR-10 | The global guardrails singleton must be seeded on first startup with `kube-system` pre-populated in `skip_namespaces` |
 
 ### 6.2 Policy Windows — Simple Mode
@@ -260,6 +261,18 @@ v2 replaces the cron model entirely with a **desired-state engine** built on Sle
 |----|-------------|
 | FR-103 | `GET /healthz` must ping the database and return 200 if healthy, 503 otherwise |
 | FR-104 | The health endpoint must be exempt from authentication |
+
+### 6.16 Administration
+
+| ID | Requirement |
+|----|-------------|
+| FR-105 | The backend must expose `GET /api/version` (no auth required) returning `{"version":"x.y.z"}` where the version is injected at build time via `-ldflags "-X main.version=x.y.z"` |
+| FR-106 | The frontend sidebar must display the running version fetched from `/api/version`; fall back to `"dev"` if the request fails |
+| FR-107 | The Settings page must provide a "Reset Database" action in a clearly labelled Danger Zone section |
+| FR-108 | The Reset Database action must require the user to type the word `reset` before the confirmation button is enabled, preventing accidental clicks |
+| FR-109 | `POST /api/admin/reset-db` must drop all application tables, re-run AutoMigrate, re-seed defaults, and re-run the v1→v2 schedule migration in a single synchronous operation; it must be protected by the same basic auth middleware as all other API endpoints |
+| FR-110 | After a successful reset the frontend must invalidate all cached queries and redirect to the Overview page |
+| FR-111 | The `executions` table must record the `action` field (`scale_down` or `scale_up`) on every execution row so that the UI can display the correct sleep/wake icon without relying on the associated schedule or policy object |
 
 ---
 
@@ -483,6 +496,7 @@ Service account `kube-phoenix` (namespace: `kube-phoenix`) bound to a `ClusterRo
 | `id` | SERIAL | PK | |
 | `policy_id` | INT | FK → `sleep_policies(id)` ON DELETE SET NULL | null if policy was deleted after execution |
 | `execution_type` | VARCHAR(30) | NOT NULL DEFAULT `'scheduled'` | `scheduled` \| `manual` \| `drift_correction` \| `skipped` |
+| `action`         | VARCHAR(20) | NOT NULL DEFAULT `''`          | `scale_down`, `scale_up`, or empty for skipped/unknown |
 | `started_at` | TIMESTAMPTZ | NOT NULL | Indexed |
 | `finished_at` | TIMESTAMPTZ | | null while running |
 | `status` | VARCHAR(20) | NOT NULL | `running` \| `success` \| `failed` \| `skipped` |
@@ -807,6 +821,8 @@ After one full sleep/wake cycle all state is in the DB. Annotation fallback code
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/healthz` | None | Database ping liveness check |
+| `GET` | `/api/version` | None | Returns `{"version":"x.y.z"}`. No auth. |
+| `POST` | `/api/admin/reset-db` | Basic | Drop all tables, re-migrate, re-seed, reload scheduler. Requires auth. |
 | `GET` (WS) | `/ws/executions/{id}/logs` | Basic | Live log stream |
 
 ---
