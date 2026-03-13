@@ -8,11 +8,14 @@ Scale down your cluster at night, wake it up in the morning. No more paying for 
 
 ## What it does
 
-- **Schedules** — multiple sleep and wake schedules with cron expressions, per-schedule timezones, and optional namespace filters for partial scale-down
-- **Guardrails** — protect namespaces, node labels, and taints from ever being touched
-- **Cluster State** — live view of all Deployments, StatefulSets, and nodes
-- **History** — full execution log with live WebSocket streaming
-- **Manual triggers** — run any schedule immediately in plan (dry-run) or apply mode
+- **Sleep Policies** — express your full sleep/wake intent in a single policy: pick days of the week, set a sleep time and optional wake time, support overnight windows (e.g. sleep at 19:00, wake at 06:00 the next morning). Multiple policies for multiple team schedules. Conflict detection flags overlapping policies.
+- **Per-policy guardrails** — skip specific workloads or namespaces, enforce a minimum replica floor, all layered on top of global guardrails.
+- **Policy overrides** — skip the next sleep or wake edge for a specific policy without disabling it.
+- **Global guardrails** — protect namespaces, node labels, and taints cluster-wide.
+- **Notifications** — in-app bell with conflict alerts, execution failures, and drift corrections.
+- **Cluster State** — live view of all Deployments, StatefulSets, and nodes, with the governing policy shown per workload.
+- **History** — full execution log (scheduled, manual, drift correction, skipped) with live WebSocket streaming.
+- **Manual triggers** — run any policy's sleep or wake edge immediately in plan (dry-run) or apply mode.
 
 ---
 
@@ -20,7 +23,7 @@ Scale down your cluster at night, wake it up in the morning. No more paying for 
 
 | Layer | Tech |
 |---|---|
-| Backend | Go 1.25, chi, GORM, robfig/cron v3, client-go |
+| Backend | Go 1.22, chi, GORM, native time.Timer scheduler, client-go |
 | Frontend | Next.js 15, React 19, Material UI v6, TanStack Query v5 |
 | Database | PostgreSQL 16 |
 | Deploy | Helm 3, GHCR image, GitHub Actions CI |
@@ -32,15 +35,21 @@ The Go backend embeds the Next.js static export — one binary, one container, n
 ## How the scaler works
 
 **Scale down:**
-1. Saves current replica count in a `previous-replicas` annotation on each Deployment/StatefulSet
-2. Scales all matching workloads to 0
-3. Cordons nodes, evicts/deletes pods (respecting guardrails), deletes the nodes
+1. Saves current replica counts to `workload_snapshots` in PostgreSQL (no more K8s annotations)
+2. Scales all matching workloads to 0, respecting per-policy and global guardrails
+3. Cordons nodes, evicts/deletes pods, deletes the nodes
 
 **Scale up:**
-1. Restores replicas from the `previous-replicas` annotation and removes it
-2. Uncordons nodes; Karpenter (or your CA) provisions new nodes as pods become pending
+1. Reads replica counts from the latest unrestored `workload_snapshots` entry and marks it restored
+2. Falls back to the legacy `previous-replicas` annotation if no snapshot exists (migration compat)
+3. Uncordons nodes; Karpenter (or your CA) provisions new nodes as pods become pending
 
 Both operations support **plan mode** (logs what it would do, no changes) and **apply mode** (executes).
+
+**Desired-state engine:**
+- Startup reconciliation corrects drift immediately on boot
+- Periodic drift correction every 15 minutes catches any missed events
+- Drift correction mode is configurable per policy: `record` (creates an execution entry) or `silent`
 
 ---
 
@@ -48,7 +57,7 @@ Both operations support **plan mode** (logs what it would do, no changes) and **
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.22+
 - Node.js 22+
 - Docker (for local PostgreSQL)
 - `kubectl` configured against your cluster (the backend still starts without it — cluster endpoints return empty data)
@@ -99,23 +108,40 @@ make docker-build
 
 All `/api/*` and `/ws/*` endpoints require Basic Auth when configured. `/healthz` is always open.
 
+### v2 — Sleep Policies (current)
+
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/healthz` | Health check (DB ping) |
-| `GET` | `/api/schedules` | List all schedules (includes `nextRun` ISO timestamp per schedule) |
-| `POST` | `/api/schedules` | Create schedule |
-| `GET` | `/api/schedules/:id` | Get schedule |
-| `PUT` | `/api/schedules/:id` | Update schedule (`type` is immutable) |
-| `DELETE` | `/api/schedules/:id` | Delete schedule |
-| `GET` | `/api/executions` | List executions (filters: `schedule_id`, `status`, `page`, `page_size`) |
+| `GET` | `/api/policies` | List sleep policies |
+| `POST` | `/api/policies` | Create policy |
+| `GET` | `/api/policies/:id` | Get policy |
+| `PUT` | `/api/policies/:id` | Update policy |
+| `DELETE` | `/api/policies/:id` | Delete policy |
+| `GET` | `/api/policies/:id/windows` | List time windows for a policy |
+| `POST` | `/api/policies/:id/windows` | Add a time window |
+| `PUT` | `/api/policies/:id/windows/:wid` | Update a time window |
+| `DELETE` | `/api/policies/:id/windows/:wid` | Delete a time window |
+| `GET` | `/api/policies/:id/guardrails` | Get per-policy guardrails |
+| `PUT` | `/api/policies/:id/guardrails` | Update per-policy guardrails |
+| `POST` | `/api/policies/:id/overrides` | Skip next occurrence `{"date":"2025-06-01","edge":"sleep"}` |
+| `DELETE` | `/api/policies/:id/overrides/:date/:edge` | Remove an override |
+| `GET` | `/api/guardrails` | Get global guardrails |
+| `PUT` | `/api/guardrails` | Update global guardrails |
+| `GET` | `/api/executions` | List executions (filters: `policy_id`, `status`, `page`, `page_size`) |
 | `GET` | `/api/executions/:id` | Get execution |
-| `GET` | `/api/executions/:id/logs` | Get all log lines for an execution |
+| `GET` | `/api/executions/:id/logs` | Get log lines for an execution |
 | `GET` | `/ws/executions/:id/logs` | WebSocket — live log streaming |
-| `GET` | `/api/cluster/workloads` | List Deployments and StatefulSets |
+| `GET` | `/api/cluster/workloads` | List Deployments and StatefulSets with governing policy |
 | `GET` | `/api/cluster/nodes` | List nodes with protection status |
-| `GET` | `/api/guardrails` | Get guardrails config |
-| `PUT` | `/api/guardrails` | Update guardrails |
-| `POST` | `/api/trigger` | Manually trigger a schedule `{"scheduleId": 1, "mode": "plan"}` |
+| `GET` | `/api/notifications` | List notifications |
+| `PATCH` | `/api/notifications/:id` | Mark notification read/dismissed |
+| `DELETE` | `/api/notifications` | Dismiss all notifications |
+| `POST` | `/api/trigger` | Manual trigger `{"policyId": 1, "edge": "sleep", "mode": "plan"}` |
+
+### v1 — Schedules (deprecated)
+
+The `/api/schedules` endpoints still work but return `X-Deprecated: true` headers. They will be removed in a future release. Use `/api/policies` instead. Existing v1 schedule rows are automatically migrated to sleep policies on startup.
 
 ---
 
@@ -268,9 +294,10 @@ ghcr.io/macxsimilian/kube-phoenix:latest         # master only
 
 ```
 kube-phoenix/
-├── Dockerfile                      # 3-stage: node:22 → golang:1.25 → distroless
+├── Dockerfile                      # 3-stage: node:22 → golang:1.22 → distroless
 ├── Makefile
 ├── docker-compose.yml              # Local dev PostgreSQL
+├── docs/PRD.md                     # Product Requirements Document
 ├── .github/
 │   ├── workflows/
 │   │   ├── ci.yml                  # Main CI pipeline
@@ -280,22 +307,40 @@ kube-phoenix/
 │   ├── cmd/server/main.go          # Entry point, graceful shutdown
 │   ├── internal/
 │   │   ├── api/                    # HTTP handlers + Chi router
-│   │   ├── scheduler/              # robfig/cron wrapper + WebSocket log broker
-│   │   ├── scaler/                 # Scale-down / scale-up logic
+│   │   │   ├── policies.go         # v2 policy/window/guardrail/override handlers
+│   │   │   ├── notifications.go    # Notification handlers
+│   │   │   ├── schedules.go        # v1 legacy handlers (deprecated)
+│   │   │   └── router.go
+│   │   ├── scheduler/              # Native Go event loop + reconciler + conflict detection
+│   │   │   ├── scheduler.go        # Timer-based event loop, Start/Stop lifecycle
+│   │   │   ├── reconciler.go       # Startup + periodic drift correction
+│   │   │   ├── conflicts.go        # Conflict detection engine
+│   │   │   └── notifications.go    # Notification generation helpers
+│   │   ├── scaler/                 # Scale-down / scale-up logic (snapshot-based)
 │   │   ├── k8s/                    # Kubernetes client wrapper
 │   │   ├── store/                  # GORM models + queries
+│   │   │   ├── models.go           # SleepPolicy, PolicyWindow, WorkloadSnapshot, Notification, …
+│   │   │   ├── policy_store.go     # Policy CRUD + override management
+│   │   │   ├── snapshot_store.go   # Workload replica snapshot store
+│   │   │   ├── notification_store.go
+│   │   │   └── queries.go          # v1→v2 migration, seed helpers
 │   │   └── middleware/             # HTTP Basic Auth
 │   └── web/
 │       ├── embed.go                # //go:embed static (SPA handler with fallback)
 │       └── static/                 # Next.js output — generated at build time
 ├── frontend/
 │   └── src/
-│       ├── app/                    # Pages: overview, schedules, cluster, guardrails, history
-│       ├── components/             # Reusable UI components
-│       ├── lib/                    # API client, TypeScript types, cron formatter
+│       ├── app/                    # Pages: overview, policies, cluster, guardrails, history
+│       ├── components/
+│       │   ├── policies/           # PolicyCard, PolicyDialog, RunPolicyDialog
+│       │   ├── notifications/      # NotificationDrawer (bell icon + drawer)
+│       │   ├── cluster/            # WorkloadsTable (with governing policy column)
+│       │   ├── history/            # ExecutionTable (with type column)
+│       │   └── layout/             # Sidebar (with notification badge)
+│       ├── lib/                    # API client, TypeScript types
 │       └── theme/                  # Dark purple MUI theme
 ├── helm/kube-phoenix/
-│   ├── Chart.yaml
+│   ├── Chart.yaml                  # v0.2.0
 │   ├── values.yaml
 │   └── templates/                  # namespace, sa, clusterrole, secret, deployment, service, ingress, postgresql, targetgroupbinding
 └── k8s/                            # Legacy raw manifests (superseded by Helm)
@@ -303,23 +348,29 @@ kube-phoenix/
 
 ---
 
-## Default schedules
+## Default seed
 
-Four schedules are seeded on first startup, all in **plan mode** — switch to apply when you're ready:
+On first startup, two sleep policies are seeded in **plan mode** — switch to apply when you're ready:
 
-| Name | Cron | Type |
-|---|---|---|
-| Weekday Scale Down | `0 0 * * 1-5` | scale\_down |
-| Weekday Scale Up | `0 8 * * 1-5` | scale\_up |
-| Weekend Scale Down | `0 0 * * 0,6` | scale\_down |
-| Weekend Scale Up | `0 8 * * 0,6` | scale\_up |
+| Policy | Sleep | Wake | Days |
+|---|---|---|---|
+| Weekday Nights | 19:00 | 06:00 | Mon–Fri |
+| Weekends | 00:00 | — | Sat–Sun |
+
+Both cover the same intent as the original four cron schedules. Any existing v1 schedule rows are automatically paired into sleep policies on startup (idempotent migration).
+
+---
+
+## Upgrading from v0.1.x
+
+v0.2.0 introduces the Sleep Policy model. No manual migration is needed — the backend pairs your existing `scale_down` / `scale_up` schedule rows into sleep policies automatically on startup. The `/api/schedules` endpoints continue to work with a deprecation warning. Switch to `/api/policies` at your own pace.
 
 ---
 
 ## Roadmap
 
 - [ ] Keycloak OIDC (replace basic auth)
-- [ ] Slack / email notifications
+- [ ] Slack / email notification delivery
 - [ ] Multi-cluster support
 
 ---
