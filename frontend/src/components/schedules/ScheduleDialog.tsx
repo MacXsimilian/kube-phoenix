@@ -75,7 +75,7 @@ function isValidCron(expr: string): boolean {
     isValidCronField(hour, 0, 23) &&
     isValidCronField(dom, 1, 31) &&
     isValidCronField(month, 1, 12) &&
-    isValidCronField(dow, 0, 7)
+    isValidCronField(dow, 0, 6)
   )
 }
 
