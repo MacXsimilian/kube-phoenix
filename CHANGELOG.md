@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.2.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.22...v0.2.0) (2026-03-13)
+
+
+### Features
+
+* **backend:** Sleep Policy model replaces cron-based schedule pairs — single policy expresses full sleep/wake intent with overnight window support
+* **backend:** native Go scheduler loop replaces robfig/cron — overnight windows, multi-day spanning, policy reload signal, desired-state reconciliation on startup and every 15 minutes
+* **backend:** workload replica state moved from Kubernetes annotations to PostgreSQL workload_snapshots table — single source of truth, queryable, auditable
+* **backend:** per-policy guardrails (skip_workloads, skip_namespaces, min_replicas) layered on top of global guardrails
+* **backend:** conflict detection engine — detects direct overlap, absorbed policies, no-op policies, guardrail shadows; runs on every policy save
+* **backend:** in-app notification system — bell icon with unread count, persistent notifications for conflicts, failures, and drift corrections
+* **backend:** skip next occurrence — per-policy override to skip one sleep or wake edge on a specific date
+* **frontend:** Policies page replaces Schedules — PolicyCard with window summary, conflict tags, skip pills, next event, last run
+* **frontend:** PolicyDialog — day picker, overnight detection, advanced rules (date ranges + exceptions), guardrails section, drift correction toggle
+* **frontend:** NotificationDrawer — severity grouping, mark-read, dismiss, links to policy/execution
+* **frontend:** Cluster State Governed By column — shows which policy controls each workload or marks it Unmanaged
+* **frontend:** History execution type badges — scheduled, manual, drift_correction, skipped
+* **backend:** v1→v2 schedule migration — auto-pairs scale_down+scale_up schedule rows into SleepPolicy records on startup (idempotent)
+
+
+### BREAKING CHANGES
+
+* `/api/schedules` is deprecated — returns `X-Deprecated: true` header. Use `/api/policies` instead.
+* `previous-replicas` Kubernetes annotation is no longer written. Scale-up reads from `workload_snapshots` table with annotation fallback for one migration cycle.
+
+
 ## [0.1.22](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.21...v0.1.22) (2026-03-13)
 
 
