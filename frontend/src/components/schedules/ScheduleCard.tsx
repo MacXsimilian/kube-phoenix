@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import Paper from '@mui/material/Paper'
@@ -18,12 +18,18 @@ import Button from '@mui/material/Button'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import CircularProgress from '@mui/material/CircularProgress'
+import Snackbar from '@mui/material/Snackbar'
+import Alert from '@mui/material/Alert'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
-import { updateSchedule, triggerRun } from '@/lib/api'
+import BedtimeIcon from '@mui/icons-material/Bedtime'
+import WbSunnyIcon from '@mui/icons-material/WbSunny'
+import { updateSchedule, deleteSchedule, triggerRun } from '@/lib/api'
 import { cronToText } from '@/lib/cronToText'
 import type { Schedule } from '@/lib/types'
+
+const DELETE_DELAY_MS = 5000
 
 export default function ScheduleCard({
   schedule,
@@ -39,6 +45,8 @@ export default function ScheduleCard({
   const [runDialog, setRunDialog] = useState(false)
   const [runMode, setRunMode] = useState<'plan' | 'apply'>('plan')
   const [deleteDialog, setDeleteDialog] = useState(false)
+  const [undoOpen, setUndoOpen] = useState(false)
+  const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const toggleEnabled = useMutation({
     mutationFn: () => updateSchedule(schedule.id, { enabled: !schedule.enabled }),
@@ -53,6 +61,25 @@ export default function ScheduleCard({
       router.push('/history/')
     },
   })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteSchedule(schedule.id),
+    onSuccess: () => onDelete(),
+  })
+
+  function handleDeleteConfirm() {
+    setDeleteDialog(false)
+    setUndoOpen(true)
+    deleteTimer.current = setTimeout(() => {
+      setUndoOpen(false)
+      deleteMutation.mutate()
+    }, DELETE_DELAY_MS)
+  }
+
+  function handleUndo() {
+    if (deleteTimer.current) clearTimeout(deleteTimer.current)
+    setUndoOpen(false)
+  }
 
   const isSleep = schedule.type === 'scale_down'
 
@@ -148,7 +175,12 @@ export default function ScheduleCard({
         PaperProps={{ sx: { bgcolor: 'background.paper', minWidth: 340 } }}
       >
         <DialogTitle fontWeight={700}>
-          {isSleep ? '🌙 Run Sleep Now' : '☀️ Run Wake Now'} — {schedule.name}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {isSleep
+              ? <BedtimeIcon sx={{ color: 'primary.main', fontSize: 20 }} />
+              : <WbSunnyIcon sx={{ color: 'warning.main', fontSize: 20 }} />}
+            {isSleep ? 'Run Sleep Now' : 'Run Wake Now'} — {schedule.name}
+          </Box>
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" mb={2}>
@@ -192,20 +224,36 @@ export default function ScheduleCard({
         <DialogTitle fontWeight={700}>Delete Schedule?</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary">
-            Are you sure you want to delete <strong>{schedule.name}</strong>? This cannot be undone.
+            Are you sure you want to delete <strong>{schedule.name}</strong>?
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDeleteDialog(false)} sx={{ color: 'text.secondary' }}>Cancel</Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={() => { setDeleteDialog(false); onDelete() }}
-          >
+          <Button variant="contained" color="error" onClick={handleDeleteConfirm}>
             Delete
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Undo snackbar */}
+      <Snackbar
+        open={undoOpen}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        autoHideDuration={DELETE_DELAY_MS}
+        onClose={(_, reason) => { if (reason !== 'clickaway') setUndoOpen(false) }}
+      >
+        <Alert
+          severity="info"
+          action={
+            <Button color="inherit" size="small" onClick={handleUndo}>
+              UNDO
+            </Button>
+          }
+          sx={{ width: '100%' }}
+        >
+          &quot;{schedule.name}&quot; will be deleted in 5s
+        </Alert>
+      </Snackbar>
     </>
   )
 }
