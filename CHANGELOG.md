@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.18](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.17...v0.1.18) (2026-03-13)
+
+
+### Features
+
+* **cluster:** sortable tables, zone grouping, CPU/mem bars, node age, cordon status, ready replicas, affected-only filter ([92f4a24](https://github.com/MacXsimilian/kube-phoenix/commit/92f4a2426a684867acb22659d0053c6c7d584662))
+* **frontend:** resizable log drawer with drag handle ([2c4fe22](https://github.com/MacXsimilian/kube-phoenix/commit/2c4fe22bd748ace44d4ffb7c0ae017c40148c778))
+
 ## [0.1.17](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.16...v0.1.17) (2026-03-13)
 
 
