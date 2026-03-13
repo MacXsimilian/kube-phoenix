@@ -4,15 +4,15 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/robfig/cron/v3"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
+// scheduleResponse wraps a legacy Schedule for the deprecated /api/schedules endpoints.
+// NextRun is omitted — use /api/policies for next-event times.
 type scheduleResponse struct {
 	store.Schedule
-	NextRun *time.Time `json:"nextRun,omitempty"`
 }
 
 func (h *Handler) listSchedules(w http.ResponseWriter, r *http.Request) {
@@ -23,7 +23,7 @@ func (h *Handler) listSchedules(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := make([]scheduleResponse, len(schedules))
 	for i, sc := range schedules {
-		resp[i] = scheduleResponse{Schedule: sc, NextRun: h.scheduler.NextRun(sc.ID)}
+		resp[i] = scheduleResponse{Schedule: sc}
 	}
 	jsonOK(w, resp)
 }
@@ -73,11 +73,7 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("schedule created", "scheduleID", sc.ID, "name", sc.Name, "type", sc.Type, "cronExpr", sc.CronExpr)
-	if err := h.scheduler.Reload(); err != nil {
-		slog.Error("scheduler reload after create failed", "err", err)
-		jsonError(w, "schedule saved but scheduler reload failed", http.StatusInternalServerError)
-		return
-	}
+	h.scheduler.Notify()
 	// Set Content-Type before WriteHeader so the header is actually sent.
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -113,11 +109,7 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := h.scheduler.Reload(); err != nil {
-		slog.Error("scheduler reload after update failed", "scheduleID", id, "err", err)
-		jsonError(w, "schedule saved but scheduler reload failed", http.StatusInternalServerError)
-		return
-	}
+	h.scheduler.Notify()
 	jsonOK(w, sc)
 }
 
@@ -133,10 +125,6 @@ func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("schedule deleted", "scheduleID", id)
-	if err := h.scheduler.Reload(); err != nil {
-		slog.Error("scheduler reload after delete failed", "scheduleID", id, "err", err)
-		jsonError(w, "schedule deleted but scheduler reload failed", http.StatusInternalServerError)
-		return
-	}
+	h.scheduler.Notify()
 	w.WriteHeader(http.StatusNoContent)
 }
