@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.2](https://github.com/MacXsimilian/kube-phoenix/compare/v0.2.1...v0.2.2) (2026-03-13)
+
+
+### Features
+
+* display app version in sidebar ([77f10de](https://github.com/MacXsimilian/kube-phoenix/commit/77f10decf906ddb81cb4a9f62f37bc994cc34117))
+* **settings:** add Reset Database to Settings page ([ec76b1d](https://github.com/MacXsimilian/kube-phoenix/commit/ec76b1de4ad16bdd680a6c62fbd86f4417cb887c))
+
+
+### Bug Fixes
+
+* **ui:** resolve Unknown labels and broken icons in history/activity ([2ee50f8](https://github.com/MacXsimilian/kube-phoenix/commit/2ee50f82e2f38ee3d5bdb83fef6dd1b6a6ce468f))
+
 ## [0.2.1](https://github.com/MacXsimilian/kube-phoenix/compare/v0.2.0...v0.2.1) (2026-03-13)
 
 
