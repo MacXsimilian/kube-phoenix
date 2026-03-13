@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.11...v0.1.12) (2026-03-13)
+
+
+### Bug Fixes
+
+* **release:** decouple Trivy scan from helm publish — scan failure no longer blocks chart release ([81cf0b3](https://github.com/MacXsimilian/kube-phoenix/commit/81cf0b3470f6c8828533bb9a56a450a9cc000552))
+
 ## [0.1.11](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.10...v0.1.11) (2026-03-13)
 
 
