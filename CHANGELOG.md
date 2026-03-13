@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.15...v0.1.16) (2026-03-13)
+
+
+### Features
+
+* **overview:** clickable workload chips, all schedules in order, view-all links, running execution label ([b2dc9b5](https://github.com/MacXsimilian/kube-phoenix/commit/b2dc9b56d249e9be0a83439b876a969a43e452ec))
+
 ## [0.1.15](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.14...v0.1.15) (2026-03-13)
 
 
