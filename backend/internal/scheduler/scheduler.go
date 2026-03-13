@@ -156,7 +156,7 @@ func (s *Scheduler) reload() error {
 		}
 
 		eid, err := s.cron.AddFunc("CRON_TZ="+sc.Timezone+" "+sc.CronExpr, func() {
-			if _, err := s.run(context.Background(), sc.ID, sc.Type, sc.Mode, sc.NamespaceFilter); err != nil {
+			if _, err := s.run(context.Background(), sc.ID, sc.Type, sc.Mode, sc.NamespaceFilter, sc.TimeoutMinutes); err != nil {
 				slog.Error("scheduler: failed to start execution", "scheduleID", sc.ID, "err", err)
 			}
 		})
@@ -180,10 +180,10 @@ func (s *Scheduler) RunNow(scheduleID uint, mode string) (uint, error) {
 	slog.Info("scheduler: manual run triggered", "scheduleID", sc.ID, "name", sc.Name, "type", sc.Type, "mode", mode)
 	// Use context.Background() so the execution goroutine is not tied to the
 	// HTTP request context — which is canceled as soon as the response is sent.
-	return s.run(context.Background(), sc.ID, sc.Type, mode, sc.NamespaceFilter)
+	return s.run(context.Background(), sc.ID, sc.Type, mode, sc.NamespaceFilter, sc.TimeoutMinutes)
 }
 
-func (s *Scheduler) run(ctx context.Context, scheduleID uint, scheduleType, mode, namespaceFilter string) (uint, error) {
+func (s *Scheduler) run(ctx context.Context, scheduleID uint, scheduleType, mode, namespaceFilter string, timeoutMinutes int) (uint, error) {
 	exec := &store.Execution{
 		ScheduleID: scheduleID,
 		StartedAt:  time.Now(),
@@ -197,8 +197,13 @@ func (s *Scheduler) run(ctx context.Context, scheduleID uint, scheduleType, mode
 	slog.Info("scheduler: starting execution", "execID", execID, "type", scheduleType, "mode", mode)
 
 	go func() {
-		// Cap individual execution runs at 2 hours to prevent hung goroutines.
-		runCtx, cancel := context.WithTimeout(ctx, 2*time.Hour)
+		// Cap individual execution runs to prevent hung goroutines.
+		// Use the per-schedule timeout; fall back to 2 hours if unset.
+		timeout := time.Duration(timeoutMinutes) * time.Minute
+		if timeout <= 0 {
+			timeout = 2 * time.Hour
+		}
+		runCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
 		logCh := make(chan scaler.LogLine, 512)
