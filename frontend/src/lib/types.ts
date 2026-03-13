@@ -60,6 +60,7 @@ export interface Workload {
   kind: 'Deployment' | 'StatefulSet'
   currentReplicas: number
   savedReplicas: number | null
+  readyReplicas: number
   status: 'running' | 'sleeping' | 'partial'
 }
 
@@ -70,6 +71,12 @@ export interface Node {
   podCount: number
   status: 'active' | 'protected' | 'would-drain'
   protectionReason: string | null
+  cpuAllocatable: number
+  cpuRequested: number
+  memAllocatable: number
+  memRequested: number
+  createdAt: string
+  cordoned: boolean
 }
 
 export interface ExecutionPage {
