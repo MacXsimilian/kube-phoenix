@@ -86,7 +86,6 @@ type Scheduler struct {
 	notifySvc *NotificationService
 
 	notifyCh chan struct{}
-	mu       sync.Mutex
 
 	// nextEvents cache — updated after each compute, used by API handlers
 	nextEventsCache []Event
@@ -663,11 +662,6 @@ func isAwakeNow(policy store.SleepPolicy, now time.Time) bool {
 			// OR (on the sleep day: nowMins is between wakeMins from midnight to sleepMins)
 			// Simplified: awake if on one of the window days, now is between wake_at..midnight OR midnight..sleep_at
 			if dayInSet(dow, days) {
-				if nowMins >= wakeMins && nowMins < sleepMins {
-					// After wake but before sleep on the same day
-					// This is actually an error for overnight — on sleep day, wakeMins < sleepMins doesn't hold
-					// For overnight: same-day check: after midnight until wake_at (post-midnight)
-				}
 				// On the wake-day (day after sleep day): awake from 0 to wakeMins
 				prevDayAbbr := prevDay(dow)
 				if dayInSet(prevDayAbbr, days) && nowMins < wakeMins {
