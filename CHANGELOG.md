@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.8...v0.1.9) (2026-03-13)
+
+
+### Features
+
+* **frontend:** UX improvements and README overhaul ([502268f](https://github.com/MacXsimilian/kube-phoenix/commit/502268f33476a9ae3720633ed92cec75d7748418))
+
 ## [0.1.8](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.7...v0.1.8) (2026-03-12)
 
 
