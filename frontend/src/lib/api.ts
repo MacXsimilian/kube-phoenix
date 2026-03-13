@@ -232,6 +232,9 @@ export const notificationsApi = {
 export const adminApi = {
   resetDB: (): Promise<void> =>
     req<void>('/api/admin/reset-db', { method: 'POST' }),
+
+  getVersion: (): Promise<{ version: string }> =>
+    req<{ version: string }>('/api/version'),
 }
 
 // ── WebSocket URL helper ──────────────────────────────────────────────────────

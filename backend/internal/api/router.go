@@ -19,10 +19,11 @@ type Handler struct {
 	store     *store.Store
 	k8s       *k8s.Client
 	scheduler *scheduler.Scheduler
+	version   string
 }
 
-func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Scheduler) *chi.Mux {
-	h := &Handler{store: st, k8s: k8sClient, scheduler: sched}
+func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Scheduler, version string) *chi.Mux {
+	h := &Handler{store: st, k8s: k8sClient, scheduler: sched, version: version}
 
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.RequestID) // injects X-Request-Id header; correlates log lines
@@ -35,6 +36,9 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 			next.ServeHTTP(w, r)
 		})
 	})
+
+	// Version endpoint — no auth
+	r.Get("/api/version", h.getVersion)
 
 	// Health endpoint — no auth, used by K8s liveness/readiness probes
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {

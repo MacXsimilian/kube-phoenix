@@ -21,7 +21,7 @@ import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined'
 import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNoneOutlined'
 import CalendarTodayOutlinedIcon from '@mui/icons-material/CalendarTodayOutlined'
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined'
-import { notificationsApi } from '@/lib/api'
+import { notificationsApi, adminApi } from '@/lib/api'
 import NotificationDrawer from '@/components/notifications/NotificationDrawer'
 
 const NAV = [
@@ -50,7 +50,14 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
     refetchInterval: 30_000,
   })
 
+  const { data: versionData } = useQuery({
+    queryKey: ['version'],
+    queryFn: adminApi.getVersion,
+    staleTime: Infinity,
+  })
+
   const unreadCount = notifData?.unreadCount ?? 0
+  const appVersion = versionData?.version ?? 'dev'
 
   const content = (
     <>
@@ -123,6 +130,13 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
         </Tooltip>
         <Typography variant="caption" color="text.secondary">
           Notifications
+        </Typography>
+      </Box>
+
+      {/* Version */}
+      <Box sx={{ px: 2, pb: 1.5, pt: 0.5 }}>
+        <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11 }}>
+          v{appVersion}
         </Typography>
       </Box>
 

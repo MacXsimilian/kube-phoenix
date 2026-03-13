@@ -1,5 +1,6 @@
 IMAGE      ?= ghcr.io/macxsimilian/kube-phoenix
 TAG        ?= $(shell git rev-parse --short HEAD)
+APP_VERSION ?= $(shell grep '^appVersion:' helm/kube-phoenix/Chart.yaml | awk '{print $$2}')
 HELM_CHART ?= helm/kube-phoenix
 HELM_RELEASE ?= kube-phoenix
 HELM_NAMESPACE ?= kube-phoenix
@@ -29,14 +30,16 @@ frontend:
 	cp -r frontend/out backend/web/static
 
 backend: frontend
-	cd backend && go mod tidy && go build -o bin/kube-phoenix ./cmd/server/...
+	cd backend && go mod tidy && go build -ldflags "-X main.version=$(APP_VERSION)" -o bin/kube-phoenix ./cmd/server/...
 
 build: backend
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 
 docker-build: frontend
-	docker build -t $(IMAGE):$(TAG) -t $(IMAGE):latest .
+	docker build \
+	  --build-arg APP_VERSION=$(APP_VERSION) \
+	  -t $(IMAGE):$(TAG) -t $(IMAGE):latest .
 
 # ── Helm ──────────────────────────────────────────────────────────────────────
 

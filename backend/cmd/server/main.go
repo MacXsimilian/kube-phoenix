@@ -17,6 +17,11 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
+// version is set at build time via:
+//
+//	go build -ldflags "-X main.version=x.y.z"
+var version = "dev"
+
 func main() {
 	// Structured JSON logging — compatible with Kubernetes log aggregators.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
@@ -61,7 +66,7 @@ func main() {
 	}
 
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(st, k8s, sched)
+	router := api.NewRouter(st, k8s, sched, version)
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
 		Handler:      router,

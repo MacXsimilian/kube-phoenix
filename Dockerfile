@@ -13,6 +13,7 @@ RUN npm run build
 # Always compile on the host platform using Go cross-compilation (no QEMU).
 FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
 ARG TARGETARCH
+ARG APP_VERSION=dev
 
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
@@ -23,7 +24,9 @@ COPY backend/ ./
 # Copy the built frontend into the embed directory
 COPY --from=frontend-builder /app/frontend/out ./web/static/
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -o /bin/kube-phoenix ./cmd/server/...
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
+    go build -ldflags "-X main.version=${APP_VERSION}" \
+    -o /bin/kube-phoenix ./cmd/server/...
 
 # ── Stage 3: Final minimal image ──────────────────────────────────────────────
 FROM gcr.io/distroless/static-debian12:nonroot
