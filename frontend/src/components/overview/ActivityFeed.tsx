@@ -9,7 +9,7 @@ import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
-import CircularProgress from '@mui/material/CircularProgress'
+import Skeleton from '@mui/material/Skeleton'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import { getExecutions } from '@/lib/api'
@@ -51,8 +51,10 @@ export default function ActivityFeed() {
         </Typography>
 
         {isLoading && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress size={24} />
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} variant="rounded" height={56} />
+            ))}
           </Box>
         )}
 
