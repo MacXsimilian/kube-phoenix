@@ -17,15 +17,43 @@ import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Typography from '@mui/material/Typography'
+import BedtimeIcon from '@mui/icons-material/Bedtime'
+import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import { createSchedule, updateSchedule } from '@/lib/api'
 import { cronToText } from '@/lib/cronToText'
 import type { Schedule, ScheduleInput } from '@/lib/types'
 
 const TIMEZONES = [
-  'UTC', 'Europe/Budapest', 'Europe/London', 'Europe/Berlin', 'Europe/Paris',
-  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-  'Asia/Tokyo', 'Asia/Singapore', 'Asia/Shanghai', 'Australia/Sydney',
+  'UTC',
+  // Europe
+  'Europe/London', 'Europe/Dublin', 'Europe/Lisbon',
+  'Europe/Paris', 'Europe/Berlin', 'Europe/Amsterdam', 'Europe/Brussels',
+  'Europe/Madrid', 'Europe/Rome', 'Europe/Zurich',
+  'Europe/Budapest', 'Europe/Warsaw', 'Europe/Prague', 'Europe/Vienna',
+  'Europe/Athens', 'Europe/Helsinki', 'Europe/Stockholm',
+  'Europe/Moscow', 'Europe/Istanbul',
+  // Americas
+  'America/New_York', 'America/Toronto',
+  'America/Chicago', 'America/Denver',
+  'America/Los_Angeles', 'America/Vancouver',
+  'America/Sao_Paulo', 'America/Argentina/Buenos_Aires',
+  'America/Mexico_City', 'America/Bogota',
+  // Asia
+  'Asia/Dubai', 'Asia/Karachi', 'Asia/Kolkata',
+  'Asia/Dhaka', 'Asia/Bangkok', 'Asia/Singapore', 'Asia/Shanghai',
+  'Asia/Tokyo', 'Asia/Seoul',
+  // Africa
+  'Africa/Cairo', 'Africa/Nairobi', 'Africa/Johannesburg', 'Africa/Lagos',
+  // Pacific & Oceania
+  'Australia/Sydney', 'Australia/Melbourne', 'Australia/Perth',
+  'Pacific/Auckland',
 ]
+
+function isValidCron(expr: string): boolean {
+  const parts = expr.trim().split(/\s+/)
+  if (parts.length !== 5) return false
+  return parts.every((p) => /^(\*|[0-9,\-\/]+)$/.test(p))
+}
 
 const DEFAULTS: ScheduleInput = {
   name: '',
@@ -112,8 +140,12 @@ export default function ScheduleDialog({
                 size="small"
                 fullWidth
               >
-                <ToggleButton value="scale_down">🌙 Sleep (Scale Down)</ToggleButton>
-                <ToggleButton value="scale_up">☀️ Wake (Scale Up)</ToggleButton>
+                <ToggleButton value="scale_down" sx={{ gap: 0.75 }}>
+                  <BedtimeIcon fontSize="small" /> Sleep (Scale Down)
+                </ToggleButton>
+                <ToggleButton value="scale_up" sx={{ gap: 0.75 }}>
+                  <WbSunnyIcon fontSize="small" /> Wake (Scale Up)
+                </ToggleButton>
               </ToggleButtonGroup>
             </Box>
           )}
@@ -135,7 +167,12 @@ export default function ScheduleDialog({
             onChange={(e) => set('cronExpr', e.target.value)}
             fullWidth
             size="small"
-            helperText={cronToText(form.cronExpr)}
+            error={form.cronExpr.length > 0 && !isValidCron(form.cronExpr)}
+            helperText={
+              form.cronExpr.length > 0 && !isValidCron(form.cronExpr)
+                ? 'Invalid cron expression — must be 5 fields (e.g. 0 22 * * 1-5)'
+                : cronToText(form.cronExpr)
+            }
             inputProps={{ style: { fontFamily: 'monospace' } }}
           />
 
@@ -210,7 +247,7 @@ export default function ScheduleDialog({
         <Button onClick={onClose} sx={{ color: 'text.secondary' }}>Cancel</Button>
         <Button
           variant="contained"
-          disabled={mutation.isPending || !form.name || !form.cronExpr}
+          disabled={mutation.isPending || !form.name || !form.cronExpr || !isValidCron(form.cronExpr)}
           startIcon={mutation.isPending ? <CircularProgress size={14} /> : undefined}
           onClick={() => mutation.mutate()}
         >

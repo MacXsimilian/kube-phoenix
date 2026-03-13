@@ -12,10 +12,16 @@ import TableRow from '@mui/material/TableRow'
 import TablePagination from '@mui/material/TablePagination'
 import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
+import Skeleton from '@mui/material/Skeleton'
 import CircularProgress from '@mui/material/CircularProgress'
 import Typography from '@mui/material/Typography'
+import Tooltip from '@mui/material/Tooltip'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
+import CloudOffIcon from '@mui/icons-material/CloudOff'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import { getExecutions } from '@/lib/api'
 import type { Execution } from '@/lib/types'
 
@@ -53,6 +59,39 @@ function StatusChip({ status }: { status: Execution['status'] }) {
   )
 }
 
+function SummaryCell({ exec }: { exec: Execution }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Tooltip title="Scaled">
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+          <ArrowDownwardIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+          <Typography variant="caption" color="text.secondary">{exec.countScaled}</Typography>
+        </Box>
+      </Tooltip>
+      <Tooltip title="Drained">
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+          <CloudOffIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+          <Typography variant="caption" color="text.secondary">{exec.countDrained}</Typography>
+        </Box>
+      </Tooltip>
+      <Tooltip title="Deleted">
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+          <DeleteOutlineIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+          <Typography variant="caption" color="text.secondary">{exec.countDeleted}</Typography>
+        </Box>
+      </Tooltip>
+      {exec.countErrors > 0 && (
+        <Tooltip title="Errors">
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+            <ErrorOutlineIcon sx={{ fontSize: 12, color: 'error.main' }} />
+            <Typography variant="caption" color="error.main">{exec.countErrors}</Typography>
+          </Box>
+        </Tooltip>
+      )}
+    </Box>
+  )
+}
+
 export default function ExecutionTable({
   onSelect,
   initialExecId,
@@ -82,8 +121,10 @@ export default function ExecutionTable({
   return (
     <Paper>
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
+        <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} variant="rounded" height={44} />
+          ))}
         </Box>
       ) : (
         <>
@@ -140,16 +181,7 @@ export default function ExecutionTable({
                       </TableCell>
                       <TableCell><StatusChip status={exec.status} /></TableCell>
                       <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{duration(exec)}</TableCell>
-                      <TableCell>
-                        <Typography variant="caption" color="text.secondary">
-                          {`↓${exec.countScaled} ⌀${exec.countDrained} 🗑${exec.countDeleted}`}
-                          {exec.countErrors > 0 && (
-                            <Box component="span" sx={{ color: 'error.main', ml: 0.5 }}>
-                              ✕{exec.countErrors}
-                            </Box>
-                          )}
-                        </Typography>
-                      </TableCell>
+                      <TableCell><SummaryCell exec={exec} /></TableCell>
                     </TableRow>
                   ))
                 )}
