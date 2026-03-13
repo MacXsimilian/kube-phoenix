@@ -1,14 +1,17 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
 import Divider from '@mui/material/Divider'
+import ButtonBase from '@mui/material/ButtonBase'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import { getSchedules } from '@/lib/api'
 import { cronToText } from '@/lib/cronToText'
 import type { Schedule } from '@/lib/types'
@@ -80,22 +83,46 @@ function ScheduleRow({ schedule }: { schedule: Schedule }) {
 }
 
 export default function NextRunCard() {
-  const { data: schedules = [] } = useQuery({ queryKey: ['schedules'], queryFn: getSchedules, refetchInterval: 60_000 })
+  const router = useRouter()
+  const { data: schedules = [] } = useQuery({ queryKey: ['schedules'], queryFn: getSchedules, refetchInterval: 30_000 })
 
-  const sleep = schedules.find((s) => s.type === 'scale_down')
-  const wake = schedules.find((s) => s.type === 'scale_up')
+  const sorted = [...schedules].sort((a, b) => {
+    if (!a.nextRun && !b.nextRun) return 0
+    if (!a.nextRun) return 1
+    if (!b.nextRun) return -1
+    return new Date(a.nextRun).getTime() - new Date(b.nextRun).getTime()
+  })
 
   return (
     <Card sx={{ height: '100%' }}>
       <CardContent sx={{ p: 3 }}>
-        <Typography variant="subtitle2" color="text.secondary" mb={2}>
-          SCHEDULES
-        </Typography>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {sleep && <ScheduleRow schedule={sleep} />}
-          <Divider />
-          {wake && <ScheduleRow schedule={wake} />}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            SCHEDULES
+          </Typography>
+          <ButtonBase
+            onClick={() => router.push('/schedules/')}
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary', borderRadius: 1, px: 0.5, '&:hover': { color: 'text.primary' } }}
+          >
+            <Typography variant="caption">View all</Typography>
+            <ArrowForwardIcon sx={{ fontSize: 13 }} />
+          </ButtonBase>
         </Box>
+
+        {sorted.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+            No schedules configured.
+          </Typography>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {sorted.map((sc, i) => (
+              <Box key={sc.id}>
+                {i > 0 && <Divider sx={{ mb: 2 }} />}
+                <ScheduleRow schedule={sc} />
+              </Box>
+            ))}
+          </Box>
+        )}
       </CardContent>
     </Card>
   )

@@ -10,8 +10,10 @@ import Chip from '@mui/material/Chip'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
 import Skeleton from '@mui/material/Skeleton'
+import ButtonBase from '@mui/material/ButtonBase'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import { getExecutions } from '@/lib/api'
 import type { Execution } from '@/lib/types'
 
@@ -46,9 +48,18 @@ export default function ActivityFeed() {
   return (
     <Card>
       <CardContent sx={{ p: 3 }}>
-        <Typography variant="subtitle2" color="text.secondary" mb={2}>
-          RECENT ACTIVITY
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            RECENT ACTIVITY
+          </Typography>
+          <ButtonBase
+            onClick={() => router.push('/history/')}
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary', borderRadius: 1, px: 0.5, '&:hover': { color: 'text.primary' } }}
+          >
+            <Typography variant="caption">View all</Typography>
+            <ArrowForwardIcon sx={{ fontSize: 13 }} />
+          </ButtonBase>
+        </Box>
 
         {isLoading && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -110,9 +121,9 @@ export default function ActivityFeed() {
                   />
                 </Box>
                 <Typography variant="caption" color="text.secondary">
-                  {`Scaled ${exec.countScaled} · Drained ${exec.countDrained} · Errors ${exec.countErrors}`}
-                  {' · '}
-                  {timeAgo(exec.startedAt)}
+                  {exec.status === 'running'
+                    ? `In progress… · ${timeAgo(exec.startedAt)}`
+                    : `Scaled ${exec.countScaled} · Drained ${exec.countDrained} · Errors ${exec.countErrors} · ${timeAgo(exec.startedAt)}`}
                 </Typography>
               </Box>
             </ListItemButton>
