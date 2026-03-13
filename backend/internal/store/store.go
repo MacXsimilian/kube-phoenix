@@ -35,9 +35,6 @@ func New(dsn string) (*Store, error) {
 	sqlDB.SetConnMaxLifetime(5 * time.Minute)
 
 	if err := db.AutoMigrate(
-		// v1 legacy tables
-		&Schedule{},
-		// v2 models
 		&GlobalGuardrails{},
 		&SleepPolicy{},
 		&PolicyWindow{},
@@ -56,20 +53,19 @@ func New(dsn string) (*Store, error) {
 
 func (s *Store) DB() *gorm.DB { return s.db }
 
-// ResetDB drops all application tables, re-runs AutoMigrate, seeds defaults,
-// and runs the v1→v2 migration. Intended for development and disaster recovery.
+// ResetDB drops all application tables, re-runs AutoMigrate, and seeds defaults.
+// Intended for development and disaster recovery.
 func (s *Store) ResetDB() error {
 	tables := []interface{}{
 		&LogLine{}, &WorkloadSnapshot{}, &Notification{},
 		&PolicyOverride{}, &PolicyGuardrails{}, &PolicyWindow{},
-		&Execution{}, &SleepPolicy{}, &GlobalGuardrails{}, &Schedule{},
+		&Execution{}, &SleepPolicy{}, &GlobalGuardrails{},
 	}
 	if err := s.db.Migrator().DropTable(tables...); err != nil {
 		return fmt.Errorf("reset: drop tables: %w", err)
 	}
 	// Re-create in dependency order (same as AutoMigrate)
 	if err := s.db.AutoMigrate(
-		&Schedule{},
 		&GlobalGuardrails{},
 		&SleepPolicy{},
 		&PolicyWindow{},
@@ -84,9 +80,6 @@ func (s *Store) ResetDB() error {
 	}
 	if err := s.SeedDefaults(); err != nil {
 		return fmt.Errorf("reset: seed: %w", err)
-	}
-	if err := s.MigrateSchedulesToPolicies(); err != nil {
-		return fmt.Errorf("reset: migrate schedules: %w", err)
 	}
 	slog.Info("store: database reset complete")
 	return nil

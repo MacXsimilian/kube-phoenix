@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -47,11 +46,10 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var result []WorkloadResponse
 
-	// Load workload snapshots from DB (FR-95, §11.5)
-	// This replaces annotation-based saved replicas for v2 workloads.
+	// Load workload snapshots from DB for saved replica counts.
 	snapMap, err := h.store.UnrestoredSnapshotMap()
 	if err != nil {
-		slog.Warn("getWorkloads: failed to load snapshots — saved replicas will be annotation-based", "err", err)
+		slog.Warn("getWorkloads: failed to load snapshots", "err", err)
 		snapMap = map[string]*store.WorkloadSnapshot{}
 	}
 
@@ -81,17 +79,9 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 		var saved *int32
 		var governingPolicy *string
 
-		// Prefer DB snapshot over annotation (v2 first, v1 fallback)
 		if snap, ok := snapMap[key]; ok {
 			n32 := int32(snap.ReplicasBefore)
 			saved = &n32
-		} else if v, ok := d.Annotations["previous-replicas"]; ok {
-			if n, err := strconv.ParseInt(v, 10, 32); err == nil {
-				n32 := int32(n)
-				saved = &n32
-			} else {
-				slog.Warn("malformed previous-replicas annotation", "workload", key, "value", v)
-			}
 		}
 
 		// Governing policy from DB JOIN snapshot map
@@ -136,13 +126,6 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 		if snap, ok := snapMap[key]; ok {
 			n32 := int32(snap.ReplicasBefore)
 			saved = &n32
-		} else if v, ok := ss.Annotations["previous-replicas"]; ok {
-			if n, err := strconv.ParseInt(v, 10, 32); err == nil {
-				n32 := int32(n)
-				saved = &n32
-			} else {
-				slog.Warn("malformed previous-replicas annotation", "workload", key, "value", v)
-			}
 		}
 
 		if name, ok := policyNameMap[key]; ok && name != "" {

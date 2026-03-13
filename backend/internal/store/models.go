@@ -4,27 +4,6 @@ import (
 	"time"
 )
 
-// ─── Legacy v1 models (kept for backward compatibility) ───────────────────────
-
-type Schedule struct {
-	ID              uint   `gorm:"primaryKey" json:"id"`
-	Name            string `json:"name"`
-	Type            string `json:"type"` // "scale_down" | "scale_up"
-	CronExpr        string `json:"cronExpr"`
-	Timezone        string `json:"timezone"`
-	Mode            string `json:"mode"` // "plan" | "apply"
-	Enabled         bool   `json:"enabled"`
-	NamespaceFilter string `json:"namespaceFilter"` // comma-separated; empty = all namespaces
-	TimeoutMinutes  int    `json:"timeoutMinutes"`  // 0 = use server default (120 min)
-
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
-}
-
-// Guardrails is the legacy name; GlobalGuardrails is the canonical v2 name.
-// Both map to the same table (global_guardrails) via GORM tag.
-type Guardrails = GlobalGuardrails
-
 // ─── Global guardrails (singleton, id=1) ─────────────────────────────────────
 
 type GlobalGuardrails struct {
@@ -130,9 +109,7 @@ type WorkloadSnapshot struct {
 
 type Execution struct {
 	ID            uint       `gorm:"primaryKey" json:"id"`
-	ScheduleID    *uint      `gorm:"index" json:"scheduleId"` // kept for v1 backward compat
-	Schedule      *Schedule  `gorm:"foreignKey:ScheduleID" json:"schedule,omitempty"`
-	PolicyID      *uint      `gorm:"index" json:"policyId"`   // v2 policy reference
+	PolicyID      *uint      `gorm:"index" json:"policyId"`
 	Policy        *SleepPolicy `gorm:"foreignKey:PolicyID" json:"policy,omitempty"`
 	ExecutionType string     `gorm:"not null;default:'scheduled';index" json:"executionType"` // "scheduled" | "manual" | "drift_correction" | "skipped"
 	Action        string     `gorm:"not null;default:''" json:"action"`                       // "scale_down" | "scale_up" | "" (skipped/unknown)

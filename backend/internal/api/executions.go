@@ -41,13 +41,6 @@ func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	f := store.ExecutionFilter{}
 
-	if sid := q.Get("schedule_id"); sid != "" {
-		id, err := strconv.ParseUint(sid, 10, 64)
-		if err == nil {
-			uid := uint(id)
-			f.ScheduleID = &uid
-		}
-	}
 	if pid := q.Get("policy_id"); pid != "" {
 		id, err := strconv.ParseUint(pid, 10, 64)
 		if err == nil {

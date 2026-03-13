@@ -12,9 +12,6 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
-// annotationKey is kept for v1 migration fallback only.
-const annotationKey = "previous-replicas"
-
 // LogLine is emitted during a run and sent to the log channel.
 type LogLine struct {
 	Level   string    // "info" | "ok" | "plan" | "error" | "warn"

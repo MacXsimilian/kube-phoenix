@@ -1,6 +1,4 @@
 import type {
-  Schedule,
-  ScheduleInput,
   Guardrails,
   Execution,
   LogLine,
@@ -35,42 +33,6 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
-// ── Schedules ─────────────────────────────────────────────────────────────────
-
-export const getSchedules = (): Promise<Schedule[]> =>
-  req<Schedule[]>('/api/schedules')
-
-export const createSchedule = (data: ScheduleInput): Promise<Schedule> =>
-  req<Schedule>('/api/schedules', {
-    method: 'POST',
-    body: JSON.stringify({
-      name: data.name,
-      type: data.type,
-      cron_expr: data.cronExpr,
-      timezone: data.timezone,
-      mode: data.mode,
-      enabled: data.enabled,
-      namespace_filter: data.namespaceFilter,
-    }),
-  })
-
-export const updateSchedule = (id: number, data: Partial<ScheduleInput>): Promise<Schedule> => {
-  const payload: Record<string, unknown> = {}
-  if (data.name !== undefined)            payload.name = data.name
-  if (data.cronExpr !== undefined)        payload.cron_expr = data.cronExpr
-  if (data.timezone !== undefined)        payload.timezone = data.timezone
-  if (data.mode !== undefined)            payload.mode = data.mode
-  if (data.enabled !== undefined)         payload.enabled = data.enabled
-  if (data.namespaceFilter !== undefined) payload.namespace_filter = data.namespaceFilter
-  return req<Schedule>(`/api/schedules/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(payload),
-  })
-}
-
-export const deleteSchedule = (id: number): Promise<void> =>
-  req<void>(`/api/schedules/${id}`, { method: 'DELETE' })
-
 // ── Guardrails ────────────────────────────────────────────────────────────────
 
 export const getGuardrails = (): Promise<Guardrails> =>
@@ -90,7 +52,6 @@ export const updateGuardrails = (data: Partial<Guardrails>): Promise<Guardrails>
 // ── Executions ────────────────────────────────────────────────────────────────
 
 export const getExecutions = (params?: {
-  scheduleId?: number
   policyId?: number
   status?: string
   executionType?: string
@@ -98,7 +59,6 @@ export const getExecutions = (params?: {
   pageSize?: number
 }): Promise<ExecutionPage> => {
   const q = new URLSearchParams()
-  if (params?.scheduleId) q.set('schedule_id', String(params.scheduleId))
   if (params?.policyId) q.set('policy_id', String(params.policyId))
   if (params?.status) q.set('status', params.status)
   if (params?.executionType) q.set('execution_type', params.executionType)
@@ -123,17 +83,6 @@ export const getNodes = (): Promise<Node[]> =>
 
 export const getNodePods = (nodeName: string): Promise<NodePod[]> =>
   req<NodePod[]>(`/api/cluster/nodes/${encodeURIComponent(nodeName)}/pods`)
-
-// ── Trigger ───────────────────────────────────────────────────────────────────
-
-export const triggerRun = (
-  scheduleId: number,
-  mode: 'plan' | 'apply'
-): Promise<{ executionId: number }> =>
-  req<{ executionId: number }>('/api/trigger', {
-    method: 'POST',
-    body: JSON.stringify({ scheduleId, mode }),
-  })
 
 // ── Policies ──────────────────────────────────────────────────────────────────
 

@@ -44,9 +44,6 @@ func main() {
 		slog.Error("seed failed", "err", err)
 		os.Exit(1)
 	}
-	if err := st.MigrateSchedulesToPolicies(); err != nil {
-		slog.Warn("v1 schedule migration failed — continuing without migration", "err", err)
-	}
 
 	// ── Kubernetes client ─────────────────────────────────────────────────
 	k8s, err := k8sclient.New()

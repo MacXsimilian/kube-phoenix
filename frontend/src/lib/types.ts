@@ -1,26 +1,3 @@
-export interface Schedule {
-  id: number
-  name: string
-  type: 'scale_down' | 'scale_up'
-  cronExpr: string
-  timezone: string
-  mode: 'plan' | 'apply'
-  enabled: boolean
-  namespaceFilter: string  // comma-separated; empty = all namespaces
-  updatedAt: string
-  nextRun?: string  // ISO timestamp from cron engine; absent when schedule is disabled
-}
-
-export interface ScheduleInput {
-  name: string
-  type: 'scale_down' | 'scale_up'
-  cronExpr: string
-  timezone: string
-  mode: 'plan' | 'apply'
-  enabled: boolean
-  namespaceFilter: string
-}
-
 export interface Guardrails {
   id: number
   skipNamespaces: string
@@ -32,9 +9,7 @@ export interface Guardrails {
 
 export interface Execution {
   id: number
-  scheduleId?: number | null
   policyId?: number | null
-  schedule?: Schedule | null
   policy?: SleepPolicy | null
   action?: 'scale_down' | 'scale_up' | null  // sleep or wake edge
   startedAt: string
