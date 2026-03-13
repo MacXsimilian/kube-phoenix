@@ -171,13 +171,13 @@ export default function LogViewer({
             <Box sx={{ p: 2.5, display: 'flex', alignItems: 'flex-start', gap: 1 }}>
               <Box sx={{ flex: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  {execution.schedule?.type === 'scale_down' ? (
+                  {execution.action === 'scale_down' ? (
                     <BedtimeIcon sx={{ color: 'primary.main', fontSize: 18 }} />
                   ) : (
                     <WbSunnyIcon sx={{ color: 'warning.main', fontSize: 18 }} />
                   )}
                   <Typography variant="subtitle1" fontWeight={700}>
-                    {execution.schedule?.name ?? 'Execution'} #{execution.id}
+                    {execution.policy?.name ?? 'Execution'} #{execution.id}
                   </Typography>
                   {isRunning && <CircularProgress size={14} />}
                 </Box>
