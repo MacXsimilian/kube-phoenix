@@ -1676,14 +1676,40 @@ Controlled by `values.targetGroupBinding.enabled`. Creates an `elbv2.k8s.aws/v1b
 
 ## 11. CI/CD Pipeline
 
+### Branching strategy
+
+kube-phoenix uses **GitHub Flow**: a single protected `master` branch and short-lived feature branches merged via pull request.
+
+```
+master  (protected — always deployable)
+  ├── feat/emergency-wake    → PR → master
+  ├── fix/something          → PR → master
+  └── ci/improvement         → PR → master
+```
+
+**Rules:**
+- `master` is always in a releasable state
+- All non-trivial changes go through a PR — CI must be green before merge
+- Direct pushes to `master` are allowed only for admins on small one-liner fixes
+- Tags and GitHub Releases are created exclusively by release-please — never manually
+
+**Conventional commit → version bump:**
+
+| Prefix | Bump |
+|---|---|
+| `feat:` | minor |
+| `fix:`, `perf:` | patch |
+| `feat!:` / `BREAKING CHANGE:` | major |
+| `docs:`, `ci:`, `chore:`, `refactor:` | none |
+
 ### Design principles
 
 Two workflows with distinct responsibilities:
 
 | Workflow | Trigger | Responsibility |
 |---|---|---|
-| `ci.yml` | every push + PR | Validate — fast feedback, no artifacts produced |
-| `release-please.yml` | push to `master` / `release/v0.1.x` | Ship — Docker image, Helm chart, GitHub Release |
+| `ci.yml` | every push to `master` + PR | Validate — fast feedback, no artifacts produced |
+| `release-please.yml` | push to `master` | Ship — Docker image, Helm chart, GitHub Release |
 
 Docker builds only happen on release. CI never pushes images. This keeps the registry clean and prevents every commit from producing a deployable artifact.
 
@@ -1691,7 +1717,7 @@ Docker builds only happen on release. CI never pushes images. This keeps the reg
 
 ### ci.yml — Continuous Integration
 
-Triggered on: `push` to `master` and `release/v0.1.x`; `pull_request` targeting those branches. Path-filtered to `frontend/**`, `backend/**`, `Dockerfile`, `helm/**`, `.github/workflows/**`. Concurrency group cancels in-progress runs on the same ref.
+Triggered on: `push` to `master`; `pull_request` targeting `master`. Path-filtered to `frontend/**`, `backend/**`, `Dockerfile`, `helm/**`, `.github/workflows/**`. Concurrency group cancels in-progress runs on the same ref.
 
 **Job: frontend**
 ```
@@ -1740,7 +1766,7 @@ On direct pushes, scans `HEAD~1..HEAD`. On PRs, scans the full PR diff. The `--o
 
 ### release-please.yml — Release Automation
 
-Triggered on: `push` to `master` and `release/v0.1.x`.
+Triggered on: `push` to `master`.
 
 **How release-please works:**
 
