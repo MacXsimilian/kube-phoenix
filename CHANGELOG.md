@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.32](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.31...v0.1.32) (2026-03-14)
+
+
+### Features
+
+* branded login screen, nav reorder, inline log drawer, and docs ([9e92e30](https://github.com/MacXsimilian/kube-phoenix/commit/9e92e304d88f2737c0ef5a99452b58290906928d))
+
+
+### Bug Fixes
+
+* wrap ActivityFeed siblings in Fragment to resolve JSX syntax error ([59edea8](https://github.com/MacXsimilian/kube-phoenix/commit/59edea8d48572a04c0e9dbc06f71211170d5b05f))
+
 ## [0.1.31](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.30...v0.1.31) (2026-03-14)
 
 
