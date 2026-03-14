@@ -518,13 +518,13 @@ export default function LogViewer({
                 flex: 1,
                 display: 'flex',
                 flexDirection: 'column',
+                overflow: 'hidden',
                 bgcolor: 'background.paper',
                 boxShadow: 'none',
                 '&:before': { display: 'none' },
                 '& .MuiCollapse-root': { flex: 1, display: 'flex', flexDirection: 'column' },
                 '& .MuiCollapse-wrapper': { flex: 1, display: 'flex', flexDirection: 'column' },
                 '& .MuiCollapse-wrapperInner': { flex: 1, display: 'flex', flexDirection: 'column' },
-                '& .MuiAccordionDetails-root': { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
               }}
             >
               <AccordionSummary
@@ -534,15 +534,8 @@ export default function LogViewer({
                 <Typography variant="caption" fontWeight={700} letterSpacing={0.8} sx={{ color: 'text.secondary', textTransform: 'uppercase' }}>
                   Logs
                 </Typography>
-                {lines.length > 0 && (
-                  <Chip
-                    label={lines.length}
-                    size="small"
-                    sx={{ height: 16, fontSize: 10, bgcolor: 'rgba(124,58,237,0.2)', color: 'primary.main', '& .MuiChip-label': { px: 0.75 } }}
-                  />
-                )}
               </AccordionSummary>
-              <AccordionDetails sx={{ p: 0 }}>
+              <AccordionDetails sx={{ p: 0, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {wsError && (
                   <Alert severity="error" sx={{ borderRadius: 0 }}>
                     WebSocket connection lost. Logs may be incomplete.
