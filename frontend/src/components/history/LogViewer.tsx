@@ -85,7 +85,7 @@ export default function LogViewer({
 
   const isRunning = execution?.status === 'running'
 
-  const { data: historicLines = [] } = useQuery({
+  const { data: historicLines = [], isError: logsError } = useQuery({
     queryKey: ['logs', execution?.id],
     queryFn: () => getExecutionLogs(execution!.id),
     enabled: !!execution && !isRunning,
@@ -130,7 +130,7 @@ export default function LogViewer({
     const text = lines
       .map((l) => `${new Date(l.timestamp).toLocaleTimeString()}  ${l.message}`)
       .join('\n')
-    navigator.clipboard.writeText(text).then(() => setCopied(true))
+    navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => {})
   }
 
   return (
@@ -236,8 +236,13 @@ export default function LogViewer({
                 WebSocket connection lost. Logs may be incomplete.
               </Alert>
             )}
+            {logsError && !isRunning && (
+              <Alert severity="warning" sx={{ borderRadius: 0 }}>
+                Could not load logs — they may have been pruned.
+              </Alert>
+            )}
             <Box sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: '#0A0A0F' }}>
-              {lines.length === 0 && !isRunning && (
+              {lines.length === 0 && !isRunning && !logsError && (
                 <Typography variant="body2" color="text.secondary">
                   No log lines found.
                 </Typography>

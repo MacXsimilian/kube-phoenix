@@ -11,6 +11,7 @@ import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
 import Skeleton from '@mui/material/Skeleton'
 import ButtonBase from '@mui/material/ButtonBase'
+import Alert from '@mui/material/Alert'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
@@ -39,7 +40,7 @@ function StatusChip({ status }: { status: Execution['status'] }) {
 
 export default function ActivityFeed() {
   const router = useRouter()
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['executions', 'feed'],
     queryFn: () => getExecutions({ pageSize: 10 }),
     refetchInterval: 15_000,
@@ -60,6 +61,12 @@ export default function ActivityFeed() {
             <ArrowForwardIcon sx={{ fontSize: 13 }} />
           </ButtonBase>
         </Box>
+
+        {isError && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Could not load recent activity — retrying in the background.
+          </Alert>
+        )}
 
         {isLoading && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>

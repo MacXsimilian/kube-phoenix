@@ -20,6 +20,7 @@ import Alert from '@mui/material/Alert'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import Brightness4Icon from '@mui/icons-material/Brightness4'
+import Skeleton from '@mui/material/Skeleton'
 import { getWorkloads, getNodes, getSchedules, triggerRun } from '@/lib/api'
 import { useRouter } from 'next/navigation'
 
@@ -29,9 +30,12 @@ export default function ClusterStatusCard() {
   const qc = useQueryClient()
   const router = useRouter()
 
-  const { data: workloads = [] } = useQuery({ queryKey: ['workloads'], queryFn: getWorkloads })
-  const { data: nodes = [] } = useQuery({ queryKey: ['nodes'], queryFn: getNodes })
-  const { data: schedules = [] } = useQuery({ queryKey: ['schedules'], queryFn: getSchedules })
+  const { data: workloads = [], isLoading: loadingWorkloads, isError: errorWorkloads } = useQuery({ queryKey: ['workloads'], queryFn: getWorkloads })
+  const { data: nodes = [], isLoading: loadingNodes, isError: errorNodes } = useQuery({ queryKey: ['nodes'], queryFn: getNodes })
+  const { data: schedules = [], isLoading: loadingSchedules, isError: errorSchedules } = useQuery({ queryKey: ['schedules'], queryFn: getSchedules })
+
+  const isLoading = loadingWorkloads || loadingNodes || loadingSchedules
+  const isError = errorWorkloads || errorNodes || errorSchedules
 
   const [dialog, setDialog] = useState<{ open: boolean; type: TriggerType } | null>(null)
   const [mode, setMode] = useState<'plan' | 'apply'>('plan')
@@ -73,6 +77,25 @@ export default function ClusterStatusCard() {
             CLUSTER STATUS
           </Typography>
 
+          {isError && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Could not load cluster data — showing last known state.
+            </Alert>
+          )}
+
+          {isLoading ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 3 }}>
+              <Skeleton variant="rounded" height={28} width={180} />
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Skeleton variant="rounded" height={24} width={110} />
+                <Skeleton variant="rounded" height={24} width={130} />
+                <Skeleton variant="rounded" height={24} width={120} />
+              </Box>
+            </Box>
+          ) : null}
+
+          {!isLoading && (
+          <>
           {/* Status indicator */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
             <Box
@@ -132,6 +155,8 @@ export default function ClusterStatusCard() {
               Run Wake Now
             </Button>
           </Box>
+          </>
+          )}
         </CardContent>
       </Card>
 
