@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Drawer from '@mui/material/Drawer'
 import Box from '@mui/material/Box'
@@ -11,6 +12,8 @@ import List from '@mui/material/List'
 import ListItem from '@mui/material/ListItem'
 import Tooltip from '@mui/material/Tooltip'
 import CircularProgress from '@mui/material/CircularProgress'
+import Snackbar from '@mui/material/Snackbar'
+import Alert from '@mui/material/Alert'
 import CloseIcon from '@mui/icons-material/Close'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined'
@@ -135,6 +138,7 @@ export default function NotificationDrawer({
   onClose: () => void
 }) {
   const qc = useQueryClient()
+  const [mutError, setMutError] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['notifications'],
@@ -142,19 +146,25 @@ export default function NotificationDrawer({
     refetchInterval: 30_000,
   })
 
+  const onMutError = (err: unknown) =>
+    setMutError(err instanceof Error ? err.message : 'Action failed')
+
   const markRead = useMutation({
     mutationFn: (id: number) => notificationsApi.markRead(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+    onError: onMutError,
   })
 
   const dismiss = useMutation({
     mutationFn: (id: number) => notificationsApi.dismiss(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+    onError: onMutError,
   })
 
   const dismissAll = useMutation({
     mutationFn: notificationsApi.dismissAll,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+    onError: onMutError,
   })
 
   const notifications = data?.notifications ?? []
@@ -167,6 +177,7 @@ export default function NotificationDrawer({
   })
 
   return (
+    <>
     <Drawer
       anchor="right"
       open={open}
@@ -238,5 +249,16 @@ export default function NotificationDrawer({
         )}
       </Box>
     </Drawer>
+    <Snackbar
+      open={mutError !== null}
+      autoHideDuration={5000}
+      onClose={() => setMutError(null)}
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+    >
+      <Alert severity="error" onClose={() => setMutError(null)} sx={{ width: '100%' }}>
+        {mutError}
+      </Alert>
+    </Snackbar>
+    </>
   )
 }

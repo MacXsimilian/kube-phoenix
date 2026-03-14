@@ -125,16 +125,19 @@ function SkipPill({
   occurrenceDate,
   edge,
   label,
+  onError,
 }: {
   policyId: number
   occurrenceDate: string
   edge: string
   label: string
+  onError: (msg: string) => void
 }) {
   const qc = useQueryClient()
   const remove = useMutation({
     mutationFn: () => policiesApi.deleteOverride(policyId, occurrenceDate, edge),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['policies'] }),
+    onError: (err: unknown) => onError(err instanceof Error ? err.message : 'Failed to remove skip'),
   })
 
   return (
@@ -174,6 +177,7 @@ export default function PolicyCard({
   const [deleteDialog, setDeleteDialog] = useState(false)
   const [modeDialog, setModeDialog] = useState(false)
   const [undoOpen, setUndoOpen] = useState(false)
+  const [mutationError, setMutationError] = useState<string | null>(null)
   const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -182,9 +186,13 @@ export default function PolicyCard({
     }
   }, [])
 
+  const onMutationError = (err: unknown) =>
+    setMutationError(err instanceof Error ? err.message : 'Operation failed')
+
   const toggleEnabled = useMutation({
     mutationFn: () => policiesApi.update(policy.id, { enabled: !policy.enabled }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['policies'] }),
+    onError: onMutationError,
   })
 
   const toggleMode = useMutation({
@@ -193,11 +201,13 @@ export default function PolicyCard({
       qc.invalidateQueries({ queryKey: ['policies'] })
       setModeDialog(false)
     },
+    onError: onMutationError,
   })
 
   const deleteMutation = useMutation({
     mutationFn: () => policiesApi.delete(policy.id),
     onSuccess: () => onDelete(),
+    onError: onMutationError,
   })
 
   function handleDeleteConfirm() {
@@ -360,6 +370,7 @@ export default function PolicyCard({
                       occurrenceDate={sleepOverride.occurrenceDate}
                       edge={sleepOverride.edge}
                       label="SKIPPED"
+                      onError={setMutationError}
                     />
                   )}
                 </Box>
@@ -378,6 +389,7 @@ export default function PolicyCard({
                       occurrenceDate={wakeOverride.occurrenceDate}
                       edge={wakeOverride.edge}
                       label="SKIPPED"
+                      onError={setMutationError}
                     />
                   )}
                 </Box>
@@ -546,6 +558,18 @@ export default function PolicyCard({
           sx={{ width: '100%' }}
         >
           &quot;{policy.name}&quot; will be deleted in 5s
+        </Alert>
+      </Snackbar>
+
+      {/* Mutation error snackbar */}
+      <Snackbar
+        open={mutationError !== null}
+        autoHideDuration={6000}
+        onClose={() => setMutationError(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="error" onClose={() => setMutationError(null)} sx={{ width: '100%' }}>
+          {mutationError}
         </Alert>
       </Snackbar>
     </>
