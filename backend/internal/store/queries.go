@@ -185,24 +185,18 @@ func (s *Store) Tx(fn func(*gorm.DB) error) error {
 
 // ─── Danger zone ──────────────────────────────────────────────────────────────
 
-// ResetAndReseed drops all tables, recreates the schema, and seeds defaults.
-// This is a destructive, irreversible operation — callers must gate it behind
-// an explicit user confirmation before invoking.
-func (s *Store) ResetAndReseed() error {
-	m := s.db.Migrator()
-
-	// Drop in reverse dependency order to avoid FK violations
-	if err := m.DropTable(&LogLine{}, &Execution{}, &Guardrails{}, &Schedule{}); err != nil {
-		return fmt.Errorf("reset: drop tables: %w", err)
+// DropAllTables drops all application tables in a single CASCADE statement.
+func (s *Store) DropAllTables() error {
+	if err := s.db.Exec("DROP TABLE IF EXISTS log_lines, executions, guardrails, schedules CASCADE").Error; err != nil {
+		return fmt.Errorf("drop tables: %w", err)
 	}
+	return nil
+}
 
+// MigrateSchema recreates the schema from the current models.
+func (s *Store) MigrateSchema() error {
 	if err := s.db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{}); err != nil {
-		return fmt.Errorf("reset: migrate: %w", err)
+		return fmt.Errorf("migrate: %w", err)
 	}
-
-	if err := s.SeedDefaults(); err != nil {
-		return fmt.Errorf("reset: seed: %w", err)
-	}
-
 	return nil
 }

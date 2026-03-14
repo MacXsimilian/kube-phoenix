@@ -42,7 +42,7 @@ export default function ActivityFeed() {
   const router = useRouter()
   const { data, isLoading, isError } = useQuery({
     queryKey: ['executions', 'feed'],
-    queryFn: () => getExecutions({ pageSize: 10 }),
+    queryFn: () => getExecutions({ pageSize: 5 }),
     refetchInterval: 15_000,
   })
 

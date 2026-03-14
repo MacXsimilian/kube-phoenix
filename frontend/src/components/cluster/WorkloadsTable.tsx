@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'next/navigation'
 import Paper from '@mui/material/Paper'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
@@ -32,6 +33,7 @@ const STATUS_COLORS: Record<Workload['status'], { bgcolor: string; color: string
 }
 
 export default function WorkloadsTable() {
+  const searchParams = useSearchParams()
   const { data: workloads = [], isLoading, isError, error, dataUpdatedAt, refetch } = useQuery({
     queryKey: ['workloads'],
     queryFn: getWorkloads,
@@ -42,7 +44,9 @@ export default function WorkloadsTable() {
 
   const [search, setSearch] = useState('')
   const [nsFilter, setNsFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const validStatuses = ['running', 'sleeping', 'partial']
+  const initialStatus = searchParams.get('status') ?? 'all'
+  const [statusFilter, setStatusFilter] = useState(validStatuses.includes(initialStatus) ? initialStatus : 'all')
   const [sortCol, setSortCol] = useState<'namespace' | 'name' | 'kind' | 'replicas' | 'status' | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [affectedOnly, setAffectedOnly] = useState(false)

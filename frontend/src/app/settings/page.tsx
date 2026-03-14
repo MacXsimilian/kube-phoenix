@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Card from '@mui/material/Card'
@@ -16,21 +16,103 @@ import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded'
 import DeleteForeverOutlinedIcon from '@mui/icons-material/DeleteForeverOutlined'
-import { resetDatabase } from '@/lib/api'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import { resetDatabaseStream, type ResetEvent } from '@/lib/api'
 
 const CONFIRM_PHRASE = 'RESET DATABASE'
 
+function ResetProgressDialog({
+  open,
+  events,
+  done,
+  onClose,
+}: {
+  open: boolean
+  events: ResetEvent[]
+  done: boolean
+  onClose: () => void
+}) {
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [events])
+
+  const failed = events.some((e) => e.type === 'error')
+  const succeeded = events.some((e) => e.type === 'done')
+
+  return (
+    <Dialog
+      open={open}
+      onClose={done ? onClose : undefined}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{ sx: { bgcolor: 'background.paper' } }}
+    >
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        {!done && <CircularProgress size={18} sx={{ flexShrink: 0 }} />}
+        {done && succeeded && <CheckCircleOutlineIcon color="success" sx={{ flexShrink: 0 }} />}
+        {done && failed && <ErrorOutlineIcon color="error" sx={{ flexShrink: 0 }} />}
+        {!done ? 'Resetting database…' : succeeded ? 'Reset complete' : 'Reset failed'}
+      </DialogTitle>
+
+      <DialogContent sx={{ p: 0 }}>
+        <Box
+          sx={{
+            bgcolor: '#0A0A0F',
+            mx: 0,
+            px: 2,
+            py: 1.5,
+            minHeight: 160,
+            maxHeight: 320,
+            overflowY: 'auto',
+            fontFamily: 'monospace',
+            fontSize: 13,
+          }}
+        >
+          {events.map((e, i) => {
+            const color =
+              e.type === 'done' ? '#22C55E'
+              : e.type === 'error' ? '#F87171'
+              : '#22D3EE'
+            return (
+              <Box key={i} sx={{ lineHeight: 2, color }}>
+                <Box component="span" sx={{ opacity: 0.35, mr: 1.5, userSelect: 'none', fontSize: 11 }}>
+                  {e.type === 'done' ? '✓' : e.type === 'error' ? '✗' : '›'}
+                </Box>
+                {e.message}
+              </Box>
+            )
+          })}
+          {!done && (
+            <Box sx={{ color: '#475569', lineHeight: 2 }}>
+              <Box component="span" sx={{ mr: 1.5 }}>›</Box>
+              <Box component="span" sx={{ opacity: 0.5 }}>waiting…</Box>
+            </Box>
+          )}
+          <div ref={bottomRef} />
+        </Box>
+      </DialogContent>
+
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={onClose} disabled={!done} variant={done ? 'contained' : 'text'}>
+          {done ? 'Close' : 'Running…'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  )
+}
+
 export default function SettingsPage() {
-  // Step 1: "are you sure?" dialog
   const [step1Open, setStep1Open] = useState(false)
-  // Step 2: type the phrase to confirm
   const [step2Open, setStep2Open] = useState(false)
   const [phrase, setPhrase] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [progressOpen, setProgressOpen] = useState(false)
+  const [progressEvents, setProgressEvents] = useState<ResetEvent[]>([])
+  const [progressDone, setProgressDone] = useState(false)
 
   function openStep1() {
-    setResult(null)
     setStep1Open(true)
   }
 
@@ -42,18 +124,29 @@ export default function SettingsPage() {
 
   async function confirmStep2() {
     if (phrase !== CONFIRM_PHRASE) return
-    setLoading(true)
+    setStep2Open(false)
+    setPhrase('')
+    setProgressEvents([])
+    setProgressDone(false)
+    setProgressOpen(true)
+
     try {
-      await resetDatabase()
-      setResult({ type: 'success', message: 'Database reset and reseeded successfully.' })
-    } catch (err: unknown) {
+      for await (const event of resetDatabaseStream()) {
+        setProgressEvents((prev) => [...prev, event])
+        if (event.type === 'done' || event.type === 'error') break
+      }
+    } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error'
-      setResult({ type: 'error', message: `Reset failed: ${msg}` })
+      setProgressEvents((prev) => [...prev, { type: 'error', message: msg }])
     } finally {
-      setLoading(false)
-      setStep2Open(false)
-      setPhrase('')
+      setProgressDone(true)
     }
+  }
+
+  function closeProgress() {
+    setProgressOpen(false)
+    setProgressEvents([])
+    setProgressDone(false)
   }
 
   return (
@@ -65,20 +158,8 @@ export default function SettingsPage() {
         Application configuration and administrative operations.
       </Typography>
 
-      {result && (
-        <Alert severity={result.type} sx={{ mb: 3 }} onClose={() => setResult(null)}>
-          {result.message}
-        </Alert>
-      )}
-
       {/* Danger Zone */}
-      <Card
-        sx={{
-          border: '1px solid',
-          borderColor: 'error.main',
-          bgcolor: 'rgba(239,68,68,0.04)',
-        }}
-      >
+      <Card sx={{ border: '1px solid', borderColor: 'error.main', bgcolor: 'rgba(239,68,68,0.04)' }}>
         <CardContent sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
             <WarningAmberRoundedIcon sx={{ color: 'error.main' }} />
@@ -139,7 +220,7 @@ export default function SettingsPage() {
       </Dialog>
 
       {/* Step 2: Type the confirmation phrase */}
-      <Dialog open={step2Open} onClose={() => !loading && setStep2Open(false)} maxWidth="xs" fullWidth>
+      <Dialog open={step2Open} onClose={() => setStep2Open(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Confirm destructive operation</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" mb={2}>
@@ -151,28 +232,33 @@ export default function SettingsPage() {
             size="small"
             placeholder={CONFIRM_PHRASE}
             value={phrase}
-            onChange={e => setPhrase(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && phrase === CONFIRM_PHRASE && confirmStep2()}
-            disabled={loading}
+            onChange={(e) => setPhrase(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && phrase === CONFIRM_PHRASE && confirmStep2()}
             error={phrase.length > 0 && phrase !== CONFIRM_PHRASE}
             helperText={phrase.length > 0 && phrase !== CONFIRM_PHRASE ? 'Phrase does not match' : ' '}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setStep2Open(false)} disabled={loading}>
-            Cancel
-          </Button>
+          <Button onClick={() => setStep2Open(false)}>Cancel</Button>
           <Button
             variant="contained"
             color="error"
             onClick={confirmStep2}
-            disabled={phrase !== CONFIRM_PHRASE || loading}
-            startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <DeleteForeverOutlinedIcon />}
+            disabled={phrase !== CONFIRM_PHRASE}
+            startIcon={<DeleteForeverOutlinedIcon />}
           >
-            {loading ? 'Resetting…' : 'Reset Database'}
+            Reset Database
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Progress dialog */}
+      <ResetProgressDialog
+        open={progressOpen}
+        events={progressEvents}
+        done={progressDone}
+        onClose={closeProgress}
+      />
     </Box>
   )
 }
