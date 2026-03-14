@@ -69,7 +69,7 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
       <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(255,255,255,0.06)', fontSize: 12 } }}>
         <TableHead>
           <TableRow>
-            {['NAME', 'IMAGE', 'READY', 'RESTARTS', 'CPU req/lim', 'MEM req/lim', 'LAST STATE'].map((h) => (
+            {['NAME', 'IMAGE', 'READY', 'RESTARTS', 'CPU use', 'MEM use', 'CPU req/lim', 'MEM req/lim', 'LAST STATE'].map((h) => (
               <TableCell key={h} sx={{ color: 'text.disabled', fontSize: 10, fontWeight: 700, py: 0.5, whiteSpace: 'nowrap' }}>
                 {h}
               </TableCell>
@@ -92,6 +92,12 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
               </TableCell>
               <TableCell sx={{ py: 0.75, fontFamily: 'monospace', color: c.restartCount > 0 ? '#FBBF24' : 'text.primary' }}>
                 {c.restartCount}
+              </TableCell>
+              <TableCell sx={{ py: 0.75, fontFamily: 'monospace', whiteSpace: 'nowrap', color: c.cpuUsage > 0 ? 'text.primary' : 'text.disabled' }}>
+                {c.cpuUsage > 0 ? fmtCpu(c.cpuUsage) : '—'}
+              </TableCell>
+              <TableCell sx={{ py: 0.75, fontFamily: 'monospace', whiteSpace: 'nowrap', color: c.memUsage > 0 ? 'text.primary' : 'text.disabled' }}>
+                {c.memUsage > 0 ? fmtMem(c.memUsage) : '—'}
               </TableCell>
               <TableCell sx={{ py: 0.75, fontFamily: 'monospace', color: 'text.secondary', whiteSpace: 'nowrap' }}>
                 {resourceCell(c.cpuRequest, c.cpuLimit, fmtCpu)}
@@ -172,9 +178,8 @@ function EventsSection({ events }: { events: PodEvent[] }) {
   )
 }
 
-function LabelsSection({ labels }: { labels: Record<string, string> }) {
+function CollapsibleKVSection({ title, entries }: { title: string; entries: [string, string][] }) {
   const [open, setOpen] = useState(false)
-  const entries = Object.entries(labels ?? {})
   if (entries.length === 0) return null
   return (
     <Box>
@@ -183,7 +188,7 @@ function LabelsSection({ labels }: { labels: Record<string, string> }) {
         sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none', mb: open ? 1 : 0 }}
       >
         <Typography variant="caption" sx={{ color: 'text.disabled', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, fontSize: 10, flex: 1 }}>
-          Labels ({entries.length})
+          {title} ({entries.length})
         </Typography>
         <IconButton size="small" sx={{ p: 0 }}>
           <ExpandMoreIcon sx={{ fontSize: 16, color: 'text.disabled', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
@@ -192,7 +197,9 @@ function LabelsSection({ labels }: { labels: Record<string, string> }) {
       <Collapse in={open}>
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
           {entries.map(([k, v]) => (
-            <Chip key={k} label={`${k}=${v}`} size="small" sx={{ height: 18, fontSize: 10, fontFamily: 'monospace', maxWidth: 300 }} />
+            <Tooltip key={k} title={`${k}=${v}`} arrow>
+              <Chip label={`${k}=${v}`} size="small" sx={{ height: 18, fontSize: 10, fontFamily: 'monospace', maxWidth: 300 }} />
+            </Tooltip>
           ))}
         </Box>
       </Collapse>
@@ -246,6 +253,7 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
         {[
           ['Node', pod.nodeName || '—'],
+          ['Instance Type', pod.nodeInstanceType || '—'],
           ['Pod IP', pod.podIP || '—'],
           ['Host IP', pod.hostIP || '—'],
           ['Age', fmtAge(pod.startedAt)],
@@ -280,7 +288,14 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
       {Object.keys(pod.labels ?? {}).length > 0 && (
         <>
           <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
-          <LabelsSection labels={pod.labels ?? {}} />
+          <CollapsibleKVSection title="Labels" entries={Object.entries(pod.labels ?? {})} />
+        </>
+      )}
+
+      {Object.keys(pod.annotations ?? {}).length > 0 && (
+        <>
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+          <CollapsibleKVSection title="Annotations" entries={Object.entries(pod.annotations ?? {})} />
         </>
       )}
     </Box>
