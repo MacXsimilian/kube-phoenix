@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.34](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.33...v0.1.34) (2026-03-14)
+
+
+### Bug Fixes
+
+* **ci:** bump Go to 1.25.8 to patch GO-2026-4601 and GO-2026-4602 ([60ec7a6](https://github.com/MacXsimilian/kube-phoenix/commit/60ec7a682ffba2d7d1e0c631441c1f979da5a853))
+
 ## [0.1.33](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.32...v0.1.33) (2026-03-14)
 
 
