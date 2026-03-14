@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.29](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.28...v0.1.29) (2026-03-14)
+
+
+### Features
+
+* **frontend:** UI improvements, bug fixes, and cluster state enhancements ([8b95920](https://github.com/MacXsimilian/kube-phoenix/commit/8b95920b6bb22408b3af4db467fccadc7c84018e))
+
+
+### Bug Fixes
+
+* **cluster:** add React import for React.Fragment in NodeDetailDrawer ([dc62fba](https://github.com/MacXsimilian/kube-phoenix/commit/dc62fbac4682cd3344c80017b06935d6398ef12a))
+
 ## [0.1.28](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.27...v0.1.28) (2026-03-14)
 
 
