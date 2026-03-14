@@ -1008,7 +1008,7 @@ const nextConfig = {
 
 **Build pipeline in CI:**
 ```
-npm ci → npm run build → out/ directory → copied to backend/web/static/ → go build
+npm install → npm run build → out/ directory → copied to backend/web/static/ → go build
 ```
 
 This tight coupling between frontend and backend builds is managed by the Dockerfile's multi-stage build.
@@ -1678,17 +1678,16 @@ Controlled by `values.targetGroupBinding.enabled`. Creates an `elbv2.k8s.aws/v1b
 
 ### ci.yml — Continuous Integration
 
-Triggered on: `push` (any branch), `pull_request` (any branch).
+Triggered on: `push` to `master` and `release/v0.1.x`; `pull_request` targeting those branches. Path-filtered to `frontend/**`, `backend/**`, `Dockerfile`, `helm/**`, `.github/workflows/**`.
 
 **Job: frontend**
 ```
 steps:
   - checkout
   - setup-node@v4 (node 22)
-  - npm ci                    (deterministic install)
-  - npm audit --audit-level=high   (fail on high/critical CVEs)
+  - npm install
+  - npm audit --audit-level=high   (fail on high/critical CVEs in prod deps)
   - npm run build             (Next.js static export → out/)
-  - upload-artifact: out/     (for docker job)
 ```
 
 **Job: backend**
@@ -1698,9 +1697,12 @@ steps:
   - setup-go@v5 (go 1.25)
   - go mod download
   - go vet ./...
-  - go test ./... -race -coverprofile=coverage.out
-  - go build ./cmd/server/
-  - golangci-lint-action@v6    (staticcheck, errcheck, govet, etc.)
+  - go test -coverprofile=coverage.out ./...
+  - go tool cover -func=coverage.out
+  - go build ./...
+  - govulncheck ./...          (Go vulnerability DB — checks actual call graph)
+  - golangci-lint-action@v7    (includes gosec for SAST — hardcoded secrets,
+                                 unsafe patterns, insecure crypto, etc.)
 ```
 
 **Job: helm**
@@ -1710,17 +1712,34 @@ steps:
   - helm lint helm/kube-phoenix/
 ```
 
-**Job: docker** (runs on push only, not PRs)
+**Job: docker** (push events only, needs: frontend + backend)
 ```
-needs: [frontend, backend]
 steps:
   - checkout
-  - download-artifact: out/   (frontend build)
   - docker/setup-buildx-action
   - docker/login-action (ghcr.io, GITHUB_TOKEN)
-  - docker/metadata-action    (tags: sha, semver, latest)
-  - docker/build-push-action  (push: true, multi-platform: linux/amd64)
-  - aquasecurity/trivy-action (image scan, fail on CRITICAL)
+  - docker/metadata-action    (tags: short-sha, semver, latest, v0.1-latest)
+  - docker/build-push-action  (push: true, linux/amd64, GHA layer cache)
+```
+
+**Job: scan** (push events only, needs: docker)
+```
+steps:
+  - aquasecurity/trivy-action
+      image-ref: ghcr.io/macxsimilian/kube-phoenix:<short-sha>  ← pinned, not floating
+      severity: CRITICAL,HIGH
+      exit-code: 1
+      ignore-unfixed: true
+```
+
+**Job: secrets** (pull_request only)
+```
+steps:
+  - checkout (full history)
+  - trufflesecurity/trufflehog
+      base: PR base SHA
+      head: PR head SHA
+      extra_args: --only-verified    (no false positives from test fixtures)
 ```
 
 **Image tags produced by CI on push:**
@@ -1728,7 +1747,9 @@ steps:
 | Pattern | Example |
 |---|---|
 | Short SHA | `ghcr.io/macxsimilian/kube-phoenix:abc1234` |
-| Branch name | `ghcr.io/macxsimilian/kube-phoenix:main` |
+| Semver (on release tag) | `ghcr.io/macxsimilian/kube-phoenix:0.1.32` |
+| Branch float | `ghcr.io/macxsimilian/kube-phoenix:v0.1-latest` |
+| Latest | `ghcr.io/macxsimilian/kube-phoenix:latest` (master only) |
 
 ### release-please.yml — Release Automation
 
@@ -1762,29 +1783,21 @@ helm install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix --version
 
 ### dependabot.yml
 
+Weekly Dependabot PRs for all three ecosystems: `github-actions`, `gomod`, `npm`. All update types (major, minor, patch) are enabled so security patches are never silently blocked.
+
 ```yaml
 updates:
   - package-ecosystem: github-actions
     schedule: weekly
-    open-pull-requests-limit: 5
 
   - package-ecosystem: gomod
+    directory: /backend
     schedule: weekly
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
 
   - package-ecosystem: npm
+    directory: /frontend
     schedule: weekly
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
 ```
-
-Only **major** version bumps create Dependabot PRs. Minor and patch updates are ignored because:
-1. Minor/patch updates for stable libraries (MUI, TanStack Query, Go stdlib dependencies) are low risk and low benefit.
-2. Opening PRs for every patch update creates review fatigue and slows down the CI queue.
-3. Major version bumps often require code changes and benefit from human review.
 
 ---
 
