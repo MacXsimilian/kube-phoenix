@@ -48,7 +48,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         sx={{
           flexGrow: 1,
           minWidth: 0,
-          ml: { md: `${DRAWER_WIDTH}px` },
           mt: { xs: '52px', md: 0 },
           p: { xs: 2, sm: 2.5, md: 3 },
           minHeight: '100vh',
