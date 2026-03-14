@@ -1,5 +1,11 @@
 # kube-phoenix 🐦‍🔥
 
+[![Build Status](https://img.shields.io/github/actions/workflow/status/MacXsimilian/kube-phoenix/ci.yml?branch=master)](https://github.com/MacXsimilian/kube-phoenix/actions/workflows/ci.yml)
+[![GitHub License](https://img.shields.io/badge/License-Apache%202.0-ff69b4.svg)](https://github.com/MacXsimilian/kube-phoenix/blob/master/LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/MacXsimilian/kube-phoenix)](https://goreportcard.com/report/github.com/MacXsimilian/kube-phoenix)
+![GitHub stars](https://img.shields.io/github/stars/MacXsimilian/kube-phoenix)
+![GitHub forks](https://img.shields.io/github/forks/MacXsimilian/kube-phoenix)
+
 A hobby project — a self-hosted web app for managing Kubernetes cluster sleep/wake schedules. Built to replace a bash-based CronJob scaler with something actually usable.
 
 Scale down your cluster at night, wake it up in the morning. No more paying for idle nodes.
