@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [master, release/v0.1.x, release/v0.2.x]
+    branches: [master, release/v0.1.x]
 
 permissions:
   contents: write
@@ -63,7 +63,6 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.tag_name }}
             type=semver,pattern={{major}},value=${{ needs.release-please.outputs.tag_name }}
             type=raw,value=latest,enable=${{ github.ref_name == 'master' }}
-            type=raw,value=v0.2-latest,enable=${{ github.ref_name == 'release/v0.2.x' }}
             type=raw,value=v0.1-latest,enable=${{ github.ref_name == 'release/v0.1.x' }}
 
       - name: Build & push
