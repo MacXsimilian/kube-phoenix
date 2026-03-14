@@ -162,6 +162,26 @@ export default function GuardrailsForm() {
 
   return (
     <Grid container spacing={3}>
+      {/* Workload exclusions */}
+      <Grid item xs={12} md={6}>
+        <Card sx={{ height: '100%' }}>
+          <CardContent sx={{ p: 3 }}>
+            <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
+              Workload Exclusions
+            </Typography>
+            <Typography variant="body2" color="text.secondary" mb={2.5}>
+              Workloads in these namespaces are never scaled.
+            </Typography>
+            <ChipInput
+              label="Skip Namespaces"
+              hint="e.g. kube-system, monitoring"
+              values={skipNs}
+              onChange={setSkipNs}
+            />
+          </CardContent>
+        </Card>
+      </Grid>
+
       {/* Node protection */}
       <Grid item xs={12} md={6}>
         <Card sx={{ height: '100%' }}>
@@ -192,26 +212,6 @@ export default function GuardrailsForm() {
                 onChange={setSkipTaints}
               />
             </Box>
-          </CardContent>
-        </Card>
-      </Grid>
-
-      {/* Workload exclusions */}
-      <Grid item xs={12} md={6}>
-        <Card sx={{ height: '100%' }}>
-          <CardContent sx={{ p: 3 }}>
-            <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
-              Workload Exclusions
-            </Typography>
-            <Typography variant="body2" color="text.secondary" mb={2.5}>
-              Workloads in these namespaces are never scaled.
-            </Typography>
-            <ChipInput
-              label="Skip Namespaces"
-              hint="e.g. kube-system, monitoring"
-              values={skipNs}
-              onChange={setSkipNs}
-            />
           </CardContent>
         </Card>
       </Grid>

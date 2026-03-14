@@ -17,10 +17,10 @@ export default function OverviewPage() {
           <ClusterStatusCard />
         </Grid>
         <Grid item xs={12} md={6}>
-          <NextRunCard />
+          <ActivityFeed />
         </Grid>
         <Grid item xs={12}>
-          <ActivityFeed />
+          <NextRunCard />
         </Grid>
       </Grid>
     </>
