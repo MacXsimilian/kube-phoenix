@@ -278,28 +278,78 @@ targetGroupBinding:
 
 ## CI/CD
 
-GitHub Actions runs on every push to `master` and `release/v0.1.x`, and on pull requests.
+Two GitHub Actions workflows handle all CI and release automation.
 
-| Job | What it does |
-|---|---|
-| **Frontend build** | `npm install`, `npm audit` (high severity gate), `npm run build` |
-| **Backend build** | `go vet`, `go test` with coverage report, `go build`, `govulncheck`, golangci-lint v2 (with gosec for SAST) |
-| **Helm lint** | `helm lint helm/kube-phoenix` |
-| **Docker build & push** | Builds `linux/amd64`, pushes to GHCR on merge, Trivy scan by pinned SHA tag (fails on CRITICAL/HIGH, ignores unfixed) |
-| **Secret scan** | TruffleHog scans PR diffs for verified leaked secrets (PRs only) |
-| **Helm package & push** | Packages and pushes chart to `oci://ghcr.io/macxsimilian/helm` on release |
-
-Images published to GHCR:
+### How it works
 
 ```
-ghcr.io/macxsimilian/kube-phoenix:<short-sha>
-ghcr.io/macxsimilian/kube-phoenix:<semver>      # when a release tag exists
+Every push / PR                     Release
+──────────────────                  ─────────────────────────────────────────
+ci.yml                              release-please.yml
+  ├── frontend build                  ├── release-please-action
+  │     npm install                   │     reads conventional commits
+  │     npm audit (high CVEs)         │     opens Release PR (CHANGELOG bump)
+  │     npm run build                 │     on merge: creates tag + GH Release
+  ├── backend build                   ├── docker build & push (semver tags)
+  │     go vet / test / build         ├── trivy scan (CRITICAL/HIGH gate)
+  │     govulncheck (Go CVE DB)       └── helm chart push to GHCR OCI
+  │     golangci-lint + gosec (SAST)
+  ├── helm lint
+  └── secret scan (TruffleHog)
+```
+
+CI runs on every push to `master` and `release/v0.1.x`, and on all pull requests. Docker builds only happen on release — CI never pushes images.
+
+### CI jobs
+
+| Job | Trigger | What it does |
+|---|---|---|
+| **Frontend build** | push + PR | `npm install`, `npm audit` (high severity gate), `npm run build` |
+| **Backend build** | push + PR | `go vet`, `go test` + coverage, `go build`, `govulncheck`, golangci-lint with gosec (SAST) |
+| **Helm lint** | push + PR | `helm lint helm/kube-phoenix` |
+| **Secret scan** | push + PR | TruffleHog scans the diff for verified leaked secrets |
+
+### Release workflow
+
+[release-please](https://github.com/googleapis/release-please) automates versioning, CHANGELOG generation, and image publishing. **You never create tags manually.**
+
+| Job | Trigger | What it does |
+|---|---|---|
+| **release-please** | push to `master` or `release/v0.1.x` | Opens/updates Release PR; on merge creates tag + GitHub Release |
+| **Docker build & push** | release created | Builds and pushes semver-tagged image to GHCR |
+| **Trivy scan** | after docker push | Scans released image — fails on CRITICAL/HIGH unfixed CVEs |
+| **Helm push** | release created | Packages and pushes chart to `oci://ghcr.io/macxsimilian/helm` |
+
+Images published on release:
+
+```
+ghcr.io/macxsimilian/kube-phoenix:0.1.33        # exact semver
+ghcr.io/macxsimilian/kube-phoenix:v0.1-latest   # minor float
 ghcr.io/macxsimilian/kube-phoenix:latest         # master only
 ```
 
-[release-please](https://github.com/googleapis/release-please) automates semver tagging, GitHub Releases, CHANGELOG generation, and `helm/kube-phoenix/Chart.yaml` `appVersion` bumps from [conventional commits](https://www.conventionalcommits.org/).
+### How to make a release
 
-**One-time setup:** Settings → Actions → General → Workflow permissions → **Read and write**.
+1. Write commits using [conventional commit](https://www.conventionalcommits.org/) prefixes:
+
+   | Prefix | Effect |
+   |---|---|
+   | `feat:` | bumps minor version |
+   | `fix:` | bumps patch version |
+   | `feat!:` or `BREAKING CHANGE:` | bumps major version |
+   | `docs:`, `ci:`, `chore:` | no version bump |
+
+2. Push to `release/v0.1.x`. release-please opens or updates a Release PR automatically.
+
+3. Review the Release PR — it contains the CHANGELOG diff and the bumped version.
+
+4. Merge the Release PR. release-please creates the tag and GitHub Release, then the Docker and Helm jobs fire automatically.
+
+That's it. No manual tagging, no manual CHANGELOG editing.
+
+### One-time setup
+
+Settings → Actions → General → Workflow permissions → **Read and write**.
 
 ---
 

@@ -1676,9 +1676,22 @@ Controlled by `values.targetGroupBinding.enabled`. Creates an `elbv2.k8s.aws/v1b
 
 ## 11. CI/CD Pipeline
 
+### Design principles
+
+Two workflows with distinct responsibilities:
+
+| Workflow | Trigger | Responsibility |
+|---|---|---|
+| `ci.yml` | every push + PR | Validate — fast feedback, no artifacts produced |
+| `release-please.yml` | push to `master` / `release/v0.1.x` | Ship — Docker image, Helm chart, GitHub Release |
+
+Docker builds only happen on release. CI never pushes images. This keeps the registry clean and prevents every commit from producing a deployable artifact.
+
+---
+
 ### ci.yml — Continuous Integration
 
-Triggered on: `push` to `master` and `release/v0.1.x`; `pull_request` targeting those branches. Path-filtered to `frontend/**`, `backend/**`, `Dockerfile`, `helm/**`, `.github/workflows/**`.
+Triggered on: `push` to `master` and `release/v0.1.x`; `pull_request` targeting those branches. Path-filtered to `frontend/**`, `backend/**`, `Dockerfile`, `helm/**`, `.github/workflows/**`. Concurrency group cancels in-progress runs on the same ref.
 
 **Job: frontend**
 ```
@@ -1687,22 +1700,21 @@ steps:
   - setup-node@v4 (node 22)
   - npm install
   - npm audit --audit-level=high   (fail on high/critical CVEs in prod deps)
-  - npm run build             (Next.js static export → out/)
+  - npm run build                  (Next.js static export → out/)
 ```
 
 **Job: backend**
 ```
 steps:
   - checkout
-  - setup-go@v5 (go 1.25)
+  - setup-go@v5 (go 1.25.8)
   - go mod download
   - go vet ./...
   - go test -coverprofile=coverage.out ./...
   - go tool cover -func=coverage.out
   - go build ./...
-  - govulncheck ./...          (Go vulnerability DB — checks actual call graph)
-  - golangci-lint-action@v7    (includes gosec for SAST — hardcoded secrets,
-                                 unsafe patterns, insecure crypto, etc.)
+  - govulncheck ./...          (checks actual call graph against Go vuln DB)
+  - golangci-lint-action@v7    (gosec for SAST, errcheck, staticcheck, etc.)
 ```
 
 **Job: helm**
@@ -1712,92 +1724,96 @@ steps:
   - helm lint helm/kube-phoenix/
 ```
 
-**Job: docker** (push events only, needs: frontend + backend)
+**Job: secrets** (push and PR — scans the diff only, not the full repo)
 ```
 steps:
-  - checkout
-  - docker/setup-buildx-action
-  - docker/login-action (ghcr.io, GITHUB_TOKEN)
-  - docker/metadata-action    (tags: short-sha, semver, latest, v0.1-latest)
-  - docker/build-push-action  (push: true, linux/amd64, GHA layer cache)
+  - checkout (full history, fetch-depth: 0)
+  - trufflesecurity/trufflehog
+      base: HEAD~1 (push) or PR base SHA (PR)
+      head: HEAD   (push) or PR head SHA (PR)
+      extra_args: --only-verified    (eliminates false positives)
 ```
 
-**Job: scan** (push events only, needs: docker)
+On direct pushes, scans `HEAD~1..HEAD`. On PRs, scans the full PR diff. The `--only-verified` flag means TruffleHog only reports secrets it can actively verify against the upstream service — no noise from test fixtures or example configs.
+
+---
+
+### release-please.yml — Release Automation
+
+Triggered on: `push` to `master` and `release/v0.1.x`.
+
+**How release-please works:**
+
+1. After each push, release-please reads all conventional commits since the last release tag.
+2. If releasable changes exist, it opens (or updates) a Release PR that contains:
+   - Bumped version in `Chart.yaml` and `package.json`
+   - Updated `CHANGELOG.md` with categorised commit entries
+3. When the Release PR is merged, release-please creates a git tag (`v0.1.x`) and a GitHub Release.
+4. The `docker`, `scan`, and `helm-publish` jobs are gated on `release_created == true` — they only fire after step 3.
+
+**Conventional commit → version bump mapping:**
+
+| Commit prefix | Version bump |
+|---|---|
+| `feat:` | minor (`0.1.x` → `0.2.0`) |
+| `fix:`, `perf:` | patch (`0.1.x` → `0.1.x+1`) |
+| `feat!:` or `BREAKING CHANGE:` footer | major |
+| `docs:`, `ci:`, `chore:`, `refactor:` | no bump |
+
+**Job: docker** (only when `release_created == true`)
+```
+tags produced:
+  - ghcr.io/macxsimilian/kube-phoenix:0.1.x      (exact semver)
+  - ghcr.io/macxsimilian/kube-phoenix:0.1         (minor float)
+  - ghcr.io/macxsimilian/kube-phoenix:0           (major float)
+  - ghcr.io/macxsimilian/kube-phoenix:v0.1-latest (branch float)
+  - ghcr.io/macxsimilian/kube-phoenix:latest      (master only)
+```
+
+**Job: scan** (needs: docker)
 ```
 steps:
   - aquasecurity/trivy-action
-      image-ref: ghcr.io/macxsimilian/kube-phoenix:<short-sha>  ← pinned, not floating
+      image-ref: ghcr.io/macxsimilian/kube-phoenix:<semver>
       severity: CRITICAL,HIGH
       exit-code: 1
       ignore-unfixed: true
 ```
 
-**Job: secrets** (pull_request only)
+Scans the exact released image by semver tag. Fails the release workflow if unfixed CRITICAL or HIGH CVEs are found — the Helm push is blocked until scan passes.
+
+**Job: helm-publish** (needs: release-please + docker, only when both succeed)
 ```
-steps:
-  - checkout (full history)
-  - trufflesecurity/trufflehog
-      base: PR base SHA
-      head: PR head SHA
-      extra_args: --only-verified    (no false positives from test fixtures)
-```
-
-**Image tags produced by CI on push:**
-
-| Pattern | Example |
-|---|---|
-| Short SHA | `ghcr.io/macxsimilian/kube-phoenix:abc1234` |
-| Semver (on release tag) | `ghcr.io/macxsimilian/kube-phoenix:0.1.32` |
-| Branch float | `ghcr.io/macxsimilian/kube-phoenix:v0.1-latest` |
-| Latest | `ghcr.io/macxsimilian/kube-phoenix:latest` (master only) |
-
-### release-please.yml — Release Automation
-
-Triggered on: `push` to `master`.
-
-**Step 1: googleapis/release-please-action**
-- Reads conventional commits (e.g., `feat:`, `fix:`, `chore(release):`) since the last release.
-- If releasable changes detected: opens a Release PR with a bumped version in `Chart.yaml`, `package.json`, and `CHANGELOG.md`.
-- If Release PR is merged: creates a GitHub Release and git tag (`v0.1.x`).
-
-**Step 2: Docker release build** (only when release was created)
-```
-tags:
-  - ghcr.io/macxsimilian/kube-phoenix:0.1.x    (semver)
-  - ghcr.io/macxsimilian/kube-phoenix:latest
-  - ghcr.io/macxsimilian/kube-phoenix:v0.1-latest  (minor pinning)
-```
-
-**Step 3: Trivy image scan** — scans the released image. Fails the workflow if CRITICAL CVEs are found.
-
-**Step 4: Helm OCI push**
-```
-helm package helm/kube-phoenix/
+helm package helm/kube-phoenix/ --version 0.1.x --app-version 0.1.x
 helm push kube-phoenix-0.1.x.tgz oci://ghcr.io/macxsimilian/helm
 ```
 
-Publishes the Helm chart to the GitHub Container Registry as an OCI artifact, installable with:
+Installable with:
 ```
 helm install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix --version 0.1.x
 ```
 
+---
+
 ### dependabot.yml
 
-Weekly Dependabot PRs for all three ecosystems: `github-actions`, `gomod`, `npm`. All update types (major, minor, patch) are enabled so security patches are never silently blocked.
+Weekly Dependabot PRs across all three ecosystems. All update types (major, minor, patch) are enabled — security patches are never silently blocked.
 
 ```yaml
 updates:
-  - package-ecosystem: github-actions
+  - package-ecosystem: github-actions   # pinned action SHAs
     schedule: weekly
 
-  - package-ecosystem: gomod
+  - package-ecosystem: gomod            # backend Go dependencies
     directory: /backend
     schedule: weekly
 
-  - package-ecosystem: npm
+  - package-ecosystem: npm              # frontend npm packages
     directory: /frontend
     schedule: weekly
 ```
+
+Dependabot PRs go through the same CI pipeline as any other PR — secret scan, frontend build, backend lint/test — before they can be merged.
 
 ---
 
