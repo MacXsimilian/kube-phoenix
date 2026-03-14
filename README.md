@@ -4,7 +4,8 @@
 [![GitHub License](https://img.shields.io/badge/License-Apache%202.0-ff69b4.svg)](https://github.com/MacXsimilian/kube-phoenix/blob/master/LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/macxsimilian/kube-phoenix/backend)](https://goreportcard.com/report/github.com/macxsimilian/kube-phoenix/backend)
 ![GitHub stars](https://img.shields.io/github/stars/MacXsimilian/kube-phoenix)
-![GitHub forks](https://img.shields.io/github/forks/MacXsimilian/kube-phoenix)[![contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](https://github.com/MacXsimilian/kube-phoenix/issues)
+![GitHub forks](https://img.shields.io/github/forks/MacXsimilian/kube-phoenix)
+[![contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](https://github.com/MacXsimilian/kube-phoenix/issues)
 
 A hobby project — a self-hosted web app for managing Kubernetes cluster sleep/wake schedules. Built to replace a bash-based CronJob scaler with something actually usable.
 
@@ -14,7 +15,7 @@ Scale down your cluster at night, wake it up in the morning. No more paying for 
 
 ## What it does
 
-- **Overview** — cluster health at a glance: current scale state, pulsing live indicator, partial-sleep namespace breakdown, live activity feed with inline log drawer, and next scheduled run countdown
+- **Overview** — cluster health at a glance: current scale state, pulsing live indicator, partial-sleep namespace breakdown, and live activity feed with inline log drawer
 - **Cluster State** — live view of all Deployments, StatefulSets, and nodes with resizable drill-down detail drawers; pod detail includes live CPU/memory usage, annotations, node instance type, and Kubernetes events
 - **Guardrails** — protect namespaces, node labels, and taints from ever being touched
 - **Schedules** — multiple sleep and wake schedules with cron expressions, per-schedule timezones, and optional namespace filters for partial scale-down
