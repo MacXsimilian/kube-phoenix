@@ -3,7 +3,6 @@
 import Grid from '@mui/material/Grid'
 import Typography from '@mui/material/Typography'
 import ClusterStatusCard from '@/components/overview/ClusterStatusCard'
-import NextRunCard from '@/components/overview/NextRunCard'
 import ActivityFeed from '@/components/overview/ActivityFeed'
 
 export default function OverviewPage() {
@@ -18,9 +17,6 @@ export default function OverviewPage() {
         </Grid>
         <Grid item xs={12} md={6}>
           <ActivityFeed />
-        </Grid>
-        <Grid item xs={12}>
-          <NextRunCard />
         </Grid>
       </Grid>
     </>
