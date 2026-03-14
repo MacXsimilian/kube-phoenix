@@ -15,6 +15,8 @@ import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
 import SecurityOutlinedIcon from '@mui/icons-material/SecurityOutlined'
 import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined'
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined'
+import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined'
+import { useAuth } from '@/lib/auth'
 
 const NAV = [
   { label: 'Overview', href: '/overview', icon: <DashboardOutlinedIcon fontSize="small" /> },
@@ -34,9 +36,10 @@ interface Props {
 export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
   const pathname = usePathname()
   const router = useRouter()
+  const { logout } = useAuth()
 
   const content = (
-    <>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Logo */}
       <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1 }}>
         <Typography sx={{ fontSize: 22, lineHeight: 1, userSelect: 'none' }}>🐦‍🔥</Typography>
@@ -77,7 +80,30 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
           )
         })}
       </List>
-    </>
+
+      {/* Logout — pushed to bottom */}
+      <Box sx={{ flexGrow: 1 }} />
+      <Divider />
+      <Box sx={{ p: 1 }}>
+        <ListItemButton
+          onClick={logout}
+          sx={{
+            borderRadius: 2,
+            color: 'text.secondary',
+            '&:hover': { bgcolor: 'rgba(239,68,68,0.08)', color: 'error.main' },
+            '&:hover .MuiListItemIcon-root': { color: 'error.main' },
+          }}
+        >
+          <ListItemIcon sx={{ minWidth: 36, color: 'text.secondary' }}>
+            <LogoutOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText
+            primary="Sign Out"
+            primaryTypographyProps={{ fontSize: 14 }}
+          />
+        </ListItemButton>
+      </Box>
+    </Box>
   )
 
   const paperSx = { width, boxSizing: 'border-box' as const, bgcolor: 'background.paper' }

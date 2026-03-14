@@ -1,11 +1,16 @@
 import type { Schedule, ScheduleInput, Guardrails, Execution, LogLine, Workload, Node, NodePod, ExecutionPage, PodDetail } from './types'
+import { getAuthHeader } from './auth'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
 
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+      ...options?.headers,
+    },
   })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
@@ -125,7 +130,7 @@ export type ResetEvent = { type: 'step' | 'done' | 'error'; message: string }
 export async function* resetDatabaseStream(): AsyncGenerator<ResetEvent> {
   const res = await fetch('/api/admin/reset-db', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
     body: JSON.stringify({ confirm: 'RESET DATABASE' }),
   })
 
@@ -161,5 +166,13 @@ export const wsLogsUrl = (executionId: number): string => {
   const base = apiUrl
     ? apiUrl.replace(/^http/, 'ws')
     : `${typeof window !== 'undefined' ? window.location.origin.replace(/^http/, 'ws') : ''}`
+
+  const token = typeof window !== 'undefined' ? sessionStorage.getItem('kube-phoenix-auth') : null
+  if (token && token !== '__no_auth__') {
+    try {
+      const creds = atob(token) // "user:pass"
+      return base.replace('://', `://${creds}@`) + `/ws/executions/${executionId}/logs`
+    } catch { /* malformed token — fall through */ }
+  }
   return `${base}/ws/executions/${executionId}/logs`
 }
