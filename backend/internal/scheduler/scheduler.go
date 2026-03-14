@@ -131,6 +131,22 @@ func (s *Scheduler) Reload() error {
 	return s.reload()
 }
 
+// Restart stops the cron engine (if running), creates a fresh instance, reloads
+// schedules from the DB, and starts it again. Used after a database reset.
+func (s *Scheduler) Restart(ctx context.Context) error {
+	s.Stop()
+	s.mu.Lock()
+	s.cron = cron.New()
+	s.entryID = map[uint]cron.EntryID{}
+	if err := s.reload(); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	s.cron.Start()
+	s.mu.Unlock()
+	return nil
+}
+
 func (s *Scheduler) reload() error {
 	schedules, err := s.store.ListSchedules()
 	if err != nil {

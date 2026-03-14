@@ -125,13 +125,13 @@ export default function ClusterStatusCard() {
             <Chip
               label={`${running} Workloads Running`}
               size="small"
-              onClick={() => router.push('/cluster/')}
+              onClick={() => router.push('/cluster/?status=running')}
               sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: 'info.main', fontWeight: 600, cursor: 'pointer' }}
             />
             <Chip
               label={`${sleeping} Workloads Sleeping`}
               size="small"
-              onClick={() => router.push('/cluster/')}
+              onClick={() => router.push('/cluster/?status=sleeping')}
               sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: 'warning.main', fontWeight: 600, cursor: 'pointer' }}
             />
           </Box>
