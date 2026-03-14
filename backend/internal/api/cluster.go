@@ -324,11 +324,13 @@ type ContainerDetailResponse struct {
 	Image        string `json:"image"`
 	Ready        bool   `json:"ready"`
 	RestartCount int32  `json:"restartCount"`
-	CPURequest   int64  `json:"cpuRequest"` // millicores
-	MemRequest   int64  `json:"memRequest"` // bytes
-	CPULimit     int64  `json:"cpuLimit"`   // millicores, 0 = no limit set
-	MemLimit     int64  `json:"memLimit"`   // bytes, 0 = no limit set
-	LastState    string `json:"lastState"`  // terminated reason or ""
+	CPURequest   int64  `json:"cpuRequest"`  // millicores
+	MemRequest   int64  `json:"memRequest"`  // bytes
+	CPULimit     int64  `json:"cpuLimit"`    // millicores, 0 = no limit set
+	MemLimit     int64  `json:"memLimit"`    // bytes, 0 = no limit set
+	CPUUsage     int64  `json:"cpuUsage"`    // millicores, 0 = unavailable
+	MemUsage     int64  `json:"memUsage"`    // bytes, 0 = unavailable
+	LastState    string `json:"lastState"`   // terminated reason or ""
 }
 
 type PodConditionResponse struct {
@@ -353,8 +355,10 @@ type PodDetailResponse struct {
 	HostIP     string                    `json:"hostIP"`
 	QOSClass   string                    `json:"qosClass"`
 	StartedAt  string                    `json:"startedAt"` // RFC3339 or ""
-	Labels     map[string]string         `json:"labels"`
-	Containers []ContainerDetailResponse `json:"containers"`
+	NodeInstanceType string                    `json:"nodeInstanceType"`
+	Labels           map[string]string         `json:"labels"`
+	Annotations      map[string]string         `json:"annotations"`
+	Containers  []ContainerDetailResponse `json:"containers"`
 	Conditions []PodConditionResponse    `json:"conditions"`
 	Events     []PodEventResponse        `json:"events"`
 }
@@ -379,12 +383,20 @@ func (h *Handler) getPodDetail(w http.ResponseWriter, r *http.Request) {
 		csMap[cs.Name] = cs
 	}
 
+	// Fetch live metrics — silently ignore errors (Metrics Server may be absent)
+	metricsMap, _ := h.k8s.GetPodMetrics(ctx, namespace, name)
+
 	var containers []ContainerDetailResponse
 	for _, c := range pod.Spec.Containers {
 		cs := csMap[c.Name]
 		lastState := ""
 		if cs.LastTerminationState.Terminated != nil {
 			lastState = cs.LastTerminationState.Terminated.Reason
+		}
+		var cpuUsage, memUsage int64
+		if m, ok := metricsMap[c.Name]; ok {
+			cpuUsage = m.CPUMillis
+			memUsage = m.MemBytes
 		}
 		containers = append(containers, ContainerDetailResponse{
 			Name:         c.Name,
@@ -395,6 +407,8 @@ func (h *Handler) getPodDetail(w http.ResponseWriter, r *http.Request) {
 			MemRequest:   c.Resources.Requests.Memory().Value(),
 			CPULimit:     c.Resources.Limits.Cpu().MilliValue(),
 			MemLimit:     c.Resources.Limits.Memory().Value(),
+			CPUUsage:     cpuUsage,
+			MemUsage:     memUsage,
 			LastState:    lastState,
 		})
 	}
@@ -431,19 +445,35 @@ func (h *Handler) getPodDetail(w http.ResponseWriter, r *http.Request) {
 	if labels == nil {
 		labels = map[string]string{}
 	}
+	annotations := pod.Annotations
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+
+	nodeInstanceType := ""
+	if pod.Spec.NodeName != "" {
+		if node, err := h.k8s.GetNode(ctx, pod.Spec.NodeName); err == nil {
+			nodeInstanceType = node.Labels["node.kubernetes.io/instance-type"]
+			if nodeInstanceType == "" {
+				nodeInstanceType = node.Labels["beta.kubernetes.io/instance-type"]
+			}
+		}
+	}
 
 	jsonOK(w, PodDetailResponse{
-		Name:       pod.Name,
-		Namespace:  pod.Namespace,
-		Phase:      string(pod.Status.Phase),
-		NodeName:   pod.Spec.NodeName,
-		PodIP:      pod.Status.PodIP,
-		HostIP:     pod.Status.HostIP,
-		QOSClass:   string(pod.Status.QOSClass),
-		StartedAt:  startedAt,
-		Labels:     labels,
-		Containers: containers,
-		Conditions: conditions,
+		Name:             pod.Name,
+		Namespace:        pod.Namespace,
+		Phase:            string(pod.Status.Phase),
+		NodeName:         pod.Spec.NodeName,
+		NodeInstanceType: nodeInstanceType,
+		PodIP:            pod.Status.PodIP,
+		HostIP:           pod.Status.HostIP,
+		QOSClass:         string(pod.Status.QOSClass),
+		StartedAt:        startedAt,
+		Labels:           labels,
+		Annotations:      annotations,
+		Containers:       containers,
+		Conditions:       conditions,
 		Events:     podEvents,
 	})
 }

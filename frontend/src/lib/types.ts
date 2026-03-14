@@ -106,6 +106,8 @@ export interface PodContainer {
   memRequest: number  // bytes
   cpuLimit: number    // millicores, 0 = no limit set
   memLimit: number    // bytes, 0 = no limit set
+  cpuUsage: number    // millicores, 0 = unavailable
+  memUsage: number    // bytes, 0 = unavailable
   lastState: string   // terminated reason or ""
 }
 
@@ -127,11 +129,13 @@ export interface PodDetail {
   namespace: string
   phase: string
   nodeName: string
+  nodeInstanceType: string
   podIP: string
   hostIP: string
   qosClass: string
   startedAt: string
   labels: Record<string, string>
+  annotations: Record<string, string>
   containers: PodContainer[]
   conditions: PodCondition[]
   events: PodEvent[]

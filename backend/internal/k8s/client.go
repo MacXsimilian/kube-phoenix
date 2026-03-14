@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -10,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -300,6 +302,61 @@ func (c *Client) GetPod(ctx context.Context, namespace, name string) (*corev1.Po
 		return nil, err
 	}
 	return pod, nil
+}
+
+func (c *Client) GetNode(ctx context.Context, name string) (*corev1.Node, error) {
+	node, err := c.cs.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return node, nil
+}
+
+type ContainerMetrics struct {
+	CPUMillis int64
+	MemBytes  int64
+}
+
+// GetPodMetrics queries the Metrics Server API for current pod resource usage.
+// Returns an empty map (no error) when Metrics Server is unavailable.
+func (c *Client) GetPodMetrics(ctx context.Context, namespace, name string) (map[string]ContainerMetrics, error) {
+	data, err := c.cs.RESTClient().
+		Get().
+		AbsPath(fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods/%s", namespace, name)).
+		DoRaw(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Containers []struct {
+			Name  string `json:"name"`
+			Usage struct {
+				CPU    string `json:"cpu"`
+				Memory string `json:"memory"`
+			} `json:"usage"`
+		} `json:"containers"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]ContainerMetrics)
+	for _, c := range resp.Containers {
+		cpu, err := resource.ParseQuantity(c.Usage.CPU)
+		if err != nil {
+			continue
+		}
+		mem, err := resource.ParseQuantity(c.Usage.Memory)
+		if err != nil {
+			continue
+		}
+		result[c.Name] = ContainerMetrics{
+			CPUMillis: cpu.MilliValue(),
+			MemBytes:  mem.Value(),
+		}
+	}
+	return result, nil
 }
 
 func (c *Client) GetPodEvents(ctx context.Context, namespace, podName string) ([]corev1.Event, error) {
