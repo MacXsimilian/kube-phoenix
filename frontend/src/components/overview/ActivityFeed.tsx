@@ -143,9 +143,16 @@ export default function ActivityFeed() {
                     }} />
                   </Box>
                 ) : (
-                  <Typography variant="caption" color="text.secondary">
-                    {`Scaled ${exec.countScaled} · Drained ${exec.countDrained} · Errors ${exec.countErrors} · ${timeAgo(exec.startedAt)}`}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Typography variant="caption" color="text.secondary">
+                      {exec.schedule?.type === 'scale_up'
+                        ? `Restored ${exec.countScaled}${exec.countErrors > 0 ? ` · Errors ${exec.countErrors}` : ''}`
+                        : `Scaled ${exec.countScaled} · Drained ${exec.countDrained}${exec.countErrors > 0 ? ` · Errors ${exec.countErrors}` : ''}`}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0, ml: 1 }}>
+                      {timeAgo(exec.startedAt)}
+                    </Typography>
+                  </Box>
                 )}
               </Box>
             </ListItemButton>
