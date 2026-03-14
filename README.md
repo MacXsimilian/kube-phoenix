@@ -5,6 +5,8 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/MacXsimilian/kube-phoenix)](https://goreportcard.com/report/github.com/MacXsimilian/kube-phoenix)
 ![GitHub stars](https://img.shields.io/github/stars/MacXsimilian/kube-phoenix)
 ![GitHub forks](https://img.shields.io/github/forks/MacXsimilian/kube-phoenix)
+[![Coverage Status](https://coveralls.io/repos/github/MacXsimilian/kube-phoenix/badge.svg?branch=master)](https://coveralls.io/github/MacXsimilian/kube-phoenix?branch=master)
+[![contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](https://github.com/MacXsimilian/kube-phoenix/issues)
 
 A hobby project — a self-hosted web app for managing Kubernetes cluster sleep/wake schedules. Built to replace a bash-based CronJob scaler with something actually usable.
 
