@@ -11,7 +11,7 @@ RUN npm run build
 
 # ── Stage 2: Build backend ────────────────────────────────────────────────────
 # Always compile on the host platform using Go cross-compilation (no QEMU).
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.25.8-alpine AS backend-builder
 ARG TARGETARCH
 
 WORKDIR /app/backend
