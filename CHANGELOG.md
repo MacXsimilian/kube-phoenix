@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.38](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.37...v0.1.38) (2026-03-14)
+
+
+### Bug Fixes
+
+* **logviewer:** remove log count badge, fix scroll and jump-to-error ([ae66a7b](https://github.com/MacXsimilian/kube-phoenix/commit/ae66a7bae2145bce4c9b0746272db4eec89f0654))
+
 ## [0.1.37](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.36...v0.1.37) (2026-03-14)
 
 
