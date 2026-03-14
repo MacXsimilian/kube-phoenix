@@ -168,11 +168,11 @@ export const wsLogsUrl = (executionId: number): string => {
     : `${typeof window !== 'undefined' ? window.location.origin.replace(/^http/, 'ws') : ''}`
 
   const token = typeof window !== 'undefined' ? sessionStorage.getItem('kube-phoenix-auth') : null
+  const path = `/ws/executions/${executionId}/logs`
+  // Browsers dropped support for credentials in WebSocket URLs (wss://user:pass@host).
+  // Pass the base64 token as a query param instead; the backend middleware reads it.
   if (token && token !== '__no_auth__') {
-    try {
-      const creds = atob(token) // "user:pass"
-      return base.replace('://', `://${creds}@`) + `/ws/executions/${executionId}/logs`
-    } catch { /* malformed token — fall through */ }
+    return `${base}${path}?token=${encodeURIComponent(token)}`
   }
-  return `${base}/ws/executions/${executionId}/logs`
+  return `${base}${path}`
 }

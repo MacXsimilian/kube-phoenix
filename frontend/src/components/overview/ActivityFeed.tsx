@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import Card from '@mui/material/Card'
@@ -17,6 +18,7 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import { getExecutions } from '@/lib/api'
 import type { Execution } from '@/lib/types'
+import LogViewer from '@/components/history/LogViewer'
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -40,6 +42,7 @@ function StatusChip({ status }: { status: Execution['status'] }) {
 
 export default function ActivityFeed() {
   const router = useRouter()
+  const [selected, setSelected] = useState<Execution | null>(null)
   const { data, isLoading, isError } = useQuery({
     queryKey: ['executions', 'feed'],
     queryFn: () => getExecutions({ pageSize: 5 }),
@@ -86,7 +89,7 @@ export default function ActivityFeed() {
           {data?.items?.map((exec) => (
             <ListItemButton
               key={exec.id}
-              onClick={() => router.push(`/history?exec=${exec.id}`)}
+              onClick={() => exec.status === 'running' ? setSelected(exec) : router.push(`/history?exec=${exec.id}`)}
               sx={{ borderRadius: 2, px: 1.5, py: 1, mb: 0.5 }}
             >
               <Box
@@ -149,5 +152,7 @@ export default function ActivityFeed() {
         </List>
       </CardContent>
     </Card>
+
+    <LogViewer execution={selected} onClose={() => setSelected(null)} />
   )
 }

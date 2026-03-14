@@ -20,9 +20,9 @@ import { useAuth } from '@/lib/auth'
 
 const NAV = [
   { label: 'Overview', href: '/overview', icon: <DashboardOutlinedIcon fontSize="small" /> },
-  { label: 'Schedules', href: '/schedules', icon: <ScheduleOutlinedIcon fontSize="small" /> },
   { label: 'Cluster State', href: '/cluster', icon: <HubOutlinedIcon fontSize="small" /> },
   { label: 'Guardrails', href: '/guardrails', icon: <SecurityOutlinedIcon fontSize="small" /> },
+  { label: 'Schedules', href: '/schedules', icon: <ScheduleOutlinedIcon fontSize="small" /> },
   { label: 'History', href: '/history', icon: <HistoryOutlinedIcon fontSize="small" /> },
   { label: 'Settings', href: '/settings', icon: <SettingsOutlinedIcon fontSize="small" /> },
 ]

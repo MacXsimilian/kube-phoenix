@@ -8,12 +8,13 @@ Scale down your cluster at night, wake it up in the morning. No more paying for 
 
 ## What it does
 
-- **Overview** — cluster health at a glance: current scale state, pulsing live indicator, partial-sleep namespace breakdown, next scheduled run countdown, impact preview on manual trigger buttons, and a live activity feed with WebSocket-backed execution tracking
-- **Schedules** — multiple sleep and wake schedules with cron expressions, per-schedule timezones, and optional namespace filters for partial scale-down
+- **Overview** — cluster health at a glance: current scale state, pulsing live indicator, partial-sleep namespace breakdown, live activity feed with inline log drawer, and next scheduled run countdown
+- **Cluster State** — live view of all Deployments, StatefulSets, and nodes with resizable drill-down detail drawers; pod detail includes live CPU/memory usage, annotations, node instance type, and Kubernetes events
 - **Guardrails** — protect namespaces, node labels, and taints from ever being touched
-- **Cluster State** — live view of all Deployments, StatefulSets, and nodes with drill-down detail drawers; tab labels show live resource counts
+- **Schedules** — multiple sleep and wake schedules with cron expressions, per-schedule timezones, and optional namespace filters for partial scale-down
 - **History** — full execution log with live WebSocket streaming; scrollable run summary with jump-to-error navigation and error/workload count badges
 - **Manual triggers** — run any schedule immediately in plan (dry-run) or apply mode
+- **Settings** — danger zone with a double-confirmation Reset Database operation (drops all tables, reseeds defaults)
 
 ---
 
@@ -45,6 +46,16 @@ Both operations support **plan mode** (logs what it would do, no changes) and **
 
 ---
 
+## Authentication
+
+kube-phoenix uses a branded login screen backed by HTTP Basic Auth. Credentials are stored in `sessionStorage` and injected into every API call — no browser native auth dialog.
+
+Set `BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD` to enable auth. Unset = auth disabled (dev mode).
+
+WebSocket log streams authenticate via a `?token=` query parameter (browsers cannot set `Authorization` headers on WebSocket upgrades).
+
+---
+
 ## Cluster State drill-down
 
 The Cluster State page provides three levels of detail, all in resizable side drawers:
@@ -54,16 +65,16 @@ The Cluster State page provides three levels of detail, all in resizable side dr
 - Click a pod in the node drawer → content replaces in-place with **Pod detail** — a breadcrumb back button returns to the node view
 
 **Workloads tab**
-- Sortable table with a live row count footer (`Showing N of M workloads`) and an "affected-only" filter that previews what the next sleep run would scale
+- Sortable table with a live row count footer and an "affected-only" filter that previews what the next sleep run would scale
 - Click a workload row → **Workload detail drawer** — replica progress bar (ready/current/saved), kind and status chips, searchable pod list
 - Click a pod in the workload drawer → **Pod detail drawer** opens alongside it
 
 **Pod detail** shows:
-- Phase, QoS class, node name, pod IP, host IP, age
-- Per-container: image, ready indicator, restart count, CPU/memory requests **and** limits, last terminated reason
+- Phase, QoS class, node name, instance type, pod IP, host IP, age
+- Per-container: image, ready indicator, restart count, live CPU/memory usage (via Metrics Server, degrades gracefully if absent), CPU/memory requests and limits, last terminated reason
 - Pod conditions (Ready, ContainersReady, Initialized, PodScheduled) as colour-coded chips
 - Kubernetes events (Warning events highlighted in red)
-- Labels (collapsible)
+- Labels and annotations (collapsible)
 
 ---
 
@@ -122,6 +133,8 @@ make docker-build
 
 All `/api/*` and `/ws/*` endpoints require Basic Auth when configured. `/healthz` is always open.
 
+WebSocket connections authenticate via `?token=<base64(user:pass)>` query parameter.
+
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/healthz` | Health check (DB ping) |
@@ -133,15 +146,16 @@ All `/api/*` and `/ws/*` endpoints require Basic Auth when configured. `/healthz
 | `GET` | `/api/executions` | List executions (filters: `schedule_id`, `status`, `page`, `page_size`) |
 | `GET` | `/api/executions/:id` | Get execution |
 | `GET` | `/api/executions/:id/logs` | Get all log lines for an execution |
-| `GET` | `/ws/executions/:id/logs` | WebSocket — live log streaming |
+| `GET` | `/ws/executions/:id/logs` | WebSocket — live log streaming (`?token=` auth) |
 | `GET` | `/api/cluster/workloads` | List Deployments and StatefulSets |
 | `GET` | `/api/cluster/nodes` | List nodes with protection status |
 | `GET` | `/api/cluster/nodes/:name/pods` | List non-DaemonSet pods on a node |
-| `GET` | `/api/cluster/pods/:namespace/:name` | Full pod detail — containers (req+limit), conditions, K8s events, labels |
+| `GET` | `/api/cluster/pods/:namespace/:name` | Full pod detail — containers (live usage + req/limit), conditions, K8s events, labels, annotations |
 | `GET` | `/api/cluster/workloads/:namespace/:kind/:name/pods` | List pods belonging to a Deployment or StatefulSet |
 | `GET` | `/api/guardrails` | Get guardrails config |
 | `PUT` | `/api/guardrails` | Update guardrails |
 | `POST` | `/api/trigger` | Manually trigger a schedule `{"scheduleId": 1, "mode": "plan"}` |
+| `POST` | `/api/admin/reset-db` | Reset database — drops all tables, recreates schema, reseeds defaults; streams NDJSON progress events; body: `{"confirm":"RESET DATABASE"}` |
 
 ---
 
@@ -159,7 +173,7 @@ helm upgrade --install kube-phoenix helm/kube-phoenix \
   --set secret.basicAuthPassword=<your-password>
 ```
 
-### External database (RDS, Cloud SQL, etc.)
+### External database (RDS, Aurora, etc.)
 
 ```bash
 helm upgrade --install kube-phoenix helm/kube-phoenix \
@@ -250,15 +264,13 @@ ingress:
 4. A listener rule forwarding traffic to the target group
 5. A DNS CNAME / alias pointing your domain to the ALB
 
-> The chart speaks plain HTTP on port 8080. For TLS between the ALB and pods, set the target group protocol to `HTTPS` and configure certs accordingly.
-
 **Example values:**
 
 ```yaml
 targetGroupBinding:
   enabled: true
   targetGroupARN: "arn:aws:elasticloadbalancing:eu-central-1:ACCOUNT:targetgroup/kube-phoenix/ID"
-  targetType: ip        # use "instance" for NodePort-based setups
+  targetType: ip
   # vpcID: "vpc-0abc123def456"  # omit if the controller auto-detects it
 ```
 
@@ -308,23 +320,25 @@ kube-phoenix/
 │   │   ├── api/                    # HTTP handlers + Chi router
 │   │   ├── scheduler/              # robfig/cron wrapper + WebSocket log broker
 │   │   ├── scaler/                 # Scale-down / scale-up logic
-│   │   ├── k8s/                    # Kubernetes client wrapper
+│   │   ├── k8s/                    # Kubernetes client wrapper (incl. Metrics Server)
 │   │   ├── store/                  # GORM models + queries
-│   │   └── middleware/             # HTTP Basic Auth
+│   │   └── middleware/             # HTTP Basic Auth (header + WS query param)
 │   └── web/
 │       ├── embed.go                # //go:embed static (SPA handler with fallback)
 │       └── static/                 # Next.js output — generated at build time
 ├── frontend/
 │   └── src/
-│       ├── app/                    # Pages: overview, schedules, cluster, guardrails, history
+│       ├── app/                    # Pages: overview, cluster, guardrails, schedules, history, settings
 │       ├── components/             # Reusable UI components
-│       ├── lib/                    # API client, TypeScript types, cron formatter
+│       │   ├── auth/               # Login screen
+│       │   ├── layout/             # AppShell, Sidebar (with logout)
+│       │   └── ...
+│       ├── lib/                    # API client (auth-aware), auth context, TypeScript types
 │       └── theme/                  # Dark purple MUI theme
 ├── helm/kube-phoenix/
 │   ├── Chart.yaml
 │   ├── values.yaml
 │   └── templates/                  # namespace, sa, clusterrole, secret, deployment, service, ingress, postgresql, targetgroupbinding
-└── k8s/                            # Legacy raw manifests (superseded by Helm)
 ```
 
 ---
