@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.35](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.34...v0.1.35) (2026-03-14)
+
+
+### Bug Fixes
+
+* **ci:** run secret scan on push and PRs, not PRs only ([d83ed7c](https://github.com/MacXsimilian/kube-phoenix/commit/d83ed7ca7782ed3480978f47ff50ab5691fdcd80))
+
 ## [0.1.34](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.33...v0.1.34) (2026-03-14)
 
 
