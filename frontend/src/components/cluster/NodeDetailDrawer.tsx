@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
@@ -18,10 +18,12 @@ import TableRow from '@mui/material/TableRow'
 import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
+import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodePods } from '@/lib/api'
 import type { Node, NodePod } from '@/lib/types'
+import PodDetailContent from './PodDetailContent'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -97,7 +99,7 @@ function MiniBar({ used, total, label }: { used: number; total: number; label: s
   )
 }
 
-function PodRow({ pod }: { pod: NodePod }) {
+function PodRow({ pod, onClick }: { pod: NodePod; onClick?: () => void }) {
   const ss = podStatusStyle(pod.status)
   const os = pod.ownerKind ? ownerStyle(pod.ownerKind) : null
   const readyColor = pod.readyContainers === pod.totalContainers
@@ -107,7 +109,7 @@ function PodRow({ pod }: { pod: NodePod }) {
     : '#F87171'
 
   return (
-    <TableRow hover>
+    <TableRow hover onClick={onClick} sx={{ cursor: onClick ? 'pointer' : 'default' }}>
       <TableCell sx={{ maxWidth: 170, py: 0.75 }}>
         <Tooltip title={pod.name} arrow placement="top-start">
           <Typography sx={{ fontSize: 12, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160, display: 'block' }}>
@@ -157,6 +159,31 @@ function PodRow({ pod }: { pod: NodePod }) {
 
 export default function NodeDetailDrawer({ node, onClose }: { node: Node | null; onClose: () => void }) {
   const [search, setSearch] = useState('')
+  const [drawerWidth, setDrawerWidth] = useState(540)
+  const [selectedPod, setSelectedPod] = useState<NodePod | null>(null)
+
+  function handleClose() {
+    setSelectedPod(null)
+    onClose()
+  }
+
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = drawerWidth
+
+    const onMouseMove = (mv: MouseEvent) => {
+      const delta = startX - mv.clientX
+      const next = Math.min(Math.max(startWidth + delta, 360), window.innerWidth * 0.9)
+      setDrawerWidth(Math.round(next))
+    }
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }, [drawerWidth])
 
   const { data: pods = [], isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['node-pods', node?.name],
@@ -189,74 +216,127 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
     <Drawer
       anchor="right"
       open={node != null}
-      onClose={onClose}
+      onClose={handleClose}
       PaperProps={{
         sx: {
-          width: { xs: '100vw', sm: 540 },
+          width: { xs: '100vw', md: drawerWidth },
           bgcolor: '#1A1A24',
           borderLeft: '1px solid rgba(255,255,255,0.06)',
           display: 'flex',
           flexDirection: 'column',
+          overflow: 'visible',
         },
       }}
     >
+      {/* Resize handle */}
+      <Box
+        onMouseDown={handleResizeMouseDown}
+        sx={{
+          position: 'absolute',
+          left: -4,
+          top: 0,
+          bottom: 0,
+          width: 8,
+          cursor: 'col-resize',
+          zIndex: 1,
+          '&:hover': { bgcolor: 'primary.main', opacity: 0.4 },
+          display: { xs: 'none', md: 'block' },
+        }}
+      />
       {node && (
         <>
           {/* Header */}
           <Box sx={{ px: 2.5, pt: 2.5, pb: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
-              <Box sx={{ minWidth: 0 }}>
-                <Typography
-                  variant="body2"
-                  sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 13, wordBreak: 'break-all', lineHeight: 1.4 }}
-                >
-                  {node.name}
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 0.75, mt: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {node.instanceType && (
-                    <Typography variant="caption" color="text.secondary">{node.instanceType}</Typography>
-                  )}
-                  {node.zone && (
+              <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                {selectedPod && (
+                  <Tooltip title={`Back to ${node.name}`}>
+                    <IconButton size="small" onClick={() => setSelectedPod(null)} sx={{ mt: -0.25, flexShrink: 0 }} aria-label="Back to node">
+                      <ArrowBackIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                <Box sx={{ minWidth: 0 }}>
+                  {selectedPod ? (
                     <>
-                      <Typography variant="caption" color="text.disabled">·</Typography>
-                      <Typography variant="caption" color="text.secondary">{node.zone}</Typography>
+                      <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11, display: 'block', mb: 0.25 }}>
+                        {node.name}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 13, wordBreak: 'break-all', lineHeight: 1.4 }}
+                      >
+                        {selectedPod.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
+                        {selectedPod.namespace}
+                      </Typography>
                     </>
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 13, wordBreak: 'break-all', lineHeight: 1.4 }}
+                    >
+                      {node.name}
+                    </Typography>
                   )}
-                  <Typography variant="caption" color="text.disabled">·</Typography>
-                  {sc && <Chip label={sc.label} size="small" sx={{ height: 18, fontSize: 10, bgcolor: sc.bgcolor, color: sc.color }} />}
-                  {node.cordoned && (
-                    <Chip label="Cordoned" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(248,113,113,0.15)', color: '#F87171' }} />
-                  )}
+                {!selectedPod && (
+                  <Box sx={{ display: 'flex', gap: 0.75, mt: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {node.instanceType && (
+                      <Typography variant="caption" color="text.secondary">{node.instanceType}</Typography>
+                    )}
+                    {node.zone && (
+                      <>
+                        <Typography variant="caption" color="text.disabled">·</Typography>
+                        <Typography variant="caption" color="text.secondary">{node.zone}</Typography>
+                      </>
+                    )}
+                    <Typography variant="caption" color="text.disabled">·</Typography>
+                    {sc && <Chip label={sc.label} size="small" sx={{ height: 18, fontSize: 10, bgcolor: sc.bgcolor, color: sc.color }} />}
+                    {node.cordoned && (
+                      <Chip label="Cordoned" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(248,113,113,0.15)', color: '#F87171' }} />
+                    )}
+                  </Box>
+                )}
                 </Box>
               </Box>
-              <IconButton size="small" onClick={onClose} sx={{ mt: -0.25, flexShrink: 0 }} aria-label="Close node detail">
+              <IconButton size="small" onClick={handleClose} sx={{ mt: -0.25, flexShrink: 0 }} aria-label="Close node detail">
                 <CloseIcon sx={{ fontSize: 18 }} />
               </IconButton>
             </Box>
 
-            {/* Resource bars */}
-            <Box sx={{ display: 'flex', gap: 3, mt: 1.5, flexWrap: 'wrap' }}>
-              <MiniBar
-                used={node.cpuRequested}
-                total={node.cpuAllocatable}
-                label={`CPU: ${fmtCpu(node.cpuRequested)} / ${fmtCpu(node.cpuAllocatable)} reserved`}
-              />
-              <MiniBar
-                used={node.memRequested}
-                total={node.memAllocatable}
-                label={`MEM: ${fmtMem(node.memRequested)} / ${fmtMem(node.memAllocatable)} reserved`}
-              />
-              <Box>
-                <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', mb: 0.25, fontSize: 11 }}>PODS</Typography>
-                <Typography variant="caption" sx={{ fontWeight: 600, fontSize: 11 }}>{node.podCount}</Typography>
+            {/* Resource bars — hidden in pod detail view */}
+            {!selectedPod && (
+              <Box sx={{ display: 'flex', gap: 3, mt: 1.5, flexWrap: 'wrap' }}>
+                <MiniBar
+                  used={node.cpuRequested}
+                  total={node.cpuAllocatable}
+                  label={`CPU: ${fmtCpu(node.cpuRequested)} / ${fmtCpu(node.cpuAllocatable)} reserved`}
+                />
+                <MiniBar
+                  used={node.memRequested}
+                  total={node.memAllocatable}
+                  label={`MEM: ${fmtMem(node.memRequested)} / ${fmtMem(node.memAllocatable)} reserved`}
+                />
+                <Box>
+                  <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', mb: 0.25, fontSize: 11 }}>PODS</Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, fontSize: 11 }}>{node.podCount}</Typography>
+                </Box>
               </Box>
-            </Box>
+            )}
           </Box>
 
           <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
 
-          {/* Toolbar */}
-          <Box sx={{ px: 2.5, py: 1.25, display: 'flex', alignItems: 'center', gap: 1 }}>
+          {/* Pod detail content — replaces toolbar + pod list */}
+          {selectedPod && (
+            <Box sx={{ flex: 1, overflow: 'auto' }}>
+              <PodDetailContent namespace={selectedPod.namespace} podName={selectedPod.name} />
+            </Box>
+          )}
+
+          {/* Toolbar — hidden in pod detail view */}
+          {!selectedPod && <Box sx={{ px: 2.5, py: 1.25, display: 'flex', alignItems: 'center', gap: 1 }}>
             <TextField
               size="small"
               placeholder="Search pods…"
@@ -273,12 +353,12 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                 <RefreshIcon sx={{ fontSize: 16 }} />
               </IconButton>
             </Tooltip>
-          </Box>
+          </Box>}
 
-          <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+          {!selectedPod && <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />}
 
-          {/* Pod list */}
-          <Box sx={{ flex: 1, overflow: 'auto' }}>
+          {/* Pod list — hidden in pod detail view */}
+          {!selectedPod && <Box sx={{ flex: 1, overflow: 'auto' }}>
             {isError ? (
               <Alert severity="error" sx={{ m: 2 }}>
                 Failed to load pods: {error instanceof Error ? error.message : 'Unknown error'}
@@ -322,13 +402,15 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                           </Box>
                         </TableCell>
                       </TableRow>
-                      {nsPods.map((pod) => <PodRow key={pod.name} pod={pod} />)}
+                      {nsPods.map((pod) => (
+                        <PodRow key={pod.name} pod={pod} onClick={() => setSelectedPod(pod)} />
+                      ))}
                     </>
                   ))}
                 </TableBody>
               </Table>
             )}
-          </Box>
+          </Box>}
         </>
       )}
     </Drawer>

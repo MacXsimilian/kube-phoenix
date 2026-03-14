@@ -10,7 +10,7 @@ Scale down your cluster at night, wake it up in the morning. No more paying for 
 
 - **Schedules** — multiple sleep and wake schedules with cron expressions, per-schedule timezones, and optional namespace filters for partial scale-down
 - **Guardrails** — protect namespaces, node labels, and taints from ever being touched
-- **Cluster State** — live view of all Deployments, StatefulSets, and nodes
+- **Cluster State** — live view of all Deployments, StatefulSets, and nodes with drill-down detail drawers
 - **History** — full execution log with live WebSocket streaming
 - **Manual triggers** — run any schedule immediately in plan (dry-run) or apply mode
 
@@ -41,6 +41,27 @@ The Go backend embeds the Next.js static export — one binary, one container, n
 2. Uncordons nodes; Karpenter (or your CA) provisions new nodes as pods become pending
 
 Both operations support **plan mode** (logs what it would do, no changes) and **apply mode** (executes).
+
+---
+
+## Cluster State drill-down
+
+The Cluster State page provides three levels of detail, all in resizable side drawers:
+
+**Nodes tab**
+- Click a node row → **Node detail drawer** — resource bars (CPU/mem), zone, instance type, cordon status, and a searchable pod list grouped by namespace
+- Click a pod in the node drawer → content replaces in-place with **Pod detail** — a breadcrumb back button returns to the node view
+
+**Workloads tab**
+- Click a workload row → **Workload detail drawer** — replica progress bar (ready/current/saved), kind and status chips, searchable pod list
+- Click a pod in the workload drawer → **Pod detail drawer** opens alongside it
+
+**Pod detail** shows:
+- Phase, QoS class, node name, pod IP, host IP, age
+- Per-container: image, ready indicator, restart count, CPU/memory requests **and** limits, last terminated reason
+- Pod conditions (Ready, ContainersReady, Initialized, PodScheduled) as colour-coded chips
+- Kubernetes events (Warning events highlighted in red)
+- Labels (collapsible)
 
 ---
 
@@ -113,6 +134,9 @@ All `/api/*` and `/ws/*` endpoints require Basic Auth when configured. `/healthz
 | `GET` | `/ws/executions/:id/logs` | WebSocket — live log streaming |
 | `GET` | `/api/cluster/workloads` | List Deployments and StatefulSets |
 | `GET` | `/api/cluster/nodes` | List nodes with protection status |
+| `GET` | `/api/cluster/nodes/:name/pods` | List non-DaemonSet pods on a node |
+| `GET` | `/api/cluster/pods/:namespace/:name` | Full pod detail — containers (req+limit), conditions, K8s events, labels |
+| `GET` | `/api/cluster/workloads/:namespace/:kind/:name/pods` | List pods belonging to a Deployment or StatefulSet |
 | `GET` | `/api/guardrails` | Get guardrails config |
 | `PUT` | `/api/guardrails` | Update guardrails |
 | `POST` | `/api/trigger` | Manually trigger a schedule `{"scheduleId": 1, "mode": "plan"}` |

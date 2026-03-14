@@ -96,3 +96,43 @@ export interface ExecutionPage {
   items: Execution[]
   total: number
 }
+
+export interface PodContainer {
+  name: string
+  image: string
+  ready: boolean
+  restartCount: number
+  cpuRequest: number  // millicores
+  memRequest: number  // bytes
+  cpuLimit: number    // millicores, 0 = no limit set
+  memLimit: number    // bytes, 0 = no limit set
+  lastState: string   // terminated reason or ""
+}
+
+export interface PodCondition {
+  type: string
+  status: 'True' | 'False' | 'Unknown'
+}
+
+export interface PodEvent {
+  type: string    // "Normal" | "Warning"
+  reason: string
+  message: string
+  count: number
+  lastSeen: string  // RFC3339
+}
+
+export interface PodDetail {
+  name: string
+  namespace: string
+  phase: string
+  nodeName: string
+  podIP: string
+  hostIP: string
+  qosClass: string
+  startedAt: string
+  labels: Record<string, string>
+  containers: PodContainer[]
+  conditions: PodCondition[]
+  events: PodEvent[]
+}

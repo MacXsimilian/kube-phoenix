@@ -317,6 +317,224 @@ func (h *Handler) getNodePods(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, result)
 }
 
+// ── Pod detail ────────────────────────────────────────────────────────────────
+
+type ContainerDetailResponse struct {
+	Name         string `json:"name"`
+	Image        string `json:"image"`
+	Ready        bool   `json:"ready"`
+	RestartCount int32  `json:"restartCount"`
+	CPURequest   int64  `json:"cpuRequest"` // millicores
+	MemRequest   int64  `json:"memRequest"` // bytes
+	CPULimit     int64  `json:"cpuLimit"`   // millicores, 0 = no limit set
+	MemLimit     int64  `json:"memLimit"`   // bytes, 0 = no limit set
+	LastState    string `json:"lastState"`  // terminated reason or ""
+}
+
+type PodConditionResponse struct {
+	Type   string `json:"type"`
+	Status string `json:"status"` // "True" | "False" | "Unknown"
+}
+
+type PodEventResponse struct {
+	Type     string `json:"type"`     // "Normal" | "Warning"
+	Reason   string `json:"reason"`
+	Message  string `json:"message"`
+	Count    int32  `json:"count"`
+	LastSeen string `json:"lastSeen"` // RFC3339
+}
+
+type PodDetailResponse struct {
+	Name       string                    `json:"name"`
+	Namespace  string                    `json:"namespace"`
+	Phase      string                    `json:"phase"`
+	NodeName   string                    `json:"nodeName"`
+	PodIP      string                    `json:"podIP"`
+	HostIP     string                    `json:"hostIP"`
+	QOSClass   string                    `json:"qosClass"`
+	StartedAt  string                    `json:"startedAt"` // RFC3339 or ""
+	Labels     map[string]string         `json:"labels"`
+	Containers []ContainerDetailResponse `json:"containers"`
+	Conditions []PodConditionResponse    `json:"conditions"`
+	Events     []PodEventResponse        `json:"events"`
+}
+
+func (h *Handler) getPodDetail(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		jsonError(w, "kubernetes client unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+	ctx := r.Context()
+
+	pod, err := h.k8s.GetPod(ctx, namespace, name)
+	if err != nil {
+		jsonError(w, "failed to get pod: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	csMap := map[string]corev1.ContainerStatus{}
+	for _, cs := range pod.Status.ContainerStatuses {
+		csMap[cs.Name] = cs
+	}
+
+	var containers []ContainerDetailResponse
+	for _, c := range pod.Spec.Containers {
+		cs := csMap[c.Name]
+		lastState := ""
+		if cs.LastTerminationState.Terminated != nil {
+			lastState = cs.LastTerminationState.Terminated.Reason
+		}
+		containers = append(containers, ContainerDetailResponse{
+			Name:         c.Name,
+			Image:        c.Image,
+			Ready:        cs.Ready,
+			RestartCount: cs.RestartCount,
+			CPURequest:   c.Resources.Requests.Cpu().MilliValue(),
+			MemRequest:   c.Resources.Requests.Memory().Value(),
+			CPULimit:     c.Resources.Limits.Cpu().MilliValue(),
+			MemLimit:     c.Resources.Limits.Memory().Value(),
+			LastState:    lastState,
+		})
+	}
+
+	var conditions []PodConditionResponse
+	for _, cond := range pod.Status.Conditions {
+		conditions = append(conditions, PodConditionResponse{
+			Type:   string(cond.Type),
+			Status: string(cond.Status),
+		})
+	}
+
+	events, err := h.k8s.GetPodEvents(ctx, namespace, name)
+	if err != nil {
+		slog.Warn("getPodDetail: failed to get events", "err", err)
+		events = []corev1.Event{}
+	}
+	var podEvents []PodEventResponse
+	for _, e := range events {
+		podEvents = append(podEvents, PodEventResponse{
+			Type:     e.Type,
+			Reason:   e.Reason,
+			Message:  e.Message,
+			Count:    e.Count,
+			LastSeen: e.LastTimestamp.UTC().Format(time.RFC3339),
+		})
+	}
+
+	startedAt := ""
+	if pod.Status.StartTime != nil {
+		startedAt = pod.Status.StartTime.UTC().Format(time.RFC3339)
+	}
+	labels := pod.Labels
+	if labels == nil {
+		labels = map[string]string{}
+	}
+
+	jsonOK(w, PodDetailResponse{
+		Name:       pod.Name,
+		Namespace:  pod.Namespace,
+		Phase:      string(pod.Status.Phase),
+		NodeName:   pod.Spec.NodeName,
+		PodIP:      pod.Status.PodIP,
+		HostIP:     pod.Status.HostIP,
+		QOSClass:   string(pod.Status.QOSClass),
+		StartedAt:  startedAt,
+		Labels:     labels,
+		Containers: containers,
+		Conditions: conditions,
+		Events:     podEvents,
+	})
+}
+
+// ── Workload pods ─────────────────────────────────────────────────────────────
+
+func (h *Handler) getWorkloadPods(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		jsonError(w, "kubernetes client unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	namespace := chi.URLParam(r, "namespace")
+	kind := chi.URLParam(r, "kind") // Deployment | StatefulSet
+	name := chi.URLParam(r, "name")
+	ctx := r.Context()
+
+	pods, err := h.k8s.ListPods(ctx, namespace)
+	if err != nil {
+		jsonError(w, "failed to list pods: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	rss, err := h.k8s.ListAllReplicaSets(ctx)
+	if err != nil {
+		slog.Warn("getWorkloadPods: failed to list replicasets", "err", err)
+	}
+	type ownerRef struct{ kind, name string }
+	rsOwner := map[string]ownerRef{}
+	for _, rs := range rss {
+		for _, ref := range rs.OwnerReferences {
+			rsOwner[rs.Namespace+"/"+rs.Name] = ownerRef{ref.Kind, ref.Name}
+			break
+		}
+	}
+
+	var result []NodePodResponse
+	for _, pod := range pods {
+		ownerKind, ownerName := "", ""
+		for _, ref := range pod.OwnerReferences {
+			ownerKind = ref.Kind
+			ownerName = ref.Name
+		}
+		if ownerKind == "ReplicaSet" {
+			if top, ok := rsOwner[pod.Namespace+"/"+ownerName]; ok {
+				ownerKind = top.kind
+				ownerName = top.name
+			}
+		}
+		if !strings.EqualFold(ownerKind, kind) || ownerName != name {
+			continue
+		}
+
+		ready := 0
+		for _, cs := range pod.Status.ContainerStatuses {
+			if cs.Ready {
+				ready++
+			}
+		}
+		var cpuReq, memReq int64
+		for _, c := range pod.Spec.Containers {
+			cpuReq += c.Resources.Requests.Cpu().MilliValue()
+			memReq += c.Resources.Requests.Memory().Value()
+		}
+		startedAt := ""
+		if pod.Status.StartTime != nil {
+			startedAt = pod.Status.StartTime.UTC().Format(time.RFC3339)
+		}
+		phase := string(pod.Status.Phase)
+		if phase == "" {
+			phase = "Unknown"
+		}
+		result = append(result, NodePodResponse{
+			Name:            pod.Name,
+			Namespace:       pod.Namespace,
+			OwnerKind:       ownerKind,
+			OwnerName:       ownerName,
+			Status:          phase,
+			ReadyContainers: ready,
+			TotalContainers: len(pod.Spec.Containers),
+			CPURequest:      cpuReq,
+			MemRequest:      memReq,
+			StartedAt:       startedAt,
+		})
+	}
+
+	if result == nil {
+		result = []NodePodResponse{}
+	}
+	jsonOK(w, result)
+}
+
 func nodeProtectionStatus(nodeName string, labels map[string]string, taints []corev1.Taint, skipLabels, skipTaints string, criticalNodes map[string]bool) (string, string) {
 	for _, kv := range strings.Split(skipLabels, ",") {
 		kv = strings.TrimSpace(kv)

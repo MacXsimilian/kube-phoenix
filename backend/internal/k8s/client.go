@@ -293,3 +293,21 @@ func (c *Client) ListNamespaces(ctx context.Context) ([]corev1.Namespace, error)
 	}
 	return list.Items, nil
 }
+
+func (c *Client) GetPod(ctx context.Context, namespace, name string) (*corev1.Pod, error) {
+	pod, err := c.cs.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return pod, nil
+}
+
+func (c *Client) GetPodEvents(ctx context.Context, namespace, podName string) ([]corev1.Event, error) {
+	list, err := c.cs.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
+		FieldSelector: "involvedObject.name=" + podName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
