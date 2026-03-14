@@ -50,6 +50,7 @@ export default function ActivityFeed() {
   })
 
   return (
+    <>
     <Card>
       <CardContent sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -154,5 +155,6 @@ export default function ActivityFeed() {
     </Card>
 
     <LogViewer execution={selected} onClose={() => setSelected(null)} />
+    </>
   )
 }
