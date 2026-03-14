@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.30](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.29...v0.1.30) (2026-03-14)
+
+
+### Bug Fixes
+
+* **history:** cast Box ref type to HTMLElement in LogViewer ([09cedcd](https://github.com/MacXsimilian/kube-phoenix/commit/09cedcdfe86e4576cf472c59ad80d05e6a3c14d5))
+
 ## [0.1.29](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.28...v0.1.29) (2026-03-14)
 
 
