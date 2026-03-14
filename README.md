@@ -2,7 +2,7 @@
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/MacXsimilian/kube-phoenix/ci.yml?branch=master)](https://github.com/MacXsimilian/kube-phoenix/actions/workflows/ci.yml)
 [![GitHub License](https://img.shields.io/badge/License-Apache%202.0-ff69b4.svg)](https://github.com/MacXsimilian/kube-phoenix/blob/master/LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/MacXsimilian/kube-phoenix)](https://goreportcard.com/report/github.com/MacXsimilian/kube-phoenix)
+[![Go Report Card](https://goreportcard.com/badge/github.com/macxsimilian/kube-phoenix/backend)](https://goreportcard.com/report/github.com/macxsimilian/kube-phoenix/backend)
 ![GitHub stars](https://img.shields.io/github/stars/MacXsimilian/kube-phoenix)
 ![GitHub forks](https://img.shields.io/github/forks/MacXsimilian/kube-phoenix)
 [![Coverage Status](https://coveralls.io/repos/github/MacXsimilian/kube-phoenix/badge.svg?branch=master)](https://coveralls.io/github/MacXsimilian/kube-phoenix?branch=master)
