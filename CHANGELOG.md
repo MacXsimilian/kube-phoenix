@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.23...v0.1.24) (2026-03-14)
+
+
+### Bug Fixes
+
+* **frontend:** surface silent mutation/query failures across all components ([cf075b3](https://github.com/MacXsimilian/kube-phoenix/commit/cf075b37ff58725fd7e64ed3a8d31e0b11b10424))
+
 ## [0.1.23](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.22...v0.1.23) (2026-03-14)
 
 
