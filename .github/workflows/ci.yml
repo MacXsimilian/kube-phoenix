@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, release/v0.1.x, release/v0.2.x]
     paths:
       - "frontend/**"
       - "backend/**"
@@ -10,7 +10,7 @@ on:
       - "helm/**"
       - ".github/workflows/**"
   pull_request:
-    branches: [master]
+    branches: [master, release/v0.1.x, release/v0.2.x]
     paths:
       - "frontend/**"
       - "backend/**"
@@ -135,6 +135,8 @@ jobs:
             type=sha,prefix=,format=short
             type=semver,pattern={{version}}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=v0.2-latest,enable=${{ github.ref == 'refs/heads/release/v0.2.x' }}
+            type=raw,value=v0.1-latest,enable=${{ github.ref == 'refs/heads/release/v0.1.x' }}
 
       - name: Build & push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
@@ -156,10 +158,20 @@ jobs:
     permissions:
       contents: read
     steps:
+      # Resolve the right floating tag for the branch being scanned
+      - name: Resolve scan tag
+        id: tag
+        run: |
+          case "${{ github.ref }}" in
+            refs/heads/release/v0.1.x) echo "value=v0.1-latest" >> $GITHUB_OUTPUT ;;
+            refs/heads/release/v0.2.x) echo "value=v0.2-latest" >> $GITHUB_OUTPUT ;;
+            *)                         echo "value=latest"       >> $GITHUB_OUTPUT ;;
+          esac
+
       - name: Scan image for vulnerabilities
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
         with:
-          image-ref: ${{ needs.docker.outputs.image }}:latest
+          image-ref: ${{ needs.docker.outputs.image }}:${{ steps.tag.outputs.value }}
           format: table
           severity: CRITICAL,HIGH
           exit-code: "1"
