@@ -8,10 +8,11 @@ Scale down your cluster at night, wake it up in the morning. No more paying for 
 
 ## What it does
 
+- **Overview** — cluster health at a glance: current scale state, pulsing live indicator, partial-sleep namespace breakdown, next scheduled run countdown, impact preview on manual trigger buttons, and a live activity feed with WebSocket-backed execution tracking
 - **Schedules** — multiple sleep and wake schedules with cron expressions, per-schedule timezones, and optional namespace filters for partial scale-down
 - **Guardrails** — protect namespaces, node labels, and taints from ever being touched
-- **Cluster State** — live view of all Deployments, StatefulSets, and nodes with drill-down detail drawers
-- **History** — full execution log with live WebSocket streaming
+- **Cluster State** — live view of all Deployments, StatefulSets, and nodes with drill-down detail drawers; tab labels show live resource counts
+- **History** — full execution log with live WebSocket streaming; scrollable run summary with jump-to-error navigation and error/workload count badges
 - **Manual triggers** — run any schedule immediately in plan (dry-run) or apply mode
 
 ---
@@ -53,6 +54,7 @@ The Cluster State page provides three levels of detail, all in resizable side dr
 - Click a pod in the node drawer → content replaces in-place with **Pod detail** — a breadcrumb back button returns to the node view
 
 **Workloads tab**
+- Sortable table with a live row count footer (`Showing N of M workloads`) and an "affected-only" filter that previews what the next sleep run would scale
 - Click a workload row → **Workload detail drawer** — replica progress bar (ready/current/saved), kind and status chips, searchable pod list
 - Click a pod in the workload drawer → **Pod detail drawer** opens alongside it
 
