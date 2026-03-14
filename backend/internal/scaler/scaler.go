@@ -20,11 +20,13 @@ type LogLine struct {
 
 // Counts tracks operation counters across a run.
 type Counts struct {
-	Scaled  int
-	Drained int
-	Deleted int
-	Skipped int
-	Errors  int
+	Saved     int
+	Scaled    int
+	Drained   int
+	Deleted   int
+	Skipped   int
+	Protected int
+	Errors    int
 }
 
 // Runner holds dependencies shared by scale-down and scale-up.
