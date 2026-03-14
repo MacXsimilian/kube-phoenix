@@ -29,6 +29,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import DnsIcon from '@mui/icons-material/Dns'
 import StorageIcon from '@mui/icons-material/Storage'
+import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import { getExecutionLogs, wsLogsUrl } from '@/lib/api'
 import type { Execution, LogLine } from '@/lib/types'
 
@@ -147,14 +148,28 @@ function ExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: b
     >
       <AccordionSummary
         expandIcon={<ExpandMoreIcon sx={{ fontSize: 16 }} />}
-        sx={{ minHeight: 40, px: 2.5, py: 0, '& .MuiAccordionSummary-content': { my: 0 } }}
+        sx={{ minHeight: 40, px: 2.5, py: 0, '& .MuiAccordionSummary-content': { my: 0, display: 'flex', alignItems: 'center', gap: 1 } }}
       >
         <Typography variant="caption" fontWeight={700} letterSpacing={0.8} sx={{ color: 'text.secondary', textTransform: 'uppercase' }}>
           Summary
         </Typography>
+        {(workloads.length + nodes.length) > 0 && (
+          <Chip
+            label={workloads.length + nodes.length}
+            size="small"
+            sx={{ height: 16, fontSize: 10, bgcolor: 'rgba(124,58,237,0.2)', color: 'primary.main', '& .MuiChip-label': { px: 0.75 } }}
+          />
+        )}
+        {errors.length > 0 && (
+          <Chip
+            label={`${errors.length} err`}
+            size="small"
+            sx={{ height: 16, fontSize: 10, bgcolor: 'rgba(248,113,113,0.15)', color: '#F87171', '& .MuiChip-label': { px: 0.75 } }}
+          />
+        )}
       </AccordionSummary>
 
-      <AccordionDetails sx={{ p: 0, pb: 1.5 }}>
+      <AccordionDetails sx={{ p: 0, pb: 1.5, maxHeight: 320, overflowY: 'auto' }}>
         {/* Workloads */}
         {workloads.length > 0 && (
           <Box sx={{ px: 2.5, pt: 1 }}>
@@ -286,8 +301,10 @@ export default function LogViewer({
   const [copied, setCopied] = useState(false)
   const [wsError, setWsError] = useState(false)
   const [drawerWidth, setDrawerWidth] = useState(640)
+  const [currentErrorIdx, setCurrentErrorIdx] = useState(-1)
   const bottomRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const lineEls = useRef<(HTMLElement | null)[]>([])
 
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -314,6 +331,12 @@ export default function LogViewer({
     queryFn: () => getExecutionLogs(execution!.id),
     enabled: !!execution && !isRunning,
   })
+
+  // Reset error cursor when switching executions
+  useEffect(() => {
+    setCurrentErrorIdx(-1)
+    lineEls.current = []
+  }, [execution?.id])
 
   // WebSocket for live executions
   useEffect(() => {
@@ -349,6 +372,18 @@ export default function LogViewer({
   }, [liveLines, historicLines])
 
   const lines = isRunning ? liveLines : historicLines
+
+  const errorIndices = lines.reduce<number[]>((acc, l, i) => {
+    if (l.level === 'error') acc.push(i)
+    return acc
+  }, [])
+
+  function jumpToError() {
+    if (errorIndices.length === 0) return
+    const next = (currentErrorIdx + 1) % errorIndices.length
+    setCurrentErrorIdx(next)
+    lineEls.current[errorIndices[next]]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
 
   function handleCopy() {
     const text = lines
@@ -439,6 +474,13 @@ export default function LogViewer({
                 </Box>
               </Box>
               <Box sx={{ display: 'flex', gap: 0.5 }}>
+                {errorIndices.length > 0 && (
+                  <Tooltip title={`Jump to error${errorIndices.length > 1 ? ` (${currentErrorIdx === -1 ? 1 : currentErrorIdx + 1}/${errorIndices.length})` : ''}`}>
+                    <IconButton size="small" onClick={jumpToError} aria-label="Jump to error">
+                      <ReportProblemIcon fontSize="small" sx={{ color: '#F87171' }} />
+                    </IconButton>
+                  </Tooltip>
+                )}
                 <Tooltip title="Copy logs">
                   <span>
                     <IconButton size="small" onClick={handleCopy} disabled={lines.length === 0} aria-label="Copy logs">
@@ -474,7 +516,9 @@ export default function LogViewer({
                 </Typography>
               )}
               {lines.map((line, i) => (
-                <LogLineRow key={`${line.id ?? line.seq}-${i}`} line={line} />
+                <Box key={`${line.id ?? line.seq}-${i}`} ref={(el) => { lineEls.current[i] = el }}>
+                  <LogLineRow line={line} />
+                </Box>
               ))}
               <div ref={bottomRef} />
             </Box>
