@@ -25,6 +25,7 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import Tooltip from '@mui/material/Tooltip'
 import { getWorkloads, getGuardrails } from '@/lib/api'
 import type { Workload } from '@/lib/types'
+import WorkloadDetailDrawer from './WorkloadDetailDrawer'
 
 const STATUS_COLORS: Record<Workload['status'], { bgcolor: string; color: string; label: string }> = {
   running: { bgcolor: 'rgba(34,197,94,0.12)', color: '#22C55E', label: 'Running' },
@@ -50,6 +51,7 @@ export default function WorkloadsTable() {
   const [sortCol, setSortCol] = useState<'namespace' | 'name' | 'kind' | 'replicas' | 'status' | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [affectedOnly, setAffectedOnly] = useState(false)
+  const [selectedWorkload, setSelectedWorkload] = useState<Workload | null>(null)
 
   function handleSort(col: typeof sortCol) {
     if (sortCol === col) {
@@ -210,7 +212,7 @@ export default function WorkloadsTable() {
                   const sc = STATUS_COLORS[w.status]
                   const unhealthy = w.readyReplicas < w.currentReplicas && w.currentReplicas > 0
                   return (
-                    <TableRow key={`${w.namespace}/${w.name}/${w.kind}`} hover>
+                    <TableRow key={`${w.namespace}/${w.name}/${w.kind}`} hover onClick={() => setSelectedWorkload(w)} sx={{ cursor: 'pointer' }}>
                       <TableCell sx={{ color: 'text.secondary', fontSize: 13 }}>{w.namespace}</TableCell>
                       <TableCell sx={{ fontWeight: 500, fontSize: 13 }}>{w.name}</TableCell>
                       <TableCell>
@@ -252,6 +254,11 @@ export default function WorkloadsTable() {
           </Table>
         </TableContainer>
       )}
+
+      <WorkloadDetailDrawer
+        workload={selectedWorkload}
+        onClose={() => setSelectedWorkload(null)}
+      />
     </>
   )
 }

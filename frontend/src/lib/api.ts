@@ -1,4 +1,4 @@
-import type { Schedule, ScheduleInput, Guardrails, Execution, LogLine, Workload, Node, NodePod, ExecutionPage } from './types'
+import type { Schedule, ScheduleInput, Guardrails, Execution, LogLine, Workload, Node, NodePod, ExecutionPage, PodDetail } from './types'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
 
@@ -101,6 +101,12 @@ export const getNodes = (): Promise<Node[]> =>
 export const getNodePods = (nodeName: string): Promise<NodePod[]> =>
   req<NodePod[]>(`/api/cluster/nodes/${encodeURIComponent(nodeName)}/pods`)
 
+export const getPodDetail = (namespace: string, podName: string): Promise<PodDetail> =>
+  req<PodDetail>(`/api/cluster/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}`)
+
+export const getWorkloadPods = (namespace: string, kind: string, name: string): Promise<NodePod[]> =>
+  req<NodePod[]>(`/api/cluster/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(kind)}/${encodeURIComponent(name)}/pods`)
+
 // ── Trigger ───────────────────────────────────────────────────────────────────
 
 export const triggerRun = (
@@ -124,8 +130,10 @@ export async function* resetDatabaseStream(): AsyncGenerator<ResetEvent> {
   })
 
   if (!res.ok || !res.body) {
-    const body = await res.json().catch(() => null)
-    throw new Error(body?.error || `HTTP ${res.status}`)
+    const text = await res.text().catch(() => '')
+    let errMsg: string | undefined
+    try { errMsg = (JSON.parse(text) as { error?: string }).error } catch { /* not JSON */ }
+    throw new Error(errMsg || text || `HTTP ${res.status}`)
   }
 
   const reader = res.body.getReader()
