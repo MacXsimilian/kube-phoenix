@@ -278,15 +278,16 @@ targetGroupBinding:
 
 ## CI/CD
 
-GitHub Actions runs on every push to `master` and on pull requests (build only, no push).
+GitHub Actions runs on every push to `master` and `release/v0.1.x`, and on pull requests.
 
 | Job | What it does |
 |---|---|
 | **Frontend build** | `npm install`, `npm audit` (high severity gate), `npm run build` |
-| **Backend build** | `go vet`, `go test` with coverage report, `go build`, golangci-lint v2 |
+| **Backend build** | `go vet`, `go test` with coverage report, `go build`, `govulncheck`, golangci-lint v2 (with gosec for SAST) |
 | **Helm lint** | `helm lint helm/kube-phoenix` |
-| **Docker build & push** | Builds `linux/amd64`, pushes to GHCR on merge, Trivy scan (fails on CRITICAL/HIGH) |
-| **Helm package & push** | Packages and pushes chart to `oci://ghcr.io/macxsimilian/helm` (master only) |
+| **Docker build & push** | Builds `linux/amd64`, pushes to GHCR on merge, Trivy scan by pinned SHA tag (fails on CRITICAL/HIGH, ignores unfixed) |
+| **Secret scan** | TruffleHog scans PR diffs for verified leaked secrets (PRs only) |
+| **Helm package & push** | Packages and pushes chart to `oci://ghcr.io/macxsimilian/helm` on release |
 
 Images published to GHCR:
 
