@@ -182,3 +182,27 @@ func (s *Store) SeedDefaults() error {
 func (s *Store) Tx(fn func(*gorm.DB) error) error {
 	return s.db.Transaction(fn)
 }
+
+// ─── Danger zone ──────────────────────────────────────────────────────────────
+
+// ResetAndReseed drops all tables, recreates the schema, and seeds defaults.
+// This is a destructive, irreversible operation — callers must gate it behind
+// an explicit user confirmation before invoking.
+func (s *Store) ResetAndReseed() error {
+	m := s.db.Migrator()
+
+	// Drop in reverse dependency order to avoid FK violations
+	if err := m.DropTable(&LogLine{}, &Execution{}, &Guardrails{}, &Schedule{}); err != nil {
+		return fmt.Errorf("reset: drop tables: %w", err)
+	}
+
+	if err := s.db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{}); err != nil {
+		return fmt.Errorf("reset: migrate: %w", err)
+	}
+
+	if err := s.SeedDefaults(); err != nil {
+		return fmt.Errorf("reset: seed: %w", err)
+	}
+
+	return nil
+}
