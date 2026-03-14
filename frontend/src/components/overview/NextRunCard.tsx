@@ -12,6 +12,8 @@ import ButtonBase from '@mui/material/ButtonBase'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import Alert from '@mui/material/Alert'
+import Skeleton from '@mui/material/Skeleton'
 import { getSchedules } from '@/lib/api'
 import { cronToText } from '@/lib/cronToText'
 import type { Schedule } from '@/lib/types'
@@ -84,7 +86,7 @@ function ScheduleRow({ schedule }: { schedule: Schedule }) {
 
 export default function NextRunCard() {
   const router = useRouter()
-  const { data: schedules = [] } = useQuery({ queryKey: ['schedules'], queryFn: getSchedules, refetchInterval: 30_000 })
+  const { data: schedules = [], isLoading, isError } = useQuery({ queryKey: ['schedules'], queryFn: getSchedules, refetchInterval: 30_000 })
 
   const sorted = [...schedules].sort((a, b) => {
     if (!a.nextRun && !b.nextRun) return 0
@@ -109,7 +111,17 @@ export default function NextRunCard() {
           </ButtonBase>
         </Box>
 
-        {sorted.length === 0 ? (
+        {isError && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Could not load schedules — showing last known state.
+          </Alert>
+        )}
+
+        {isLoading ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {[...Array(2)].map((_, i) => <Skeleton key={i} variant="rounded" height={60} />)}
+          </Box>
+        ) : sorted.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
             No schedules configured.
           </Typography>

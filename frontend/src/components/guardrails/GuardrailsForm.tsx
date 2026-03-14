@@ -107,13 +107,14 @@ function fromCsv(s: string) { return s.split(',').map((v) => v.trim()).filter(Bo
 
 export default function GuardrailsForm() {
   const qc = useQueryClient()
-  const { data: g, isLoading } = useQuery({ queryKey: ['guardrails'], queryFn: getGuardrails })
+  const { data: g, isLoading, isError: loadError } = useQuery({ queryKey: ['guardrails'], queryFn: getGuardrails })
 
   const [skipNs, setSkipNs] = useState<string[]>([])
   const [skipNsNode, setSkipNsNode] = useState<string[]>([])
   const [skipLabels, setSkipLabels] = useState<string[]>([])
   const [skipTaints, setSkipTaints] = useState<string[]>([])
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (g) {
@@ -134,8 +135,12 @@ export default function GuardrailsForm() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['guardrails'] })
+      setSaveError(null)
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
+    },
+    onError: (err: unknown) => {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save guardrails')
     },
   })
 
@@ -144,6 +149,14 @@ export default function GuardrailsForm() {
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
         <CircularProgress />
       </Box>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <Alert severity="error">
+        Could not load guardrails — please refresh the page.
+      </Alert>
     )
   }
 
@@ -217,6 +230,11 @@ export default function GuardrailsForm() {
           {saved && (
             <Alert severity="success" sx={{ py: 0.5 }}>
               Guardrails saved successfully.
+            </Alert>
+          )}
+          {saveError && (
+            <Alert severity="error" sx={{ py: 0.5 }}>
+              {saveError}
             </Alert>
           )}
         </Box>
