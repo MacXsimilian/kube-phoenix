@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.28](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.27...v0.1.28) (2026-03-14)
+
+
+### Features
+
+* **cluster:** pod detail and workload detail drawers ([2021523](https://github.com/MacXsimilian/kube-phoenix/commit/2021523c7ab175c9a65e5faf6ec8932f1aacfe57))
+
 ## [0.1.27](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.26...v0.1.27) (2026-03-14)
 
 
