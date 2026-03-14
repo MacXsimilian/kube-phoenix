@@ -24,3 +24,4 @@ linters:
     gosec:
       excludes:
         - G104  # unhandled errors (already caught by errcheck)
+        - G706  # log injection false positive — slog key-value structured logging is safe
