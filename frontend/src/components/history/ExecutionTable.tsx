@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import Alert from '@mui/material/Alert'
 import Paper from '@mui/material/Paper'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
@@ -103,7 +104,7 @@ export default function ExecutionTable({
   const [rowsPerPage, setRowsPerPage] = useState(20)
   const [autoOpened, setAutoOpened] = useState(false)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['executions', page, rowsPerPage],
     queryFn: () => getExecutions({ page, pageSize: rowsPerPage }),
     refetchInterval: 10_000,
@@ -120,6 +121,11 @@ export default function ExecutionTable({
 
   return (
     <Paper>
+      {isError && (
+        <Alert severity="warning" sx={{ mx: 2, mt: 2 }}>
+          Could not load executions — showing last known data.
+        </Alert>
+      )}
       {isLoading ? (
         <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
           {[...Array(5)].map((_, i) => (
@@ -145,7 +151,7 @@ export default function ExecutionTable({
                   <TableRow>
                     <TableCell colSpan={6}>
                       <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
-                        No executions yet.
+                        {isError ? 'Could not load executions.' : 'No executions yet.'}
                       </Typography>
                     </TableCell>
                   </TableRow>

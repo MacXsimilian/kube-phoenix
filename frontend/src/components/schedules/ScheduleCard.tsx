@@ -46,6 +46,7 @@ export default function ScheduleCard({
   const [runMode, setRunMode] = useState<'plan' | 'apply'>('plan')
   const [deleteDialog, setDeleteDialog] = useState(false)
   const [undoOpen, setUndoOpen] = useState(false)
+  const [mutationError, setMutationError] = useState<string | null>(null)
   const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -54,9 +55,13 @@ export default function ScheduleCard({
     }
   }, [])
 
+  const onMutError = (err: unknown) =>
+    setMutationError(err instanceof Error ? err.message : 'Operation failed')
+
   const toggleEnabled = useMutation({
     mutationFn: () => updateSchedule(schedule.id, { enabled: !schedule.enabled }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
+    onError: onMutError,
   })
 
   const trigger = useMutation({
@@ -66,11 +71,16 @@ export default function ScheduleCard({
       qc.invalidateQueries({ queryKey: ['executions'] })
       router.push('/history/')
     },
+    onError: (err: unknown) => {
+      setRunDialog(false)
+      onMutError(err)
+    },
   })
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteSchedule(schedule.id),
     onSuccess: () => onDelete(),
+    onError: onMutError,
   })
 
   function handleDeleteConfirm() {
@@ -240,6 +250,18 @@ export default function ScheduleCard({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Mutation error snackbar */}
+      <Snackbar
+        open={mutationError !== null}
+        autoHideDuration={6000}
+        onClose={() => setMutationError(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="error" onClose={() => setMutationError(null)} sx={{ width: '100%' }}>
+          {mutationError}
+        </Alert>
+      </Snackbar>
 
       {/* Undo snackbar */}
       <Snackbar
