@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.33](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.32...v0.1.33) (2026-03-14)
+
+
+### Bug Fixes
+
+* **ci:** exclude gosec G706 false positive for structured slog calls ([4d5c29a](https://github.com/MacXsimilian/kube-phoenix/commit/4d5c29a7b0ede72291d60bd21d3eb1e8af5efd5e))
+* **ci:** restore go-version to 1.25 to match go.mod ([90f490f](https://github.com/MacXsimilian/kube-phoenix/commit/90f490fb990ef3bf21b1474bf8df48e46b182938))
+* **ci:** revert to npm install until package-lock.json is committed ([4fab534](https://github.com/MacXsimilian/kube-phoenix/commit/4fab5342d2f99f2dae342be44a34d287f262042a))
+
 ## [0.1.32](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.31...v0.1.32) (2026-03-14)
 
 
