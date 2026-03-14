@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.25](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.24...v0.1.25) (2026-03-14)
+
+
+### Features
+
+* **ui:** add phoenix emoji favicon ([43fa1db](https://github.com/MacXsimilian/kube-phoenix/commit/43fa1db55fb813ccbeddb5e698bd0108d856ea7b))
+
+
+### Bug Fixes
+
+* **font:** self-host Inter via next/font — no runtime CDN requests ([b04fe6b](https://github.com/MacXsimilian/kube-phoenix/commit/b04fe6bd9cc1c9c3f8de21ecf83e33a2bb7e47d8))
+* **layout:** remove double margin-left pushing content off-center ([8e9af3f](https://github.com/MacXsimilian/kube-phoenix/commit/8e9af3f2306be0812ba0a28c7bdbe7cd969c629b))
+
 ## [0.1.24](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.23...v0.1.24) (2026-03-14)
 
 
