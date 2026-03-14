@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.31](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.30...v0.1.31) (2026-03-14)
+
+
+### Features
+
+* custom auth UI, pod metrics, and cluster detail improvements ([be9092d](https://github.com/MacXsimilian/kube-phoenix/commit/be9092df93d04fbee6ba83654bfbf6410673540f))
+
 ## [0.1.30](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.29...v0.1.30) (2026-03-14)
 
 
