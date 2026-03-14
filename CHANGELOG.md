@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.37](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.36...v0.1.37) (2026-03-14)
+
+
+### Bug Fixes
+
+* **history:** show correct arrow direction and hide drained chip for wake executions ([e9866b7](https://github.com/MacXsimilian/kube-phoenix/commit/e9866b7721cc61e39ddabb5ae205e9bfc8b97c7a))
+* **logviewer:** summary closed by default, logs in collapsible accordion open by default ([8ae1347](https://github.com/MacXsimilian/kube-phoenix/commit/8ae13477a01a709062ae5e4805ec203b8f06f39f))
+* **overview:** open log drawer after trigger instead of navigating to history ([e9866b7](https://github.com/MacXsimilian/kube-phoenix/commit/e9866b7721cc61e39ddabb5ae205e9bfc8b97c7a))
+* **overview:** pin time indicator to right edge in activity feed, fix wake label ([ae89107](https://github.com/MacXsimilian/kube-phoenix/commit/ae89107ee9450d733783099c7a43aac4e0235014))
+
 ## [0.1.36](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.35...v0.1.36) (2026-03-14)
 
 
