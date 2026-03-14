@@ -100,7 +100,6 @@ jobs:
   secrets:
     name: Secret scan
     runs-on: ubuntu-24.04
-    if: github.event_name == 'pull_request'
     permissions:
       contents: read
     steps:
@@ -112,6 +111,6 @@ jobs:
         uses: trufflesecurity/trufflehog@d17df4845197a68cbc37d33ad0e7f325b45c0033  # main
         with:
           path: ./
-          base: ${{ github.event.pull_request.base.sha }}
-          head: ${{ github.event.pull_request.head.sha }}
+          base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || format('{0}~1', github.sha) }}
+          head: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           extra_args: --only-verified
