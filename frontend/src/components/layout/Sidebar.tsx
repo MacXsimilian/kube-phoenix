@@ -14,6 +14,7 @@ import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined'
 import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
 import SecurityOutlinedIcon from '@mui/icons-material/SecurityOutlined'
 import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined'
+import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined'
 
 const NAV = [
   { label: 'Overview', href: '/overview', icon: <DashboardOutlinedIcon fontSize="small" /> },
@@ -21,6 +22,7 @@ const NAV = [
   { label: 'Cluster State', href: '/cluster', icon: <HubOutlinedIcon fontSize="small" /> },
   { label: 'Guardrails', href: '/guardrails', icon: <SecurityOutlinedIcon fontSize="small" /> },
   { label: 'History', href: '/history', icon: <HistoryOutlinedIcon fontSize="small" /> },
+  { label: 'Settings', href: '/settings', icon: <SettingsOutlinedIcon fontSize="small" /> },
 ]
 
 interface Props {

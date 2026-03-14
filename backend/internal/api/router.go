@@ -74,6 +74,9 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 
 			// Manual trigger
 			r.Post("/trigger", h.trigger)
+
+			// Admin — danger zone
+			r.Post("/admin/reset-db", h.resetDB)
 		})
 
 		// WebSocket — live log streaming
