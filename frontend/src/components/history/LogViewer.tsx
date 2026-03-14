@@ -516,7 +516,7 @@ export default function LogViewer({
                 </Typography>
               )}
               {lines.map((line, i) => (
-                <Box key={`${line.id ?? line.seq}-${i}`} ref={(el) => { lineEls.current[i] = el }}>
+                <Box key={`${line.id ?? line.seq}-${i}`} ref={(el) => { lineEls.current[i] = el as HTMLElement | null }}>
                   <LogLineRow line={line} />
                 </Box>
               ))}
