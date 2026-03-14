@@ -24,6 +24,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import CloudOffIcon from '@mui/icons-material/CloudOff'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
@@ -450,18 +451,29 @@ export default function LogViewer({
                       color: execution.mode === 'apply' ? 'warning.main' : 'info.main',
                     }}
                   />
-                  <Chip
-                    icon={<ArrowDownwardIcon sx={{ fontSize: '12px !important' }} />}
-                    label={`${execution.countScaled} scaled`}
-                    size="small"
-                    sx={{ height: 18, fontSize: 10 }}
-                  />
-                  <Chip
-                    icon={<CloudOffIcon sx={{ fontSize: '12px !important' }} />}
-                    label={`${execution.countDrained} drained`}
-                    size="small"
-                    sx={{ height: 18, fontSize: 10 }}
-                  />
+                  {execution.schedule?.type === 'scale_up' ? (
+                    <Chip
+                      icon={<ArrowUpwardIcon sx={{ fontSize: '12px !important' }} />}
+                      label={`${execution.countScaled} restored`}
+                      size="small"
+                      sx={{ height: 18, fontSize: 10 }}
+                    />
+                  ) : (
+                    <Chip
+                      icon={<ArrowDownwardIcon sx={{ fontSize: '12px !important' }} />}
+                      label={`${execution.countScaled} scaled`}
+                      size="small"
+                      sx={{ height: 18, fontSize: 10 }}
+                    />
+                  )}
+                  {execution.countDrained > 0 && (
+                    <Chip
+                      icon={<CloudOffIcon sx={{ fontSize: '12px !important' }} />}
+                      label={`${execution.countDrained} drained`}
+                      size="small"
+                      sx={{ height: 18, fontSize: 10 }}
+                    />
+                  )}
                   {execution.countErrors > 0 && (
                     <Chip
                       icon={<ErrorOutlineIcon sx={{ fontSize: '12px !important' }} />}
