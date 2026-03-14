@@ -255,11 +255,13 @@ func (s *Scheduler) run(ctx context.Context, scheduleID uint, scheduleType, mode
 		countMap := map[string]int{}
 		if counts != nil {
 			countMap = map[string]int{
-				"scaled":  counts.Scaled,
-				"drained": counts.Drained,
-				"deleted": counts.Deleted,
-				"skipped": counts.Skipped,
-				"errors":  counts.Errors,
+				"saved":     counts.Saved,
+				"scaled":    counts.Scaled,
+				"drained":   counts.Drained,
+				"deleted":   counts.Deleted,
+				"skipped":   counts.Skipped,
+				"protected": counts.Protected,
+				"errors":    counts.Errors,
 			}
 		}
 		if err := s.store.FinishExecution(execID, status, countMap); err != nil {
@@ -268,10 +270,12 @@ func (s *Scheduler) run(ctx context.Context, scheduleID uint, scheduleType, mode
 		slog.Info("scheduler: execution finished",
 			"execID", execID,
 			"status", status,
+			"saved", countMap["saved"],
 			"scaled", countMap["scaled"],
 			"drained", countMap["drained"],
 			"deleted", countMap["deleted"],
 			"skipped", countMap["skipped"],
+			"protected", countMap["protected"],
 			"errors", countMap["errors"],
 		)
 	}()

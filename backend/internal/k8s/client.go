@@ -146,7 +146,34 @@ func (c *Client) CordonNode(ctx context.Context, name string) error {
 	return err
 }
 
-func (c *Client) DrainNode(ctx context.Context, name string) error {
+// CountNonDaemonSetPods returns the number of non-DaemonSet pods on a node.
+// Used to compute a dynamic drain timeout before calling DrainNode.
+func (c *Client) CountNonDaemonSetPods(ctx context.Context, nodeName string) (int, error) {
+	pods, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{
+		FieldSelector: "spec.nodeName=" + nodeName,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("list pods on %s: %w", nodeName, err)
+	}
+	count := 0
+	for _, pod := range pods.Items {
+		isDaemon := false
+		for _, ref := range pod.OwnerReferences {
+			if ref.Kind == "DaemonSet" {
+				isDaemon = true
+				break
+			}
+		}
+		if !isDaemon {
+			count++
+		}
+	}
+	return count, nil
+}
+
+// DrainNode cordons and evicts all non-DaemonSet pods from a node, waiting
+// up to the given timeout for them to terminate.
+func (c *Client) DrainNode(ctx context.Context, name string, timeout time.Duration) error {
 	// Cordon first
 	if err := c.CordonNode(ctx, name); err != nil {
 		return fmt.Errorf("cordon %s: %w", name, err)
@@ -189,8 +216,8 @@ func (c *Client) DrainNode(ctx context.Context, name string) error {
 		}
 	}
 
-	// Wait up to 30 s for evictable pods to terminate, honouring context cancellation.
-	deadline := time.Now().Add(30 * time.Second)
+	// Wait up to timeout for evictable pods to terminate, honouring context cancellation.
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		remaining, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{
 			FieldSelector: "spec.nodeName=" + name,
