@@ -8,8 +8,8 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }))
-    throw new Error(err.error ?? res.statusText)
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.error || body?.message || `HTTP ${res.status}`)
   }
   // 204 No Content
   if (res.status === 204) return undefined as T
@@ -114,11 +114,37 @@ export const triggerRun = (
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
-export const resetDatabase = (): Promise<{ status: string; message: string }> =>
-  req<{ status: string; message: string }>('/api/admin/reset-db', {
+export type ResetEvent = { type: 'step' | 'done' | 'error'; message: string }
+
+export async function* resetDatabaseStream(): AsyncGenerator<ResetEvent> {
+  const res = await fetch('/api/admin/reset-db', {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ confirm: 'RESET DATABASE' }),
   })
+
+  if (!res.ok || !res.body) {
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.error || `HTTP ${res.status}`)
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    const lines = buf.split('\n')
+    buf = lines.pop() ?? ''
+    for (const line of lines) {
+      if (line.trim()) {
+        try { yield JSON.parse(line) } catch { /* skip malformed lines */ }
+      }
+    }
+  }
+}
 
 // ── WebSocket URL helper ──────────────────────────────────────────────────────
 

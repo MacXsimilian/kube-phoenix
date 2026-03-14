@@ -12,6 +12,13 @@ import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Tooltip from '@mui/material/Tooltip'
 import Snackbar from '@mui/material/Snackbar'
+import Accordion from '@mui/material/Accordion'
+import AccordionSummary from '@mui/material/AccordionSummary'
+import AccordionDetails from '@mui/material/AccordionDetails'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableRow from '@mui/material/TableRow'
 import CloseIcon from '@mui/icons-material/Close'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
@@ -19,6 +26,9 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import CloudOffIcon from '@mui/icons-material/CloudOff'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import DnsIcon from '@mui/icons-material/Dns'
+import StorageIcon from '@mui/icons-material/Storage'
 import { getExecutionLogs, wsLogsUrl } from '@/lib/api'
 import type { Execution, LogLine } from '@/lib/types'
 
@@ -29,6 +39,220 @@ const LEVEL_COLORS: Record<LogLine['level'], string> = {
   error: '#F87171',
   warn: '#FBBF24',
 }
+
+// ── Summary parsing ──────────────────────────────────────────────────────────
+
+type WorkloadEntry = {
+  kind: 'Deployment' | 'StatefulSet'
+  ns: string
+  name: string
+  to: number
+  action: 'scaled' | 'restored' | 'plan'
+}
+
+type NodeEntry = {
+  name: string
+  action: 'drained' | 'deleted' | 'plan' | 'protected'
+}
+
+type ParsedSummary = {
+  workloads: WorkloadEntry[]
+  nodes: NodeEntry[]
+  errors: string[]
+}
+
+function parseSummary(lines: LogLine[]): ParsedSummary {
+  const workloads: WorkloadEntry[] = []
+  const nodeMap = new Map<string, NodeEntry>()
+  const errors: string[] = []
+
+  for (const line of lines) {
+    const m = line.message
+
+    // scale-down: "Scaled Deployment ns/name → 0"
+    const scaled = m.match(/^Scaled (Deployment|StatefulSet) (\S+)\/(\S+) → (\d+)$/)
+    if (scaled) {
+      workloads.push({ kind: scaled[1] as WorkloadEntry['kind'], ns: scaled[2], name: scaled[3], to: parseInt(scaled[4]), action: 'scaled' })
+      continue
+    }
+
+    // scale-up: "Restored Deployment ns/name → N"
+    const restored = m.match(/^Restored (Deployment|StatefulSet) (\S+)\/(\S+) → (\d+)$/)
+    if (restored) {
+      workloads.push({ kind: restored[1] as WorkloadEntry['kind'], ns: restored[2], name: restored[3], to: parseInt(restored[4]), action: 'restored' })
+      continue
+    }
+
+    // plan: "Would scale|restore Deployment ns/name → N"
+    const planned = m.match(/^Would (?:scale|restore) (Deployment|StatefulSet) (\S+)\/(\S+) → (\d+)$/)
+    if (planned) {
+      workloads.push({ kind: planned[1] as WorkloadEntry['kind'], ns: planned[2], name: planned[3], to: parseInt(planned[4]), action: 'plan' })
+      continue
+    }
+
+    // nodes
+    const drained = m.match(/^Drained node (\S+)$/)
+    if (drained) { nodeMap.set(drained[1], { name: drained[1], action: 'drained' }); continue }
+
+    const deleted = m.match(/^Deleted node object (\S+)$/)
+    if (deleted) { nodeMap.set(deleted[1], { name: deleted[1], action: 'deleted' }); continue }
+
+    const wouldDrain = m.match(/^Would drain node (\S+)/)
+    if (wouldDrain && !nodeMap.has(wouldDrain[1])) { nodeMap.set(wouldDrain[1], { name: wouldDrain[1], action: 'plan' }); continue }
+
+    const protected_ = m.match(/^Protected node (\S+)/)
+    if (protected_) { nodeMap.set(protected_[1], { name: protected_[1], action: 'protected' }); continue }
+
+    if (line.level === 'error') errors.push(m)
+  }
+
+  return { workloads, nodes: Array.from(nodeMap.values()), errors }
+}
+
+const ACTION_CHIP: Record<WorkloadEntry['action'], { label: string; color: string }> = {
+  scaled:   { label: '→ 0',     color: '#7C3AED' },
+  restored: { label: 'restored', color: '#22C55E' },
+  plan:     { label: 'plan',     color: '#3B82F6' },
+}
+
+const NODE_CHIP: Record<NodeEntry['action'], { label: string; color: string }> = {
+  drained:   { label: 'drained',   color: '#F59E0B' },
+  deleted:   { label: 'deleted',   color: '#EF4444' },
+  plan:      { label: 'plan',      color: '#3B82F6' },
+  protected: { label: 'protected', color: '#6B7280' },
+}
+
+function ExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: boolean }) {
+  const { workloads, nodes, errors } = parseSummary(lines)
+
+  if (workloads.length === 0 && nodes.length === 0 && errors.length === 0) return null
+
+  // Group workloads by namespace
+  const byNs = workloads.reduce<Record<string, WorkloadEntry[]>>((acc, w) => {
+    ;(acc[w.ns] ??= []).push(w)
+    return acc
+  }, {})
+
+  return (
+    <Accordion
+      defaultExpanded={!isRunning}
+      disableGutters
+      sx={{
+        bgcolor: 'background.paper',
+        '&:before': { display: 'none' },
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+        boxShadow: 'none',
+      }}
+    >
+      <AccordionSummary
+        expandIcon={<ExpandMoreIcon sx={{ fontSize: 16 }} />}
+        sx={{ minHeight: 40, px: 2.5, py: 0, '& .MuiAccordionSummary-content': { my: 0 } }}
+      >
+        <Typography variant="caption" fontWeight={700} letterSpacing={0.8} sx={{ color: 'text.secondary', textTransform: 'uppercase' }}>
+          Summary
+        </Typography>
+      </AccordionSummary>
+
+      <AccordionDetails sx={{ p: 0, pb: 1.5 }}>
+        {/* Workloads */}
+        {workloads.length > 0 && (
+          <Box sx={{ px: 2.5, pt: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
+              <DnsIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                WORKLOADS ({workloads.length})
+              </Typography>
+            </Box>
+            {Object.entries(byNs).map(([ns, items]) => (
+              <Box key={ns} sx={{ mb: 1 }}>
+                <Typography variant="caption" sx={{ color: '#94A3B8', pl: 0.5, fontFamily: 'monospace', display: 'block', mb: 0.25 }}>
+                  {ns}
+                </Typography>
+                <Table size="small" sx={{ '& td': { border: 0, py: 0.25, px: 0.5 } }}>
+                  <TableBody>
+                    {items.map((w, i) => {
+                      const chip = ACTION_CHIP[w.action]
+                      return (
+                        <TableRow key={i}>
+                          <TableCell sx={{ width: 90, pr: 1 }}>
+                            <Typography variant="caption" sx={{ color: '#64748B', fontFamily: 'monospace', fontSize: 11 }}>
+                              {w.kind}
+                            </Typography>
+                          </TableCell>
+                          <TableCell sx={{ flex: 1 }}>
+                            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 12, color: '#E2E8F0' }}>
+                              {w.name}
+                            </Typography>
+                          </TableCell>
+                          <TableCell sx={{ width: 70, textAlign: 'right' }}>
+                            <Chip
+                              label={w.action === 'restored' ? `→ ${w.to}` : chip.label}
+                              size="small"
+                              sx={{ height: 16, fontSize: 10, bgcolor: `${chip.color}22`, color: chip.color, '& .MuiChip-label': { px: 0.75 } }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </Box>
+            ))}
+          </Box>
+        )}
+
+        {/* Nodes */}
+        {nodes.length > 0 && (
+          <Box sx={{ px: 2.5, pt: workloads.length > 0 ? 1 : 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
+              <StorageIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                NODES ({nodes.length})
+              </Typography>
+            </Box>
+            <Table size="small" sx={{ '& td': { border: 0, py: 0.25, px: 0.5 } }}>
+              <TableBody>
+                {nodes.map((n, i) => {
+                  const chip = NODE_CHIP[n.action]
+                  return (
+                    <TableRow key={i}>
+                      <TableCell sx={{ flex: 1 }}>
+                        <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 12, color: '#E2E8F0' }}>
+                          {n.name}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ width: 70, textAlign: 'right' }}>
+                        <Chip
+                          label={chip.label}
+                          size="small"
+                          sx={{ height: 16, fontSize: 10, bgcolor: `${chip.color}22`, color: chip.color, '& .MuiChip-label': { px: 0.75 } }}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </Box>
+        )}
+
+        {/* Errors */}
+        {errors.length > 0 && (
+          <Box sx={{ px: 2, pt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            {errors.map((e, i) => (
+              <Alert key={i} severity="error" sx={{ py: 0, fontSize: 11 }}>
+                {e}
+              </Alert>
+            ))}
+          </Box>
+        )}
+      </AccordionDetails>
+    </Accordion>
+  )
+}
+
+// ── Log line row ──────────────────────────────────────────────────────────────
 
 function LogLineRow({ line }: { line: LogLine }) {
   return (
@@ -229,6 +453,8 @@ export default function LogViewer({
             </Box>
 
             <Divider />
+
+            <ExecutionSummary lines={lines} isRunning={isRunning} />
 
             {/* Log area */}
             {wsError && (
