@@ -139,7 +139,7 @@ function ConditionsSection({ conditions }: { conditions: PodCondition[] }) {
 }
 
 function EventsSection({ events }: { events: PodEvent[] }) {
-  if (events.length === 0) return null
+  if (!events?.length) return null
   return (
     <Box>
       <SectionLabel>Events</SectionLabel>
@@ -174,7 +174,7 @@ function EventsSection({ events }: { events: PodEvent[] }) {
 
 function LabelsSection({ labels }: { labels: Record<string, string> }) {
   const [open, setOpen] = useState(false)
-  const entries = Object.entries(labels)
+  const entries = Object.entries(labels ?? {})
   if (entries.length === 0) return null
   return (
     <Box>
@@ -261,26 +261,26 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
 
-      <ContainersSection containers={pod.containers} />
+      <ContainersSection containers={pod.containers ?? []} />
 
-      {pod.conditions.length > 0 && (
+      {(pod.conditions ?? []).length > 0 && (
         <>
           <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
-          <ConditionsSection conditions={pod.conditions} />
+          <ConditionsSection conditions={pod.conditions ?? []} />
         </>
       )}
 
-      {pod.events.length > 0 && (
+      {(pod.events ?? []).length > 0 && (
         <>
           <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
-          <EventsSection events={pod.events} />
+          <EventsSection events={pod.events ?? []} />
         </>
       )}
 
-      {Object.keys(pod.labels).length > 0 && (
+      {Object.keys(pod.labels ?? {}).length > 0 && (
         <>
           <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
-          <LabelsSection labels={pod.labels} />
+          <LabelsSection labels={pod.labels ?? {}} />
         </>
       )}
     </Box>
