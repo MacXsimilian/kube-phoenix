@@ -112,6 +112,14 @@ export const triggerRun = (
     body: JSON.stringify({ scheduleId, mode }),
   })
 
+// ── Admin ─────────────────────────────────────────────────────────────────────
+
+export const resetDatabase = (): Promise<{ status: string; message: string }> =>
+  req<{ status: string; message: string }>('/api/admin/reset-db', {
+    method: 'POST',
+    body: JSON.stringify({ confirm: 'RESET DATABASE' }),
+  })
+
 // ── WebSocket URL helper ──────────────────────────────────────────────────────
 
 export const wsLogsUrl = (executionId: number): string => {
