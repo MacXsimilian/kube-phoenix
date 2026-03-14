@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.26](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.25...v0.1.26) (2026-03-14)
+
+
+### Features
+
+* **ui:** execution summary, db reset stream, and UX improvements ([bf87def](https://github.com/MacXsimilian/kube-phoenix/commit/bf87defdc979b20817eefa5106cd782ceaa649da))
+
 ## [0.1.25](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.24...v0.1.25) (2026-03-14)
 
 
