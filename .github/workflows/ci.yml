@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master, release/v0.1.x, release/v0.2.x]
+    branches: [master, release/v0.1.x]
     paths:
       - "frontend/**"
       - "backend/**"
@@ -10,7 +10,7 @@ on:
       - "helm/**"
       - ".github/workflows/**"
   pull_request:
-    branches: [master, release/v0.1.x, release/v0.2.x]
+    branches: [master, release/v0.1.x]
     paths:
       - "frontend/**"
       - "backend/**"
@@ -45,8 +45,10 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: "22"
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
-      - run: npm install
+      - run: npm ci
       - run: npm audit --audit-level=high --omit=dev
       - run: npm run build
 
@@ -64,7 +66,7 @@ jobs:
 
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5  # v5.5.0
         with:
-          go-version: "1.25"
+          go-version: "1.22"
           cache-dependency-path: backend/go.sum
 
       - run: go mod download
@@ -72,6 +74,9 @@ jobs:
       - run: go test -coverprofile=coverage.out ./...
       - run: go tool cover -func=coverage.out
       - run: go build ./...
+
+      - name: govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa  # v7.0.1
@@ -107,6 +112,7 @@ jobs:
       packages: write
     outputs:
       image: ${{ steps.image.outputs.name }}
+      image_tag: ${{ steps.image_tag.outputs.value }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
@@ -126,6 +132,11 @@ jobs:
         run: |
           echo "name=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/kube-phoenix" >> $GITHUB_OUTPUT
 
+      - name: Compute image tag
+        id: image_tag
+        run: |
+          echo "value=${{ steps.image.outputs.name }}:$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051  # v5.10.0
@@ -135,7 +146,6 @@ jobs:
             type=sha,prefix=,format=short
             type=semver,pattern={{version}}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
-            type=raw,value=v0.2-latest,enable=${{ github.ref == 'refs/heads/release/v0.2.x' }}
             type=raw,value=v0.1-latest,enable=${{ github.ref == 'refs/heads/release/v0.1.x' }}
 
       - name: Build & push
@@ -158,22 +168,31 @@ jobs:
     permissions:
       contents: read
     steps:
-      # Resolve the right floating tag for the branch being scanned
-      - name: Resolve scan tag
-        id: tag
-        run: |
-          case "${{ github.ref }}" in
-            refs/heads/release/v0.1.x) echo "value=v0.1-latest" >> $GITHUB_OUTPUT ;;
-            refs/heads/release/v0.2.x) echo "value=v0.2-latest" >> $GITHUB_OUTPUT ;;
-            *)                         echo "value=latest"       >> $GITHUB_OUTPUT ;;
-          esac
-
       - name: Scan image for vulnerabilities
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
         with:
-          image-ref: ${{ needs.docker.outputs.image }}:${{ steps.tag.outputs.value }}
+          image-ref: ${{ needs.docker.outputs.image_tag }}
           format: table
           severity: CRITICAL,HIGH
           exit-code: "1"
           ignore-unfixed: true
 
+  # ── Secret scanning ──────────────────────────────────────────────────────────
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog scan
+        uses: trufflesecurity/trufflehog@d17df4845197a68cbc37d33ad0e7f325b45c0033  # main
+        with:
+          path: ./
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
+          extra_args: --only-verified
