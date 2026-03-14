@@ -276,6 +276,57 @@ targetGroupBinding:
 
 ---
 
+## Branching strategy
+
+kube-phoenix uses **GitHub Flow** — a single protected `master` branch, short-lived feature branches, and pull requests.
+
+```
+master  (protected)
+  ├── feat/emergency-wake    → PR → master
+  ├── fix/activityfeed-jsx   → PR → master
+  └── ci/add-govulncheck     → PR → master
+```
+
+### Rules
+
+- `master` is always deployable — never push broken code directly
+- Branch off `master` for any non-trivial change
+- Small fixes (typos, one-liner patches) can be pushed directly if you have admin bypass enabled
+- Never create tags manually — release-please owns all tags and releases
+
+### Contributing
+
+```bash
+# 1. Branch off master
+git checkout master && git pull
+git checkout -b feat/your-feature
+
+# 2. Make changes, commit with conventional prefix
+git commit -m "feat: add emergency wake endpoint"
+
+# 3. Push and open a PR against master
+git push -u origin feat/your-feature
+# → open PR on GitHub
+
+# 4. CI runs automatically on the PR (frontend, backend, helm, secret scan)
+# 5. Once approved and green, merge — release-please handles the rest
+```
+
+### Conventional commit prefixes
+
+| Prefix | Version bump | Use for |
+|---|---|---|
+| `feat:` | minor | new feature |
+| `fix:` | patch | bug fix |
+| `perf:` | patch | performance improvement |
+| `feat!:` / `BREAKING CHANGE:` | major | breaking API or behaviour change |
+| `docs:` | none | documentation only |
+| `ci:` | none | CI/CD changes |
+| `chore:` | none | maintenance, deps, config |
+| `refactor:` | none | code restructure, no behaviour change |
+
+---
+
 ## CI/CD
 
 Two GitHub Actions workflows handle all CI and release automation.
@@ -283,8 +334,8 @@ Two GitHub Actions workflows handle all CI and release automation.
 ### How it works
 
 ```
-Every push / PR                     Release
-──────────────────                  ─────────────────────────────────────────
+Every push to master / PR           Release (on merge of Release PR)
+──────────────────────────          ──────────────────────────────────────────
 ci.yml                              release-please.yml
   ├── frontend build                  ├── release-please-action
   │     npm install                   │     reads conventional commits
@@ -298,7 +349,7 @@ ci.yml                              release-please.yml
   └── secret scan (TruffleHog)
 ```
 
-CI runs on every push to `master` and `release/v0.1.x`, and on all pull requests. Docker builds only happen on release — CI never pushes images.
+CI runs on every push to `master` and on all pull requests. Docker builds only happen on release — CI never pushes images.
 
 ### CI jobs
 
@@ -311,11 +362,11 @@ CI runs on every push to `master` and `release/v0.1.x`, and on all pull requests
 
 ### Release workflow
 
-[release-please](https://github.com/googleapis/release-please) automates versioning, CHANGELOG generation, and image publishing. **You never create tags manually.**
+[release-please](https://github.com/googleapis/release-please) automates versioning, CHANGELOG generation, and image publishing. **Never create tags manually.**
 
 | Job | Trigger | What it does |
 |---|---|---|
-| **release-please** | push to `master` or `release/v0.1.x` | Opens/updates Release PR; on merge creates tag + GitHub Release |
+| **release-please** | push to `master` | Opens/updates Release PR; on merge creates tag + GitHub Release |
 | **Docker build & push** | release created | Builds and pushes semver-tagged image to GHCR |
 | **Trivy scan** | after docker push | Scans released image — fails on CRITICAL/HIGH unfixed CVEs |
 | **Helm push** | release created | Packages and pushes chart to `oci://ghcr.io/macxsimilian/helm` |
@@ -323,29 +374,18 @@ CI runs on every push to `master` and `release/v0.1.x`, and on all pull requests
 Images published on release:
 
 ```
-ghcr.io/macxsimilian/kube-phoenix:0.1.33        # exact semver
-ghcr.io/macxsimilian/kube-phoenix:v0.1-latest   # minor float
-ghcr.io/macxsimilian/kube-phoenix:latest         # master only
+ghcr.io/macxsimilian/kube-phoenix:0.1.36        # exact semver
+ghcr.io/macxsimilian/kube-phoenix:latest         # latest release on master
 ```
 
 ### How to make a release
 
-1. Write commits using [conventional commit](https://www.conventionalcommits.org/) prefixes:
+1. Merge one or more PRs to `master` using conventional commit messages.
+2. release-please automatically opens a Release PR with the CHANGELOG diff and bumped version.
+3. Review and merge the Release PR.
+4. Docker image and Helm chart are built and published automatically.
 
-   | Prefix | Effect |
-   |---|---|
-   | `feat:` | bumps minor version |
-   | `fix:` | bumps patch version |
-   | `feat!:` or `BREAKING CHANGE:` | bumps major version |
-   | `docs:`, `ci:`, `chore:` | no version bump |
-
-2. Push to `release/v0.1.x`. release-please opens or updates a Release PR automatically.
-
-3. Review the Release PR — it contains the CHANGELOG diff and the bumped version.
-
-4. Merge the Release PR. release-please creates the tag and GitHub Release, then the Docker and Helm jobs fire automatically.
-
-That's it. No manual tagging, no manual CHANGELOG editing.
+No manual tagging. No manual CHANGELOG editing.
 
 ### One-time setup
 
