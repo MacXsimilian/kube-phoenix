@@ -20,6 +20,7 @@ import MenuItem from '@mui/material/MenuItem'
 import TextField from '@mui/material/TextField'
 import Snackbar from '@mui/material/Snackbar'
 import Alert from '@mui/material/Alert'
+import Skeleton from '@mui/material/Skeleton'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import Brightness4Icon from '@mui/icons-material/Brightness4'
@@ -32,9 +33,9 @@ export default function ClusterStatusCard() {
   const qc = useQueryClient()
   const router = useRouter()
 
-  const { data: workloads = [] } = useQuery({ queryKey: ['workloads'], queryFn: getWorkloads })
-  const { data: nodes = [] } = useQuery({ queryKey: ['nodes'], queryFn: getNodes })
-  const { data: policiesData } = useQuery({ queryKey: ['policies'], queryFn: policiesApi.list })
+  const { data: workloads = [], isLoading: loadingWorkloads, isError: errorWorkloads } = useQuery({ queryKey: ['workloads'], queryFn: getWorkloads })
+  const { data: nodes = [], isLoading: loadingNodes, isError: errorNodes } = useQuery({ queryKey: ['nodes'], queryFn: getNodes })
+  const { data: policiesData, isLoading: loadingPolicies, isError: errorPolicies } = useQuery({ queryKey: ['policies'], queryFn: policiesApi.list })
 
   const policies = policiesData?.policies ?? []
   const enabledPolicies = policies.filter((p) => p.enabled)
@@ -73,6 +74,9 @@ export default function ClusterStatusCard() {
     trigger.mutate({ edge: dialog.edge, policyId: Number(selectedPolicyId), m: mode })
   }
 
+  const isLoading = loadingWorkloads || loadingNodes || loadingPolicies
+  const isError = errorWorkloads || errorNodes || errorPolicies
+
   const sleeping = workloads.filter((w) => w.status === 'sleeping').length
   const running = workloads.filter((w) => w.status === 'running').length
   const activeNodes = nodes.length
@@ -92,65 +96,87 @@ export default function ClusterStatusCard() {
             CLUSTER STATUS
           </Typography>
 
+          {isError && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Could not load cluster data — showing last known state.
+            </Alert>
+          )}
+
           {/* Status indicator */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-            <Box
-              sx={{
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
-                bgcolor: statusColor,
-                boxShadow: `0 0 8px ${statusColor}`,
-                flexShrink: 0,
-              }}
-            />
-            <StatusIcon sx={{ fontSize: 18, color: statusColor }} />
-            <Typography variant="h6" fontWeight={700}>
-              {statusLabel}
-            </Typography>
-          </Box>
+          {isLoading ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 3 }}>
+              <Skeleton variant="rounded" height={28} width={180} />
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Skeleton variant="rounded" height={24} width={100} />
+                <Skeleton variant="rounded" height={24} width={120} />
+                <Skeleton variant="rounded" height={24} width={110} />
+              </Box>
+            </Box>
+          ) : null}
 
-          {/* Stats row */}
-          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 3 }}>
-            <Chip
-              label={`${activeNodes} Nodes Active`}
-              size="small"
-              onClick={() => router.push('/cluster/?tab=nodes')}
-              sx={{ bgcolor: 'rgba(34,197,94,0.1)', color: 'success.main', fontWeight: 600, cursor: 'pointer' }}
-            />
-            <Chip
-              label={`${running} Workloads Running`}
-              size="small"
-              onClick={() => router.push('/cluster/')}
-              sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: 'info.main', fontWeight: 600, cursor: 'pointer' }}
-            />
-            <Chip
-              label={`${sleeping} Workloads Sleeping`}
-              size="small"
-              onClick={() => router.push('/cluster/')}
-              sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: 'warning.main', fontWeight: 600, cursor: 'pointer' }}
-            />
-          </Box>
+          {!isLoading && (
+            <>
+              {/* Status indicator */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                <Box
+                  sx={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    bgcolor: statusColor,
+                    boxShadow: `0 0 8px ${statusColor}`,
+                    flexShrink: 0,
+                  }}
+                />
+                <StatusIcon sx={{ fontSize: 18, color: statusColor }} />
+                <Typography variant="h6" fontWeight={700}>
+                  {statusLabel}
+                </Typography>
+              </Box>
 
-          {/* Action buttons */}
-          <Box sx={{ display: 'flex', gap: 1.5 }}>
-            <Button
-              variant="outlined"
-              startIcon={<BedtimeIcon fontSize="small" />}
-              onClick={() => handleOpenDialog('sleep')}
-              sx={{ borderColor: 'rgba(255,255,255,0.15)', color: 'text.secondary' }}
-            >
-              Run Sleep Now
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<WbSunnyIcon fontSize="small" />}
-              onClick={() => handleOpenDialog('wake')}
-              sx={{ borderColor: 'rgba(255,255,255,0.15)', color: 'text.secondary' }}
-            >
-              Run Wake Now
-            </Button>
-          </Box>
+              {/* Stats row */}
+              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 3 }}>
+                <Chip
+                  label={`${activeNodes} Nodes Active`}
+                  size="small"
+                  onClick={() => router.push('/cluster/?tab=nodes')}
+                  sx={{ bgcolor: 'rgba(34,197,94,0.1)', color: 'success.main', fontWeight: 600, cursor: 'pointer' }}
+                />
+                <Chip
+                  label={`${running} Workloads Running`}
+                  size="small"
+                  onClick={() => router.push('/cluster/')}
+                  sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: 'info.main', fontWeight: 600, cursor: 'pointer' }}
+                />
+                <Chip
+                  label={`${sleeping} Workloads Sleeping`}
+                  size="small"
+                  onClick={() => router.push('/cluster/')}
+                  sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: 'warning.main', fontWeight: 600, cursor: 'pointer' }}
+                />
+              </Box>
+
+              {/* Action buttons */}
+              <Box sx={{ display: 'flex', gap: 1.5 }}>
+                <Button
+                  variant="outlined"
+                  startIcon={<BedtimeIcon fontSize="small" />}
+                  onClick={() => handleOpenDialog('sleep')}
+                  sx={{ borderColor: 'rgba(255,255,255,0.15)', color: 'text.secondary' }}
+                >
+                  Run Sleep Now
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<WbSunnyIcon fontSize="small" />}
+                  onClick={() => handleOpenDialog('wake')}
+                  sx={{ borderColor: 'rgba(255,255,255,0.15)', color: 'text.secondary' }}
+                >
+                  Run Wake Now
+                </Button>
+              </Box>
+            </>
+          )}
         </CardContent>
       </Card>
 

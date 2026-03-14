@@ -12,6 +12,8 @@ import ButtonBase from '@mui/material/ButtonBase'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import Alert from '@mui/material/Alert'
+import Skeleton from '@mui/material/Skeleton'
 import { policiesApi } from '@/lib/api'
 import type { SleepPolicy } from '@/lib/types'
 
@@ -85,7 +87,7 @@ function PolicyRow({ policy }: { policy: SleepPolicy }) {
 
 export default function NextRunCard() {
   const router = useRouter()
-  const { data } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['policies'],
     queryFn: policiesApi.list,
     refetchInterval: 30_000,
@@ -118,7 +120,17 @@ export default function NextRunCard() {
           </ButtonBase>
         </Box>
 
-        {sorted.length === 0 ? (
+        {isError && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Could not load policies — showing last known state.
+          </Alert>
+        )}
+
+        {isLoading ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {[...Array(2)].map((_, i) => <Skeleton key={i} variant="rounded" height={60} />)}
+          </Box>
+        ) : sorted.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
             No policies configured.
           </Typography>
