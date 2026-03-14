@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -23,8 +23,10 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import Brightness4Icon from '@mui/icons-material/Brightness4'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import Skeleton from '@mui/material/Skeleton'
-import { getWorkloads, getNodes, getSchedules, triggerRun } from '@/lib/api'
+import { getWorkloads, getNodes, getSchedules, triggerRun, getExecution } from '@/lib/api'
+import type { Execution } from '@/lib/types'
 import { useRouter } from 'next/navigation'
+import LogViewer from '@/components/history/LogViewer'
 
 type TriggerType = 'scale_down' | 'scale_up'
 
@@ -52,6 +54,21 @@ export default function ClusterStatusCard() {
   const [dialog, setDialog] = useState<{ open: boolean; type: TriggerType } | null>(null)
   const [mode, setMode] = useState<'plan' | 'apply'>('plan')
   const [triggerError, setTriggerError] = useState<string | null>(null)
+  const [triggerExecId, setTriggerExecId] = useState<number | null>(null)
+  const [selectedExecution, setSelectedExecution] = useState<Execution | null>(null)
+
+  const { data: triggeredExec } = useQuery({
+    queryKey: ['execution', triggerExecId],
+    queryFn: () => getExecution(triggerExecId!),
+    enabled: triggerExecId !== null,
+  })
+
+  useEffect(() => {
+    if (triggeredExec) {
+      setSelectedExecution(triggeredExec)
+      setTriggerExecId(null)
+    }
+  }, [triggeredExec])
 
   const trigger = useMutation({
     mutationFn: ({ type, m }: { type: TriggerType; m: 'plan' | 'apply' }) => {
@@ -59,10 +76,10 @@ export default function ClusterStatusCard() {
       if (!sc) throw new Error(`No ${type} schedule found`)
       return triggerRun(sc.id, m)
     },
-    onSuccess: () => {
+    onSuccess: ({ executionId }) => {
       setDialog(null)
       qc.invalidateQueries({ queryKey: ['executions'] })
-      router.push('/history/')
+      setTriggerExecId(executionId)
     },
     onError: (err: unknown) => {
       setDialog(null)
@@ -316,6 +333,8 @@ export default function ClusterStatusCard() {
           {triggerError}
         </Alert>
       </Snackbar>
+
+      <LogViewer execution={selectedExecution} onClose={() => setSelectedExecution(null)} />
     </>
   )
 }
