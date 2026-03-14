@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
