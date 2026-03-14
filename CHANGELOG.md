@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.23](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.22...v0.1.23) (2026-03-14)
+
+
+### Features
+
+* **settings:** add Reset Database with two-step confirmation ([fc9e0b7](https://github.com/MacXsimilian/kube-phoenix/commit/fc9e0b71bbbde4bda27c7388ec19965405d35615))
+
+
+### Bug Fixes
+
+* **scaler:** align scale_down with original cronjob logic ([90c1ed7](https://github.com/MacXsimilian/kube-phoenix/commit/90c1ed7e124ba8ca8e37b471630a1f89763572e8))
+
 ## [0.1.22](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.21...v0.1.22) (2026-03-13)
 
 
