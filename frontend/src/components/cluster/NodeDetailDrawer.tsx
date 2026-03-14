@@ -195,7 +195,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
   const filtered = useMemo(
     () => !search ? pods : pods.filter((p) =>
       p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.ownerName.toLowerCase().includes(search.toLowerCase()) ||
+      (p.ownerName ?? '').toLowerCase().includes(search.toLowerCase()) ||
       p.namespace.toLowerCase().includes(search.toLowerCase())
     ),
     [pods, search]
@@ -384,8 +384,8 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                 </TableHead>
                 <TableBody>
                   {grouped.map(([ns, nsPods]) => (
-                    <>
-                      <TableRow key={`ns-${ns}`}>
+                    <React.Fragment key={ns}>
+                      <TableRow>
                         <TableCell
                           colSpan={6}
                           sx={{ bgcolor: 'rgba(124,58,237,0.06)', borderBottom: '1px solid rgba(255,255,255,0.04)', py: 0.5 }}
@@ -405,7 +405,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                       {nsPods.map((pod) => (
                         <PodRow key={pod.name} pod={pod} onClick={() => setSelectedPod(pod)} />
                       ))}
-                    </>
+                    </React.Fragment>
                   ))}
                 </TableBody>
               </Table>

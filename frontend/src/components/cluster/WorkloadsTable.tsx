@@ -164,6 +164,15 @@ export default function WorkloadsTable() {
         </Box>
       </Box>
 
+      {/* Row count */}
+      {!isLoading && !isError && (
+        <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 1 }}>
+          {sorted.length === workloads.length
+            ? `${workloads.length} workload${workloads.length !== 1 ? 's' : ''}`
+            : `Showing ${sorted.length} of ${workloads.length} workloads`}
+        </Typography>
+      )}
+
       {isError ? (
         <Alert severity="error">
           Failed to load workloads: {error instanceof Error ? error.message : 'Unknown error'}

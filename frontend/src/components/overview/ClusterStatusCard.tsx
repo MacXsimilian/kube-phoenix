@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -17,22 +17,34 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import CircularProgress from '@mui/material/CircularProgress'
 import Snackbar from '@mui/material/Snackbar'
 import Alert from '@mui/material/Alert'
+import Tooltip from '@mui/material/Tooltip'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import Brightness4Icon from '@mui/icons-material/Brightness4'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import Skeleton from '@mui/material/Skeleton'
 import { getWorkloads, getNodes, getSchedules, triggerRun } from '@/lib/api'
 import { useRouter } from 'next/navigation'
 
 type TriggerType = 'scale_down' | 'scale_up'
 
+function timeUntil(iso: string): string {
+  const diff = new Date(iso).getTime() - Date.now()
+  if (diff <= 0) return 'now'
+  const m = Math.floor(diff / 60000)
+  if (m < 60) return `in ${m}m`
+  const h = Math.floor(m / 60)
+  const rem = m % 60
+  return rem > 0 ? `in ${h}h ${rem}m` : `in ${h}h`
+}
+
 export default function ClusterStatusCard() {
   const qc = useQueryClient()
   const router = useRouter()
 
-  const { data: workloads = [], isLoading: loadingWorkloads, isError: errorWorkloads } = useQuery({ queryKey: ['workloads'], queryFn: getWorkloads })
-  const { data: nodes = [], isLoading: loadingNodes, isError: errorNodes } = useQuery({ queryKey: ['nodes'], queryFn: getNodes })
-  const { data: schedules = [], isLoading: loadingSchedules, isError: errorSchedules } = useQuery({ queryKey: ['schedules'], queryFn: getSchedules })
+  const { data: workloads = [], isLoading: loadingWorkloads, isError: errorWorkloads } = useQuery({ queryKey: ['workloads'], queryFn: getWorkloads, refetchInterval: 30_000 })
+  const { data: nodes = [], isLoading: loadingNodes, isError: errorNodes } = useQuery({ queryKey: ['nodes'], queryFn: getNodes, refetchInterval: 30_000 })
+  const { data: schedules = [], isLoading: loadingSchedules, isError: errorSchedules } = useQuery({ queryKey: ['schedules'], queryFn: getSchedules, refetchInterval: 30_000 })
 
   const isLoading = loadingWorkloads || loadingNodes || loadingSchedules
   const isError = errorWorkloads || errorNodes || errorSchedules
@@ -69,6 +81,27 @@ export default function ClusterStatusCard() {
   const statusLabel = isSleeping ? 'Cluster Sleeping' : isPartial ? 'Partially Sleeping' : 'Cluster Awake'
   const StatusIcon = isSleeping ? BedtimeIcon : isPartial ? Brightness4Icon : WbSunnyIcon
 
+  // Namespaces with sleeping workloads (shown when partially sleeping)
+  const sleepingByNs = useMemo(() => {
+    if (!isPartial) return []
+    const map = new Map<string, number>()
+    workloads.filter((w) => w.status === 'sleeping').forEach((w) => {
+      map.set(w.namespace, (map.get(w.namespace) ?? 0) + 1)
+    })
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]).slice(0, 4)
+  }, [workloads, isPartial])
+
+  // Next upcoming enabled schedule
+  const nextRun = useMemo(() =>
+    [...schedules]
+      .filter((s) => s.enabled && s.nextRun)
+      .sort((a, b) => new Date(a.nextRun!).getTime() - new Date(b.nextRun!).getTime())[0]
+  , [schedules])
+
+  // Impact counts for button tooltips
+  const wouldScale = workloads.filter((w) => w.status === 'running').length
+  const wouldWake  = workloads.filter((w) => w.status === 'sleeping').length
+
   return (
     <>
       <Card sx={{ height: '100%' }}>
@@ -95,67 +128,128 @@ export default function ClusterStatusCard() {
           ) : null}
 
           {!isLoading && (
-          <>
-          {/* Status indicator */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-            <Box
-              sx={{
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
-                bgcolor: statusColor,
-                boxShadow: `0 0 8px ${statusColor}`,
-                flexShrink: 0,
-              }}
-            />
-            <StatusIcon sx={{ fontSize: 18, color: statusColor }} />
-            <Typography variant="h6" fontWeight={700}>
-              {statusLabel}
-            </Typography>
-          </Box>
+            <>
+              {/* Status indicator */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: sleepingByNs.length > 0 ? 1.5 : 3 }}>
+                <Box
+                  sx={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    bgcolor: statusColor,
+                    boxShadow: `0 0 8px ${statusColor}`,
+                    flexShrink: 0,
+                    ...(isPartial || isSleeping ? {
+                      animation: 'statusPulse 2s ease-in-out infinite',
+                      '@keyframes statusPulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.35 } },
+                    } : {}),
+                  }}
+                />
+                <StatusIcon sx={{ fontSize: 18, color: statusColor }} />
+                <Typography variant="h6" fontWeight={700}>
+                  {statusLabel}
+                </Typography>
+              </Box>
 
-          {/* Stats row */}
-          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 3 }}>
-            <Chip
-              label={`${activeNodes} Nodes Active`}
-              size="small"
-              onClick={() => router.push('/cluster/?tab=nodes')}
-              sx={{ bgcolor: 'rgba(34,197,94,0.1)', color: 'success.main', fontWeight: 600, cursor: 'pointer' }}
-            />
-            <Chip
-              label={`${running} Workloads Running`}
-              size="small"
-              onClick={() => router.push('/cluster/?status=running')}
-              sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: 'info.main', fontWeight: 600, cursor: 'pointer' }}
-            />
-            <Chip
-              label={`${sleeping} Workloads Sleeping`}
-              size="small"
-              onClick={() => router.push('/cluster/?status=sleeping')}
-              sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: 'warning.main', fontWeight: 600, cursor: 'pointer' }}
-            />
-          </Box>
+              {/* Partial namespace breakdown */}
+              {sleepingByNs.length > 0 && (
+                <Box
+                  sx={{
+                    mb: 2,
+                    p: 1.25,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(249,115,22,0.07)',
+                    border: '1px solid rgba(249,115,22,0.18)',
+                  }}
+                >
+                  <Typography variant="caption" sx={{ color: '#F97316', fontWeight: 600, display: 'block', mb: 0.75 }}>
+                    {sleepingByNs.length} namespace{sleepingByNs.length !== 1 ? 's' : ''} with sleeping workloads
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {sleepingByNs.map(([ns, count]) => (
+                      <Chip
+                        key={ns}
+                        label={`${ns} · ${count}`}
+                        size="small"
+                        sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(249,115,22,0.12)', color: '#F97316', '& .MuiChip-label': { px: 0.75 } }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
 
-          {/* Action buttons */}
-          <Box sx={{ display: 'flex', gap: 1.5 }}>
-            <Button
-              variant="outlined"
-              startIcon={<BedtimeIcon fontSize="small" />}
-              onClick={() => { setMode('plan'); setDialog({ open: true, type: 'scale_down' }) }}
-              sx={{ borderColor: 'rgba(255,255,255,0.15)', color: 'text.secondary' }}
-            >
-              Run Sleep Now
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<WbSunnyIcon fontSize="small" />}
-              onClick={() => { setMode('plan'); setDialog({ open: true, type: 'scale_up' }) }}
-              sx={{ borderColor: 'rgba(255,255,255,0.15)', color: 'text.secondary' }}
-            >
-              Run Wake Now
-            </Button>
-          </Box>
-          </>
+              {/* Stats row */}
+              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 3 }}>
+                <Chip
+                  label={`${activeNodes} Nodes Active`}
+                  size="small"
+                  onClick={() => router.push('/cluster/?tab=nodes')}
+                  sx={{ bgcolor: 'rgba(34,197,94,0.1)', color: 'success.main', fontWeight: 600, cursor: 'pointer' }}
+                />
+                <Chip
+                  label={`${running} Workloads Running`}
+                  size="small"
+                  onClick={() => router.push('/cluster/?status=running')}
+                  sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: 'info.main', fontWeight: 600, cursor: 'pointer' }}
+                />
+                <Chip
+                  label={`${sleeping} Workloads Sleeping`}
+                  size="small"
+                  onClick={() => router.push('/cluster/?status=sleeping')}
+                  sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: 'warning.main', fontWeight: 600, cursor: 'pointer' }}
+                />
+              </Box>
+
+              {/* Action buttons with impact tooltips */}
+              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+                <Tooltip title={`Will scale down ~${wouldScale} running workload${wouldScale !== 1 ? 's' : ''}`} arrow>
+                  <span>
+                    <Button
+                      variant="outlined"
+                      startIcon={<BedtimeIcon fontSize="small" />}
+                      onClick={() => { setMode('plan'); setDialog({ open: true, type: 'scale_down' }) }}
+                      sx={{ borderColor: 'rgba(255,255,255,0.15)', color: 'text.secondary' }}
+                    >
+                      Run Sleep Now
+                    </Button>
+                  </span>
+                </Tooltip>
+                <Tooltip title={`Will restore ~${wouldWake} sleeping workload${wouldWake !== 1 ? 's' : ''}`} arrow>
+                  <span>
+                    <Button
+                      variant="outlined"
+                      startIcon={<WbSunnyIcon fontSize="small" />}
+                      onClick={() => { setMode('plan'); setDialog({ open: true, type: 'scale_up' }) }}
+                      sx={{ borderColor: 'rgba(255,255,255,0.15)', color: 'text.secondary' }}
+                    >
+                      Run Wake Now
+                    </Button>
+                  </span>
+                </Tooltip>
+              </Box>
+
+              {/* Next run badge */}
+              {nextRun && (
+                <Box
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 0.75,
+                    mt: 1.75,
+                    px: 1.25,
+                    py: 0.5,
+                    borderRadius: 1.5,
+                    bgcolor: 'rgba(124,58,237,0.1)',
+                    border: '1px solid rgba(124,58,237,0.2)',
+                  }}
+                >
+                  <AccessTimeIcon sx={{ fontSize: 13, color: 'primary.light' }} />
+                  <Typography variant="caption" sx={{ color: 'primary.light', fontWeight: 500 }}>
+                    Next: {nextRun.name} · {timeUntil(nextRun.nextRun!)}
+                  </Typography>
+                </Box>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

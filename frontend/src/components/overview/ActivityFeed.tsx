@@ -127,11 +127,22 @@ export default function ActivityFeed() {
                     }}
                   />
                 </Box>
-                <Typography variant="caption" color="text.secondary">
-                  {exec.status === 'running'
-                    ? `In progress… · ${timeAgo(exec.startedAt)}`
-                    : `Scaled ${exec.countScaled} · Drained ${exec.countDrained} · Errors ${exec.countErrors} · ${timeAgo(exec.startedAt)}`}
-                </Typography>
+                {exec.status === 'running' ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Started {timeAgo(exec.startedAt)}
+                    </Typography>
+                    <Box sx={{
+                      width: 7, height: 7, borderRadius: '50%', bgcolor: '#22D3EE', flexShrink: 0,
+                      animation: 'livePulse 1.8s ease-in-out infinite',
+                      '@keyframes livePulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.2 } },
+                    }} />
+                  </Box>
+                ) : (
+                  <Typography variant="caption" color="text.secondary">
+                    {`Scaled ${exec.countScaled} · Drained ${exec.countDrained} · Errors ${exec.countErrors} · ${timeAgo(exec.startedAt)}`}
+                  </Typography>
+                )}
               </Box>
             </ListItemButton>
           ))}
