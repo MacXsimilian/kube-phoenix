@@ -45,7 +45,7 @@ export default function ActivityFeed() {
   const [selected, setSelected] = useState<Execution | null>(null)
   const { data, isLoading, isError } = useQuery({
     queryKey: ['executions', 'feed'],
-    queryFn: () => getExecutions({ pageSize: 5 }),
+    queryFn: () => getExecutions({ pageSize: 3 }),
     refetchInterval: 15_000,
   })
 
@@ -90,7 +90,7 @@ export default function ActivityFeed() {
           {data?.items?.map((exec) => (
             <ListItemButton
               key={exec.id}
-              onClick={() => exec.status === 'running' ? setSelected(exec) : router.push(`/history?exec=${exec.id}`)}
+              onClick={() => setSelected(exec)}
               sx={{ borderRadius: 2, px: 1.5, py: 1, mb: 0.5 }}
             >
               <Box
