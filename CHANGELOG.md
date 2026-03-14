@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.5](https://github.com/MacXsimilian/kube-phoenix/compare/v0.2.4...v0.2.5) (2026-03-14)
+
+
+### Bug Fixes
+
+* **frontend:** surface silent mutation/query failures across all components ([282e4da](https://github.com/MacXsimilian/kube-phoenix/commit/282e4da877d5f6217eec2d7b781c5d1792aceb30))
+* **overview:** add loading and error states to all three cards ([95534f7](https://github.com/MacXsimilian/kube-phoenix/commit/95534f7895ac79572327da49bc332dac7ab10902))
+
 ## [0.2.4](https://github.com/MacXsimilian/kube-phoenix/compare/v0.2.3...v0.2.4) (2026-03-13)
 
 
