@@ -110,7 +110,7 @@ export default function SchedulesPage() {
                 key={sc.id}
                 schedule={sc}
                 onEdit={() => setDialog({ open: true, schedule: sc })}
-                onDelete={() => qc.invalidateQueries({ queryKey: ['schedules'] })}
+                onDelete={() => { qc.invalidateQueries({ queryKey: ['schedules'] }); qc.invalidateQueries({ queryKey: ['overview'] }) }}
                 onNotify={notify}
               />
             ))}
@@ -148,7 +148,7 @@ export default function SchedulesPage() {
                 key={sc.id}
                 schedule={sc}
                 onEdit={() => setDialog({ open: true, schedule: sc })}
-                onDelete={() => qc.invalidateQueries({ queryKey: ['schedules'] })}
+                onDelete={() => { qc.invalidateQueries({ queryKey: ['schedules'] }); qc.invalidateQueries({ queryKey: ['overview'] }) }}
                 onNotify={notify}
               />
             ))}
