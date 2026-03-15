@@ -14,11 +14,17 @@ import TextField from '@mui/material/TextField'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded'
 import DeleteForeverOutlinedIcon from '@mui/icons-material/DeleteForeverOutlined'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined'
+import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined'
+import SettingsBrightnessOutlinedIcon from '@mui/icons-material/SettingsBrightnessOutlined'
 import { resetDatabaseStream, type ResetEvent } from '@/lib/api'
+import { useThemeMode } from '@/lib/themeMode'
 
 const CONFIRM_PHRASE = 'RESET DATABASE'
 
@@ -105,6 +111,7 @@ function ResetProgressDialog({
 }
 
 export default function SettingsPage() {
+  const { mode, setMode } = useThemeMode()
   const [step1Open, setStep1Open] = useState(false)
   const [step2Open, setStep2Open] = useState(false)
   const [phrase, setPhrase] = useState('')
@@ -157,6 +164,37 @@ export default function SettingsPage() {
       <Typography variant="body2" color="text.secondary" mb={4}>
         Application configuration and administrative operations.
       </Typography>
+
+      {/* Appearance */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent sx={{ p: 3 }}>
+          <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+            Appearance
+          </Typography>
+          <Typography variant="body2" color="text.secondary" mb={2.5}>
+            Choose how kube-phoenix looks. System follows your OS preference.
+          </Typography>
+          <ToggleButtonGroup
+            value={mode}
+            exclusive
+            onChange={(_, v) => v && setMode(v)}
+            aria-label="Theme mode"
+          >
+            <ToggleButton value="light" aria-label="Light mode" sx={{ gap: 1, px: 2.5 }}>
+              <LightModeOutlinedIcon fontSize="small" />
+              Light
+            </ToggleButton>
+            <ToggleButton value="system" aria-label="System default" sx={{ gap: 1, px: 2.5 }}>
+              <SettingsBrightnessOutlinedIcon fontSize="small" />
+              System
+            </ToggleButton>
+            <ToggleButton value="dark" aria-label="Dark mode" sx={{ gap: 1, px: 2.5 }}>
+              <DarkModeOutlinedIcon fontSize="small" />
+              Dark
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </CardContent>
+      </Card>
 
       {/* Danger Zone */}
       <Card sx={{ border: '1px solid', borderColor: 'error.main', bgcolor: 'rgba(239,68,68,0.04)' }}>

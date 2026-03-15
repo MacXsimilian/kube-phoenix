@@ -198,7 +198,7 @@ export default function ScheduleCard({
               <Chip
                 label="Disabled"
                 size="small"
-                sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(255,255,255,0.07)' }}
+                sx={{ height: 18, fontSize: 10, bgcolor: 'action.selected' }}
               />
             )}
 

@@ -80,7 +80,7 @@ function ScheduleRow({ schedule }: { schedule: Schedule }) {
             {schedule.name}
           </Typography>
           {!schedule.enabled ? (
-            <Chip label="Disabled" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(255,255,255,0.08)' }} />
+            <Chip label="Disabled" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'action.selected' }} />
           ) : schedule.mode === 'apply' ? (
             <Chip label="APPLY" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(245,158,11,0.2)', color: 'warning.main' }} />
           ) : (
