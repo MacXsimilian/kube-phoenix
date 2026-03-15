@@ -275,6 +275,8 @@ type NodePodResponse struct {
 	TotalContainers int    `json:"totalContainers"`
 	CPURequest      int64  `json:"cpuRequest"` // millicores
 	MemRequest      int64  `json:"memRequest"` // bytes
+	CPUUsage        int64  `json:"cpuUsage"`   // millicores — 0 if metrics unavailable
+	MemUsage        int64  `json:"memUsage"`   // bytes     — 0 if metrics unavailable
 	StartedAt       string `json:"startedAt"`  // RFC3339 or ""
 }
 
@@ -295,6 +297,8 @@ func (h *Handler) getNodePods(w http.ResponseWriter, r *http.Request) {
 		jsonInternalError(w, err, "list pods on node failed")
 		return
 	}
+
+	podMetrics, _ := h.k8s.GetAllPodMetrics(ctx)
 
 	// Build ReplicaSet -> top-level owner map to resolve Deployment names
 	rss, err := h.k8s.ListAllReplicaSets(ctx)
@@ -357,6 +361,7 @@ func (h *Handler) getNodePods(w http.ResponseWriter, r *http.Request) {
 			phase = "Unknown"
 		}
 
+		m := podMetrics[pod.Namespace+"/"+pod.Name]
 		result = append(result, NodePodResponse{
 			Name:            pod.Name,
 			Namespace:       pod.Namespace,
@@ -367,6 +372,8 @@ func (h *Handler) getNodePods(w http.ResponseWriter, r *http.Request) {
 			TotalContainers: len(pod.Spec.Containers),
 			CPURequest:      cpuReq,
 			MemRequest:      memReq,
+			CPUUsage:        m.CPUMillis,
+			MemUsage:        m.MemBytes,
 			StartedAt:       startedAt,
 		})
 	}
@@ -564,6 +571,8 @@ func (h *Handler) getWorkloadPods(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	podMetrics, _ := h.k8s.GetAllPodMetrics(ctx)
+
 	rss, err := h.k8s.ListAllReplicaSets(ctx)
 	if err != nil {
 		slog.Warn("getWorkloadPods: failed to list replicasets", "err", err)
@@ -613,6 +622,7 @@ func (h *Handler) getWorkloadPods(w http.ResponseWriter, r *http.Request) {
 		if phase == "" {
 			phase = "Unknown"
 		}
+		m := podMetrics[pod.Namespace+"/"+pod.Name]
 		result = append(result, NodePodResponse{
 			Name:            pod.Name,
 			Namespace:       pod.Namespace,
@@ -623,6 +633,8 @@ func (h *Handler) getWorkloadPods(w http.ResponseWriter, r *http.Request) {
 			TotalContainers: len(pod.Spec.Containers),
 			CPURequest:      cpuReq,
 			MemRequest:      memReq,
+			CPUUsage:        m.CPUMillis,
+			MemUsage:        m.MemBytes,
 			StartedAt:       startedAt,
 		})
 	}
