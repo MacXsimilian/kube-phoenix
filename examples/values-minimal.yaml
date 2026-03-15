@@ -1,0 +1,39 @@
+# Example: Minimal install — in-cluster PostgreSQL, port-forward access
+#
+# The simplest possible production-grade install. Uses the bundled
+# PostgreSQL StatefulSet with a persistent volume and exposes the UI
+# via kubectl port-forward only.
+#
+# Suitable for: single-team clusters, internal tooling, quick evaluation.
+#
+# Usage:
+#   helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
+#     --namespace kube-phoenix --create-namespace \
+#     -f examples/values-minimal.yaml \
+#     --set secret.basicAuthPassword=<your-password>
+#
+# Access the UI:
+#   kubectl port-forward -n kube-phoenix svc/kube-phoenix 8080:80
+#   open http://localhost:8080
+
+postgresql:
+  enabled: true
+  auth:
+    username: kube_phoenix
+    password: kube_phoenix   # change in production
+    database: kube_phoenix
+  persistence:
+    enabled: true
+    size: 2Gi
+
+secret:
+  basicAuthUser: admin
+  basicAuthPassword: ""  # pass via --set
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi

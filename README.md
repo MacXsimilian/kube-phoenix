@@ -14,16 +14,16 @@ kube-phoenix is a self-hosted web application for managing cluster sleep/wake sc
 
 ## Table of Contents
 
+- [Why kube-phoenix?](#why-kube-phoenix)
 - [How it works](#how-it-works)
 - [Architecture](#architecture)
 - [Features](#features)
 - [Quick Start](#quick-start)
-  - [Prerequisites](#prerequisites)
+  - [Helm install (recommended)](#helm-install)
   - [Local development](#local-development)
   - [Production build](#production-build)
   - [Docker](#docker)
 - [Deployment](#deployment)
-  - [Helm install](#helm-install)
   - [External database](#external-database)
   - [Accessing the UI](#accessing-the-ui)
   - [AWS ALB (TargetGroupBinding)](#aws-alb-targetgroupbinding)
@@ -39,10 +39,30 @@ kube-phoenix is a self-hosted web application for managing cluster sleep/wake sc
   - [CI pipeline](#ci-pipeline)
   - [Release workflow](#release-workflow)
 - [Contributing](#contributing)
-  - [Branching strategy](#branching-strategy)
-  - [Conventional commits](#conventional-commits)
 - [Project structure](#project-structure)
 - [Roadmap](#roadmap)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## Why kube-phoenix?
+
+| Feature                               | kube-phoenix | Karpenter | KEDA | Raw CronJobs |
+| :------------------------------------ | :----------: | :-------: | :--: | :----------: |
+| Visual schedule management            |      ✅      |    ❌     |  ❌  |      ❌      |
+| Dry-run before applying               |      ✅      |    ❌     |  ❌  |      ❌      |
+| Live execution logs                   |      ✅      |    ❌     |  ❌  |      ❌      |
+| Guardrails / namespace exclusions     |      ✅      |    ⚠️     |  ⚠️  |      ❌      |
+| Restores exact replica counts on wake |      ✅      |    ❌     |  ❌  |      ❌      |
+| Per-schedule namespace scope          |      ✅      |    ❌     |  ❌  |      ❌      |
+| Works with any node autoscaler        |      ✅      |    ❌     |  ✅  |      ✅      |
+| Single binary, no extra infra         |      ✅      |    ✅     |  ❌  |      ✅      |
+
+**Karpenter** can drain idle nodes but cannot restore workloads to their original replica counts, has no schedule UI, and no dry-run mode.
+
+**KEDA** scales workloads based on event/metric sources — not time-of-day schedules with full cluster drain.
+
+**Raw CronJobs** with `kubectl scale` scripts work but have no observability, no guardrails, no plan mode, and are painful to configure and debug.
 
 ---
 
@@ -82,37 +102,37 @@ For each node
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Browser                              │
-│           Next.js 16 + React 19 + Material UI v7            │
-│   Overview · Schedules · Cluster State · Guardrails ·       │
-│   History · Settings                                        │
-└───────────────────────┬─────────────────────────────────────┘
-                        │  HTTP /api/*   WebSocket /ws/*
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Go 1.25 Binary  (port 8080)                    │
-│                                                             │
-│   Chi router ──► API handlers                               │
-│                       │                                     │
-│   robfig/cron ──► Scheduler ──► Scaler                      │
-│                       │             │                       │
-│   WS log broker ◄─────┘         client-go ──► Kubernetes   │
-│                                                             │
-│   GORM ──► PostgreSQL 16                                    │
-│                                                             │
-│   //go:embed static ──► serves Next.js SPA                  │
-│   (one binary, one container, no nginx)                     │
-└─────────────────────────────────────────────────────────────┘
-                        │
-          ┌─────────────┴─────────────┐
-          ▼                           ▼
-   Kubernetes API               PostgreSQL
-   (workloads, nodes,           (schedules,
-    pods, events,                executions,
-    Metrics Server)              guardrails,
-                                 log lines)
+```mermaid
+flowchart TB
+    Browser["**Browser**\nNext.js 16 · React 19 · MUI v7\nOverview · Schedules · Cluster State · Guardrails · History · Settings"]
+
+    subgraph Binary["Go 1.25 Binary — port 8080"]
+        direction TB
+        Router["Chi Router + BasicAuth middleware"]
+        Handlers["API Handlers"]
+        Scheduler["Scheduler\nrobfig/cron v3"]
+        Scaler["Scaler\nscale_down / scale_up"]
+        Cache["ClusterCache\n10 s background refresh"]
+        Broker["WS Log Broker\npub/sub fan-out"]
+        GORM["GORM"]
+        SPA["//go:embed\nNext.js SPA"]
+    end
+
+    K8s[("Kubernetes API\nDeployments · StatefulSets\nNodes · Pods · Events\nMetrics Server")]
+    PG[("PostgreSQL 16\nschedules · executions\nguardrails · log lines")]
+
+    Browser -- "HTTP /api/*\nSSE /api/cluster/stream" --> Router
+    Browser -- "WS /ws/executions/:id/logs" --> Router
+    Router --> Handlers
+    Router --> SPA
+    Handlers --> Scheduler
+    Handlers --> Cache
+    Handlers --> GORM
+    Scheduler --> Scaler
+    Scheduler --> Broker
+    Scaler --> K8s
+    Cache --> K8s
+    GORM --> PG
 ```
 
 ---
@@ -132,12 +152,12 @@ For each node
 The Cluster State page offers three levels of detail in resizable side drawers:
 
 **Nodes tab**
-- Click a node row → Node detail drawer — resource bars (CPU/mem), zone, instance type, cordon status, and a searchable pod list grouped by namespace
+- Click a node row → Node detail drawer — resource bars (CPU/mem), zone, instance type, cordon status, and a searchable pod list grouped by namespace with **live CPU/memory usage per pod** (from Metrics Server)
 - Click a pod in the node drawer → Pod detail replaces in-place; a breadcrumb back button returns to the node view
 
 **Workloads tab**
 - Sortable table with a live row count footer and an "affected-only" filter that previews what the next sleep run would scale
-- Click a workload row → Workload detail drawer — replica progress bar (ready/current/saved), kind and status chips, searchable pod list
+- Click a workload row → Workload detail drawer — replica progress bar (ready/current/saved), kind and status chips, searchable pod list with **live CPU/memory usage per pod** (from Metrics Server)
 - Click a pod in the workload drawer → Pod detail drawer opens alongside it
 
 **Pod detail** shows:
@@ -151,14 +171,31 @@ The Cluster State page offers three levels of detail in resizable side drawers:
 
 ## Quick Start
 
-### Prerequisites
+### Helm install
 
-- Go 1.25+
-- Node.js 22+
-- Docker (for local PostgreSQL)
-- `kubectl` configured against your cluster (the backend starts without it — cluster endpoints return empty data)
+The fastest path to a running instance. Requires Helm 3 and a Kubernetes cluster.
+
+```bash
+helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
+  --namespace kube-phoenix \
+  --create-namespace \
+  --set secret.basicAuthPassword=<your-password>
+```
+
+Then access the UI:
+
+```bash
+kubectl port-forward -n kube-phoenix svc/kube-phoenix 8080:80
+# Open http://localhost:8080
+```
+
+All schedules are seeded **disabled** in **plan mode** — nothing will scale until you explicitly enable a schedule and switch it to `apply` mode.
+
+See [Deployment](#deployment) for external database, Ingress, and AWS ALB options.
 
 ### Local development
+
+**Prerequisites:** Go 1.25+, Node.js 22+, Docker
 
 ```bash
 # 1. Start PostgreSQL
@@ -192,17 +229,7 @@ make docker-build
 
 ## Deployment
 
-The Helm chart deploys the application, an optional in-cluster PostgreSQL StatefulSet, RBAC resources, and a dedicated namespace.
-
-### Helm install
-
-```bash
-helm upgrade --install kube-phoenix helm/kube-phoenix \
-  --namespace kube-phoenix \
-  --create-namespace \
-  --set image.tag=<git-sha> \
-  --set secret.basicAuthPassword=<your-password>
-```
+The Helm chart deploys the application, an optional in-cluster PostgreSQL StatefulSet, RBAC resources, and a dedicated namespace. For the basic install command see [Quick Start → Helm install](#helm-install).
 
 ### External database
 
@@ -219,13 +246,6 @@ helm upgrade --install kube-phoenix helm/kube-phoenix \
 Alternatively, set the individual `externalDatabase.*` fields (`host`, `port`, `username`, `password`, `database`, `sslmode`) instead of a full DSN.
 
 ### Accessing the UI
-
-**Port-forward:**
-
-```bash
-kubectl port-forward -n kube-phoenix svc/kube-phoenix 8080:80
-# Open http://localhost:8080
-```
 
 **Kubernetes Ingress:**
 
@@ -266,35 +286,35 @@ targetGroupBinding:
 
 ### Helm values reference
 
-| Value | Default | Description |
-|---|---|---|
-| `image.repository` | `ghcr.io/macxsimilian/kube-phoenix` | Image repository |
-| `image.tag` | `latest` | Image tag to deploy |
-| `replicaCount` | `1` | Number of app replicas |
-| `postgresql.enabled` | `true` | Deploy in-cluster PostgreSQL StatefulSet |
-| `postgresql.auth.username` | `kube_phoenix` | PostgreSQL username |
-| `postgresql.auth.password` | `kube_phoenix` | PostgreSQL password — **change in production** |
-| `postgresql.auth.database` | `kube_phoenix` | PostgreSQL database name |
-| `postgresql.persistence.enabled` | `true` | Persist PostgreSQL data via a PVC |
-| `postgresql.persistence.size` | `1Gi` | PVC size |
-| `postgresql.persistence.storageClass` | `""` | StorageClass — `""` uses the cluster default |
-| `externalDatabase.url` | `""` | Full DSN when `postgresql.enabled=false` |
-| `secret.basicAuthUser` | `admin` | Basic Auth username |
-| `secret.basicAuthPassword` | `kube-phoenix` | Basic Auth password — **change in production** |
-| `secret.existingSecret` | `""` | Pre-existing Secret containing `DATABASE_URL`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD` |
-| `ingress.enabled` | `false` | Enable Kubernetes Ingress |
-| `ingress.className` | `""` | Ingress class name |
-| `ingress.annotations` | `{}` | Ingress annotations |
-| `ingress.host` | `""` | Hostname to expose the app on |
-| `ingress.tls` | `[]` | TLS configuration |
-| `targetGroupBinding.enabled` | `false` | Enable AWS TargetGroupBinding |
-| `targetGroupBinding.targetGroupARN` | `""` | ARN of the pre-created target group |
-| `targetGroupBinding.targetType` | `ip` | `ip` or `instance` |
-| `targetGroupBinding.vpcID` | `""` | VPC ID — only needed if the controller cannot auto-detect it |
-| `resources.requests.cpu` | `50m` | CPU request |
-| `resources.requests.memory` | `64Mi` | Memory request |
-| `resources.limits.cpu` | `200m` | CPU limit |
-| `resources.limits.memory` | `256Mi` | Memory limit |
+| Value                                  | Default                              | Description                                                                                  |
+| :------------------------------------- | :----------------------------------- | :------------------------------------------------------------------------------------------- |
+| `image.repository`                     | `ghcr.io/macxsimilian/kube-phoenix`  | Image repository                                                                             |
+| `image.tag`                            | `latest`                             | Image tag to deploy                                                                          |
+| `replicaCount`                         | `1`                                  | Number of app replicas                                                                       |
+| `postgresql.enabled`                   | `true`                               | Deploy in-cluster PostgreSQL StatefulSet                                                     |
+| `postgresql.auth.username`             | `kube_phoenix`                       | PostgreSQL username                                                                          |
+| `postgresql.auth.password`             | `kube_phoenix`                       | PostgreSQL password — **change in production**                                               |
+| `postgresql.auth.database`             | `kube_phoenix`                       | PostgreSQL database name                                                                     |
+| `postgresql.persistence.enabled`       | `true`                               | Persist PostgreSQL data via a PVC                                                            |
+| `postgresql.persistence.size`          | `1Gi`                                | PVC size                                                                                     |
+| `postgresql.persistence.storageClass`  | `""`                                 | StorageClass — `""` uses the cluster default                                                 |
+| `externalDatabase.url`                 | `""`                                 | Full DSN when `postgresql.enabled=false`                                                     |
+| `secret.basicAuthUser`                 | `admin`                              | Basic Auth username                                                                          |
+| `secret.basicAuthPassword`             | `kube-phoenix`                       | Basic Auth password — **change in production**                                               |
+| `secret.existingSecret`                | `""`                                 | Pre-existing Secret containing `DATABASE_URL`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD`     |
+| `ingress.enabled`                      | `false`                              | Enable Kubernetes Ingress                                                                    |
+| `ingress.className`                    | `""`                                 | Ingress class name                                                                           |
+| `ingress.annotations`                  | `{}`                                 | Ingress annotations                                                                          |
+| `ingress.host`                         | `""`                                 | Hostname to expose the app on                                                                |
+| `ingress.tls`                          | `[]`                                 | TLS configuration                                                                            |
+| `targetGroupBinding.enabled`           | `false`                              | Enable AWS TargetGroupBinding                                                                |
+| `targetGroupBinding.targetGroupARN`    | `""`                                 | ARN of the pre-created target group                                                          |
+| `targetGroupBinding.targetType`        | `ip`                                 | `ip` or `instance`                                                                           |
+| `targetGroupBinding.vpcID`             | `""`                                 | VPC ID — only needed if the controller cannot auto-detect it                                 |
+| `resources.requests.cpu`               | `50m`                                | CPU request                                                                                  |
+| `resources.requests.memory`            | `64Mi`                               | Memory request                                                                               |
+| `resources.limits.cpu`                 | `200m`                               | CPU limit                                                                                    |
+| `resources.limits.memory`              | `256Mi`                              | Memory limit                                                                                 |
 
 Full reference: [helm/kube-phoenix/values.yaml](helm/kube-phoenix/values.yaml)
 
@@ -304,11 +324,12 @@ Full reference: [helm/kube-phoenix/values.yaml](helm/kube-phoenix/values.yaml)
 
 ### Environment variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL DSN — e.g. `host=localhost user=kube_phoenix password=kube_phoenix dbname=kube_phoenix port=5432 sslmode=disable` |
-| `BASIC_AUTH_USER` | No | HTTP Basic Auth username. Unset = auth disabled (dev mode). |
-| `BASIC_AUTH_PASSWORD` | No | HTTP Basic Auth password. |
+| Variable              | Required | Description                                                                                                                                                                              |
+| :-------------------- | :------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`        | Yes      | PostgreSQL DSN — e.g. `host=localhost user=kube_phoenix password=kube_phoenix dbname=kube_phoenix port=5432 sslmode=disable`                                                             |
+| `BASIC_AUTH_USER`     | No       | HTTP Basic Auth username. Unset = auth disabled (dev mode).                                                                                                                              |
+| `BASIC_AUTH_PASSWORD` | No       | HTTP Basic Auth password.                                                                                                                                                                |
+| `CORS_ALLOWED_ORIGIN` | No       | Allowed CORS origin (e.g. `https://kube-phoenix.example.com`). Unset = no cross-origin requests permitted. Useful when the frontend is served from a different origin during development. |
 
 ### Authentication
 
@@ -326,16 +347,16 @@ Each schedule defines when the scaler fires, how it fires, and which namespaces 
 
 ### Schedule fields
 
-| Field | Description |
-|---|---|
-| **Name** | Human-readable label |
-| **Type** | `scale_down` (sleep) or `scale_up` (wake) — immutable after creation |
-| **Cron expression** | Standard 5-field cron (`minute hour dom month dow`) |
-| **Timezone** | IANA timezone — e.g. `Europe/Budapest`. Defaults to `UTC`. |
-| **Mode** | `plan` — logs what would happen, no changes; `apply` — executes for real |
-| **Namespace filter** | Comma-separated namespace names to target. Leave empty to target all namespaces. |
-| **Enabled** | Whether the schedule is active. Disabled schedules are skipped by the cron engine. |
-| **Position** | Display order within each type group. Set automatically; updated via drag-and-drop. |
+| Field                | Description                                                                        |
+| :------------------- | :--------------------------------------------------------------------------------- |
+| **Name**             | Human-readable label                                                               |
+| **Type**             | `scale_down` (sleep) or `scale_up` (wake) — immutable after creation              |
+| **Cron expression**  | Standard 5-field cron (`minute hour dom month dow`)                                |
+| **Timezone**         | IANA timezone — e.g. `Europe/Budapest`. Defaults to `UTC`.                         |
+| **Mode**             | `plan` — logs what would happen, no changes; `apply` — executes for real          |
+| **Namespace filter** | Comma-separated namespace names to target. Leave empty to target all namespaces.   |
+| **Enabled**          | Whether the schedule is active. Disabled schedules are skipped by the cron engine. |
+| **Position**         | Display order within each type group. Set automatically; updated via drag-and-drop. |
 
 The toggle switch on each schedule card persists the change immediately — no need to open the edit dialog. The switch shows an optimistic update while the request is in flight and reverts automatically on failure.
 
@@ -343,14 +364,14 @@ Cards within each section (Sleep / Wake) can be reordered by dragging the handle
 
 ### Default schedules
 
-Four schedules are seeded on first startup, all in **plan mode** and **disabled**. Enable them and switch to `apply` when you are confident in the guardrails and namespace filters.
+Four schedules are seeded on first startup, all in **plan mode** and **disabled**. Enable and switch to `apply` when you are confident the guardrails and namespace filters are correct. All default schedules use the `Europe/Budapest` timezone — adjust to your own timezone after installation.
 
-| Name | Cron | Timezone | Type |
-|---|---|---|---|
-| Weekday Sleep | `5 19 * * 1-5` | Europe/Budapest | `scale_down` |
-| Weekday Wake | `0 7 * * 1-5` | Europe/Budapest | `scale_up` |
-| Weekend Sleep | `0 0 * * 6,0` | Europe/Budapest | `scale_down` |
-| Weekend Wake | `0 7 * * 1` | Europe/Budapest | `scale_up` |
+| Name          | Cron            | Type         | When (Europe/Budapest) |
+| :------------ | :-------------- | :----------- | :--------------------- |
+| Weekday Sleep | `5 19 * * 1-5`  | `scale_down` | Mon–Fri 19:05          |
+| Weekday Wake  | `0 7 * * 1-5`   | `scale_up`   | Mon–Fri 07:00          |
+| Weekend Sleep | `0 0 * * 6,0`   | `scale_down` | Sat–Sun 00:00          |
+| Weekend Wake  | `0 7 * * 1`     | `scale_up`   | Mon 07:00              |
 
 ---
 
@@ -410,12 +431,12 @@ ci.yml
 
 CI runs on every push to `master` and on all pull requests. Docker builds happen only on release — CI never pushes images.
 
-| Job | Trigger | What it does |
-|---|---|---|
-| **Frontend build** | push + PR | `npm install`, `npm audit`, `npm run build` |
-| **Backend build** | push + PR | `go vet`, `go test`, `go build`, `govulncheck`, golangci-lint + gosec |
-| **Helm lint** | push + PR | `helm lint helm/kube-phoenix` |
-| **Secret scan** | push + PR | TruffleHog scans the diff for verified leaked secrets |
+| Job                | Trigger   | What it does                                                        |
+| :----------------- | :-------- | :------------------------------------------------------------------ |
+| **Frontend build** | push + PR | `npm install`, `npm audit`, `npm run build`                         |
+| **Backend build**  | push + PR | `go vet`, `go test`, `go build`, `govulncheck`, golangci-lint + gosec |
+| **Helm lint**      | push + PR | `helm lint helm/kube-phoenix`                                       |
+| **Secret scan**    | push + PR | TruffleHog scans the diff for verified leaked secrets               |
 
 ### Release workflow
 
@@ -433,12 +454,12 @@ release-please.yml
   └── helm chart push → oci://ghcr.io/macxsimilian/helm
 ```
 
-| Job | Trigger | What it does |
-|---|---|---|
-| **release-please** | push to `master` | Opens/updates Release PR; on merge: creates tag + GitHub Release |
-| **Docker build & push** | release created | Builds and pushes to GHCR with semver and `latest` tags |
-| **Trivy scan** | after docker push | Fails on CRITICAL/HIGH unfixed CVEs |
-| **Helm push** | release created | Packages and pushes chart to GHCR OCI registry |
+| Job                     | Trigger           | What it does                                                    |
+| :---------------------- | :---------------- | :-------------------------------------------------------------- |
+| **release-please**      | push to `master`  | Opens/updates Release PR; on merge: creates tag + GitHub Release |
+| **Docker build & push** | release created   | Builds and pushes to GHCR with semver and `latest` tags         |
+| **Trivy scan**          | after docker push | Fails on CRITICAL/HIGH unfixed CVEs                             |
+| **Helm push**           | release created   | Packages and pushes chart to GHCR OCI registry                  |
 
 Images published on release:
 
@@ -460,47 +481,20 @@ ghcr.io/macxsimilian/kube-phoenix:latest
 
 ## Contributing
 
-### Branching strategy
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide — local setup, branching strategy, commit conventions, and PR checklist.
 
-kube-phoenix uses GitHub Flow — a single protected `master` branch, short-lived feature branches, and pull requests.
+**Quick reference — conventional commit prefixes:**
 
-```
-master  (protected, always deployable)
-  ├── feat/emergency-wake    → PR → master
-  ├── fix/activityfeed-jsx   → PR → master
-  └── ci/add-govulncheck     → PR → master
-```
-
-- Branch off `master` for any non-trivial change.
-- Small fixes (typos, one-liners) can be pushed directly if you have admin bypass enabled.
-- Never create tags manually — release-please owns all tags and releases.
-
-```bash
-# 1. Branch off master
-git checkout master && git pull
-git checkout -b feat/your-feature
-
-# 2. Commit with a conventional prefix
-git commit -m "feat: add emergency wake endpoint"
-
-# 3. Push and open a PR against master
-git push -u origin feat/your-feature
-
-# 4. CI runs automatically; merge once green and approved
-```
-
-### Conventional commits
-
-| Prefix | Version bump | Use for |
-|---|---|---|
-| `feat:` | minor | new feature |
-| `fix:` | patch | bug fix |
-| `perf:` | patch | performance improvement |
-| `feat!:` / `BREAKING CHANGE:` | major | breaking API or behaviour change |
-| `docs:` | none | documentation only |
-| `ci:` | none | CI/CD changes |
-| `chore:` | none | maintenance, dependencies, config |
-| `refactor:` | none | code restructure, no behaviour change |
+| Prefix                        | Version bump | Use for                                |
+| :---------------------------- | :----------- | :------------------------------------- |
+| `feat:`                       | minor        | new feature                            |
+| `fix:`                        | patch        | bug fix                                |
+| `perf:`                       | patch        | performance improvement                |
+| `feat!:` / `BREAKING CHANGE:` | major        | breaking API or behaviour change       |
+| `docs:`                       | none         | documentation only                     |
+| `ci:`                         | none         | CI/CD changes                          |
+| `chore:`                      | none         | maintenance, dependencies, config      |
+| `refactor:`                   | none         | code restructure, no behaviour change  |
 
 ---
 
@@ -548,12 +542,12 @@ kube-phoenix/
 
 ## Tech stack
 
-| Layer | Technology |
-|---|---|
-| Backend | Go 1.25, chi v5.2, GORM v1.31, robfig/cron v3, client-go |
-| Frontend | Next.js 16, React 19, Material UI v7, TanStack Query v5 |
-| Database | PostgreSQL 16 |
-| Packaging | Helm 4, GHCR (OCI), GitHub Actions |
+| Layer     | Technology                                                |
+| :-------- | :-------------------------------------------------------- |
+| Backend   | Go 1.25, chi v5.2, GORM v1.31, robfig/cron v3, client-go |
+| Frontend  | Next.js 16, React 19, Material UI v7, TanStack Query v5   |
+| Database  | PostgreSQL 16                                             |
+| Packaging | Helm 4, GHCR (OCI), GitHub Actions                        |
 
 The Go backend embeds the Next.js static export via `//go:embed` — one binary, one container, no separate web server.
 
@@ -561,9 +555,75 @@ The Go backend embeds the Next.js static export via `//go:embed` — one binary,
 
 ## Roadmap
 
-- [ ] Keycloak OIDC (replace basic auth)
-- [ ] Slack / email notifications
-- [ ] Multi-cluster support
+| Item                        | Status      | Notes                                           |
+| :-------------------------- | :---------- | :---------------------------------------------- |
+| Keycloak / OIDC auth        | Planned     | Replace HTTP Basic Auth; retain WS token flow   |
+| Slack / email notifications | Planned     | Alert on scale failures and manual triggers     |
+| Multi-cluster support       | Planned     | Switch between kubeconfig contexts in the UI    |
+| OpenAPI spec                | Planned     | Swagger UI served at `/api/docs`                |
+| GitLab CI pipeline          | Planned     | Mirror of the GitHub Actions workflow           |
+| Emergency wake button       | In progress | One-click full cluster wake bypassing schedule  |
+
+---
+
+## Troubleshooting
+
+### A schedule ran but nothing was scaled
+
+1. Check the execution log in the **History** page — every skip is logged with a reason.
+2. Confirm the schedule is in **apply** mode, not **plan** mode. All default schedules start in plan mode.
+3. Confirm the schedule is **enabled** — the toggle on the Schedules page.
+4. Check that the target namespaces are not in **Guardrails → Skip Namespaces**.
+
+### The backend crashes on startup
+
+The most common cause is a missing or malformed `DATABASE_URL`.
+
+```
+FATAL: DATABASE_URL is required
+```
+
+Check that the environment variable is set and the PostgreSQL instance is reachable from the pod. Run `kubectl logs -n kube-phoenix deployment/kube-phoenix` for the full error.
+
+### Cluster State shows no workloads or nodes
+
+The Kubernetes client uses the pod's ServiceAccount token (in-cluster config). Possible causes:
+
+- **Running locally without a cluster:** expected — cluster endpoints return empty data, not an error.
+- **RBAC not applied:** verify the ClusterRole and ClusterRoleBinding exist: `kubectl get clusterrolebinding kube-phoenix`.
+- **Cache not yet populated:** on cold start the ClusterCache populates asynchronously. Wait a few seconds and refresh.
+
+### A workload is stuck with the `previous-replicas` annotation
+
+This happens when a scale-up run was interrupted or partially failed. The workload has `replicas=0` and the annotation present, so it looks sleeping but the wake didn't complete.
+
+Fix manually:
+
+```bash
+# Restore replicas (replace <n> with the saved value from the annotation)
+kubectl scale deployment <name> -n <namespace> --replicas=<n>
+
+# Remove the annotation
+kubectl annotate deployment <name> -n <namespace> previous-replicas-
+```
+
+Then recheck the History log for the failed execution to understand why the wake failed.
+
+### Metrics Server data is missing in pod detail
+
+kube-phoenix calls the Kubernetes Metrics Server API for live CPU/memory. If the Metrics Server is not installed in your cluster, usage values will show as `—` rather than causing an error. Install it with:
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
+
+### WebSocket log streaming disconnects immediately
+
+WebSocket connections authenticate via `?token=<base64(user:pass)>`. If credentials are wrong, the connection is closed with `4401`. Verify your browser is sending the correct base64 token — the kube-phoenix UI handles this automatically when you log in through the login screen.
+
+### CORS errors in the browser during local development
+
+Set `CORS_ALLOWED_ORIGIN=http://localhost:3000` on the backend process when running the frontend dev server separately from the backend.
 
 ---
 
