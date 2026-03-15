@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Drawer from '@mui/material/Drawer'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -9,6 +9,7 @@ import IconButton from '@mui/material/IconButton'
 import Chip from '@mui/material/Chip'
 import Divider from '@mui/material/Divider'
 import Alert from '@mui/material/Alert'
+import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import Tooltip from '@mui/material/Tooltip'
 import Snackbar from '@mui/material/Snackbar'
@@ -299,6 +300,7 @@ export default function LogViewer({
   execution: Execution | null
   onClose: () => void
 }) {
+  const qc = useQueryClient()
   const [liveLines, setLiveLines] = useState<LogLine[]>([])
   const [copied, setCopied] = useState(false)
   const [wsError, setWsError] = useState(false)
@@ -307,6 +309,7 @@ export default function LogViewer({
   const bottomRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const lineEls = useRef<(HTMLElement | null)[]>([])
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isRunning = execution?.status === 'running'
 
@@ -328,24 +331,32 @@ export default function LogViewer({
     setLiveLines([])
     setWsError(false)
 
-    const ws = new WebSocket(wsLogsUrl(execution.id))
-    wsRef.current = ws
+    function openWs() {
+      const ws = new WebSocket(wsLogsUrl(execution!.id))
+      wsRef.current = ws
 
-    ws.onmessage = (e) => {
-      try {
-        const line: LogLine = JSON.parse(e.data)
-        setLiveLines((prev) => [...prev, line])
-      } catch {
-        // ignore parse errors
+      ws.onmessage = (e) => {
+        try {
+          const line: LogLine = JSON.parse(e.data)
+          setLiveLines((prev) => [...prev, line])
+        } catch {
+          // ignore parse errors
+        }
+      }
+      ws.onerror = () => {
+        setWsError(true)
+        ws.close()
+        reconnectTimerRef.current = setTimeout(() => {
+          if (execution?.status === 'running') openWs()
+        }, 3000)
       }
     }
-    ws.onerror = () => {
-      setWsError(true)
-      ws.close()
-    }
+
+    openWs()
 
     return () => {
-      ws.close()
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+      wsRef.current?.close()
       wsRef.current = null
     }
   }, [execution?.id, isRunning])
@@ -507,8 +518,16 @@ export default function LogViewer({
                 </Alert>
               )}
               {logsError && !isRunning && (
-                <Alert severity="warning" sx={{ borderRadius: 0 }}>
-                  Could not load logs — they may have been pruned.
+                <Alert
+                  severity="error"
+                  sx={{ borderRadius: 0 }}
+                  action={
+                    <Button color="inherit" size="small" onClick={() => qc.invalidateQueries({ queryKey: ['logs', execution?.id] })}>
+                      Retry
+                    </Button>
+                  }
+                >
+                  Could not load logs.
                 </Alert>
               )}
               <Box sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: '#0A0A0F', minHeight: 0 }}>

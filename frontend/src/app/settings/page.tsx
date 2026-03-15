@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Card from '@mui/material/Card'
@@ -112,6 +113,7 @@ function ResetProgressDialog({
 
 export default function SettingsPage() {
   const { mode, setMode } = useThemeMode()
+  const queryClient = useQueryClient()
   const [step1Open, setStep1Open] = useState(false)
   const [step2Open, setStep2Open] = useState(false)
   const [phrase, setPhrase] = useState('')
@@ -140,7 +142,11 @@ export default function SettingsPage() {
     try {
       for await (const event of resetDatabaseStream()) {
         setProgressEvents((prev) => [...prev, event])
-        if (event.type === 'done' || event.type === 'error') break
+        if (event.type === 'done') {
+          queryClient.clear()
+          break
+        }
+        if (event.type === 'error') break
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error'
