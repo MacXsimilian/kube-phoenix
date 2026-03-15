@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.58](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.57...v0.1.58) (2026-03-15)
+
+
+### Bug Fixes
+
+* **metrics:** surface API errors and add metrics.k8s.io RBAC rule ([f3914d4](https://github.com/MacXsimilian/kube-phoenix/commit/f3914d4978aba4a33d387527d9f5e7fc3d61ad8d))
+* **metrics:** surface API errors and add metrics.k8s.io RBAC rule ([01941b0](https://github.com/MacXsimilian/kube-phoenix/commit/01941b05718a7b6f6fc585b09e285c5004213df8))
+
 ## [0.1.57](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.56...v0.1.57) (2026-03-15)
 
 
