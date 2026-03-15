@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.54](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.53...v0.1.54) (2026-03-15)
+
+
+### Bug Fixes
+
+* **security:** redact WS token from logs, fix RBAC replicasets, add reset-db audit log ([2409917](https://github.com/MacXsimilian/kube-phoenix/commit/240991749e8cfb3e31e2d10ae626d3c819775c28))
+* **security:** redact WS token from logs, fix RBAC, add reset-db audit log ([40e9b7a](https://github.com/MacXsimilian/kube-phoenix/commit/40e9b7ae8882040b09270155102d6c3f16b61bb4))
+
 ## [0.1.53](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.52...v0.1.53) (2026-03-15)
 
 
