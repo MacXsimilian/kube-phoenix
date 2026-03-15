@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.44](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.43...v0.1.44) (2026-03-15)
+
+
+### Bug Fixes
+
+* schedule toggle persistence, next-run UX, double-v version ([282c921](https://github.com/MacXsimilian/kube-phoenix/commit/282c921e3df5ddf410f9af515a7986369ef3433e))
+* **schedules:** persist enabled toggle via GORM Select workaround, improve next-run display, fix double-v version ([86b3a82](https://github.com/MacXsimilian/kube-phoenix/commit/86b3a82e95524644e9c0ffdb5d3918948a8abd84))
+
 ## [0.1.43](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.42...v0.1.43) (2026-03-15)
 
 
