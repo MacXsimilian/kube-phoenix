@@ -392,6 +392,8 @@ Validation steps:
 
 Uses a `map[string]interface{}` partial-update pattern to only write provided fields. The `type` field is explicitly excluded from the allowed update map — you cannot change a `scale_down` schedule to `scale_up` after creation. This is a safety constraint: changing the type of a schedule would be semantically equivalent to deleting it and creating a new one, which is less confusing. After update, `scheduler.Reload()` is called.
 
+> **GORM zero-value note:** GORM's `Updates(map)` silently skips map values that equal the Go zero value for their type — including `bool(false)`. This means sending `{"enabled": false}` alone would not persist the change. The store layer works around this by collecting the map keys and passing them to `Select(keys)` before `Updates(map)`, which forces GORM to write every specified column regardless of value.
+
 **`deleteSchedule` (DELETE /api/schedules/{id})**
 
 Hard deletes the row. Executions that reference the schedule will show `ScheduleID` with no preloaded `Schedule` (FK nullable in the execution query). After delete, `scheduler.Reload()` removes the cron entry.
@@ -958,7 +960,7 @@ And one Guardrails row with sensible defaults:
 - `SkipNamespaces`: `kube-system,kube-public,kube-node-lease,kube-phoenix`
 - `SkipNsNode`: `kube-system`
 
-**`UpdateSchedule(id, fields map[string]interface{}) error`** — uses GORM's `Updates(map)` to do a partial update. The field whitelist is enforced in the API handler before calling this function, not here. This separation means the query layer is simple and reusable while the API layer owns the business rule of immutable `type`.
+**`UpdateSchedule(id, fields map[string]interface{}) error`** — does a partial update via GORM. The field whitelist is enforced in the API handler before calling this function, not here. To avoid GORM silently skipping zero-value booleans (e.g. `enabled=false`), the function collects the map keys and calls `Select(keys).Updates(map)` — the `Select` clause forces GORM to write every specified column regardless of value.
 
 **`AppendLogLine(executionID uint, seq int, level, message string)`** — the `seq` field is a monotonically increasing integer per execution, managed by the caller (scheduler). It is not auto-incremented by the database to avoid a round-trip to determine the next sequence number. The scheduler tracks `seq` as a local variable incremented atomically.
 
@@ -1237,7 +1239,9 @@ layout.tsx (Inter font, HTML skeleton)
 
 **`ClusterStatusCard`** — polls `getWorkloads()` every 30 seconds. Shows aggregate counts: total workloads, sleeping workloads, partial (waking). Uses a MUI `LinearProgress` to show the sleeping percentage.
 
-**`NextRunCard`** — polls `getSchedules()` every 60 seconds. Finds the schedule with the nearest `nextRun` timestamp among enabled schedules and displays a countdown.
+**`NextRunCard`** — polls `getSchedules()` every 30 seconds. Sorts schedules by `nextRun` and renders each with a two-line next-run display:
+- **Absolute time** (dimmed caption): locale-aware label derived from the schedule's own timezone — `today at 07:00`, `tomorrow at 07:00`, `Mon at 07:00`, or `Mar 15 at 07:00` depending on how far out the run is.
+- **Relative countdown** (bold, color-coded): `in Xm`, `in Xh Ym`, `in Xd Yh`. Color shifts from schedule-type tint (>6 h) → `warning.main` (1–6 h) → `error.light` (<1 h). A pulsing red dot appears alongside the countdown when under one hour.
 
 **`ActivityFeed`** — polls `getExecutions({ pageSize: 5 })` every 15 seconds. Shows the 5 most recent executions. Clicking a running execution opens `LogViewer` inline (WebSocket). Clicking a completed execution navigates to `/history?exec=<id>`.
 
@@ -1249,7 +1253,7 @@ layout.tsx (Inter font, HTML skeleton)
 
 **`PodDetailDrawer`** / **`PodDetailContent`** — shows container statuses, resource requests, conditions, events, and live metrics. Metrics are shown with MUI `LinearProgress` bars (CPU and memory usage vs requested).
 
-**`ScheduleCard`** — displays a single schedule with type icon (moon/sun), cron expression rendered by `cronToText()`, mode badge, enabled toggle. Has edit and delete actions. The run button opens a mode selection dialog before calling the trigger API.
+**`ScheduleCard`** — displays a single schedule with type icon (moon/sun), cron expression rendered by `cronToText()`, mode badge, and an enabled toggle. The toggle uses an optimistic update — it flips immediately in local state via `useState`, fires `PUT /api/schedules/:id` with `{ enabled: <new value> }`, and reverts on error. Has edit and delete actions. The run button opens a mode selection dialog before calling the trigger API.
 
 **`ScheduleDialog`** — form for creating or editing a schedule. Fields: name, type (radio), cron expression, timezone (text), namespace filter (chip input), timeout (number), mode (radio), enabled (switch). Validates cron via a regex before submitting.
 

@@ -34,7 +34,16 @@ func (s *Store) UpdateSchedule(id uint, updates map[string]interface{}) (*Schedu
 			delete(updates, k)
 		}
 	}
-	if err := s.db.Model(&Schedule{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+	if len(updates) == 0 {
+		return s.GetSchedule(id)
+	}
+	// Pass keys to Select so GORM writes every specified column including
+	// zero-value booleans (e.g. enabled=false) which Updates() skips otherwise.
+	keys := make([]string, 0, len(updates))
+	for k := range updates {
+		keys = append(keys, k)
+	}
+	if err := s.db.Model(&Schedule{}).Where("id = ?", id).Select(keys).Updates(updates).Error; err != nil {
 		return nil, err
 	}
 	return s.GetSchedule(id)
