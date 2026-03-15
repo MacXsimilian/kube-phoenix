@@ -347,12 +347,12 @@ type ContainerMetrics struct {
 // Returns a map keyed by "namespace/podName" with the summed CPU+mem across all containers.
 // Returns an empty map (no error) when Metrics Server is unavailable.
 func (c *Client) GetAllPodMetrics(ctx context.Context) (map[string]ContainerMetrics, error) {
-	data, err := c.cs.RESTClient().
-		Get().
-		AbsPath("/apis/metrics.k8s.io/v1beta1/pods").
-		DoRaw(ctx)
+	res := c.cs.RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/pods").Do(ctx)
+	var statusCode int
+	res.StatusCode(&statusCode)
+	data, err := res.Raw()
 	if err != nil {
-		slog.Warn("GetAllPodMetrics: metrics API call failed", "err", err)
+		slog.Warn("GetAllPodMetrics: metrics API call failed", "err", err, "httpStatus", statusCode)
 		return map[string]ContainerMetrics{}, nil
 	}
 
