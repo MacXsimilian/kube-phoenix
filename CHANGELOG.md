@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.50](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.49...v0.1.50) (2026-03-15)
+
+
+### Bug Fixes
+
+* **formatters:** timeUntil now formats days for countdowns over 24 h ([5d309a2](https://github.com/MacXsimilian/kube-phoenix/commit/5d309a2b13007ac552aed746242f841b7d099010))
+
 ## [0.1.49](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.48...v0.1.49) (2026-03-15)
 
 
