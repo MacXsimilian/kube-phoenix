@@ -40,7 +40,7 @@ postgresql:
 
   auth:
     username: kube_phoenix
-    password: kube_phoenix   # change in production
+    password: kube_phoenix   # IMPORTANT: change in production
     database: kube_phoenix
 
   persistence:
@@ -76,7 +76,10 @@ externalDatabase:
 secret:
   existingSecret: ""
   basicAuthUser: "admin"
-  basicAuthPassword: "kube-phoenix"   # change in production
+  # IMPORTANT: change basicAuthPassword before deploying to any non-local environment.
+  # The default value here is a placeholder and provides no real security.
+  # Prefer existingSecret to avoid storing credentials in values files committed to git.
+  basicAuthPassword: "kube-phoenix"
 
 # ── Service ───────────────────────────────────────────────────────────────────
 

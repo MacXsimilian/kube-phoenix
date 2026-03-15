@@ -25,4 +25,9 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments/scale", "statefulsets/scale"]
     verbs: ["get", "update", "patch"]
+
+  # list only — needed to resolve pod owners (ReplicaSet → Deployment) in the cluster UI
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["list"]
 {{- end }}

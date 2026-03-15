@@ -27,6 +27,7 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.RequestID) // injects X-Request-Id header; correlates log lines
+	r.Use(authmw.RedactWSToken)   // must be before Logger — strips ?token= from URL before it is logged
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
 	r.Use(corsHandler())
