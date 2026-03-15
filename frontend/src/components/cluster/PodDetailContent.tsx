@@ -51,7 +51,7 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
     <Box>
       <SectionLabel>Containers</SectionLabel>
       <Box sx={{ overflowX: 'auto' }}>
-      <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(255,255,255,0.06)', fontSize: 12 } }}>
+      <Table size="small" sx={{ '& td, & th': { fontSize: 12 } }}>
         <TableHead>
           <TableRow>
             {['NAME', 'IMAGE', 'READY', 'RESTARTS', 'CPU use', 'MEM use', 'CPU req/lim', 'MEM req/lim', 'LAST STATE'].map((h) => (
@@ -135,7 +135,7 @@ function EventsSection({ events }: { events: PodEvent[] }) {
   return (
     <Box>
       <SectionLabel>Events</SectionLabel>
-      <Table size="small" sx={{ '& td': { borderColor: 'rgba(255,255,255,0.06)', fontSize: 12 } }}>
+      <Table size="small" sx={{ '& td': { fontSize: 12 } }}>
         <TableBody>
           {events.map((e, i) => (
             <TableRow key={i} sx={{ bgcolor: e.type === 'Warning' ? 'rgba(248,113,113,0.05)' : 'transparent' }}>
@@ -253,34 +253,34 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
         ))}
       </Box>
 
-      <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+      <Divider />
 
       <ContainersSection containers={pod.containers ?? []} />
 
       {(pod.conditions ?? []).length > 0 && (
         <>
-          <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+          <Divider />
           <ConditionsSection conditions={pod.conditions ?? []} />
         </>
       )}
 
       {(pod.events ?? []).length > 0 && (
         <>
-          <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+          <Divider />
           <EventsSection events={pod.events ?? []} />
         </>
       )}
 
       {Object.keys(pod.labels ?? {}).length > 0 && (
         <>
-          <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+          <Divider />
           <CollapsibleKVSection title="Labels" entries={Object.entries(pod.labels ?? {})} />
         </>
       )}
 
       {Object.keys(pod.annotations ?? {}).length > 0 && (
         <>
-          <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+          <Divider />
           <CollapsibleKVSection title="Annotations" entries={Object.entries(pod.annotations ?? {})} />
         </>
       )}

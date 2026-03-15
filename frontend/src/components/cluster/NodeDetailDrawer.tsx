@@ -63,7 +63,7 @@ function MiniBar({ used, total, label }: { used: number; total: number; label: s
           variant="determinate"
           value={Math.min(p, 100)}
           aria-label={label}
-          sx={{ height: 5, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 1 } }}
+          sx={{ height: 5, borderRadius: 1, bgcolor: 'action.hover', '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 1 } }}
         />
       </Box>
     </Tooltip>
@@ -173,8 +173,9 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
       slotProps={{ paper: {
         sx: {
           width: { xs: '100vw', md: drawerWidth },
-          bgcolor: '#1A1A24',
-          borderLeft: '1px solid rgba(255,255,255,0.06)',
+          bgcolor: 'background.paper',
+          borderLeft: '1px solid',
+          borderColor: 'divider',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'visible',
@@ -280,7 +281,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
             )}
           </Box>
 
-          <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+          <Divider />
 
           {/* Pod detail content — replaces toolbar + pod list */}
           {selectedPod && (
@@ -330,7 +331,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                 <TableHead>
                   <TableRow>
                     {['POD', 'OWNER', 'READY', 'CPU', 'MEM', 'AGE'].map((h) => (
-                      <TableCell key={h} sx={{ fontWeight: 700, color: 'text.disabled', fontSize: 11, bgcolor: '#1A1A24', py: 0.75 }}>
+                      <TableCell key={h} sx={{ fontWeight: 700, color: 'text.disabled', fontSize: 11, bgcolor: 'background.default', py: 0.75 }}>
                         {h}
                       </TableCell>
                     ))}
@@ -342,7 +343,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                       <TableRow>
                         <TableCell
                           colSpan={6}
-                          sx={{ bgcolor: 'rgba(124,58,237,0.06)', borderBottom: '1px solid rgba(255,255,255,0.04)', py: 0.5 }}
+                          sx={{ bgcolor: 'rgba(124,58,237,0.06)', borderBottom: '1px solid', borderColor: 'divider', py: 0.5 }}
                         >
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <Typography variant="caption" fontWeight={700} sx={{ color: 'primary.light', textTransform: 'uppercase', letterSpacing: 0.8, fontSize: 10 }}>
