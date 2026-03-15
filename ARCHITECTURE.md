@@ -187,7 +187,7 @@ kube-phoenix/
 │
 ├── frontend/
 │   ├── next.config.mjs           # output:'export', trailingSlash:true
-│   ├── package.json              # next@15, @mui/material@6, @tanstack/react-query@5
+│   ├── package.json              # next@16, @mui/material@7, @tanstack/react-query@5
 │   │
 │   └── src/
 │       ├── app/
@@ -955,11 +955,11 @@ func New(dsn string) (*Store, error) {
 
 #### Queries (`internal/store/queries.go`)
 
-**SeedDefaults** — runs only if the schedules table is empty. Seeds:
-1. "Weekday Sleep" — `scale_down`, `0 20 * * 1-5`, UTC, plan mode
-2. "Weekday Wake" — `scale_up`, `0 7 * * 1-5`, UTC, plan mode
-3. "Weekend Sleep" — `scale_down`, `0 20 * * 6,0`, UTC, plan mode
-4. "Weekend Wake" — `scale_up`, `0 7 * * 6,0`, UTC, plan mode
+**SeedDefaults** — runs only if the schedules table is empty. Seeds four schedules, all in plan mode and disabled, all using `Europe/Budapest` timezone:
+1. "Weekday Sleep" — `scale_down`, `5 19 * * 1-5` (Mon–Fri 19:05)
+2. "Weekday Wake" — `scale_up`, `0 7 * * 1-5` (Mon–Fri 07:00)
+3. "Weekend Sleep" — `scale_down`, `0 0 * * 6,0` (Sat–Sun 00:00)
+4. "Weekend Wake" — `scale_up`, `0 7 * * 1` (Mon 07:00)
 
 And one Guardrails row with sensible defaults:
 - `SkipNamespaces`: `kube-system,kube-public,kube-node-lease,kube-phoenix`

@@ -309,6 +309,7 @@ Full reference: [helm/kube-phoenix/values.yaml](helm/kube-phoenix/values.yaml)
 | `DATABASE_URL` | Yes | PostgreSQL DSN — e.g. `host=localhost user=kube_phoenix password=kube_phoenix dbname=kube_phoenix port=5432 sslmode=disable` |
 | `BASIC_AUTH_USER` | No | HTTP Basic Auth username. Unset = auth disabled (dev mode). |
 | `BASIC_AUTH_PASSWORD` | No | HTTP Basic Auth password. |
+| `CORS_ALLOWED_ORIGIN` | No | Allowed CORS origin (e.g. `https://kube-phoenix.example.com`). Unset = no cross-origin requests permitted. Useful when the frontend is served from a different origin during development. |
 
 ### Authentication
 
@@ -343,14 +344,14 @@ Cards within each section (Sleep / Wake) can be reordered by dragging the handle
 
 ### Default schedules
 
-Four schedules are seeded on first startup, all in **plan mode**. Switch to `apply` when you are confident the guardrails and namespace filters are correct.
+Four schedules are seeded on first startup, all in **plan mode** and **disabled**. Enable and switch to `apply` when you are confident the guardrails and namespace filters are correct. All default schedules use the `Europe/Budapest` timezone — adjust to your own timezone after installation.
 
-| Name | Cron | Type |
-|---|---|---|
-| Weekday Scale Down | `0 0 * * 1-5` | `scale_down` |
-| Weekday Scale Up | `0 8 * * 1-5` | `scale_up` |
-| Weekend Scale Down | `0 0 * * 0,6` | `scale_down` |
-| Weekend Scale Up | `0 8 * * 0,6` | `scale_up` |
+| Name | Cron | Type | When (Europe/Budapest) |
+|---|---|---|---|
+| Weekday Sleep | `5 19 * * 1-5` | `scale_down` | Mon–Fri 19:05 |
+| Weekday Wake | `0 7 * * 1-5` | `scale_up` | Mon–Fri 07:00 |
+| Weekend Sleep | `0 0 * * 6,0` | `scale_down` | Sat–Sun 00:00 |
+| Weekend Wake | `0 7 * * 1` | `scale_up` | Mon 07:00 |
 
 ---
 
