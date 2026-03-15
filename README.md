@@ -47,16 +47,16 @@ kube-phoenix is a self-hosted web application for managing cluster sleep/wake sc
 
 ## Why kube-phoenix?
 
-| | kube-phoenix | Karpenter consolidation | KEDA | Raw CronJobs |
-|---|:---:|:---:|:---:|:---:|
+| Feature | kube-phoenix | Karpenter consolidation | KEDA | Raw CronJobs |
+|:---|:---:|:---:|:---:|:---:|
 | Visual schedule management | ✅ | ❌ | ❌ | ❌ |
 | Dry-run before applying | ✅ | ❌ | ❌ | ❌ |
 | Live execution logs | ✅ | ❌ | ❌ | ❌ |
-| Guardrails / namespace exclusions | ✅ | ⚠️ partial | ⚠️ partial | ❌ |
+| Guardrails / namespace exclusions | ✅ | ⚠️ | ⚠️ | ❌ |
 | Restores exact replica counts on wake | ✅ | ❌ | ❌ | ❌ |
 | Per-schedule namespace scope | ✅ | ❌ | ❌ | ❌ |
-| Works with any node autoscaler | ✅ | AWS / EKS only | ✅ | ✅ |
-| Single binary, no extra infra | ✅ | built-in | ❌ | built-in |
+| Works with any node autoscaler | ✅ | ❌ | ✅ | ✅ |
+| Single binary, no extra infra | ✅ | ✅ | ❌ | ✅ |
 
 **Karpenter consolidation** can drain idle nodes but cannot restore workloads to their original replica counts, has no schedule UI, and no dry-run mode.
 
