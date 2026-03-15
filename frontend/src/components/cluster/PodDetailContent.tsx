@@ -18,24 +18,8 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import { getPodDetail } from '@/lib/api'
+import { fmtCpu, fmtMem, podAge } from '@/lib/formatters'
 import type { PodContainer, PodCondition, PodEvent } from '@/lib/types'
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-function fmtCpu(m: number) {
-  return m >= 1000 ? `${(m / 1000).toFixed(1)}c` : `${m}m`
-}
-function fmtMem(bytes: number) {
-  const gib = bytes / 1073741824
-  return gib >= 1 ? `${gib.toFixed(1)}G` : `${Math.round(bytes / 1048576)}M`
-}
-function fmtAge(iso: string) {
-  if (!iso) return '—'
-  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-  if (s < 86400) return `${Math.floor(s / 3600)}h`
-  return `${Math.floor(s / 86400)}d`
-}
 function resourceCell(req: number, limit: number, fmt: (n: number) => string) {
   const r = req > 0 ? fmt(req) : '—'
   const l = limit > 0 ? fmt(limit) : '∞'
@@ -66,6 +50,7 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
   return (
     <Box>
       <SectionLabel>Containers</SectionLabel>
+      <Box sx={{ overflowX: 'auto' }}>
       <Table size="small" sx={{ '& td, & th': { borderColor: 'rgba(255,255,255,0.06)', fontSize: 12 } }}>
         <TableHead>
           <TableRow>
@@ -116,6 +101,7 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
           ))}
         </TableBody>
       </Table>
+      </Box>
     </Box>
   )
 }
@@ -168,7 +154,7 @@ function EventsSection({ events }: { events: PodEvent[] }) {
               <TableCell sx={{ py: 0.5, color: e.type === 'Warning' ? '#F87171' : 'text.primary' }}>{e.message}</TableCell>
               <TableCell sx={{ py: 0.5, width: 40, textAlign: 'right', color: 'text.disabled', fontSize: 11 }}>×{e.count}</TableCell>
               <TableCell sx={{ py: 0.5, width: 60, textAlign: 'right', color: 'text.disabled', fontSize: 11, whiteSpace: 'nowrap' }}>
-                {fmtAge(e.lastSeen)}
+                {podAge(e.lastSeen)}
               </TableCell>
             </TableRow>
           ))}
@@ -256,7 +242,7 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
           ['Instance Type', pod.nodeInstanceType || '—'],
           ['Pod IP', pod.podIP || '—'],
           ['Host IP', pod.hostIP || '—'],
-          ['Age', fmtAge(pod.startedAt)],
+          ['Age', podAge(pod.startedAt)],
         ].map(([label, value]) => (
           <Box key={label}>
             <Typography variant="caption" color="text.disabled" sx={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block' }}>
