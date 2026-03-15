@@ -102,18 +102,18 @@ For each node
 
 ```mermaid
 flowchart TB
-    Browser["**Browser**\nNext.js 16 · React 19 · MUI v7"]
+    Browser["**Browser**<br/>Next.js 16 · React 19 · MUI v7"]
 
     subgraph Binary["Go 1.25 Binary — port 8080"]
         direction TB
         Router["Chi Router + BasicAuth middleware"]
         Handlers["API Handlers"]
-        Scheduler["Scheduler\nrobfig/cron v3"]
-        Scaler["Scaler\nScale Down / Scale Up"]
-        Cache["Cluster Cache\n10 s background refresh"]
-        Broker["WS Log Broker\npub/sub fan-out"]
+        Scheduler["Scheduler<br/>robfig/cron v3"]
+        Scaler["Scaler<br/>Scale Down / Scale Up"]
+        Cache["Cluster Cache<br/>10 s background refresh"]
+        Broker["WS Log Broker<br/>pub/sub fan-out"]
         GORM["GORM"]
-        SPA["Embedded SPA\nNext.js static files"]
+        SPA["Embedded SPA<br/>Next.js static files"]
     end
 
     K8s[("Kubernetes API")]
