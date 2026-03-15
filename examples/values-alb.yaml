@@ -1,0 +1,34 @@
+# Example: AWS ALB via TargetGroupBinding
+#
+# Use this when you have an existing Application Load Balancer and
+# want to register kube-phoenix pods directly into a target group
+# using the AWS Load Balancer Controller TargetGroupBinding CRD.
+#
+# Prerequisites:
+#   - AWS Load Balancer Controller installed in the cluster
+#   - An ALB with an HTTPS listener (port 443) already provisioned
+#   - A target group: type=ip, protocol=HTTP, port=8080, health check path=/healthz
+#   - A listener rule forwarding your path/host to the target group
+#   - A DNS record (CNAME or alias) pointing to the ALB
+#
+# Usage:
+#   helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
+#     --namespace kube-phoenix --create-namespace \
+#     -f examples/values-alb.yaml \
+#     --set targetGroupBinding.targetGroupARN=arn:aws:elasticloadbalancing:... \
+#     --set secret.basicAuthPassword=<your-password>
+
+targetGroupBinding:
+  enabled: true
+  targetGroupARN: ""   # pass via --set
+  targetType: ip
+  # vpcID: ""          # omit if the controller auto-detects it
+
+# Ingress is not needed alongside a TargetGroupBinding — the ALB
+# routes directly to pod IPs via the target group.
+ingress:
+  enabled: false
+
+secret:
+  basicAuthUser: admin
+  basicAuthPassword: ""  # pass via --set
