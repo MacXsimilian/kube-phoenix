@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -212,9 +213,13 @@ func (c *Client) DrainNode(ctx context.Context, name string, timeout time.Durati
 		if err := c.cs.PolicyV1().Evictions(pod.Namespace).Evict(ctx, eviction); err != nil {
 			// Fall back to force delete
 			grace := int64(0)
-			_ = c.cs.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+			if delErr := c.cs.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
 				GracePeriodSeconds: &grace,
-			})
+			}); delErr != nil {
+				slog.Warn("drain: eviction failed and force-delete also failed",
+					"node", name, "namespace", pod.Namespace, "pod", pod.Name,
+					"evictErr", err, "deleteErr", delErr)
+			}
 		}
 	}
 
@@ -225,7 +230,7 @@ func (c *Client) DrainNode(ctx context.Context, name string, timeout time.Durati
 			FieldSelector: "spec.nodeName=" + name,
 		})
 		if err != nil {
-			break
+			return fmt.Errorf("poll pods on %s: %w", name, err)
 		}
 		evictable := 0
 		for _, pod := range remaining.Items {
