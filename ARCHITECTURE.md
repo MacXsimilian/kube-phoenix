@@ -66,8 +66,8 @@ kube-phoenix is a web application that manages Kubernetes cluster **sleep/wake s
 | Scheduler | robfig/cron v3 (5-field cron expressions) |
 | WebSocket | gorilla/websocket |
 | Kubernetes SDK | k8s.io/client-go |
-| Frontend framework | Next.js 15 (static export) |
-| UI component library | Material UI v6 |
+| Frontend framework | Next.js 16 (static export) |
+| UI component library | Material UI v7 |
 | Server state management | TanStack Query v5 |
 | Containerization | Docker multi-stage → distroless |
 | Deployment | Helm 4 chart |
@@ -1073,7 +1073,7 @@ This tight coupling between frontend and backend builds is managed by the Docker
 
 ### 5.2 Theme & Design System
 
-`frontend/src/theme/theme.ts` defines a MUI v6 dark theme.
+`frontend/src/theme/theme.ts` defines a MUI v7 dark theme.
 
 **Color palette:**
 
