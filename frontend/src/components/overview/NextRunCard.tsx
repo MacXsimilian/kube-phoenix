@@ -24,8 +24,32 @@ function timeUntil(iso: string): string {
   const m = Math.floor(diff / 60000)
   if (m < 60) return `in ${m}m`
   const h = Math.floor(m / 60)
-  const rem = m % 60
-  return rem > 0 ? `in ${h}h ${rem}m` : `in ${h}h`
+  if (h < 24) {
+    const rem = m % 60
+    return rem > 0 ? `in ${h}h ${rem}m` : `in ${h}h`
+  }
+  const d = Math.floor(h / 24)
+  const remH = h % 24
+  return remH > 0 ? `in ${d}d ${remH}h` : `in ${d}d`
+}
+
+function absTime(iso: string, timezone: string): string {
+  const date = new Date(iso)
+  const diffH = (date.getTime() - Date.now()) / 3600000
+  const fmt = (opts: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat('en-GB', { timeZone: timezone, ...opts }).format(date)
+  const time = fmt({ hour: '2-digit', minute: '2-digit', hour12: false })
+  if (diffH < 24)  return `today at ${time}`
+  if (diffH < 48)  return `tomorrow at ${time}`
+  if (diffH < 168) return `${fmt({ weekday: 'short' })} at ${time}`
+  return `${fmt({ month: 'short', day: 'numeric' })} at ${time}`
+}
+
+function urgencyColor(iso: string, isSleep: boolean): string {
+  const h = (new Date(iso).getTime() - Date.now()) / 3600000
+  if (h < 1)  return 'error.light'
+  if (h < 6)  return 'warning.main'
+  return isSleep ? 'primary.light' : 'warning.light'
 }
 
 function ScheduleRow({ schedule }: { schedule: Schedule }) {
@@ -67,13 +91,27 @@ function ScheduleRow({ schedule }: { schedule: Schedule }) {
           {cronToText(schedule.cronExpr)} · {schedule.timezone}
         </Typography>
         {schedule.nextRun ? (
-          <Typography
-            variant="caption"
-            fontWeight={600}
-            sx={{ color: isSleep ? 'primary.light' : 'warning.light' }}
-          >
-            Next run {timeUntil(schedule.nextRun)}
-          </Typography>
+          <Box sx={{ mt: 0.25 }}>
+            <Typography variant="caption" color="text.disabled" display="block" sx={{ lineHeight: 1.4 }}>
+              {absTime(schedule.nextRun, schedule.timezone)}
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              {(new Date(schedule.nextRun).getTime() - Date.now()) < 3600000 && (
+                <Box sx={{
+                  width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                  bgcolor: 'error.light',
+                  '@keyframes nextrun-pulse': {
+                    '0%, 100%': { opacity: 1 },
+                    '50%': { opacity: 0.25 },
+                  },
+                  animation: 'nextrun-pulse 1.4s ease-in-out infinite',
+                }} />
+              )}
+              <Typography variant="caption" fontWeight={700} sx={{ color: urgencyColor(schedule.nextRun, isSleep), lineHeight: 1.4 }}>
+                {timeUntil(schedule.nextRun)}
+              </Typography>
+            </Box>
+          </Box>
         ) : (
           <Typography variant="caption" color="text.disabled">
             Not scheduled

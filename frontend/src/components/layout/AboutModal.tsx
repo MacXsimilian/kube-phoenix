@@ -12,7 +12,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import pkg from '../../../package.json'
 
-const VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? pkg.version
+const VERSION = (process.env.NEXT_PUBLIC_APP_VERSION ?? pkg.version).replace(/^v/, '')
 const REPO_URL = 'https://github.com/MacXsimilian/kube-phoenix'
 
 export default function AboutModal({ open, onClose }: { open: boolean; onClose: () => void }) {

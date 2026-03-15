@@ -15,7 +15,7 @@ Scale down your cluster at night, wake it up in the morning. No more paying for 
 
 ## What it does
 
-- **Overview** — cluster health at a glance: current scale state, pulsing live indicator, partial-sleep namespace breakdown, and live activity feed with inline log drawer
+- **Overview** — cluster health at a glance: current scale state, pulsing live indicator, partial-sleep namespace breakdown, schedule next-run countdown (absolute time + urgency color, pulsing dot when under 1 hour), and live activity feed with inline log drawer
 - **Cluster State** — live view of all Deployments, StatefulSets, and nodes with resizable drill-down detail drawers; pod detail includes live CPU/memory usage, annotations, node instance type, and Kubernetes events
 - **Guardrails** — protect namespaces, node labels, and taints from ever being touched
 - **Schedules** — multiple sleep and wake schedules with cron expressions, per-schedule timezones, and optional namespace filters for partial scale-down
