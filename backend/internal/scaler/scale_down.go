@@ -18,7 +18,7 @@ func (r *Runner) RunScaleDown(ctx context.Context, mode, namespaceFilter string,
 		return nil, fmt.Errorf("guardrails: %w", err)
 	}
 
-	skipNS := splitCSV(g.SkipNamespaces)
+	skipNS := mergeCSV(g.SystemNamespaces, g.SkipNamespaces)
 	skipNsNode := splitCSV(g.SkipNsNode)
 
 	// ── Scale Deployments ──────────────────────────────────────────────────

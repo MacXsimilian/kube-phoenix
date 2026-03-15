@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Guardrails — kube-phoenix mockup</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0F0F13;
+    --paper:     #1A1A24;
+    --paper2:    #22222E;
+    --border:    rgba(255,255,255,0.07);
+    --border-md: rgba(255,255,255,0.13);
+    --primary:   #7C3AED;
+    --primary-l: #9D5FF5;
+    --primary-bg:rgba(124,58,237,0.12);
+    --warn:      #F59E0B;
+    --warn-bg:   rgba(245,158,11,0.10);
+    --warn-bdr:  rgba(245,158,11,0.30);
+    --success:   #22C55E;
+    --error:     #EF4444;
+    --info:      #3B82F6;
+    --text:      rgba(255,255,255,0.87);
+    --text-sec:  rgba(255,255,255,0.55);
+    --text-dis:  rgba(255,255,255,0.32);
+    --sidebar-w: 240px;
+    --radius:    10px;
+  }
+
+  body {
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: var(--sidebar-w);
+    background: var(--paper);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index: 10;
+  }
+  .sidebar-logo {
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    border-radius: 8px;
+    margin: 4px;
+    transition: background 0.15s;
+  }
+  .sidebar-logo:hover { background: rgba(255,255,255,0.04); }
+  .sidebar-logo span { font-size: 22px; }
+  .sidebar-logo strong { font-weight: 700; letter-spacing: -0.5px; font-size: 15px; }
+  .nav { padding: 8px; flex: 1; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; border-radius: 8px; margin-bottom: 4px;
+    color: var(--text-sec); cursor: pointer; font-size: 14px;
+    transition: background 0.15s, color 0.15s;
+    text-decoration: none;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+  .nav-item.active { background: var(--primary-bg); color: var(--primary-l); font-weight: 600; }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+  /* ── Main ── */
+  .main {
+    margin-left: var(--sidebar-w);
+    flex: 1;
+    padding: 24px;
+    max-width: 1100px;
+  }
+
+  /* ── Page header ── */
+  .page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .page-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .page-sub { color: var(--text-sec); font-size: 13px; }
+  .impact-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--paper); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 16px; font-size: 12px; color: var(--text-sec);
+  }
+  .impact-stat { color: var(--text); font-weight: 600; font-size: 13px; }
+  .impact-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dis); }
+
+  /* ── Unsaved banner ── */
+  .unsaved-banner {
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(124,58,237,0.10); border: 1px solid rgba(124,58,237,0.25);
+    border-radius: var(--radius); padding: 10px 16px; margin-bottom: 20px;
+    font-size: 13px; color: var(--primary-l);
+    animation: fadeIn 0.2s ease;
+  }
+  .unsaved-banner.hidden { display: none; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+  /* ── Cards / Grid ── */
+  .grid { display: grid; gap: 16px; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+  }
+  .card-protected {
+    background: rgba(245,158,11,0.03);
+    border-color: var(--warn-bdr);
+  }
+  .card-title {
+    font-size: 14px; font-weight: 700; margin-bottom: 4px;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .card-sub { font-size: 12px; color: var(--text-sec); margin-bottom: 20px; line-height: 1.6; }
+
+  /* ── Protected header ── */
+  .protected-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    margin-bottom: 16px; gap: 12px;
+  }
+  .protected-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--warn-bg); border: 1px solid var(--warn-bdr);
+    border-radius: 20px; padding: 2px 10px; font-size: 11px;
+    color: var(--warn); font-weight: 600; white-space: nowrap;
+  }
+  .protected-rule-note {
+    font-size: 11px; color: var(--text-dis); margin-top: 10px;
+    display: flex; align-items: center; gap: 5px;
+  }
+
+  /* ── Field label + tooltip ── */
+  .field-label {
+    font-size: 12px; font-weight: 600; color: var(--text-sec);
+    text-transform: uppercase; letter-spacing: 0.6px;
+    display: flex; align-items: center; gap: 5px; margin-bottom: 8px;
+  }
+  .tooltip-wrap { position: relative; display: inline-flex; }
+  .tooltip-icon {
+    width: 15px; height: 15px; border-radius: 50%;
+    background: rgba(255,255,255,0.08); color: var(--text-dis);
+    font-size: 10px; display: flex; align-items: center; justify-content: center;
+    cursor: help; font-style: normal; font-weight: 700;
+  }
+  .tooltip-box {
+    display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
+    transform: translateX(-50%); background: #2D2D3D; border: 1px solid var(--border-md);
+    border-radius: 6px; padding: 7px 10px; font-size: 11px; color: var(--text-sec);
+    white-space: nowrap; z-index: 100; pointer-events: none; font-weight: 400;
+    text-transform: none; letter-spacing: 0;
+  }
+  .tooltip-wrap:hover .tooltip-box { display: block; }
+
+  /* ── Chip container ── */
+  .chip-box {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    padding: 10px 12px;
+    border: 1px solid var(--border-md);
+    border-radius: 8px; min-height: 46px;
+    cursor: text; transition: border-color 0.15s;
+    max-height: 120px; overflow-y: auto;
+  }
+  .chip-box:focus-within { border-color: var(--primary); }
+  .chip-box.protected { border-color: var(--warn-bdr); background: rgba(245,158,11,0.04); }
+  .chip-box.protected:focus-within { border-color: var(--warn); }
+  .chip-box.error { border-color: var(--error) !important; }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--paper2); border: 1px solid var(--border-md);
+    border-radius: 20px; padding: 2px 8px 2px 10px;
+    font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 12px;
+    color: var(--text); white-space: nowrap;
+  }
+  .chip.protected-chip {
+    background: rgba(245,158,11,0.10); border-color: rgba(245,158,11,0.25);
+    color: var(--warn);
+  }
+  .chip-del {
+    width: 14px; height: 14px; border-radius: 50%; border: none;
+    background: rgba(255,255,255,0.12); color: var(--text-dis);
+    cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center;
+    transition: background 0.12s, color 0.12s; flex-shrink: 0;
+    line-height: 1;
+  }
+  .chip-del:hover { background: rgba(239,68,68,0.25); color: #F87171; }
+  .chip.protected-chip .chip-del { background: rgba(245,158,11,0.15); color: var(--warn); }
+  .chip.protected-chip .chip-del:hover { background: rgba(245,158,11,0.35); }
+
+  .chip-input {
+    background: transparent; border: none; outline: none;
+    color: var(--text); font-size: 13px; font-family: inherit;
+    min-width: 130px; flex: 1;
+  }
+  .chip-input::placeholder { color: var(--text-dis); }
+
+  .field-hint {
+    margin-top: 5px; font-size: 11px; color: var(--text-dis);
+    display: flex; align-items: center; gap: 4px;
+  }
+  .field-hint.error-msg { color: var(--error); }
+  .field-hint.dup-msg { color: var(--warn); }
+
+  /* ── Divider ── */
+  hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 18px; border-radius: 8px; font-size: 13px;
+    font-weight: 600; cursor: pointer; border: none; transition: opacity 0.15s, background 0.15s;
+  }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: #6D28D9; }
+  .btn-warn { background: var(--warn); color: #0F0F13; }
+  .btn-warn:hover { background: #D97706; }
+  .btn-ghost {
+    background: transparent; border: 1px solid var(--border-md);
+    color: var(--text-sec);
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,0.05); color: var(--text); border-color: var(--border-md); }
+  .btn-danger-ghost {
+    background: transparent; border: 1px solid rgba(239,68,68,0.35);
+    color: #F87171; font-size: 12px; padding: 6px 14px;
+  }
+  .btn-danger-ghost:hover { background: rgba(239,68,68,0.08); }
+
+  /* ── Save bar ── */
+  .save-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px; margin-top: 8px;
+  }
+  .save-bar-left { display: flex; align-items: center; gap: 12px; }
+  .save-bar-right { display: flex; align-items: center; gap: 8px; }
+  .last-saved { font-size: 12px; color: var(--text-dis); }
+  .last-saved strong { color: var(--text-sec); }
+
+  /* ── Confirmation modal ── */
+  .overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(3px);
+    z-index: 200; align-items: center; justify-content: center;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--paper); border: 1px solid var(--border-md);
+    border-radius: 14px; width: 100%; max-width: 400px;
+    padding: 28px; margin: 16px;
+    animation: modalIn 0.18s ease;
+  }
+  @keyframes modalIn { from { opacity:0; transform: scale(0.95); } to { opacity:1; transform: none; } }
+  .modal-title {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 16px; font-weight: 700; margin-bottom: 14px;
+  }
+  .modal-body { font-size: 13px; color: var(--text-sec); line-height: 1.7; margin-bottom: 16px; }
+  .modal-body .ns-name { font-family: monospace; color: var(--warn); font-weight: 600; }
+  .modal-alert {
+    background: rgba(245,158,11,0.08); border: 1px solid var(--warn-bdr);
+    border-radius: 8px; padding: 10px 14px; font-size: 12px; color: var(--warn);
+    margin-bottom: 20px; display: flex; gap: 8px; align-items: flex-start; line-height: 1.6;
+  }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* ── Toast ── */
+  .toast {
+    display: none; position: fixed; bottom: 24px; left: 24px;
+    background: #1E2A1E; border: 1px solid rgba(34,197,94,0.35);
+    border-radius: 8px; padding: 12px 18px; font-size: 13px;
+    color: var(--success); z-index: 300; gap: 8px; align-items: center;
+    animation: toastIn 0.2s ease;
+  }
+  .toast.show { display: flex; }
+  @keyframes toastIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: none; } }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+
+  /* ── Misc ── */
+  .section-gap { margin-bottom: 16px; }
+  .flex-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .tag {
+    font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 20px;
+    text-transform: uppercase; letter-spacing: 0.6px;
+  }
+  .tag-protected { background: rgba(245,158,11,0.15); color: var(--warn); }
+  .tag-info { background: rgba(59,130,246,0.15); color: var(--info); }
+</style>
+</head>
+<body>
+
+<!-- ── Sidebar ── -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <span>🐦‍🔥</span>
+    <strong>kube-phoenix</strong>
+  </div>
+  <nav class="nav">
+    <a class="nav-item" href="#"><span class="nav-icon">⊞</span> Overview</a>
+    <a class="nav-item" href="#"><span class="nav-icon">◎</span> Cluster State</a>
+    <a class="nav-item active" href="#"><span class="nav-icon">🛡</span> Guardrails</a>
+    <a class="nav-item" href="#"><span class="nav-icon">⏰</span> Schedules</a>
+    <a class="nav-item" href="#"><span class="nav-icon">📋</span> History</a>
+    <a class="nav-item" href="#"><span class="nav-icon">⚙</span> Settings</a>
+  </nav>
+</aside>
+
+<!-- ── Main ── -->
+<main class="main">
+
+  <!-- Page header -->
+  <div class="page-header">
+    <div>
+      <div class="page-title">Guardrails</div>
+      <div class="page-sub">Configure namespaces and nodes always protected from scaling or draining.</div>
+    </div>
+    <!-- Live impact summary — NEW -->
+    <div class="impact-badge">
+      <span>🛡</span>
+      <span><span class="impact-stat" id="total-protected">11</span> namespaces protected</span>
+      <span class="impact-dot"></span>
+      <span><span class="impact-stat">3</span> node rules active</span>
+      <span class="impact-dot"></span>
+      <span style="color:var(--text-dis); font-size:11px">applied on next run</span>
+    </div>
+  </div>
+
+  <!-- Unsaved changes banner — NEW -->
+  <div class="unsaved-banner hidden" id="unsaved-banner">
+    <span>⚡ You have unsaved changes</span>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" style="padding:4px 12px;font-size:12px" onclick="discardChanges()">Discard</button>
+      <button class="btn btn-primary" style="padding:4px 14px;font-size:12px" onclick="saveAll()">Save now</button>
+    </div>
+  </div>
+
+  <div class="grid section-gap">
+
+    <!-- ── System-Protected Namespaces ── NEW DESIGN -->
+    <div class="card card-protected">
+      <div class="protected-header">
+        <div style="flex:1">
+          <div class="card-title">
+            <span>🛡</span>
+            System-Protected Namespaces
+            <span class="tag tag-protected">Hardened</span>
+          </div>
+          <div class="card-sub" style="margin-bottom:0">
+            These namespaces are <strong>never touched</strong> by any sleep or wake run, regardless of schedule settings.
+            Removing an entry requires explicit confirmation.
+          </div>
+        </div>
+        <div>
+          <button class="btn btn-ghost" style="font-size:12px;padding:6px 12px;white-space:nowrap" onclick="addSystemNsPrompt()">+ Add namespace</button>
+        </div>
+      </div>
+
+      <div class="chip-box protected" id="system-ns-box" onclick="focusSysInput()">
+        <!-- Chips rendered by JS -->
+        <input class="chip-input" id="system-ns-input" placeholder="Type and press Enter…"
+               onkeydown="sysNsKeydown(event)" />
+      </div>
+      <div class="protected-rule-note">
+        <span>🔒</span>
+        Backspace will not silently delete entries — click × on a chip to trigger the removal flow.
+      </div>
+    </div>
+
+    <!-- ── Workload Exclusions + Node Protection ── -->
+    <div class="grid grid-2">
+
+      <!-- Workload Exclusions -->
+      <div class="card">
+        <div class="card-title">Workload Exclusions</div>
+        <div class="card-sub">
+          Workloads in these namespaces are skipped during sleep/wake runs. Add any environment or
+          team namespaces you want to opt out of automatic scheduling.
+        </div>
+
+        <div class="field-label">
+          Skip Namespaces
+          <span class="tooltip-wrap">
+            <em class="tooltip-icon">i</em>
+            <span class="tooltip-box">Comma-separated namespace names. Workloads here are never scaled by this tool.</span>
+          </span>
+        </div>
+        <div class="chip-box" id="skip-ns-box" onclick="document.getElementById('skip-ns-input').focus()">
+          <input class="chip-input" id="skip-ns-input" placeholder="e.g. staging, preview…"
+                 onkeydown="chipKeydown(event,'skip-ns')" onblur="addChip('skip-ns')" />
+        </div>
+        <div class="field-hint" id="skip-ns-hint" style="display:none"></div>
+      </div>
+
+      <!-- Node Protection -->
+      <div class="card">
+        <div class="card-title">Node Protection</div>
+        <div class="card-sub">
+          Nodes are never drained if any of the following conditions match.
+        </div>
+
+        <div class="field-label" style="margin-bottom:8px">
+          Critical Namespaces
+          <span class="tooltip-wrap">
+            <em class="tooltip-icon">i</em>
+            <span class="tooltip-box">Nodes running pods from these namespaces are never drained, even if idle.</span>
+          </span>
+        </div>
+        <div class="chip-box" id="skip-nsnode-box" onclick="document.getElementById('skip-nsnode-input').focus()">
+          <input class="chip-input" id="skip-nsnode-input" placeholder="e.g. victoriametrics…"
+                 onkeydown="chipKeydown(event,'skip-nsnode')" onblur="addChip('skip-nsnode')" />
+        </div>
+        <div class="field-hint" id="skip-nsnode-hint" style="display:none"></div>
+
+        <hr />
+
+        <div class="field-label" style="margin-bottom:8px">
+          Skip Node Labels
+          <span class="tooltip-wrap">
+            <em class="tooltip-icon">i</em>
+            <span class="tooltip-box">Format: key=value — nodes with this label are never drained. Example: karpenter.k8s.aws/ec2nodeclass=default</span>
+          </span>
+        </div>
+        <div class="chip-box" id="node-labels-box" onclick="document.getElementById('node-labels-input').focus()">
+          <input class="chip-input" id="node-labels-input" placeholder="e.g. karpenter.k8s.aws/ec2nodeclass=default"
+                 onkeydown="chipKeydown(event,'node-labels')" onblur="addChip('node-labels')" />
+        </div>
+        <div class="field-hint" id="node-labels-hint" style="display:none"></div>
+
+        <hr />
+
+        <div class="field-label" style="margin-bottom:8px">
+          Skip Node Taints
+          <span class="tooltip-wrap">
+            <em class="tooltip-icon">i</em>
+            <span class="tooltip-box">Format: key=value:effect — effect must be NoSchedule, PreferNoSchedule, or NoExecute.</span>
+          </span>
+        </div>
+        <div class="chip-box" id="node-taints-box" onclick="document.getElementById('node-taints-input').focus()">
+          <input class="chip-input" id="node-taints-input" placeholder="e.g. karpenter-eks-base=true:NoSchedule"
+                 onkeydown="chipKeydown(event,'node-taints')" onblur="addChip('node-taints')" />
+        </div>
+        <div class="field-hint" id="node-taints-hint" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- ── Save bar ── -->
+    <div class="save-bar">
+      <div class="save-bar-left">
+        <button class="btn btn-primary" onclick="saveAll()" id="save-btn">
+          <span>💾</span> Save Guardrails
+        </button>
+        <button class="btn btn-ghost" onclick="discardChanges()" id="discard-btn" style="display:none">
+          Discard changes
+        </button>
+      </div>
+      <div class="save-bar-right">
+        <span class="last-saved" id="last-saved-label">Last saved: <strong>never</strong></span>
+        <button class="btn btn-danger-ghost" onclick="showResetModal()">↺ Reset to defaults</button>
+      </div>
+    </div>
+
+  </div><!-- /grid -->
+</main>
+
+<!-- ── Confirmation modal: remove from protected list ── -->
+<div class="overlay" id="confirm-overlay">
+  <div class="modal">
+    <div class="modal-title">
+      <span style="font-size:20px">⚠️</span>
+      Remove system-protected namespace?
+    </div>
+    <div class="modal-body">
+      You are about to remove <span class="ns-name" id="confirm-ns-name"></span> from the
+      system-protected list. Workloads in this namespace will no longer be excluded from
+      sleep/wake runs.
+    </div>
+    <div class="modal-alert">
+      <span>⚠</span>
+      <span>This may affect critical cluster infrastructure. Only proceed if you are certain this namespace does not run essential system workloads.</span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeConfirm()">Cancel</button>
+      <button class="btn btn-warn" onclick="doRemoveSysNs()">Remove anyway</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Reset to defaults modal ── -->
+<div class="overlay" id="reset-overlay">
+  <div class="modal">
+    <div class="modal-title">
+      <span style="font-size:20px">↺</span>
+      Reset guardrails to defaults?
+    </div>
+    <div class="modal-body">
+      This will restore the system-protected namespaces, workload exclusions, and node
+      protection rules to their original seeded values. Any customisations will be lost.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="document.getElementById('reset-overlay').classList.remove('open')">Cancel</button>
+      <button class="btn btn-warn" onclick="resetToDefaults()">Reset to defaults</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div class="toast" id="toast">✓ <span id="toast-msg">Guardrails saved</span></div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+
+const DEFAULTS = {
+  systemNs:   ['kube-system','kube-public','kube-node-lease','kube-phoenix'],
+  skipNs:     ['default','karpenter','vault','velero','istio-system','monitoring','gitlab'],
+  skipNsNode: ['victoriametrics','karpenter'],
+  nodeLabels: ['karpenter.k8s.aws/ec2nodeclass=default'],
+  nodeTaints: ['karpenter-eks-base=true:NoSchedule'],
+}
+
+let state = {
+  systemNs:   [...DEFAULTS.systemNs],
+  skipNs:     [...DEFAULTS.skipNs],
+  skipNsNode: [...DEFAULTS.skipNsNode],
+  nodeLabels: [...DEFAULTS.nodeLabels],
+  nodeTaints: [...DEFAULTS.nodeTaints],
+}
+
+let savedState = JSON.parse(JSON.stringify(state))
+let pendingRemoveSysNs = null
+
+// ── Validation ────────────────────────────────────────────────────────────────
+
+function validateLabel(v) {
+  if (!v.includes('=')) return 'Expected key=value format (e.g. karpenter.k8s.aws/class=default)'
+  return null
+}
+
+function validateTaint(v) {
+  if (!v.includes(':')) return 'Expected key=value:effect format'
+  const effect = v.split(':').pop()
+  const valid = ['NoSchedule','PreferNoSchedule','NoExecute']
+  if (!valid.includes(effect)) return `Effect must be one of: ${valid.join(', ')}`
+  return null
+}
+
+function getValidator(fieldId) {
+  if (fieldId === 'node-labels') return validateLabel
+  if (fieldId === 'node-taints') return validateTaint
+  return () => null
+}
+
+// ── Chip rendering ────────────────────────────────────────────────────────────
+
+function renderChips(fieldId, values, isProtected = false) {
+  const box = document.getElementById(fieldId + '-box')
+  const input = document.getElementById(fieldId + '-input')
+  // Remove existing chips (not the input)
+  Array.from(box.children).forEach(c => { if (c !== input) c.remove() })
+  values.forEach(v => {
+    const chip = document.createElement('div')
+    chip.className = 'chip' + (isProtected ? ' protected-chip' : '')
+    chip.innerHTML = `<span>${v}</span><button class="chip-del" title="Remove">&times;</button>`
+    chip.querySelector('.chip-del').addEventListener('click', (e) => {
+      e.stopPropagation()
+      if (isProtected) {
+        pendingRemoveSysNs = v
+        document.getElementById('confirm-ns-name').textContent = v
+        document.getElementById('confirm-overlay').classList.add('open')
+      } else {
+        removeChip(fieldId, v)
+      }
+    })
+    box.insertBefore(chip, input)
+  })
+}
+
+function renderSysNs() {
+  renderChips('system-ns', state.systemNs, true)
+  updateImpactBadge()
+}
+
+function renderAll() {
+  renderChips('system-ns', state.systemNs, true)
+  renderChips('skip-ns', state.skipNs)
+  renderChips('skip-nsnode', state.skipNsNode)
+  renderChips('node-labels', state.nodeLabels)
+  renderChips('node-taints', state.nodeTaints)
+  updateImpactBadge()
+}
+
+// ── Chip add / remove ─────────────────────────────────────────────────────────
+
+const fieldToStateKey = {
+  'skip-ns':     'skipNs',
+  'skip-nsnode': 'skipNsNode',
+  'node-labels': 'nodeLabels',
+  'node-taints': 'nodeTaints',
+}
+
+function showHint(fieldId, msg, type = '') {
+  const el = document.getElementById(fieldId + '-hint')
+  if (!el) return
+  el.textContent = msg
+  el.className = 'field-hint' + (type ? ' ' + type : '')
+  el.style.display = msg ? 'flex' : 'none'
+  const box = document.getElementById(fieldId + '-box')
+  if (type === 'error-msg') box.classList.add('error')
+  else box.classList.remove('error')
+}
+
+function addChip(fieldId) {
+  const input = document.getElementById(fieldId + '-input')
+  const v = input.value.trim()
+  if (!v) return
+  const key = fieldToStateKey[fieldId]
+  const validate = getValidator(fieldId)
+  const err = validate(v)
+  if (err) { showHint(fieldId, '⚠ ' + err, 'error-msg'); return }
+  if (state[key].includes(v)) {
+    showHint(fieldId, '⚠ "' + v + '" is already in this list', 'dup-msg')
+    input.value = ''
+    return
+  }
+  state[key].push(v)
+  input.value = ''
+  showHint(fieldId, '')
+  renderChips(fieldId, state[key])
+  markDirty()
+}
+
+function removeChip(fieldId, v) {
+  const key = fieldToStateKey[fieldId]
+  state[key] = state[key].filter(x => x !== v)
+  renderChips(fieldId, state[key])
+  markDirty()
+}
+
+function chipKeydown(e, fieldId) {
+  if (e.key === 'Enter') { e.preventDefault(); addChip(fieldId); return }
+  // Backspace only removes last chip if user explicitly holds for 500ms — avoided here;
+  // just clear the hint instead
+  if (e.key === 'Escape') {
+    document.getElementById(fieldId + '-input').value = ''
+    showHint(fieldId, '')
+  }
+}
+
+// ── System NS ─────────────────────────────────────────────────────────────────
+
+function focusSysInput() {
+  document.getElementById('system-ns-input').focus()
+}
+
+function sysNsKeydown(e) {
+  if (e.key !== 'Enter') return
+  e.preventDefault()
+  const input = document.getElementById('system-ns-input')
+  const v = input.value.trim()
+  if (!v) return
+  if (state.systemNs.includes(v)) {
+    showToast('⚠ "' + v + '" is already protected', true); input.value = ''; return
+  }
+  state.systemNs.push(v)
+  input.value = ''
+  renderSysNs()
+  markDirty()
+}
+
+function closeConfirm() {
+  pendingRemoveSysNs = null
+  document.getElementById('confirm-overlay').classList.remove('open')
+}
+
+function doRemoveSysNs() {
+  if (!pendingRemoveSysNs) return
+  state.systemNs = state.systemNs.filter(x => x !== pendingRemoveSysNs)
+  pendingRemoveSysNs = null
+  document.getElementById('confirm-overlay').classList.remove('open')
+  renderSysNs()
+  markDirty()
+}
+
+// ── Dirty state ───────────────────────────────────────────────────────────────
+
+function isDirty() {
+  return JSON.stringify(state) !== JSON.stringify(savedState)
+}
+
+function markDirty() {
+  const dirty = isDirty()
+  document.getElementById('unsaved-banner').classList.toggle('hidden', !dirty)
+  document.getElementById('discard-btn').style.display = dirty ? '' : 'none'
+}
+
+function discardChanges() {
+  state = JSON.parse(JSON.stringify(savedState))
+  renderAll()
+  markDirty()
+  // clear hints
+  ['skip-ns','skip-nsnode','node-labels','node-taints'].forEach(f => showHint(f, ''))
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────────
+
+function saveAll() {
+  savedState = JSON.parse(JSON.stringify(state))
+  markDirty()
+  const now = new Date()
+  const fmt = now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
+  document.getElementById('last-saved-label').innerHTML = `Last saved: <strong>today at ${fmt}</strong>`
+  showToast('Guardrails saved successfully')
+}
+
+// ── Reset to defaults ─────────────────────────────────────────────────────────
+
+function showResetModal() {
+  document.getElementById('reset-overlay').classList.add('open')
+}
+
+function resetToDefaults() {
+  document.getElementById('reset-overlay').classList.remove('open')
+  state = JSON.parse(JSON.stringify(DEFAULTS))
+  renderAll()
+  saveAll()
+}
+
+// ── Impact badge ──────────────────────────────────────────────────────────────
+
+function updateImpactBadge() {
+  const merged = new Set([...state.systemNs, ...state.skipNs])
+  document.getElementById('total-protected').textContent = merged.size
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+
+function showToast(msg, warn = false) {
+  const t = document.getElementById('toast')
+  document.getElementById('toast-msg').textContent = msg
+  t.style.background = warn ? 'rgba(245,158,11,0.12)' : '#1E2A1E'
+  t.style.borderColor = warn ? 'rgba(245,158,11,0.35)' : 'rgba(34,197,94,0.35)'
+  t.style.color = warn ? 'var(--warn)' : 'var(--success)'
+  t.classList.add('show')
+  setTimeout(() => t.classList.remove('show'), 3000)
+}
+
+// Close modals on backdrop click
+document.getElementById('confirm-overlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeConfirm()
+})
+document.getElementById('reset-overlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) document.getElementById('reset-overlay').classList.remove('open')
+})
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+renderAll()
+</script>
+</body>
+</html>
