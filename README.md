@@ -18,7 +18,7 @@ Scale down your cluster at night, wake it up in the morning. No more paying for 
 - **Overview** — cluster health at a glance: current scale state, pulsing live indicator, partial-sleep namespace breakdown, schedule next-run countdown (absolute time + urgency color, pulsing dot when under 1 hour), and live activity feed with inline log drawer
 - **Cluster State** — live view of all Deployments, StatefulSets, and nodes with resizable drill-down detail drawers; pod detail includes live CPU/memory usage, annotations, node instance type, and Kubernetes events
 - **Guardrails** — protect namespaces, node labels, and taints from ever being touched
-- **Schedules** — multiple sleep and wake schedules with cron expressions, per-schedule timezones, and optional namespace filters for partial scale-down
+- **Schedules** — multiple sleep and wake schedules with cron expressions, per-schedule timezones, and optional namespace filters for partial scale-down; each schedule has an inline enable/disable toggle that persists immediately without opening the edit dialog
 - **History** — full execution log with live WebSocket streaming; scrollable run summary with jump-to-error navigation and error/workload count badges
 - **Manual triggers** — run any schedule immediately in plan (dry-run) or apply mode
 - **Settings** — danger zone with a double-confirmation Reset Database operation (drops all tables, reseeds defaults)
@@ -438,6 +438,30 @@ kube-phoenix/
 │   ├── values.yaml
 │   └── templates/                  # namespace, sa, clusterrole, secret, deployment, service, ingress, postgresql, targetgroupbinding
 ```
+
+---
+
+## Schedules
+
+Each schedule defines when the scaler fires, how it fires, and which namespaces it targets.
+
+### Fields
+
+| Field | Description |
+|---|---|
+| **Name** | Human-readable label |
+| **Type** | `scale_down` (sleep) or `scale_up` (wake) — immutable after creation |
+| **Cron expression** | Standard 5-field cron (`minute hour dom month dow`) |
+| **Timezone** | IANA timezone — e.g. `Europe/Budapest`. Defaults to `UTC`. |
+| **Mode** | `plan` — logs what would happen, no changes; `apply` — executes for real |
+| **Namespace filter** | Comma-separated namespace names to target. Leave empty to target all namespaces. |
+| **Enabled** | Whether the schedule is active. Disabled schedules are skipped by the cron engine. |
+
+### Enabling and disabling
+
+The toggle switch on each schedule card persists the change immediately — no need to open the edit dialog. The switch shows an optimistic update while the request is in flight and reverts automatically if the request fails.
+
+To change any other field, click the pencil icon to open the edit dialog.
 
 ---
 
