@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.52](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.51...v0.1.52) (2026-03-15)
+
+
+### Bug Fixes
+
+* cache invalidation gaps, error handling, and UX improvements ([e118ddc](https://github.com/MacXsimilian/kube-phoenix/commit/e118ddcbd6372eb2f946ebca9248e563a9dc3fb3))
+* cache invalidation gaps, error handling, and UX improvements ([55cce0d](https://github.com/MacXsimilian/kube-phoenix/commit/55cce0da8a558a55908d53b74ad6352f80adc5b1))
+
 ## [0.1.51](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.50...v0.1.51) (2026-03-15)
 
 
