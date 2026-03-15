@@ -37,11 +37,13 @@ type Execution struct {
 	Status     string     `gorm:"index" json:"status"` // "running" | "success" | "failed"
 	Mode       string     `json:"mode"`                // "plan" | "apply"
 
-	CountScaled  int `json:"countScaled"`
-	CountDrained int `json:"countDrained"`
-	CountDeleted int `json:"countDeleted"`
-	CountSkipped int `json:"countSkipped"`
-	CountErrors  int `json:"countErrors"`
+	CountScaled    int `json:"countScaled"`
+	CountDrained   int `json:"countDrained"`
+	CountDeleted   int `json:"countDeleted"`
+	CountSkipped   int `json:"countSkipped"`
+	CountErrors    int `json:"countErrors"`
+	CountSaved     int `json:"countSaved"`
+	CountProtected int `json:"countProtected"`
 }
 
 type LogLine struct {
