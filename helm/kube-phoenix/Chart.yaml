@@ -3,7 +3,7 @@ name: kube-phoenix
 description: Kubernetes cluster sleep/wake schedule manager
 type: application
 version: 0.1.19
-appVersion: 0.1.45
+appVersion: 0.1.46
 keywords:
   - kubernetes
   - scaling
