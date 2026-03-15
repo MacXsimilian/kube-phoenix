@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.42](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.41...v0.1.42) (2026-03-15)
+
+
+### Features
+
+* **guardrails:** system-protected namespaces with deletion confirmation ([3b266fa](https://github.com/MacXsimilian/kube-phoenix/commit/3b266faead3242f3fbeb49d7f413a30cfaff592f))
+
 ## [0.1.41](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.40...v0.1.41) (2026-03-15)
 
 
