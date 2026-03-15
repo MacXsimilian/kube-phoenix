@@ -47,22 +47,20 @@ kube-phoenix is a self-hosted web application for managing cluster sleep/wake sc
 
 ## Why kube-phoenix?
 
-| Feature                               | kube-phoenix | Karpenter | KEDA | Raw CronJobs |
-| :------------------------------------ | :----------: | :-------: | :--: | :----------: |
-| Visual schedule management            |      ✅      |    ❌     |  ❌  |      ❌      |
-| Dry-run before applying               |      ✅      |    ❌     |  ❌  |      ❌      |
-| Live execution logs                   |      ✅      |    ❌     |  ❌  |      ❌      |
-| Guardrails / namespace exclusions     |      ✅      |    ⚠️     |  ⚠️  |      ❌      |
-| Restores exact replica counts on wake |      ✅      |    ❌     |  ❌  |      ❌      |
-| Per-schedule namespace scope          |      ✅      |    ❌     |  ❌  |      ❌      |
-| Works with any node autoscaler        |      ✅      |    ❌     |  ✅  |      ✅      |
-| Single binary, no extra infra         |      ✅      |    ✅     |  ❌  |      ✅      |
+A well-written CronJob with a bash scaler can handle the core logic — plan/apply mode, replica annotation, node label and taint protection. What it cannot give you is observability and manageability without editing YAML.
 
-**Karpenter** can drain idle nodes but cannot restore workloads to their original replica counts, has no schedule UI, and no dry-run mode.
-
-**KEDA** scales workloads based on event/metric sources — not time-of-day schedules with full cluster drain.
-
-**Raw CronJobs** with `kubectl scale` scripts work but have no observability, no guardrails, no plan mode, and are painful to configure and debug.
+| Feature                                  | kube-phoenix | CronJob scaler |
+| :--------------------------------------- | :----------: | :------------: |
+| Visual schedule management               |      ✅      |       ❌       |
+| Multiple schedules with different times  |      ✅      |       ❌       |
+| Live execution logs in a UI              |      ✅      |       ❌       |
+| Persistent execution history             |      ✅      |       ❌       |
+| Web-based guardrails (no YAML editing)   |      ✅      |       ❌       |
+| Per-schedule namespace scope             |      ✅      |       ❌       |
+| Plan / apply mode                        |      ✅      |       ✅       |
+| Restores exact replica counts on wake    |      ✅      |       ✅       |
+| Node label / taint protection            |      ✅      |       ✅       |
+| Works with any node autoscaler           |      ✅      |       ✅       |
 
 ---
 
@@ -104,25 +102,25 @@ For each node
 
 ```mermaid
 flowchart TB
-    Browser["**Browser**\nNext.js 16 · React 19 · MUI v7\nOverview · Schedules · Cluster State · Guardrails · History · Settings"]
+    Browser["**Browser**\nNext.js 16 · React 19 · MUI v7"]
 
     subgraph Binary["Go 1.25 Binary — port 8080"]
         direction TB
         Router["Chi Router + BasicAuth middleware"]
         Handlers["API Handlers"]
         Scheduler["Scheduler\nrobfig/cron v3"]
-        Scaler["Scaler\nscale_down / scale_up"]
-        Cache["ClusterCache\n10 s background refresh"]
+        Scaler["Scaler\nScale Down / Scale Up"]
+        Cache["Cluster Cache\n10 s background refresh"]
         Broker["WS Log Broker\npub/sub fan-out"]
         GORM["GORM"]
-        SPA["//go:embed\nNext.js SPA"]
+        SPA["Embedded SPA\nNext.js static files"]
     end
 
-    K8s[("Kubernetes API\nDeployments · StatefulSets\nNodes · Pods · Events\nMetrics Server")]
-    PG[("PostgreSQL 16\nschedules · executions\nguardrails · log lines")]
+    K8s[("Kubernetes API")]
+    PG[("PostgreSQL 16")]
 
-    Browser -- "HTTP /api/*\nSSE /api/cluster/stream" --> Router
-    Browser -- "WS /ws/executions/:id/logs" --> Router
+    Browser -- "REST · SSE" --> Router
+    Browser -- "WebSocket · live logs" --> Router
     Router --> Handlers
     Router --> SPA
     Handlers --> Scheduler
