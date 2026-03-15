@@ -373,6 +373,8 @@ WebSocket connections authenticate via `?token=<base64(user:pass)>`.
 | `GET` | `/api/executions/:id` | Get execution |
 | `GET` | `/api/executions/:id/logs` | Get all log lines for an execution |
 | `GET` | `/ws/executions/:id/logs` | WebSocket — live log streaming |
+| `GET` | `/api/overview` | Pre-aggregated dashboard summary (cache-backed) |
+| `GET` | `/api/cluster/stream` | SSE stream of overview updates (~10 s cadence) |
 | `GET` | `/api/cluster/workloads` | List Deployments and StatefulSets |
 | `GET` | `/api/cluster/nodes` | List nodes with protection status |
 | `GET` | `/api/cluster/nodes/:name/pods` | List non-DaemonSet pods on a node |
@@ -442,7 +444,7 @@ release-please.yml
 Images published on release:
 
 ```
-ghcr.io/macxsimilian/kube-phoenix:0.1.36
+ghcr.io/macxsimilian/kube-phoenix:0.1.59
 ghcr.io/macxsimilian/kube-phoenix:latest
 ```
 
