@@ -12,6 +12,7 @@ type Schedule struct {
 	Enabled         bool   `json:"enabled"`
 	NamespaceFilter string `json:"namespaceFilter"` // comma-separated; empty = all namespaces
 	TimeoutMinutes  int    `json:"timeoutMinutes"`  // 0 = use server default (120 min)
+	Position        int    `json:"position"`        // display order within each type group
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`

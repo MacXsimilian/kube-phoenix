@@ -197,3 +197,34 @@ func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (h *Handler) reorderSchedules(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Type string `json:"type"`
+		IDs  []uint `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if body.Type != "scale_down" && body.Type != "scale_up" {
+		jsonError(w, "type must be scale_down or scale_up", http.StatusBadRequest)
+		return
+	}
+	if len(body.IDs) == 0 {
+		jsonError(w, "ids must not be empty", http.StatusBadRequest)
+		return
+	}
+	if err := h.store.ReorderSchedules(body.Type, body.IDs); err != nil {
+		slog.Error("reorder schedules failed", "err", err)
+		jsonError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	schedules, err := h.store.ListSchedules()
+	if err != nil {
+		slog.Error("list schedules after reorder failed", "err", err)
+		jsonError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, schedules)
+}
