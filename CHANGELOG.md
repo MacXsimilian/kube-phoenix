@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.40](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.39...v0.1.40) (2026-03-15)
+
+
+### Bug Fixes
+
+* **frontend:** audit tracks A, C, D, E — bugs, deduplication, UX, polish ([fecb639](https://github.com/MacXsimilian/kube-phoenix/commit/fecb63929beb0739d647946639b2cdb3674621ce))
+* **frontend:** audit tracks A, C, D, E — bugs, deduplication, UX, polish ([ea68d60](https://github.com/MacXsimilian/kube-phoenix/commit/ea68d60eb3972a55bd62dca031af575df36c6648))
+
 ## [0.1.39](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.38...v0.1.39) (2026-03-15)
 
 
