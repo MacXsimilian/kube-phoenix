@@ -170,7 +170,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
       anchor="right"
       open={node != null}
       onClose={handleClose}
-      PaperProps={{
+      slotProps={{ paper: {
         sx: {
           width: { xs: '100vw', md: drawerWidth },
           bgcolor: '#1A1A24',
@@ -179,7 +179,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
           flexDirection: 'column',
           overflow: 'visible',
         },
-      }}
+      } }}
     >
       {/* Resize handle */}
       <Box
@@ -297,7 +297,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               sx={{ flex: 1 }}
-              inputProps={{ sx: { fontSize: 13, py: 0.75 } }}
+              slotProps={{ htmlInput: { sx: { fontSize: 13, py: 0.75 } } }}
             />
             <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap', fontSize: 11 }}>
               {dataUpdatedAt ? sinceMs(dataUpdatedAt) : ''}

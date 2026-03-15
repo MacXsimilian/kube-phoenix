@@ -19,7 +19,7 @@ export default function PodDetailDrawer({ pod, onClose }: { pod: NodePod | null;
       anchor="right"
       open={pod != null}
       onClose={onClose}
-      PaperProps={{
+      slotProps={{ paper: {
         sx: {
           width: { xs: '100vw', md: drawerWidth },
           bgcolor: '#1A1A24',
@@ -28,7 +28,7 @@ export default function PodDetailDrawer({ pod, onClose }: { pod: NodePod | null;
           flexDirection: 'column',
           overflow: 'visible',
         },
-      }}
+      } }}
     >
       {/* Resize handle */}
       <Box
