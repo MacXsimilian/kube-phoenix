@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.53](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.52...v0.1.53) (2026-03-15)
+
+
+### Bug Fixes
+
+* input validation, error sanitisation, and CORS hardening ([e3e4ad7](https://github.com/MacXsimilian/kube-phoenix/commit/e3e4ad76dc316e265caee478df6d6692175da64f))
+* input validation, error sanitisation, and CORS hardening ([4d7b578](https://github.com/MacXsimilian/kube-phoenix/commit/4d7b5788213fac002e5c8724ffd21e7f4561d103))
+
 ## [0.1.52](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.51...v0.1.52) (2026-03-15)
 
 
