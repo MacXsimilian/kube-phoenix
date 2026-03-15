@@ -1,7 +1,26 @@
 'use client'
 
-import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import React, { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  CSS,
+  restrictToVerticalAxis,
+  restrictToParentElement,
+} from '@dnd-kit/utilities'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
 import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -12,10 +31,33 @@ import Snackbar from '@mui/material/Snackbar'
 import AddIcon from '@mui/icons-material/Add'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
-import { getSchedules } from '@/lib/api'
+import { getSchedules, reorderSchedules } from '@/lib/api'
 import type { Schedule } from '@/lib/types'
 import ScheduleCard from '@/components/schedules/ScheduleCard'
 import ScheduleDialog from '@/components/schedules/ScheduleDialog'
+
+// ── Sortable wrapper ────────────────────────────────────────────────────────
+// Thin component that wires dnd-kit's useSortable into ScheduleCard without
+// giving ScheduleCard any knowledge of the drag library.
+function SortableScheduleCard(props: React.ComponentProps<typeof ScheduleCard>) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: props.schedule.id })
+
+  return (
+    <Box
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        position: 'relative',
+        zIndex: isDragging ? 1 : 'auto',
+      }}
+    >
+      <ScheduleCard {...props} dragHandleProps={{ ...attributes, ...listeners }} />
+    </Box>
+  )
+}
 
 function EmptySlot({ label }: { label: string }) {
   return (
@@ -57,8 +99,46 @@ export default function SchedulesPage() {
     setSnack({ open: true, msg, severity })
   }
 
+  // Stable server-sorted slices
   const sleepSchedules = schedules.filter((s) => s.type === 'scale_down')
-  const wakeSchedules = schedules.filter((s) => s.type === 'scale_up')
+  const wakeSchedules  = schedules.filter((s) => s.type === 'scale_up')
+
+  // Local optimistic ID order — synced from server on every fetch
+  const [sleepIds, setSleepIds] = useState<number[]>([])
+  const [wakeIds,  setWakeIds]  = useState<number[]>([])
+
+  useEffect(() => { setSleepIds(sleepSchedules.map((s) => s.id)) }, [schedules])
+  useEffect(() => { setWakeIds(wakeSchedules.map((s) => s.id))  }, [schedules])
+
+  const reorderMutation = useMutation({
+    mutationFn: (args: { type: 'scale_down' | 'scale_up'; ids: number[] }) =>
+      reorderSchedules(args.type, args.ids),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['schedules'] })
+    },
+    onError: (_, vars) => {
+      // Revert optimistic update
+      if (vars.type === 'scale_down') setSleepIds(sleepSchedules.map((s) => s.id))
+      else                            setWakeIds(wakeSchedules.map((s) => s.id))
+      notify('Failed to save order', 'error')
+    },
+  })
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  )
+
+  function handleDragEnd(event: DragEndEvent, type: 'scale_down' | 'scale_up') {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const ids    = type === 'scale_down' ? sleepIds : wakeIds
+    const setIds = type === 'scale_down' ? setSleepIds : setWakeIds
+    const oldIndex = ids.indexOf(active.id as number)
+    const newIndex = ids.indexOf(over.id as number)
+    const newIds = arrayMove(ids, oldIndex, newIndex)
+    setIds(newIds)
+    reorderMutation.mutate({ type, ids: newIds })
+  }
 
   if (isLoading) {
     return (
@@ -104,17 +184,30 @@ export default function SchedulesPage() {
         {sleepSchedules.length === 0 ? (
           <EmptySlot label="No sleep schedules yet. Add one to start scaling down at night." />
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {sleepSchedules.map((sc) => (
-              <ScheduleCard
-                key={sc.id}
-                schedule={sc}
-                onEdit={() => setDialog({ open: true, schedule: sc })}
-                onDelete={() => { qc.invalidateQueries({ queryKey: ['schedules'] }); qc.invalidateQueries({ queryKey: ['overview'] }) }}
-                onNotify={notify}
-              />
-            ))}
-          </Box>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+            onDragEnd={(e) => handleDragEnd(e, 'scale_down')}
+          >
+            <SortableContext items={sleepIds} strategy={verticalListSortingStrategy}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {sleepIds.map((id) => {
+                  const sc = sleepSchedules.find((s) => s.id === id)
+                  if (!sc) return null
+                  return (
+                    <SortableScheduleCard
+                      key={sc.id}
+                      schedule={sc}
+                      onEdit={() => setDialog({ open: true, schedule: sc })}
+                      onDelete={() => { qc.invalidateQueries({ queryKey: ['schedules'] }); qc.invalidateQueries({ queryKey: ['overview'] }) }}
+                      onNotify={notify}
+                    />
+                  )
+                })}
+              </Box>
+            </SortableContext>
+          </DndContext>
         )}
       </Box>
 
@@ -142,17 +235,30 @@ export default function SchedulesPage() {
         {wakeSchedules.length === 0 ? (
           <EmptySlot label="No wake schedules yet. Add one to restore workloads in the morning." />
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {wakeSchedules.map((sc) => (
-              <ScheduleCard
-                key={sc.id}
-                schedule={sc}
-                onEdit={() => setDialog({ open: true, schedule: sc })}
-                onDelete={() => { qc.invalidateQueries({ queryKey: ['schedules'] }); qc.invalidateQueries({ queryKey: ['overview'] }) }}
-                onNotify={notify}
-              />
-            ))}
-          </Box>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+            onDragEnd={(e) => handleDragEnd(e, 'scale_up')}
+          >
+            <SortableContext items={wakeIds} strategy={verticalListSortingStrategy}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {wakeIds.map((id) => {
+                  const sc = wakeSchedules.find((s) => s.id === id)
+                  if (!sc) return null
+                  return (
+                    <SortableScheduleCard
+                      key={sc.id}
+                      schedule={sc}
+                      onEdit={() => setDialog({ open: true, schedule: sc })}
+                      onDelete={() => { qc.invalidateQueries({ queryKey: ['schedules'] }); qc.invalidateQueries({ queryKey: ['overview'] }) }}
+                      onNotify={notify}
+                    />
+                  )
+                })}
+              </Box>
+            </SortableContext>
+          </DndContext>
         )}
       </Box>
 
