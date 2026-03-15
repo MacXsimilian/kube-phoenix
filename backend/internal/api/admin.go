@@ -51,28 +51,28 @@ func (h *Handler) resetDB(w http.ResponseWriter, r *http.Request) {
 	emit("step", "Dropping all tables...")
 	if err := h.store.DropAllTables(); err != nil {
 		slog.Error("admin: drop tables failed", "err", err)
-		emit("error", "Failed to drop tables: "+err.Error())
+		emit("error", "Schema drop failed — see server logs for details")
 		return
 	}
 
 	emit("step", "Recreating schema...")
 	if err := h.store.MigrateSchema(); err != nil {
 		slog.Error("admin: migrate failed", "err", err)
-		emit("error", "Failed to recreate schema: "+err.Error())
+		emit("error", "Schema migration failed — see server logs for details")
 		return
 	}
 
 	emit("step", "Seeding default data...")
 	if err := h.store.SeedDefaults(); err != nil {
 		slog.Error("admin: seed failed", "err", err)
-		emit("error", "Failed to seed defaults: "+err.Error())
+		emit("error", "Seed failed — see server logs for details")
 		return
 	}
 
 	emit("step", "Restarting scheduler...")
 	if err := h.scheduler.Restart(r.Context()); err != nil {
 		slog.Error("admin: scheduler restart failed", "err", err)
-		emit("error", "Failed to restart scheduler: "+err.Error())
+		emit("error", "Scheduler restart failed — see server logs for details")
 		return
 	}
 
