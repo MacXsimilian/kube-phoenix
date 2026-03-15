@@ -357,6 +357,8 @@ Group: /  (with BasicAuth middleware)
   ├─ /api/cluster/nodes/{node}/pods GET
   ├─ /api/cluster/pods/{ns}/{pod}   GET
   ├─ /api/cluster/workloads/{ns}/{kind}/{name}/pods GET
+  ├─ /api/overview            GET  ← pre-aggregated dashboard summary (cache-backed)
+  ├─ /api/cluster/stream      GET  ← SSE stream of overview updates (10 s cadence)
   ├─ /api/trigger             POST
   ├─ /api/admin/reset-db      POST
   └─ /ws/executions/{id}/logs GET (WebSocket upgrade)
@@ -433,28 +435,52 @@ This is the most complex handler. Its race-condition-free design is detailed in 
 
 **`getWorkloads` (GET /api/cluster/workloads)**
 
+Cache-first: if the `ClusterCache` snapshot is ready, this handler reads Deployments and StatefulSets directly from memory with zero K8s API calls. Falls back to two parallel K8s list calls (`ListDeployments` + `ListStatefulSets` via goroutines) when the cache has not yet populated on startup.
+
 Algorithm:
-1. List all Deployments across all namespaces via `k8s.ListDeployments("")`.
-2. For each deployment, read the `previous-replicas` annotation.
+1. Check `ClusterCache.Snapshot().Ready()` — if true, use in-memory data.
+2. For each deployment/statefulset, read the `previous-replicas` annotation.
 3. Compute `status`:
    - If annotation present AND `replicas == 0` → `"sleeping"`
    - If annotation present AND `replicas > 0` → `"partial"` (waking up or scale error)
-   - If annotation absent AND `replicas == 0` → `"running"` (intentionally 0, not by scaler)
-   - If annotation absent AND `replicas > 0` → `"running"`
-4. Repeat for StatefulSets.
-5. Return combined list sorted by namespace then name.
+   - If annotation absent → `"running"`
+4. Return combined list.
 
 **`getNodes` (GET /api/cluster/nodes)**
 
+Cache-first: if the `ClusterCache` snapshot is ready, nodes and pods are read from memory. Falls back to two **parallel** K8s list calls (previously serial) when the cache is cold.
+
 Algorithm:
-1. List all nodes.
-2. List all pods across all namespaces.
-3. Load guardrails to compute protection status.
-4. For each node:
+1. Check `ClusterCache.Snapshot().Ready()` — if true, use in-memory nodes + pods.
+2. Load guardrails from the store (fast DB read).
+3. For each node:
    - Count non-DaemonSet pods (pods whose ownerReference is not a DaemonSet).
    - Sum `requests.cpu` and `requests.memory` for all pods on the node.
    - Determine protection reasons by calling `nodeProtectionStatus(guardrails, node, criticalNodes)`.
-5. Return augmented node list with `podCount`, `cpuRequested`, `memRequested`, `protected`, `protectionReason`.
+4. Return augmented node list with `podCount`, `cpuRequested`, `memRequested`, `protected`, `protectionReason`.
+
+**`getOverview` (GET /api/overview)**
+
+Returns a pre-aggregated dashboard summary in one round-trip, replacing the three separate calls (`/cluster/workloads`, `/cluster/nodes`, `/api/schedules`) that the Overview page previously issued. Reads entirely from the `ClusterCache` snapshot and the in-memory scheduler — no K8s or DB I/O on the hot path (only a fast `store.ListSchedules()` for `nextRun`).
+
+Response shape:
+```json
+{
+  "clusterStatus": "awake" | "sleeping" | "partial",
+  "runningCount": 42,
+  "sleepingCount": 0,
+  "nodeCount": 7,
+  "sleepingByNs": [{ "namespace": "payments", "count": 3 }],
+  "nextRun": { "name": "Weekday Sleep", "nextRun": "2026-03-16T19:05:00Z" },
+  "cacheAgeMs": 3241
+}
+```
+
+**`streamCluster` (GET /api/cluster/stream)**
+
+Server-Sent Events endpoint. On connect, sends the current overview immediately. Then subscribes to `ClusterCache` refresh notifications and pushes a new `data:` event on every cache refresh (~10 s). The frontend uses this to update the Overview card in real time without polling.
+
+Authentication: standard BasicAuth via the Authorization header (regular HTTP fetch, not EventSource, so headers work normally).
 
 **`getNodePods` (GET /api/cluster/nodes/{node}/pods)**
 
@@ -765,6 +791,36 @@ RunScaleUp(ctx, schedule, mode, logCh) → (Counts, error)
 ### 4.6 Kubernetes Client Wrapper
 
 `internal/k8s/client.go` wraps `k8s.io/client-go` in a typed, domain-specific API. This keeps Kubernetes-specific code isolated from business logic.
+
+### 4.6.1 ClusterCache
+
+`internal/k8s/cache.go` — an in-memory mirror of cluster state that eliminates repeated K8s API calls on every HTTP request.
+
+**Design:**
+- A background goroutine fetches Nodes, Pods, Deployments, and StatefulSets **in parallel** every 10 s.
+- Results are stored in a `CachedSnapshot` guarded by a `sync.RWMutex`.
+- All four list operations run concurrently via goroutines; partial failures (e.g., pods unavailable) do not evict previously-good data for the other fields.
+- On each successful refresh, registered subscriber channels receive a signal (buffered, non-blocking — slow consumers miss events but never stall the refresh loop).
+- Handlers call `Snapshot().Ready()` to check if the cache has been populated. On cold start the initial refresh fires asynchronously; handlers fall back to direct K8s calls until the first snapshot arrives (typically < 1 s).
+
+**Startup wiring (`cmd/server/main.go`):**
+```go
+cache = k8sclient.NewClusterCache(k8s)
+cache.Start(context.Background())  // async — first refresh fires immediately in background
+router = api.NewRouter(st, k8s, sched, cache)
+```
+
+**Pub/sub (used by SSE stream):**
+```go
+ch := cache.Subscribe()
+defer cache.Unsubscribe(ch)
+for {
+    select {
+    case <-ctx.Done(): return
+    case <-ch: // send SSE event
+    }
+}
+```
 
 **Client initialization:**
 
@@ -1222,16 +1278,21 @@ const queryClient = new QueryClient({
 
 **retry: 1** — failed queries retry once before showing an error state. One retry handles transient network blips without being overly aggressive.
 
-**Per-query refetchInterval overrides:**
+**Per-query refetchInterval and staleTime overrides:**
 
-| Query key | refetchInterval | Reason |
-|---|---|---|
-| `['executions', 'feed']` | 15s | Activity feed needs to be timely |
-| `['cluster', 'workloads']` | 30s | Workload state changes slowly |
-| `['cluster', 'nodes']` | 30s | Node state changes slowly |
-| `['schedules']` | — | Only refetch on mutation |
-| `['guardrails']` | — | Only refetch on mutation |
-| `['executions', id, 'logs']` | — | Uses WebSocket instead |
+| Query key | staleTime | refetchInterval | Reason |
+|---|---|---|---|
+| `['overview']` | 25s | 30s (fallback) | Primary dashboard card — fed by SSE stream, polling is fallback only |
+| `['executions', 'feed']` | 14s | 15s | Activity feed needs to be timely |
+| `['schedules']` | 60s | 60s | Schedules rarely change; used only by trigger buttons on Overview |
+| `['guardrails']` | — | — | Only refetch on mutation |
+| `['executions', id, 'logs']` | — | — | Uses WebSocket instead |
+
+The `['overview']` query is primarily kept fresh by the SSE stream (`/api/cluster/stream`) via `queryClient.setQueryData`. The `refetchInterval: 30_000` acts as a reconnect fallback if the SSE connection drops. With `staleTime: 25_000`, navigating away from and back to the Overview page renders the cached data instantly without a loading skeleton.
+
+**SSE stream (`useClusterStream` hook in `ClusterStatusCard.tsx`):**
+
+Opens a persistent `fetch` connection to `/api/cluster/stream`. On each `data:` line received, parses the JSON and calls `queryClient.setQueryData(['overview'], data)`, which triggers a React re-render with the latest cluster state. Reconnects automatically after errors with a 3 s backoff (5 s if the response itself was not OK).
 
 **Mutation invalidation:** After every mutation (create/update/delete schedule, save guardrails), the mutation's `onSuccess` callback calls `queryClient.invalidateQueries` with the relevant query key. This triggers an immediate re-fetch and keeps the UI in sync.
 
