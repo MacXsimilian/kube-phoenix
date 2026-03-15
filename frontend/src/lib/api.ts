@@ -57,6 +57,12 @@ export const updateSchedule = (id: number, data: Partial<ScheduleInput>): Promis
 export const deleteSchedule = (id: number): Promise<void> =>
   req<void>(`/api/schedules/${id}`, { method: 'DELETE' })
 
+export const reorderSchedules = (type: 'scale_down' | 'scale_up', ids: number[]): Promise<Schedule[]> =>
+  req<Schedule[]>('/api/schedules/reorder', {
+    method: 'PUT',
+    body: JSON.stringify({ type, ids }),
+  })
+
 // ── Guardrails ────────────────────────────────────────────────────────────────
 
 export const getGuardrails = (): Promise<Guardrails> =>

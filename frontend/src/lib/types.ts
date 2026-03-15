@@ -7,6 +7,7 @@ export interface Schedule {
   mode: 'plan' | 'apply'
   enabled: boolean
   namespaceFilter: string  // comma-separated; empty = all namespaces
+  position: number         // display order within each type group
   updatedAt: string
   nextRun?: string  // ISO timestamp from cron engine; absent when schedule is disabled
 }
