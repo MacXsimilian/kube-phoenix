@@ -30,15 +30,17 @@ export function sinceMs(ms: number): string {
   return `${Math.floor(s / 60)}m ago`
 }
 
-/** Format an ISO timestamp as a countdown: "now", "in 5m", "in 2h 30m" */
+/** Format an ISO timestamp as a countdown: "now", "in 5m", "in 2h 30m", "in 5d 8h" */
 export function timeUntil(iso: string): string {
   const diff = new Date(iso).getTime() - Date.now()
   if (diff <= 0) return 'now'
   const m = Math.floor(diff / 60000)
   if (m < 60) return `in ${m}m`
   const h = Math.floor(m / 60)
-  const rem = m % 60
-  return rem > 0 ? `in ${h}h ${rem}m` : `in ${h}h`
+  if (h < 24) return m % 60 > 0 ? `in ${h}h ${m % 60}m` : `in ${h}h`
+  const d = Math.floor(h / 24)
+  const remH = h % 24
+  return remH > 0 ? `in ${d}d ${remH}h` : `in ${d}d`
 }
 
 /** Format an ISO timestamp as a relative past time: "just now", "5m ago", "2h ago", "3d ago" */
