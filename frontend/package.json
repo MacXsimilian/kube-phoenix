@@ -8,12 +8,13 @@
     "start": "next start"
   },
   "dependencies": {
-    "next": "^15.2.0",
-    "@mui/material": "^6.0.0",
-    "@mui/icons-material": "^6.0.0",
     "@emotion/react": "^11.13.0",
     "@emotion/styled": "^11.13.0",
+    "@mui/icons-material": "^6.0.0",
+    "@mui/material": "^6.0.0",
     "@tanstack/react-query": "^5.51.0",
+    "cronstrue": "^3.13.0",
+    "next": "^15.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

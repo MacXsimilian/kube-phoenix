@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import Typography from '@mui/material/Typography'
@@ -14,6 +14,10 @@ import { getWorkloads, getNodes } from '@/lib/api'
 function ClusterTabs() {
   const searchParams = useSearchParams()
   const [tab, setTab] = useState(searchParams.get('tab') === 'nodes' ? 1 : 0)
+
+  useEffect(() => {
+    setTab(searchParams.get('tab') === 'nodes' ? 1 : 0)
+  }, [searchParams])
 
   const { data: workloads = [] } = useQuery({ queryKey: ['workloads'], queryFn: getWorkloads, refetchInterval: 30_000 })
   const { data: nodes = [] } = useQuery({ queryKey: ['nodes'], queryFn: getNodes, refetchInterval: 30_000 })

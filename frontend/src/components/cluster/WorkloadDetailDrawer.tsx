@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
@@ -21,44 +21,14 @@ import Typography from '@mui/material/Typography'
 import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getWorkloadPods } from '@/lib/api'
+import { fmtCpu, fmtMem, podAge, sinceMs } from '@/lib/formatters'
+import { STATUS_COLORS, POD_STATUS_STYLE } from '@/components/cluster/statusColors'
+import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { NodePod, Workload } from '@/lib/types'
 import PodDetailDrawer from './PodDetailDrawer'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function fmtCpu(m: number) {
-  return m >= 1000 ? `${(m / 1000).toFixed(1)}c` : `${m}m`
-}
-function fmtMem(bytes: number) {
-  const gib = bytes / 1073741824
-  return gib >= 1 ? `${gib.toFixed(1)}G` : `${Math.round(bytes / 1048576)}M`
-}
-function podAge(startedAt: string) {
-  if (!startedAt) return '—'
-  const s = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-  if (s < 86400) return `${Math.floor(s / 3600)}h`
-  return `${Math.floor(s / 86400)}d`
-}
-function sinceMs(ms: number) {
-  const s = Math.floor((Date.now() - ms) / 1000)
-  if (s < 10) return 'just now'
-  if (s < 60) return `${s}s ago`
-  return `${Math.floor(s / 60)}m ago`
-}
-
-const STATUS_COLORS = {
-  running:  { bgcolor: 'rgba(34,197,94,0.12)',   color: '#22C55E',  label: 'Running'  },
-  sleeping: { bgcolor: 'rgba(245,158,11,0.12)',  color: '#F59E0B',  label: 'Sleeping' },
-  partial:  { bgcolor: 'rgba(59,130,246,0.12)',  color: '#3B82F6',  label: 'Partial'  },
-}
-
-const POD_STATUS_STYLE: Record<string, { color: string; bgcolor: string }> = {
-  Running:   { color: '#22C55E', bgcolor: 'rgba(34,197,94,0.12)' },
-  Pending:   { color: '#F59E0B', bgcolor: 'rgba(245,158,11,0.12)' },
-  Failed:    { color: '#F87171', bgcolor: 'rgba(248,113,113,0.12)' },
-  Succeeded: { color: '#94A3B8', bgcolor: 'rgba(148,163,184,0.12)' },
-}
 function podStatusStyle(status: string) {
   return POD_STATUS_STYLE[status] ?? { color: '#94A3B8', bgcolor: 'rgba(148,163,184,0.12)' }
 }
@@ -132,26 +102,9 @@ function PodRow({ pod, onClick }: { pod: NodePod; onClick: () => void }) {
 // ── main component ────────────────────────────────────────────────────────────
 
 export default function WorkloadDetailDrawer({ workload, onClose }: { workload: Workload | null; onClose: () => void }) {
-  const [drawerWidth, setDrawerWidth] = useState(560)
+  const [drawerWidth, handleResizeMouseDown, handleResizeTouchStart] = useDrawerResize(560)
   const [search, setSearch] = useState('')
   const [selectedPod, setSelectedPod] = useState<NodePod | null>(null)
-
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    const startX = e.clientX
-    const startWidth = drawerWidth
-    const onMouseMove = (mv: MouseEvent) => {
-      const delta = startX - mv.clientX
-      const next = Math.min(Math.max(startWidth + delta, 360), window.innerWidth * 0.9)
-      setDrawerWidth(Math.round(next))
-    }
-    const onMouseUp = () => {
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
-    }
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
-  }, [drawerWidth])
 
   const { data: pods = [], isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['workload-pods', workload?.namespace, workload?.kind, workload?.name],
@@ -194,6 +147,7 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
         {/* Resize handle */}
         <Box
           onMouseDown={handleResizeMouseDown}
+          onTouchStart={handleResizeTouchStart}
           sx={{
             position: 'absolute',
             left: -4, top: 0, bottom: 0, width: 8,

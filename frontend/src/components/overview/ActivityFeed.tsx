@@ -18,17 +18,8 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import { getExecutions } from '@/lib/api'
 import type { Execution } from '@/lib/types'
+import { timeAgo } from '@/lib/formatters'
 import LogViewer from '@/components/history/LogViewer'
-
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const m = Math.floor(diff / 60000)
-  if (m < 1) return 'just now'
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
-}
 
 function StatusChip({ status }: { status: Execution['status'] }) {
   const map = {
@@ -59,6 +50,7 @@ export default function ActivityFeed() {
           </Typography>
           <ButtonBase
             onClick={() => router.push('/history/')}
+            aria-label="View all executions"
             sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary', borderRadius: 1, px: 0.5, '&:hover': { color: 'text.primary' } }}
           >
             <Typography variant="caption">View all</Typography>
@@ -86,11 +78,12 @@ export default function ActivityFeed() {
           </Typography>
         )}
 
-        <List disablePadding>
-          {data?.items?.map((exec) => (
+        {!isLoading && !!data?.items?.length && <List disablePadding>
+          {data.items.map((exec) => (
             <ListItemButton
               key={exec.id}
               onClick={() => setSelected(exec)}
+              aria-label={`View logs for ${exec.schedule?.name ?? 'execution'} #${exec.id}`}
               sx={{ borderRadius: 2, px: 1.5, py: 1, mb: 0.5 }}
             >
               <Box
@@ -157,7 +150,7 @@ export default function ActivityFeed() {
               </Box>
             </ListItemButton>
           ))}
-        </List>
+        </List>}
       </CardContent>
     </Card>
 
