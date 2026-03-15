@@ -25,6 +25,7 @@ import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined'
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined'
 import SettingsBrightnessOutlinedIcon from '@mui/icons-material/SettingsBrightnessOutlined'
 import { resetDatabaseStream, type ResetEvent } from '@/lib/api'
+import { useTheme } from '@mui/material/styles'
 import { useThemeMode } from '@/lib/themeMode'
 
 const CONFIRM_PHRASE = 'RESET DATABASE'
@@ -40,6 +41,7 @@ function ResetProgressDialog({
   done: boolean
   onClose: () => void
 }) {
+  const theme = useTheme()
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -67,7 +69,7 @@ function ResetProgressDialog({
       <DialogContent sx={{ p: 0 }}>
         <Box
           sx={{
-            bgcolor: '#0A0A0F',
+            bgcolor: 'background.default',
             mx: 0,
             px: 2,
             py: 1.5,
@@ -80,9 +82,9 @@ function ResetProgressDialog({
         >
           {events.map((e, i) => {
             const color =
-              e.type === 'done' ? '#22C55E'
-              : e.type === 'error' ? '#F87171'
-              : '#22D3EE'
+              e.type === 'done' ? theme.palette.success.main
+              : e.type === 'error' ? theme.palette.error.main
+              : theme.palette.info.main
             return (
               <Box key={i} sx={{ lineHeight: 2, color }}>
                 <Box component="span" sx={{ opacity: 0.35, mr: 1.5, userSelect: 'none', fontSize: 11 }}>
@@ -93,7 +95,7 @@ function ResetProgressDialog({
             )
           })}
           {!done && (
-            <Box sx={{ color: '#475569', lineHeight: 2 }}>
+            <Box sx={{ color: 'text.disabled', lineHeight: 2 }}>
               <Box component="span" sx={{ mr: 1.5 }}>›</Box>
               <Box component="span" sx={{ opacity: 0.5 }}>waiting…</Box>
             </Box>

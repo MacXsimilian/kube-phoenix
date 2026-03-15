@@ -236,7 +236,7 @@ kube-phoenix/
 │       │   └── cronToText.ts      # 5-field cron → human readable
 │       │
 │       └── theme/
-│           └── theme.ts           # MUI dark theme definition
+│           └── theme.ts           # MUI theme — dark (default) + light mode, createAppTheme(mode)
 │
 ├── helm/
 │   └── kube-phoenix/
@@ -1078,32 +1078,36 @@ This tight coupling between frontend and backend builds is managed by the Docker
 
 ### 5.2 Theme & Design System
 
-`frontend/src/theme/theme.ts` defines a MUI v7 dark theme.
+`frontend/src/theme/theme.ts` defines a MUI v7 theme that supports **dark** (default), **light**, and **system** modes. The active mode is stored in `localStorage` via `useThemeMode()` and toggled from Settings → Appearance. `createAppTheme(mode)` is called with the resolved mode and the result is passed to MUI's `ThemeProvider`.
 
-**Color palette:**
+**Color palette (mode-aware values):**
 
-| Token | Hex | Usage |
-|---|---|---|
-| primary.main | #7C3AED | Active nav items, buttons, accents |
-| primary.light | #9D5FF5 | Hover states |
-| primary.dark | #5B21B6 | Pressed states |
-| background.default | #0F0F13 | Page background |
-| background.paper | #1A1A24 | Card, drawer, dialog backgrounds |
-| success.main | #22C55E | Success chips, status indicators |
-| warning.main | #F59E0B | Apply mode indicators, wake icons |
-| error.main | #EF4444 | Error chips, delete actions |
-| info.main | #3B82F6 | Running status chips |
+| Token | Dark | Light | Usage |
+|---|---|---|---|
+| primary.main | #7C3AED | #6D28D9 | Active nav items, buttons, accents |
+| primary.light | #9D5FF5 | #7C3AED | Hover states |
+| primary.dark | #5B21B6 | #5B21B6 | Pressed states |
+| background.default | #0F0F13 | #F5F5F7 | Page background, terminal panes |
+| background.paper | #1A1A24 | #FFFFFF | Card, drawer, dialog backgrounds |
+| success.main | #22C55E | #22C55E | Success chips, status indicators |
+| warning.main | #F59E0B | #F59E0B | Apply mode indicators, wake icons |
+| error.main | #EF4444 | #EF4444 | Error chips, delete actions |
+| info.main | #3B82F6 | #3B82F6 | Running status chips |
+
+The `divider` token is computed from the mode: `rgba(255,255,255,0.07)` in dark, `rgba(0,0,0,0.09)` in light. All component borders use this token — **never hardcoded RGBA**.
+
+**Log level colors** are also mode-aware. `LogViewer` defines `LEVEL_COLORS_DARK` and `LEVEL_COLORS_LIGHT` and selects the set at render time via `useTheme().palette.mode`. The light set uses darker hues (e.g. `#0369A1` for info, `#15803D` for ok) to maintain readability against a light background.
 
 **Border radius:** `10px` (MUI default is 4px). This gives cards and chips a softer, more modern appearance.
 
 **Typography:** Inter font loaded via `next/font/google` in `layout.tsx`. Applied as the default font family in the theme.
 
 **Component overrides:**
-- `MuiCard` — adds `border: 1px solid rgba(255,255,255,0.06)` for subtle card borders in dark mode (MUI's default has no border).
+- `MuiCard` — adds a `1px solid divider` border (mode-aware; MUI's default has no border).
 - `MuiPaper` — same border treatment.
 - `MuiDrawer` — overrides background to `background.paper`.
-- `MuiAppBar` — overrides background to `background.paper` (not the default primary color).
-- `MuiTableCell` — adds `borderBottom: 1px solid rgba(255,255,255,0.06)`.
+- `MuiAppBar` — overrides background to `background.paper` (not the default primary color); border color uses the `divider` token.
+- `MuiTableCell` — border color uses the `divider` token.
 
 ### 5.3 Auth System
 
@@ -1240,7 +1244,7 @@ layout.tsx (Inter font, HTML skeleton)
 
 **`AppShell`** — responsible for the two-column layout (sidebar + content). Renders a `<AppBar>` for mobile with a hamburger menu button. Uses MUI `Drawer` in two configurations: permanent (desktop, `md+`) and temporary (mobile, slides in over content). The sidebar width is defined as a constant (240px) and passed as a prop.
 
-**`Sidebar`** — navigation list with active state detection using `usePathname()`. Active items receive a purple tint background (`rgba(124,58,237,0.12)`) and the primary color for text and icon. The logout button is pushed to the bottom using a flex spacer.
+**`Sidebar`** — navigation list with active state detection using `usePathname()`. Active items receive a primary-tinted background computed via MUI's `alpha(primary.main, 0.10)` — mode-aware and responsive to the actual primary color — and the primary color for text and icon. The logout button is pushed to the bottom using a flex spacer.
 
 **`ClusterStatusCard`** — polls `getWorkloads()` every 30 seconds. Shows aggregate counts: total workloads, sleeping workloads, partial (waking). Uses a MUI `LinearProgress` to show the sleeping percentage.
 
@@ -1266,7 +1270,7 @@ layout.tsx (Inter font, HTML skeleton)
 
 **`ExecutionTable`** — paginated table of executions. Clicking a row opens `LogViewer`. The `exec` query parameter in the URL is used to pre-open a specific execution's logs (used by the ActivityFeed navigation).
 
-**`LogViewer`** — MUI `Dialog` containing a dark-background scrolling log pane. For running executions, it opens a WebSocket and appends lines in real time. For completed executions, it fetches all lines via REST. Each log line has a colored level badge (info: gray, success: green, plan: blue, error: red). Auto-scrolls to bottom as new lines arrive, using a `useRef` on the scroll container.
+**`LogViewer`** — right-side MUI `Drawer` with a scrollable log pane. The log container uses `background.default` (adapts to light/dark mode). For running executions, it opens a WebSocket and appends lines in real time. For completed executions, it fetches all lines via REST. Each log line is colored by level using mode-aware color sets (`LEVEL_COLORS_DARK` / `LEVEL_COLORS_LIGHT`) — darker hues are used in light mode for contrast. Auto-scrolls to bottom as new lines arrive, using a `useRef` on the scroll container.
 
 ### 5.6 TanStack Query Strategy
 
@@ -2052,8 +2056,10 @@ go build ./cmd/server/
 2. Update the seed data in `internal/store/queries.go` if default schedules change.
 
 **Changing the theme:**
-1. Edit `frontend/src/theme/theme.ts`.
-2. MUI component overrides live in the same file under `components:`.
+1. Edit `frontend/src/theme/theme.ts`. The `createAppTheme(mode)` function receives `'light' | 'dark'` and must return correct palette values for both modes.
+2. MUI component overrides live in the same file under `components:`. Use the `divider` local variable (already computed from mode) rather than hardcoded RGBA for any borders.
+3. For components that embed terminal-style content (LogViewer, settings reset dialog), use `background.default` as the container background — it resolves to the appropriate off-white or near-black per mode.
+4. Log level / status colors that need different values per mode should be defined as two constant maps and selected at render time via `useTheme().palette.mode`.
 
 ---
 

@@ -22,8 +22,9 @@ export default function PodDetailDrawer({ pod, onClose }: { pod: NodePod | null;
       slotProps={{ paper: {
         sx: {
           width: { xs: '100vw', md: drawerWidth },
-          bgcolor: '#1A1A24',
-          borderLeft: '1px solid rgba(255,255,255,0.06)',
+          bgcolor: 'background.paper',
+          borderLeft: '1px solid',
+          borderColor: 'divider',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'visible',
@@ -61,7 +62,7 @@ export default function PodDetailDrawer({ pod, onClose }: { pod: NodePod | null;
             </Tooltip>
           </Box>
 
-          <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+          <Divider />
 
           <Box sx={{ flex: 1, overflow: 'auto' }}>
             <PodDetailContent namespace={pod.namespace} podName={pod.name} />
