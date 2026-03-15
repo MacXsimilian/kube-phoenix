@@ -61,8 +61,8 @@ kube-phoenix is a web application that manages Kubernetes cluster **sleep/wake s
 | Layer | Technology |
 |---|---|
 | Backend language | Go 1.25 |
-| HTTP router | go-chi/chi v5 |
-| Database | PostgreSQL via GORM v1 (gorm.io/driver/postgres) |
+| HTTP router | go-chi/chi v5.2 |
+| Database | PostgreSQL via GORM v1.31 (gorm.io/driver/postgres v1.6) |
 | Scheduler | robfig/cron v3 (5-field cron expressions) |
 | WebSocket | gorilla/websocket |
 | Kubernetes SDK | k8s.io/client-go |
