@@ -47,18 +47,18 @@ kube-phoenix is a self-hosted web application for managing cluster sleep/wake sc
 
 ## Why kube-phoenix?
 
-| Feature | kube-phoenix | Karpenter consolidation | KEDA | Raw CronJobs |
-|:---|:---:|:---:|:---:|:---:|
-| Visual schedule management | ✅ | ❌ | ❌ | ❌ |
-| Dry-run before applying | ✅ | ❌ | ❌ | ❌ |
-| Live execution logs | ✅ | ❌ | ❌ | ❌ |
-| Guardrails / namespace exclusions | ✅ | ⚠️ | ⚠️ | ❌ |
-| Restores exact replica counts on wake | ✅ | ❌ | ❌ | ❌ |
-| Per-schedule namespace scope | ✅ | ❌ | ❌ | ❌ |
-| Works with any node autoscaler | ✅ | ❌ | ✅ | ✅ |
-| Single binary, no extra infra | ✅ | ✅ | ❌ | ✅ |
+| Feature                               | kube-phoenix | Karpenter | KEDA | Raw CronJobs |
+| :------------------------------------ | :----------: | :-------: | :--: | :----------: |
+| Visual schedule management            |      ✅      |    ❌     |  ❌  |      ❌      |
+| Dry-run before applying               |      ✅      |    ❌     |  ❌  |      ❌      |
+| Live execution logs                   |      ✅      |    ❌     |  ❌  |      ❌      |
+| Guardrails / namespace exclusions     |      ✅      |    ⚠️     |  ⚠️  |      ❌      |
+| Restores exact replica counts on wake |      ✅      |    ❌     |  ❌  |      ❌      |
+| Per-schedule namespace scope          |      ✅      |    ❌     |  ❌  |      ❌      |
+| Works with any node autoscaler        |      ✅      |    ❌     |  ✅  |      ✅      |
+| Single binary, no extra infra         |      ✅      |    ✅     |  ❌  |      ✅      |
 
-**Karpenter consolidation** can drain idle nodes but cannot restore workloads to their original replica counts, has no schedule UI, and no dry-run mode.
+**Karpenter** can drain idle nodes but cannot restore workloads to their original replica counts, has no schedule UI, and no dry-run mode.
 
 **KEDA** scales workloads based on event/metric sources — not time-of-day schedules with full cluster drain.
 
