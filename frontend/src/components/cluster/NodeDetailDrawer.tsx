@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
@@ -22,6 +22,9 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodePods } from '@/lib/api'
+import { fmtCpu, fmtMem, podAge, sinceMs } from '@/lib/formatters'
+import { POD_STATUS_STYLE, NODE_STATUS_MAP } from '@/components/cluster/statusColors'
+import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { Node, NodePod } from '@/lib/types'
 import PodDetailContent from './PodDetailContent'
 
@@ -35,33 +38,6 @@ function pctColor(p: number) {
   if (p >= 65) return '#FBBF24'
   return '#22C55E'
 }
-function fmtCpu(m: number) {
-  return m >= 1000 ? `${(m / 1000).toFixed(1)}` : `${m}m`
-}
-function fmtMem(bytes: number) {
-  const gib = bytes / 1073741824
-  return gib >= 1 ? `${gib.toFixed(1)}G` : `${Math.round(bytes / 1048576)}M`
-}
-function podAge(startedAt: string) {
-  if (!startedAt) return '—'
-  const s = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-  if (s < 86400) return `${Math.floor(s / 3600)}h`
-  return `${Math.floor(s / 86400)}d`
-}
-function sinceMs(ms: number) {
-  const s = Math.floor((Date.now() - ms) / 1000)
-  if (s < 10) return 'just now'
-  if (s < 60) return `${s}s ago`
-  return `${Math.floor(s / 60)}m ago`
-}
-
-const POD_STATUS_STYLE: Record<string, { color: string; bgcolor: string }> = {
-  Running:   { color: '#22C55E', bgcolor: 'rgba(34,197,94,0.12)' },
-  Pending:   { color: '#F59E0B', bgcolor: 'rgba(245,158,11,0.12)' },
-  Failed:    { color: '#F87171', bgcolor: 'rgba(248,113,113,0.12)' },
-  Succeeded: { color: '#94A3B8', bgcolor: 'rgba(148,163,184,0.12)' },
-}
 function podStatusStyle(status: string) {
   return POD_STATUS_STYLE[status] ?? { color: '#94A3B8', bgcolor: 'rgba(148,163,184,0.12)' }
 }
@@ -71,12 +47,6 @@ function ownerStyle(kind: string) {
   if (kind === 'Job' || kind === 'CronJob') return { color: '#14B8A6', bgcolor: 'rgba(20,184,166,0.12)' }
   return { color: '#94A3B8', bgcolor: 'rgba(148,163,184,0.12)' }
 }
-
-const NODE_STATUS_MAP = {
-  active:       { bgcolor: 'rgba(34,197,94,0.12)',   color: '#22C55E', label: 'Active' },
-  protected:    { bgcolor: 'rgba(59,130,246,0.12)',  color: '#3B82F6', label: 'Protected' },
-  'would-drain':{ bgcolor: 'rgba(245,158,11,0.12)', color: '#F59E0B', label: 'Would Drain' },
-} as const
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
@@ -92,6 +62,7 @@ function MiniBar({ used, total, label }: { used: number; total: number; label: s
         <LinearProgress
           variant="determinate"
           value={Math.min(p, 100)}
+          aria-label={label}
           sx={{ height: 5, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 1 } }}
         />
       </Box>
@@ -159,31 +130,13 @@ function PodRow({ pod, onClick }: { pod: NodePod; onClick?: () => void }) {
 
 export default function NodeDetailDrawer({ node, onClose }: { node: Node | null; onClose: () => void }) {
   const [search, setSearch] = useState('')
-  const [drawerWidth, setDrawerWidth] = useState(540)
+  const [drawerWidth, handleResizeMouseDown, handleResizeTouchStart] = useDrawerResize(540)
   const [selectedPod, setSelectedPod] = useState<NodePod | null>(null)
 
   function handleClose() {
     setSelectedPod(null)
     onClose()
   }
-
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    const startX = e.clientX
-    const startWidth = drawerWidth
-
-    const onMouseMove = (mv: MouseEvent) => {
-      const delta = startX - mv.clientX
-      const next = Math.min(Math.max(startWidth + delta, 360), window.innerWidth * 0.9)
-      setDrawerWidth(Math.round(next))
-    }
-    const onMouseUp = () => {
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
-    }
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
-  }, [drawerWidth])
 
   const { data: pods = [], isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['node-pods', node?.name],
@@ -231,6 +184,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
       {/* Resize handle */}
       <Box
         onMouseDown={handleResizeMouseDown}
+        onTouchStart={handleResizeTouchStart}
         sx={{
           position: 'absolute',
           left: -4,

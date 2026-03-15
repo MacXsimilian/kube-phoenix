@@ -25,13 +25,9 @@ import IconButton from '@mui/material/IconButton'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodes } from '@/lib/api'
 import type { Node } from '@/lib/types'
+import { fmtCpu, fmtMem, podAge, sinceMs } from '@/lib/formatters'
+import { NODE_STATUS_MAP } from '@/components/cluster/statusColors'
 import NodeDetailDrawer from './NodeDetailDrawer'
-
-const STATUS_MAP: Record<Node['status'], { bgcolor: string; color: string; label: string }> = {
-  active: { bgcolor: 'rgba(34,197,94,0.12)', color: '#22C55E', label: 'Active' },
-  protected: { bgcolor: 'rgba(59,130,246,0.12)', color: '#3B82F6', label: 'Protected' },
-  'would-drain': { bgcolor: 'rgba(245,158,11,0.12)', color: '#F59E0B', label: 'Would Drain' },
-}
 
 type SortCol = 'name' | 'age' | 'instanceType' | 'zone' | 'pods' | 'cpu' | 'mem' | 'status'
 type SortDir = 'asc' | 'desc'
@@ -40,34 +36,10 @@ function pct(used: number, total: number): number {
   return total > 0 ? Math.round((used / total) * 100) : 0
 }
 
-function fmtCpu(m: number): string {
-  return m >= 1000 ? `${(m / 1000).toFixed(1)}` : `${m}m`
-}
-
-function fmtMem(bytes: number): string {
-  const gib = bytes / 1073741824
-  return gib >= 1 ? `${gib.toFixed(1)}G` : `${Math.round(bytes / 1048576)}M`
-}
-
 function pctColor(p: number): string {
   if (p >= 85) return '#F87171'
   if (p >= 65) return '#FBBF24'
   return '#22C55E'
-}
-
-function nodeAge(createdAt: string): string {
-  const ms = Date.now() - new Date(createdAt).getTime()
-  const s = Math.floor(ms / 1000)
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-  if (s < 86400) return `${Math.floor(s / 3600)}h`
-  return `${Math.floor(s / 86400)}d`
-}
-
-function sinceMs(ms: number): string {
-  const s = Math.floor((Date.now() - ms) / 1000)
-  if (s < 10) return 'just now'
-  if (s < 60) return `${s}s ago`
-  return `${Math.floor(s / 60)}m ago`
 }
 
 function ResourceBar({ used, total, usedLabel, totalLabel }: { used: number; total: number; usedLabel: string; totalLabel: string }) {
@@ -139,6 +111,62 @@ interface ZoneStats {
   cordoned: number
 }
 
+function NodeRow({
+  node,
+  groupByZone,
+  isSelected,
+  onSelect,
+}: {
+  node: Node
+  groupByZone: boolean
+  isSelected: boolean
+  onSelect: (n: Node | null) => void
+}) {
+  const sc = NODE_STATUS_MAP[node.status]
+  const statusChip = (
+    <Chip label={sc.label} size="small" sx={{ height: 20, fontSize: 11, bgcolor: sc.bgcolor, color: sc.color }} />
+  )
+  return (
+    <TableRow
+      hover
+      onClick={() => onSelect(isSelected ? null : node)}
+      sx={{ cursor: 'pointer', ...(isSelected ? { bgcolor: 'rgba(124,58,237,0.08)' } : {}) }}
+    >
+      <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>{node.name}</TableCell>
+      <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{podAge(node.createdAt)}</TableCell>
+      <TableCell sx={{ fontSize: 13 }}>{node.instanceType || '—'}</TableCell>
+      {!groupByZone && <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{node.zone || '—'}</TableCell>}
+      <TableCell sx={{ fontSize: 13 }}>{node.podCount}</TableCell>
+      <TableCell>
+        <ResourceBar
+          used={node.cpuRequested}
+          total={node.cpuAllocatable}
+          usedLabel={fmtCpu(node.cpuRequested)}
+          totalLabel={fmtCpu(node.cpuAllocatable)}
+        />
+      </TableCell>
+      <TableCell>
+        <ResourceBar
+          used={node.memRequested}
+          total={node.memAllocatable}
+          usedLabel={fmtMem(node.memRequested)}
+          totalLabel={fmtMem(node.memAllocatable)}
+        />
+      </TableCell>
+      <TableCell>
+        <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
+          {node.status === 'protected' && node.protectionReason ? (
+            <Tooltip title={node.protectionReason} arrow><span>{statusChip}</span></Tooltip>
+          ) : statusChip}
+          {node.cordoned && (
+            <Chip label="Cordoned" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(248,113,113,0.15)', color: '#F87171' }} />
+          )}
+        </Box>
+      </TableCell>
+    </TableRow>
+  )
+}
+
 export default function NodesTable() {
   const { data: nodes = [], isLoading, isError, error, dataUpdatedAt, refetch } = useQuery({
     queryKey: ['nodes'],
@@ -193,53 +221,6 @@ export default function NodesTable() {
   const headerProps = { active: sortCol, dir: sortDir, onSort: handleSort }
 
   const colCount = groupByZone ? 7 : 8
-
-  function NodeRow({ node }: { node: Node }) {
-    const sc = STATUS_MAP[node.status]
-    const isSelected = selectedNode?.name === node.name
-    const statusChip = (
-      <Chip label={sc.label} size="small" sx={{ height: 20, fontSize: 11, bgcolor: sc.bgcolor, color: sc.color }} />
-    )
-    return (
-      <TableRow
-        hover
-        onClick={() => setSelectedNode(isSelected ? null : node)}
-        sx={{ cursor: 'pointer', ...(isSelected ? { bgcolor: 'rgba(124,58,237,0.08)' } : {}) }}
-      >
-        <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>{node.name}</TableCell>
-        <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{nodeAge(node.createdAt)}</TableCell>
-        <TableCell sx={{ fontSize: 13 }}>{node.instanceType || '—'}</TableCell>
-        {!groupByZone && <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{node.zone || '—'}</TableCell>}
-        <TableCell sx={{ fontSize: 13 }}>{node.podCount}</TableCell>
-        <TableCell>
-          <ResourceBar
-            used={node.cpuRequested}
-            total={node.cpuAllocatable}
-            usedLabel={fmtCpu(node.cpuRequested)}
-            totalLabel={fmtCpu(node.cpuAllocatable)}
-          />
-        </TableCell>
-        <TableCell>
-          <ResourceBar
-            used={node.memRequested}
-            total={node.memAllocatable}
-            usedLabel={fmtMem(node.memRequested)}
-            totalLabel={fmtMem(node.memAllocatable)}
-          />
-        </TableCell>
-        <TableCell>
-          <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
-            {node.status === 'protected' && node.protectionReason ? (
-              <Tooltip title={node.protectionReason} arrow><span>{statusChip}</span></Tooltip>
-            ) : statusChip}
-            {node.cordoned && (
-              <Chip label="Cordoned" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(248,113,113,0.15)', color: '#F87171' }} />
-            )}
-          </Box>
-        </TableCell>
-      </TableRow>
-    )
-  }
 
   return (
     <>
@@ -332,12 +313,28 @@ export default function NodesTable() {
                           </Box>
                         </TableCell>
                       </TableRow>
-                      {stats.nodes.map((node) => <NodeRow key={node.name} node={node} />)}
+                      {stats.nodes.map((node) => (
+                        <NodeRow
+                          key={node.name}
+                          node={node}
+                          groupByZone={groupByZone}
+                          isSelected={selectedNode?.name === node.name}
+                          onSelect={setSelectedNode}
+                        />
+                      ))}
                     </React.Fragment>
                   )
                 })
               ) : (
-                sorted.map((node) => <NodeRow key={node.name} node={node} />)
+                sorted.map((node) => (
+                  <NodeRow
+                    key={node.name}
+                    node={node}
+                    groupByZone={groupByZone}
+                    isSelected={selectedNode?.name === node.name}
+                    onSelect={setSelectedNode}
+                  />
+                ))
               )}
             </TableBody>
           </Table>
