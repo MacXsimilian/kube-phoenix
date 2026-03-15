@@ -64,6 +64,15 @@ func splitCSV(s string) map[string]bool {
 	return m
 }
 
+// mergeCSV merges two comma-separated strings into a single trimmed set.
+func mergeCSV(a, b string) map[string]bool {
+	m := splitCSV(a)
+	for k, v := range splitCSV(b) {
+		m[k] = v
+	}
+	return m
+}
+
 // isApply returns true when mode is "apply".
 func isApply(mode string) bool { return mode == "apply" }
 
