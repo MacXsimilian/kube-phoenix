@@ -23,6 +23,7 @@ export interface ScheduleInput {
 
 export interface Guardrails {
   id: number
+  systemNamespaces: string  // protected system defaults — requires confirmation to remove
   skipNamespaces: string
   skipNsNode: string
   skipNodeLabels: string

@@ -16,7 +16,7 @@ func (r *Runner) RunScaleUp(ctx context.Context, mode, namespaceFilter string, l
 	if err != nil {
 		return nil, fmt.Errorf("guardrails: %w", err)
 	}
-	skipNS := splitCSV(g.SkipNamespaces)
+	skipNS := mergeCSV(g.SystemNamespaces, g.SkipNamespaces)
 
 	// ── Restore Deployments ────────────────────────────────────────────────
 	r.info(logCh, "Fetching Deployments...")

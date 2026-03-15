@@ -165,10 +165,11 @@ func (s *Store) SeedDefaults() error {
 	}
 	if gCount == 0 {
 		g := Guardrails{
-			SkipNamespaces: "default,kube-system,kube-public,karpenter,vault,velero,istio-gateway,istio-system,kyverno,kyverno-notation-aws,victoriametrics,monitoring,gitlab",
-			SkipNsNode:     "victoriametrics,karpenter",
-			SkipNodeLabels: "karpenter.k8s.aws/ec2nodeclass=default",
-			SkipNodeTaints: "karpenter-eks-base=true:NoSchedule",
+			SystemNamespaces: "kube-system,kube-public,kube-node-lease,kube-phoenix",
+			SkipNamespaces:   "default,karpenter,vault,velero,istio-gateway,istio-system,kyverno,kyverno-notation-aws,victoriametrics,monitoring,gitlab",
+			SkipNsNode:       "victoriametrics,karpenter",
+			SkipNodeLabels:   "karpenter.k8s.aws/ec2nodeclass=default",
+			SkipNodeTaints:   "karpenter-eks-base=true:NoSchedule",
 		}
 		if err := s.db.Create(&g).Error; err != nil {
 			return err
