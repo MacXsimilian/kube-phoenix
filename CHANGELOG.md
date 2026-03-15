@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.55](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.54...v0.1.55) (2026-03-15)
+
+
+### Features
+
+* **schedules:** drag-and-drop reordering persisted per schedule type ([b41f643](https://github.com/MacXsimilian/kube-phoenix/commit/b41f643490699acb6475c4f6b463168cfb291795))
+* **schedules:** drag-and-drop reordering persisted per schedule type ([8bd612c](https://github.com/MacXsimilian/kube-phoenix/commit/8bd612c72045f0859ee1db17b38978c5e7a568b4))
+
+
+### Bug Fixes
+
+* **overview:** equal-height cards + update docs for reorder and position field ([006d221](https://github.com/MacXsimilian/kube-phoenix/commit/006d221224e448f58559928dbee9a731bb278b58))
+* **schedules:** move dnd modifiers to correct package ([6a283eb](https://github.com/MacXsimilian/kube-phoenix/commit/6a283eb8287c479181315044be73c6d24014b194))
+
 ## [0.1.54](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.53...v0.1.54) (2026-03-15)
 
 
