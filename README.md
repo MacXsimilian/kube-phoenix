@@ -32,7 +32,7 @@ Scale down your cluster at night, wake it up in the morning. No more paying for 
 | Backend | Go 1.25, chi v5.2, GORM v1.31, robfig/cron v3, client-go |
 | Frontend | Next.js 15, React 19, Material UI v6, TanStack Query v5 |
 | Database | PostgreSQL 16 |
-| Deploy | Helm 3, GHCR image, GitHub Actions CI |
+| Deploy | Helm 4, GHCR image, GitHub Actions CI |
 
 The Go backend embeds the Next.js static export — one binary, one container, no separate nginx.
 

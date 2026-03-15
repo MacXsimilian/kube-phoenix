@@ -70,7 +70,7 @@ kube-phoenix is a web application that manages Kubernetes cluster **sleep/wake s
 | UI component library | Material UI v6 |
 | Server state management | TanStack Query v5 |
 | Containerization | Docker multi-stage → distroless |
-| Deployment | Helm 3 chart |
+| Deployment | Helm 4 chart |
 | CI/CD | GitHub Actions |
 
 ---
@@ -1853,7 +1853,7 @@ Dependabot PRs go through the same CI pipeline as any other PR — secret scan, 
 | Go | 1.25+ | Required for backend |
 | Docker | Latest | For container builds |
 | kubectl | Latest | For k8s interaction |
-| helm | 3.x | For Helm operations |
+| helm | 4.x | For Helm operations |
 | PostgreSQL | 15+ | Local database |
 
 > **Note:** Go is not installed on the project maintainer's machine at the time of writing. Backend changes must be built in CI or via Docker.
