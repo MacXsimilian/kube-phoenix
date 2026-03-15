@@ -1,0 +1,31 @@
+# Example: Kubernetes Ingress with TLS (nginx / cert-manager)
+#
+# Use this to expose kube-phoenix via an Ingress controller with
+# TLS termination managed by cert-manager.
+#
+# Prerequisites:
+#   - An Ingress controller (nginx, traefik, etc.) installed
+#   - cert-manager installed with a ClusterIssuer named "letsencrypt-prod"
+#
+# Usage:
+#   helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
+#     --namespace kube-phoenix --create-namespace \
+#     -f examples/values-ingress-tls.yaml \
+#     --set ingress.host=kube-phoenix.example.com \
+#     --set secret.basicAuthPassword=<your-password>
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  host: kube-phoenix.example.com   # pass via --set
+  tls:
+    - hosts:
+        - kube-phoenix.example.com
+      secretName: kube-phoenix-tls
+
+secret:
+  basicAuthUser: admin
+  basicAuthPassword: ""  # pass via --set
