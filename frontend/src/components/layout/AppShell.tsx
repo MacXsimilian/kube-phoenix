@@ -24,7 +24,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           bgcolor: 'background.paper',
           borderBottom: '1px solid rgba(255,255,255,0.06)',
           boxShadow: 'none',
-          zIndex: (t) => t.zIndex.drawer + 1,
+          zIndex: (t) => t.zIndex.appBar,
         }}
       >
         <Toolbar sx={{ minHeight: 52 }}>

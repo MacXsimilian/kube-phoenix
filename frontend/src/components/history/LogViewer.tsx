@@ -511,56 +511,36 @@ export default function LogViewer({
             <ExecutionSummary lines={lines} isRunning={isRunning} />
 
             {/* Log area */}
-            <Accordion
-              defaultExpanded
-              disableGutters
-              sx={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-                bgcolor: 'background.paper',
-                boxShadow: 'none',
-                '&:before': { display: 'none' },
-                '& .MuiCollapse-root': { flex: 1, display: 'flex', flexDirection: 'column' },
-                '& .MuiCollapse-wrapper': { flex: 1, display: 'flex', flexDirection: 'column' },
-                '& .MuiCollapse-wrapperInner': { flex: 1, display: 'flex', flexDirection: 'column' },
-              }}
-            >
-              <AccordionSummary
-                expandIcon={<ExpandMoreIcon sx={{ fontSize: 16 }} />}
-                sx={{ minHeight: 40, px: 2.5, py: 0, borderTop: '1px solid', borderColor: 'divider', '& .MuiAccordionSummary-content': { my: 0, display: 'flex', alignItems: 'center', gap: 1 } }}
-              >
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+              <Box sx={{ minHeight: 40, px: 2.5, display: 'flex', alignItems: 'center', borderTop: '1px solid', borderColor: 'divider' }}>
                 <Typography variant="caption" fontWeight={700} letterSpacing={0.8} sx={{ color: 'text.secondary', textTransform: 'uppercase' }}>
                   Logs
                 </Typography>
-              </AccordionSummary>
-              <AccordionDetails sx={{ p: 0, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                {wsError && (
-                  <Alert severity="error" sx={{ borderRadius: 0 }}>
-                    WebSocket connection lost. Logs may be incomplete.
-                  </Alert>
+              </Box>
+              {wsError && (
+                <Alert severity="error" sx={{ borderRadius: 0 }}>
+                  WebSocket connection lost. Logs may be incomplete.
+                </Alert>
+              )}
+              {logsError && !isRunning && (
+                <Alert severity="warning" sx={{ borderRadius: 0 }}>
+                  Could not load logs — they may have been pruned.
+                </Alert>
+              )}
+              <Box sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: '#0A0A0F', minHeight: 0 }}>
+                {lines.length === 0 && !isRunning && !logsError && (
+                  <Typography variant="body2" color="text.secondary">
+                    No log lines found.
+                  </Typography>
                 )}
-                {logsError && !isRunning && (
-                  <Alert severity="warning" sx={{ borderRadius: 0 }}>
-                    Could not load logs — they may have been pruned.
-                  </Alert>
-                )}
-                <Box sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: '#0A0A0F' }}>
-                  {lines.length === 0 && !isRunning && !logsError && (
-                    <Typography variant="body2" color="text.secondary">
-                      No log lines found.
-                    </Typography>
-                  )}
-                  {lines.map((line, i) => (
-                    <Box key={`${line.id ?? line.seq}-${i}`} ref={(el) => { lineEls.current[i] = el as HTMLElement | null }}>
-                      <LogLineRow line={line} />
-                    </Box>
-                  ))}
-                  <div ref={bottomRef} />
-                </Box>
-              </AccordionDetails>
-            </Accordion>
+                {lines.map((line, i) => (
+                  <Box key={`${line.id ?? line.seq}-${i}`} ref={(el) => { lineEls.current[i] = el as HTMLElement | null }}>
+                    <LogLineRow line={line} />
+                  </Box>
+                ))}
+                <div ref={bottomRef} />
+              </Box>
+            </Box>
           </>
         )}
       </Drawer>

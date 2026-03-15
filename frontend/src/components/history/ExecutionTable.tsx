@@ -20,6 +20,7 @@ import Tooltip from '@mui/material/Tooltip'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import CloudOffIcon from '@mui/icons-material/CloudOff'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
@@ -61,26 +62,34 @@ function StatusChip({ status }: { status: Execution['status'] }) {
 }
 
 function SummaryCell({ exec }: { exec: Execution }) {
+  const isWake = exec.schedule?.type === 'scale_up'
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-      <Tooltip title="Scaled">
+      <Tooltip title={isWake ? 'Restored' : 'Scaled'}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-          <ArrowDownwardIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+          {isWake
+            ? <ArrowUpwardIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+            : <ArrowDownwardIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+          }
           <Typography variant="caption" color="text.secondary">{exec.countScaled}</Typography>
         </Box>
       </Tooltip>
-      <Tooltip title="Drained">
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-          <CloudOffIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
-          <Typography variant="caption" color="text.secondary">{exec.countDrained}</Typography>
-        </Box>
-      </Tooltip>
-      <Tooltip title="Deleted">
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-          <DeleteOutlineIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
-          <Typography variant="caption" color="text.secondary">{exec.countDeleted}</Typography>
-        </Box>
-      </Tooltip>
+      {exec.countDrained > 0 && (
+        <Tooltip title="Drained">
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+            <CloudOffIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+            <Typography variant="caption" color="text.secondary">{exec.countDrained}</Typography>
+          </Box>
+        </Tooltip>
+      )}
+      {exec.countDeleted > 0 && (
+        <Tooltip title="Deleted">
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+            <DeleteOutlineIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+            <Typography variant="caption" color="text.secondary">{exec.countDeleted}</Typography>
+          </Box>
+        </Tooltip>
+      )}
       {exec.countErrors > 0 && (
         <Tooltip title="Errors">
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
