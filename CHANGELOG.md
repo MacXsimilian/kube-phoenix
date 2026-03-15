@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.41](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.40...v0.1.41) (2026-03-15)
+
+
+### Features
+
+* add About modal triggered from kube-phoenix title ([fd24da4](https://github.com/MacXsimilian/kube-phoenix/commit/fd24da4cc74c29739a26ddf1f67169b00f10b2f2))
+
+
+### Bug Fixes
+
+* pull About modal version from package.json instead of hardcoding ([78c697b](https://github.com/MacXsimilian/kube-phoenix/commit/78c697bb41f79494f21882084a207f017002cf19))
+
 ## [0.1.40](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.39...v0.1.40) (2026-03-15)
 
 
