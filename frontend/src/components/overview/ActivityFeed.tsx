@@ -37,6 +37,7 @@ export default function ActivityFeed() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['executions', 'feed'],
     queryFn: () => getExecutions({ pageSize: 3 }),
+    staleTime: 14_000,
     refetchInterval: 15_000,
   })
 
