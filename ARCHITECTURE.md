@@ -479,7 +479,11 @@ Authentication: standard BasicAuth via the Authorization header (regular HTTP fe
 
 **`getNodePods` (GET /api/cluster/nodes/{node}/pods)**
 
-Lists pods on a specific node. For each pod, resolves the owner chain: if a pod is owned by a ReplicaSet, it walks up to find the owning Deployment. This provides a human-readable "workload name" in the node detail drawer.
+Lists pods on a specific node. For each pod, resolves the owner chain: if a pod is owned by a ReplicaSet, it walks up to find the owning Deployment. This provides a human-readable "workload name" in the node detail drawer. Also calls `GetAllPodMetrics` to populate live CPU/memory usage per pod; degrades gracefully (shows `—`) if the Metrics Server is unavailable or returns a non-200 response.
+
+**`getWorkloadPods` (GET /api/cluster/workloads/{ns}/{kind}/{name}/pods)**
+
+Lists pods belonging to a Deployment or StatefulSet. Same owner-chain resolution and `GetAllPodMetrics` enrichment as `getNodePods`.
 
 **`getPodDetail` (GET /api/cluster/pods/{ns}/{pod})**
 
@@ -845,7 +849,9 @@ func New() (*Client, error) {
 | `GetPodMetrics(ns, pod)`                    | Raw REST call to `/apis/metrics.k8s.io/v1beta1/namespaces/{ns}/pods/{name}` |
 | `GetPodEvents(ns, pod)`                     | `fieldSelector: involvedObject.name=<pod>`                                  |
 
-**Why raw REST for Metrics Server:** The Metrics Server uses a non-standard API group that is not included in the generated client-go typed clients. The cleanest approach is a raw REST call using the existing kubeconfig authentication, parsing the JSON response manually. This avoids importing `k8s.io/metrics` as an additional dependency.
+**Why raw REST for Metrics Server:** The Metrics Server is an aggregated API server (non-standard API group not included in the generated client-go typed clients). The cleanest approach is a raw REST call using the existing kubeconfig credentials, parsing the JSON response manually. This avoids importing `k8s.io/metrics` as an additional dependency.
+
+**Required RBAC for Metrics Server:** The SA must have `get` and `list` on the `metrics.k8s.io` API group (`pods` and `nodes` resources). Without this the call returns HTTP 403 and usage data degrades to `—`. This rule is included in the Helm ClusterRole.
 
 **StatefulSet parity:** Every Deployment method has an identical StatefulSet counterpart. The code is nearly identical, differing only in the API call (`AppsV1().StatefulSets()` vs `AppsV1().Deployments()`). This duplication is intentional — in Go, generics over API types are not idiomatic, and the explicit duplication is easier to read and maintain.
 
