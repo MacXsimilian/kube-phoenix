@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.43](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.42...v0.1.43) (2026-03-15)
+
+
+### Bug Fixes
+
+* **backend:** check fmt.Fprintf error in SSE handler ([ba0cc1c](https://github.com/MacXsimilian/kube-phoenix/commit/ba0cc1c9814eb3c7b9e86c799a0b0c673ee79b2a))
+
+
+### Performance Improvements
+
+* **overview:** cluster cache, SSE stream, and overview endpoint ([9536a91](https://github.com/MacXsimilian/kube-phoenix/commit/9536a91630318533628925fb0ed9166b2b0bb27b))
+* **overview:** cluster cache, SSE stream, and overview endpoint ([93421ef](https://github.com/MacXsimilian/kube-phoenix/commit/93421ef34b09b3bfb0fbda8180a7378f057ebb60))
+
 ## [0.1.42](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.41...v0.1.42) (2026-03-15)
 
 
