@@ -13,7 +13,7 @@ const annotationKey = "previous-replicas"
 
 // LogLine is emitted during a run and sent to the log channel.
 type LogLine struct {
-	Level   string    // "info" | "ok" | "plan" | "error" | "warn"
+	Level   string // "info" | "ok" | "plan" | "error" | "warn"
 	Message string
 	Time    time.Time
 }
@@ -47,9 +47,9 @@ func emit(ch chan<- LogLine, level, msg string) {
 	}
 }
 
-func (r *Runner) info(ch chan<- LogLine, msg string)  { emit(ch, "info", msg) }
-func (r *Runner) ok(ch chan<- LogLine, msg string)    { emit(ch, "ok", msg) }
-func (r *Runner) plan(ch chan<- LogLine, msg string)  { emit(ch, "plan", msg) }
+func (r *Runner) info(ch chan<- LogLine, msg string)   { emit(ch, "info", msg) }
+func (r *Runner) ok(ch chan<- LogLine, msg string)     { emit(ch, "ok", msg) }
+func (r *Runner) plan(ch chan<- LogLine, msg string)   { emit(ch, "plan", msg) }
 func (r *Runner) errLog(ch chan<- LogLine, msg string) { emit(ch, "error", msg) }
 
 // splitCSV splits a comma-separated string into a trimmed set.

@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/robfig/cron/v3"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	"github.com/robfig/cron/v3"
 )
 
 type scheduleResponse struct {

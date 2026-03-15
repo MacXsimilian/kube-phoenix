@@ -9,7 +9,7 @@ import (
 const resetConfirmPhrase = "RESET DATABASE"
 
 type resetEvent struct {
-	Type    string `json:"type"`    // "step" | "done" | "error"
+	Type    string `json:"type"` // "step" | "done" | "error"
 	Message string `json:"message"`
 }
 
