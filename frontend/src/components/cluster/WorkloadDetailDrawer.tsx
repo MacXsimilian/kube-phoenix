@@ -133,7 +133,7 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
         anchor="right"
         open={workload != null}
         onClose={handleClose}
-        PaperProps={{
+        slotProps={{ paper: {
           sx: {
             width: { xs: '100vw', md: drawerWidth },
             bgcolor: '#1A1A24',
@@ -142,7 +142,7 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
             flexDirection: 'column',
             overflow: 'visible',
           },
-        }}
+        } }}
       >
         {/* Resize handle */}
         <Box
@@ -203,7 +203,7 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 sx={{ flex: 1 }}
-                inputProps={{ sx: { fontSize: 13, py: 0.75 } }}
+                slotProps={{ htmlInput: { sx: { fontSize: 13, py: 0.75 } } }}
               />
               <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap', fontSize: 11 }}>
                 {dataUpdatedAt ? sinceMs(dataUpdatedAt) : ''}

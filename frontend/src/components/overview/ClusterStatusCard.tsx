@@ -274,7 +274,7 @@ export default function ClusterStatusCard() {
       <Dialog
         open={dialog?.open ?? false}
         onClose={() => setDialog(null)}
-        PaperProps={{ sx: { bgcolor: 'background.paper', minWidth: 360 } }}
+        slotProps={{ paper: { sx: { bgcolor: 'background.paper', minWidth: 360 } } }}
       >
         <DialogTitle fontWeight={700}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
