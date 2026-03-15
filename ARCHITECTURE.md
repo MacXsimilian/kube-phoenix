@@ -46,83 +46,72 @@ kube-phoenix is a web application that manages Kubernetes cluster **sleep/wake s
 
 ### Core capabilities
 
-| Capability | Description |
-|---|---|
-| Schedule management | CRUD for named cron schedules typed `scale_down` or `scale_up` |
-| Guardrails | Configurable exclusion lists for namespaces, node labels, and node taints |
-| Dry-run (plan) mode | Every scale operation can be simulated before applying |
-| Live log streaming | WebSocket-based log fan-out during an active execution |
-| Cluster state visibility | Real-time view of workloads and nodes with health metrics |
-| History | Paginated execution history with per-execution log viewer |
-| Self-hosted | Single binary embeds the full Next.js SPA; no separate web server needed |
+| Capability               | Description                                                               |
+| :----------------------- | :------------------------------------------------------------------------ |
+| Schedule management      | CRUD for named cron schedules typed `scale_down` or `scale_up`            |
+| Guardrails               | Configurable exclusion lists for namespaces, node labels, and node taints |
+| Dry-run (plan) mode      | Every scale operation can be simulated before applying                    |
+| Live log streaming       | WebSocket-based log fan-out during an active execution                    |
+| Cluster state visibility | Real-time view of workloads and nodes with health metrics                 |
+| History                  | Paginated execution history with per-execution log viewer                 |
+| Self-hosted              | Single binary embeds the full Next.js SPA; no separate web server needed  |
 
 ### Technology stack
 
-| Layer | Technology |
-|---|---|
-| Backend language | Go 1.25 |
-| HTTP router | go-chi/chi v5.2 |
-| Database | PostgreSQL via GORM v1.31 (gorm.io/driver/postgres v1.6) |
-| Scheduler | robfig/cron v3 (5-field cron expressions) |
-| WebSocket | gorilla/websocket |
-| Kubernetes SDK | k8s.io/client-go |
-| Frontend framework | Next.js 16 (static export) |
-| UI component library | Material UI v7 |
-| Server state management | TanStack Query v5 |
-| Containerization | Docker multi-stage → distroless |
-| Deployment | Helm 4 chart |
-| CI/CD | GitHub Actions |
+| Layer                   | Technology                                               |
+| :---------------------- | :------------------------------------------------------- |
+| Backend language        | Go 1.25                                                  |
+| HTTP router             | go-chi/chi v5.2                                          |
+| Database                | PostgreSQL via GORM v1.31 (gorm.io/driver/postgres v1.6) |
+| Scheduler               | robfig/cron v3 (5-field cron expressions)                |
+| WebSocket               | gorilla/websocket                                        |
+| Kubernetes SDK          | k8s.io/client-go                                         |
+| Frontend framework      | Next.js 16 (static export)                               |
+| UI component library    | Material UI v7                                           |
+| Server state management | TanStack Query v5                                        |
+| Containerization        | Docker multi-stage → distroless                          |
+| Deployment              | Helm 4 chart                                             |
+| CI/CD                   | GitHub Actions                                           |
 
 ---
 
 ## 2. High-Level Architecture Diagram
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                          Kubernetes Cluster                              │
-│                                                                          │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │                  kube-phoenix namespace                          │    │
-│  │                                                                  │    │
-│  │  ┌──────────────────────────────────────────────────────────┐   │    │
-│  │  │             kube-phoenix Pod (single container)           │   │    │
-│  │  │                                                           │   │    │
-│  │  │  ┌─────────────────────────────────────────────────────┐ │   │    │
-│  │  │  │                  Go Binary (:8080)                   │ │   │    │
-│  │  │  │                                                       │ │   │    │
-│  │  │  │  ┌─────────────┐  ┌──────────┐  ┌────────────────┐  │ │   │    │
-│  │  │  │  │  Chi Router │  │Scheduler │  │  Scaler Runner │  │ │   │    │
-│  │  │  │  │  + Middleware│  │(cron v3) │  │  (scale_down   │  │ │   │    │
-│  │  │  │  └──────┬──────┘  └────┬─────┘  │   scale_up)    │  │ │   │    │
-│  │  │  │         │              │         └───────┬────────┘  │ │   │    │
-│  │  │  │  ┌──────▼──────┐  ┌───▼───┐            │            │ │   │    │
-│  │  │  │  │ API Handlers│  │ Store │◄───────────┘            │ │   │    │
-│  │  │  │  │ /api/*      │  │(GORM) │                         │ │   │    │
-│  │  │  │  │ /ws/*       │  └───┬───┘                         │ │   │    │
-│  │  │  │  └──────┬──────┘      │                             │ │   │    │
-│  │  │  │         │             │                             │ │   │    │
-│  │  │  │  ┌──────▼──────┐  ┌───▼──────────────┐            │ │   │    │
-│  │  │  │  │  SPA Static │  │   PostgreSQL DB   │            │ │   │    │
-│  │  │  │  │  (embedded) │  │   (same ns or     │            │ │   │    │
-│  │  │  │  └─────────────┘  │    external RDS)  │            │ │   │    │
-│  │  │  │                   └───────────────────┘            │ │   │    │
-│  │  │  │                                                     │ │   │    │
-│  │  │  │  ┌─────────────────────────────────────────────┐   │ │   │    │
-│  │  │  │  │          k8s Client (client-go)             │   │ │   │    │
-│  │  │  │  └─────────────────────┬───────────────────────┘   │ │   │    │
-│  │  │  └────────────────────────┼───────────────────────────┘ │   │    │
-│  │  └───────────────────────────┼───────────────────────────────┘   │    │
-│  └───────────────────────────────┼───────────────────────────────────┘    │
-│                                  │ Kubernetes API Server                   │
-│                                  │ (ClusterRole grants)                    │
-│       ┌──────────────────────────▼───────────────────┐                    │
-│       │          Workload Namespaces                  │                    │
-│       │  Deployments  StatefulSets  Pods  Nodes       │                    │
-│       └───────────────────────────────────────────────┘                    │
-└──────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    Browser["External Browser"]
+    ALB["Ingress / ALB"]
 
-External browser ──HTTPS──► Ingress/ALB ──HTTP──► Service :80 ──► Pod :8080
-                                                    (or NodePort)
+    subgraph Cluster["Kubernetes Cluster"]
+        subgraph NS["kube-phoenix namespace"]
+            subgraph Pod["kube-phoenix Pod (single container)"]
+                subgraph Binary["Go Binary — :8080"]
+                    Router["Chi Router\n+ BasicAuth middleware"]
+                    Handlers["API Handlers\n/api/*  /ws/*"]
+                    Scheduler["Scheduler\n(robfig/cron v3)"]
+                    Scaler["Scaler Runner\nscale_down / scale_up"]
+                    Store["Store\n(GORM)"]
+                    SPA["SPA Static\n(//go:embed)"]
+                    K8sClient["k8s Client\n(client-go)"]
+                end
+            end
+            PG[("PostgreSQL DB\nsame namespace\nor external RDS")]
+        end
+        subgraph Workloads["Workload Namespaces"]
+            K8sAPI["Kubernetes API Server\n(ClusterRole grants)\nDeployments · StatefulSets · Pods · Nodes"]
+        end
+    end
+
+    Browser -- "HTTPS" --> ALB
+    ALB -- "HTTP :80" --> Router
+    Router --> Handlers
+    Router --> SPA
+    Handlers --> Scheduler
+    Handlers --> Store
+    Scheduler --> Scaler
+    Scaler --> K8sClient
+    K8sClient --> K8sAPI
+    Store --> PG
 ```
 
 ### Request flow summary
@@ -187,7 +176,7 @@ kube-phoenix/
 │
 ├── frontend/
 │   ├── next.config.mjs           # output:'export', trailingSlash:true
-│   ├── package.json              # next@15, @mui/material@6, @tanstack/react-query@5
+│   ├── package.json              # next@16, @mui/material@7, @tanstack/react-query@5
 │   │
 │   └── src/
 │       ├── app/
@@ -849,17 +838,16 @@ func New() (*Client, error) {
 
 **Key methods and their implementations:**
 
-| Method | Implementation detail |
-|---|---|
-| `ListDeployments(namespace)` | `AppsV1().Deployments(ns).List(ctx, ListOptions{})` |
-| `ScaleDeployment(name, ns, replicas)` | `GetScale` → mutate `spec.replicas` → `UpdateScale` |
-| `AnnotateDeployment(name, ns, key, value)` | `Get` → add to `annotations` map → `Update` |
-| `RemoveDeploymentAnnotation(name, ns, key)` | `Get` → delete from `annotations` map → `Update` |
-| `CordonNode(name)` | `Get` → `spec.unschedulable = true` → `Update` |
-| `ListPodsOnNode(node)` | `fieldSelector: spec.nodeName=<node>` |
-| `GetPodMetrics(ns, pod)` | Raw REST call to `/apis/metrics.k8s.io/v1beta1/namespaces/{ns}/pods/{name}` — used by `getPodDetail` |
-| `GetAllPodMetrics()` | Cluster-wide REST call to `/apis/metrics.k8s.io/v1beta1/pods`; returns `map["namespace/pod"]ContainerMetrics` (summed across containers). Used by `getNodePods` and `getWorkloadPods`. Logs a WARN with the HTTP status code on failure and returns an empty map (graceful degradation). |
-| `GetPodEvents(ns, pod)` | `fieldSelector: involvedObject.name=<pod>` |
+| Method                                      | Implementation detail                                                       |
+| :------------------------------------------ | :-------------------------------------------------------------------------- |
+| `ListDeployments(namespace)`                | `AppsV1().Deployments(ns).List(ctx, ListOptions{})`                         |
+| `ScaleDeployment(name, ns, replicas)`       | `GetScale` → mutate `spec.replicas` → `UpdateScale`                         |
+| `AnnotateDeployment(name, ns, key, value)`  | `Get` → add to `annotations` map → `Update`                                 |
+| `RemoveDeploymentAnnotation(name, ns, key)` | `Get` → delete from `annotations` map → `Update`                            |
+| `CordonNode(name)`                          | `Get` → `spec.unschedulable = true` → `Update`                              |
+| `ListPodsOnNode(node)`                      | `fieldSelector: spec.nodeName=<node>`                                       |
+| `GetPodMetrics(ns, pod)`                    | Raw REST call to `/apis/metrics.k8s.io/v1beta1/namespaces/{ns}/pods/{name}` |
+| `GetPodEvents(ns, pod)`                     | `fieldSelector: involvedObject.name=<pod>`                                  |
 
 **Why raw REST for Metrics Server:** The Metrics Server is an aggregated API server (non-standard API group not included in the generated client-go typed clients). The cleanest approach is a raw REST call using the existing kubeconfig credentials, parsing the JSON response manually. This avoids importing `k8s.io/metrics` as an additional dependency.
 
@@ -962,11 +950,11 @@ func New(dsn string) (*Store, error) {
 
 #### Queries (`internal/store/queries.go`)
 
-**SeedDefaults** — runs only if the schedules table is empty. Seeds:
-1. "Weekday Sleep" — `scale_down`, `0 20 * * 1-5`, UTC, plan mode
-2. "Weekday Wake" — `scale_up`, `0 7 * * 1-5`, UTC, plan mode
-3. "Weekend Sleep" — `scale_down`, `0 20 * * 6,0`, UTC, plan mode
-4. "Weekend Wake" — `scale_up`, `0 7 * * 6,0`, UTC, plan mode
+**SeedDefaults** — runs only if the schedules table is empty. Seeds four schedules, all in plan mode and disabled, all using `Europe/Budapest` timezone:
+1. "Weekday Sleep" — `scale_down`, `5 19 * * 1-5` (Mon–Fri 19:05)
+2. "Weekday Wake" — `scale_up`, `0 7 * * 1-5` (Mon–Fri 07:00)
+3. "Weekend Sleep" — `scale_down`, `0 0 * * 6,0` (Sat–Sun 00:00)
+4. "Weekend Wake" — `scale_up`, `0 7 * * 1` (Mon 07:00)
 
 And one Guardrails row with sensible defaults:
 - `SkipNamespaces`: `kube-system,kube-public,kube-node-lease,kube-phoenix`
@@ -1089,17 +1077,17 @@ This tight coupling between frontend and backend builds is managed by the Docker
 
 **Color palette (mode-aware values):**
 
-| Token | Dark | Light | Usage |
-|---|---|---|---|
-| primary.main | #7C3AED | #6D28D9 | Active nav items, buttons, accents |
-| primary.light | #9D5FF5 | #7C3AED | Hover states |
-| primary.dark | #5B21B6 | #5B21B6 | Pressed states |
-| background.default | #0F0F13 | #F5F5F7 | Page background, terminal panes |
-| background.paper | #1A1A24 | #FFFFFF | Card, drawer, dialog backgrounds |
-| success.main | #22C55E | #22C55E | Success chips, status indicators |
-| warning.main | #F59E0B | #F59E0B | Apply mode indicators, wake icons |
-| error.main | #EF4444 | #EF4444 | Error chips, delete actions |
-| info.main | #3B82F6 | #3B82F6 | Running status chips |
+| Token              | Dark    | Light   | Usage                                |
+| :----------------- | :------ | :------ | :----------------------------------- |
+| primary.main       | #7C3AED | #6D28D9 | Active nav items, buttons, accents   |
+| primary.light      | #9D5FF5 | #7C3AED | Hover states                         |
+| primary.dark       | #5B21B6 | #5B21B6 | Pressed states                       |
+| background.default | #0F0F13 | #F5F5F7 | Page background, terminal panes      |
+| background.paper   | #1A1A24 | #FFFFFF | Card, drawer, dialog backgrounds     |
+| success.main       | #22C55E | #22C55E | Success chips, status indicators     |
+| warning.main       | #F59E0B | #F59E0B | Apply mode indicators, wake icons    |
+| error.main         | #EF4444 | #EF4444 | Error chips, delete actions          |
+| info.main          | #3B82F6 | #3B82F6 | Running status chips                 |
 
 The `divider` token is computed from the mode: `rgba(255,255,255,0.07)` in dark, `rgba(0,0,0,0.09)` in light. All component borders use this token — **never hardcoded RGBA**.
 
@@ -1237,15 +1225,15 @@ layout.tsx (Inter font, HTML skeleton)
 
 **Page components:**
 
-| Route | Page Component | Purpose |
-|---|---|---|
-| `/` | `page.tsx` | Redirect to `/overview/` |
-| `/overview/` | `OverviewPage` | Dashboard with status cards and activity feed |
-| `/cluster/` | `ClusterPage` | Workloads table + Nodes table with drawers |
-| `/guardrails/` | `GuardrailsPage` | Exclusion list form |
-| `/schedules/` | `SchedulesPage` | Schedule cards + create/edit dialog |
-| `/history/` | `HistoryPage` | Execution table + log drawer |
-| `/settings/` | `SettingsPage` | DB reset panel |
+| Route         | Page Component  | Purpose                                       |
+| :------------ | :-------------- | :-------------------------------------------- |
+| `/`           | `page.tsx`      | Redirect to `/overview/`                      |
+| `/overview/`  | `OverviewPage`  | Dashboard with status cards and activity feed |
+| `/cluster/`   | `ClusterPage`   | Workloads table + Nodes table with drawers    |
+| `/guardrails/` | `GuardrailsPage` | Exclusion list form                          |
+| `/schedules/` | `SchedulesPage` | Schedule cards + create/edit dialog           |
+| `/history/`   | `HistoryPage`   | Execution table + log drawer                  |
+| `/settings/`  | `SettingsPage`  | DB reset panel                                |
 
 **Key components:**
 
@@ -1300,13 +1288,13 @@ const queryClient = new QueryClient({
 
 **Per-query refetchInterval and staleTime overrides:**
 
-| Query key | staleTime | refetchInterval | Reason |
-|---|---|---|---|
-| `['overview']` | 25s | 30s (fallback) | Primary dashboard card — fed by SSE stream, polling is fallback only |
-| `['executions', 'feed']` | 14s | 15s | Activity feed needs to be timely |
-| `['schedules']` | 60s | 60s | Schedules rarely change; used only by trigger buttons on Overview |
-| `['guardrails']` | — | — | Only refetch on mutation |
-| `['executions', id, 'logs']` | — | — | Uses WebSocket instead |
+| Query key                    | staleTime | refetchInterval | Reason                                                               |
+| :--------------------------- | :-------- | :-------------- | :------------------------------------------------------------------- |
+| `['overview']`               | 25s       | 30s (fallback)  | Primary dashboard card — fed by SSE stream, polling is fallback only |
+| `['executions', 'feed']`     | 14s       | 15s             | Activity feed needs to be timely                                     |
+| `['schedules']`              | 60s       | 60s             | Schedules rarely change; used only by trigger buttons on Overview    |
+| `['guardrails']`             | —         | —               | Only refetch on mutation                                             |
+| `['executions', id, 'logs']` | —         | —               | Uses WebSocket instead                                               |
 
 The `['overview']` query is primarily kept fresh by the SSE stream (`/api/cluster/stream`) via `queryClient.setQueryData`. The `refetchInterval: 30_000` acts as a reconnect fallback if the SSE connection drops. With `staleTime: 25_000`, navigating away from and back to the Overview page renders the cached data instantly without a loading skeleton.
 
@@ -1670,20 +1658,18 @@ helm/kube-phoenix/
 
 The application requires cluster-wide (not namespaced) RBAC because it manages resources across all namespaces:
 
-| Resource | Verbs | Reason |
-|---|---|---|
-| `nodes` | get, list, watch, patch, update, delete | Read node state, cordon, delete |
-| `pods` | get, list, watch | Read pods for drain decisions |
-| `pods/eviction` | create | Evict pods during drain |
-| `deployments` | get, list, watch, update, patch | Read replicas, scale, annotate |
-| `statefulsets` | get, list, watch, update, patch | Same as deployments |
-| `deployments/scale` | get, update | Read/write scale subresource |
-| `statefulsets/scale` | get, update | Same |
-| `replicasets` | get, list | Owner chain resolution for pod display |
-| `namespaces` | list | Namespace listing for UI |
-| `events` | get, list | Pod events for detail drawer |
-| `metrics.k8s.io/pods` | get, list | Live CPU/memory usage in node and workload pod lists |
-| `metrics.k8s.io/nodes` | get, list | Reserved for future node-level metrics |
+| Resource             | Verbs                                    | Reason                                  |
+| :------------------- | :--------------------------------------- | :-------------------------------------- |
+| `nodes`              | get, list, watch, patch, update, delete  | Read node state, cordon, delete         |
+| `pods`               | get, list, watch                         | Read pods for drain decisions           |
+| `pods/eviction`      | create                                   | Evict pods during drain                 |
+| `deployments`        | get, list, watch, update, patch          | Read replicas, scale, annotate          |
+| `statefulsets`       | get, list, watch, update, patch          | Same as deployments                     |
+| `deployments/scale`  | get, update                              | Read/write scale subresource            |
+| `statefulsets/scale` | get, update                              | Same                                    |
+| `replicasets`        | get, list                                | Owner chain resolution for pod display  |
+| `namespaces`         | list                                     | Namespace listing for UI                |
+| `events`             | get, list                                | Pod events for detail drawer            |
 
 ### Deployment manifest
 
@@ -1732,15 +1718,15 @@ The distroless base image has a read-only filesystem. The `/tmp` emptyDir provid
 
 ### Helm helpers (`_helpers.tpl`)
 
-| Helper | Returns |
-|---|---|
-| `kube-phoenix.fullname` | `Release.Name-Chart.Name` (max 63 chars) |
-| `kube-phoenix.namespace` | `Values.namespace` or `Release.Namespace` |
-| `kube-phoenix.serviceAccountName` | Configurable SA name |
-| `kube-phoenix.secretName` | Configurable secret name |
-| `kube-phoenix.postgresqlHost` | Computed from values |
-| `kube-phoenix.databaseUrl` | Constructed DSN if in-cluster PG enabled |
-| `kube-phoenix.labels` | Standard Helm labels block |
+| Helper                             | Returns                                    |
+| :--------------------------------- | :----------------------------------------- |
+| `kube-phoenix.fullname`            | `Release.Name-Chart.Name` (max 63 chars)   |
+| `kube-phoenix.namespace`           | `Values.namespace` or `Release.Namespace`  |
+| `kube-phoenix.serviceAccountName`  | Configurable SA name                       |
+| `kube-phoenix.secretName`          | Configurable secret name                   |
+| `kube-phoenix.postgresqlHost`      | Computed from values                       |
+| `kube-phoenix.databaseUrl`         | Constructed DSN if in-cluster PG enabled   |
+| `kube-phoenix.labels`              | Standard Helm labels block                 |
 
 ### In-cluster PostgreSQL (`postgresql.yaml`)
 
@@ -1778,21 +1764,21 @@ master  (protected — always deployable)
 
 **Conventional commit → version bump:**
 
-| Prefix | Bump |
-|---|---|
-| `feat:` | minor |
-| `fix:`, `perf:` | patch |
-| `feat!:` / `BREAKING CHANGE:` | major |
-| `docs:`, `ci:`, `chore:`, `refactor:` | none |
+| Prefix                                | Bump  |
+| :------------------------------------ | :---- |
+| `feat:`                               | minor |
+| `fix:`, `perf:`                       | patch |
+| `feat!:` / `BREAKING CHANGE:`         | major |
+| `docs:`, `ci:`, `chore:`, `refactor:` | none  |
 
 ### Design principles
 
 Two workflows with distinct responsibilities:
 
-| Workflow | Trigger | Responsibility |
-|---|---|---|
-| `ci.yml` | every push to `master` + PR | Validate — fast feedback, no artifacts produced |
-| `release-please.yml` | push to `master` | Ship — Docker image, Helm chart, GitHub Release |
+| Workflow              | Trigger                     | Responsibility                                   |
+| :-------------------- | :-------------------------- | :----------------------------------------------- |
+| `ci.yml`              | every push to `master` + PR | Validate — fast feedback, no artifacts produced   |
+| `release-please.yml`  | push to `master`            | Ship — Docker image, Helm chart, GitHub Release   |
 
 Docker builds only happen on release. CI never pushes images. This keeps the registry clean and prevents every commit from producing a deployable artifact.
 
@@ -1862,12 +1848,12 @@ Triggered on: `push` to `master`.
 
 **Conventional commit → version bump mapping:**
 
-| Commit prefix | Version bump |
-|---|---|
-| `feat:` | minor (`0.1.x` → `0.2.0`) |
-| `fix:`, `perf:` | patch (`0.1.x` → `0.1.x+1`) |
-| `feat!:` or `BREAKING CHANGE:` footer | major |
-| `docs:`, `ci:`, `chore:`, `refactor:` | no bump |
+| Commit prefix                          | Version bump                  |
+| :------------------------------------- | :---------------------------- |
+| `feat:`                                | minor (`0.1.x` → `0.2.0`)    |
+| `fix:`, `perf:`                        | patch (`0.1.x` → `0.1.x+1`)  |
+| `feat!:` or `BREAKING CHANGE:` footer  | major                         |
+| `docs:`, `ci:`, `chore:`, `refactor:`  | no bump                       |
 
 **Job: docker** (only when `release_created == true`)
 ```
@@ -1930,14 +1916,14 @@ Dependabot PRs go through the same CI pipeline as any other PR — secret scan, 
 
 ### Prerequisites
 
-| Tool | Version | Notes |
-|---|---|---|
-| Node.js | 22.x | Required for frontend |
-| Go | 1.25+ | Required for backend |
-| Docker | Latest | For container builds |
-| kubectl | Latest | For k8s interaction |
-| helm | 4.x | For Helm operations |
-| PostgreSQL | 15+ | Local database |
+| Tool       | Version | Notes                  |
+| :--------- | :------ | :--------------------- |
+| Node.js    | 22.x    | Required for frontend  |
+| Go         | 1.25+   | Required for backend   |
+| Docker     | Latest  | For container builds   |
+| kubectl    | Latest  | For k8s interaction    |
+| helm       | 4.x     | For Helm operations    |
+| PostgreSQL | 15+     | Local database         |
 
 > **Note:** Go is not installed on the project maintainer's machine at the time of writing. Backend changes must be built in CI or via Docker.
 
