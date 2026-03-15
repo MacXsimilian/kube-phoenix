@@ -53,10 +53,7 @@ export default function ScheduleCard({
   // Optimistic enabled state — flips immediately on toggle, reverts on error
   const [localEnabled, setLocalEnabled] = useState(schedule.enabled)
   useEffect(() => {
-    if (!toggleEnabled.isPending) {
-      setLocalEnabled(schedule.enabled)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setLocalEnabled(schedule.enabled)
   }, [schedule.enabled])
 
   useEffect(() => {
@@ -66,9 +63,9 @@ export default function ScheduleCard({
   }, [])
 
   const toggleEnabled = useMutation({
-    mutationFn: () => updateSchedule(schedule.id, { enabled: !localEnabled }),
-    onMutate: () => {
-      setLocalEnabled((v) => !v)
+    mutationFn: (newEnabled: boolean) => updateSchedule(schedule.id, { enabled: newEnabled }),
+    onMutate: (newEnabled) => {
+      setLocalEnabled(newEnabled)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] })
@@ -134,7 +131,7 @@ export default function ScheduleCard({
         {/* Enable toggle — optimistic, disabled while pending */}
         <Switch
           checked={localEnabled}
-          onChange={() => toggleEnabled.mutate()}
+          onChange={() => toggleEnabled.mutate(!localEnabled)}
           disabled={toggleEnabled.isPending}
           color="primary"
           size="small"
