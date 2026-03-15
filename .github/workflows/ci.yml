@@ -96,6 +96,20 @@ jobs:
 
       - run: helm lint helm/kube-phoenix
 
+  # ── Go Report Card refresh ───────────────────────────────────────────────────
+  goreportcard:
+    name: Refresh Go Report Card
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [backend]
+    permissions:
+      contents: read
+    steps:
+      - name: Trigger rescan
+        run: |
+          curl -s -X POST https://goreportcard.com/checks \
+            -d "repo=github.com/macxsimilian/kube-phoenix/backend"
+
   # ── Secret scanning ──────────────────────────────────────────────────────────
   secrets:
     name: Secret scan
