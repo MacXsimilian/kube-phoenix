@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import Drawer from '@mui/material/Drawer'
@@ -10,6 +11,7 @@ import ListItemText from '@mui/material/ListItemText'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
+import AboutModal from './AboutModal'
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
 import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined'
 import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
@@ -37,11 +39,24 @@ interface Props {
 export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
   const pathname = usePathname()
   const { logout } = useAuth()
+  const [aboutOpen, setAboutOpen] = useState(false)
 
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Logo */}
-      <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+      {/* Logo — click to open About */}
+      <Box
+        onClick={() => setAboutOpen(true)}
+        sx={{
+          p: 2.5,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          cursor: 'pointer',
+          borderRadius: 2,
+          mx: 0.5,
+          '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
+        }}
+      >
         <Typography sx={{ fontSize: 22, lineHeight: 1, userSelect: 'none' }}>🐦‍🔥</Typography>
         <Typography variant="subtitle1" fontWeight={700} letterSpacing={-0.5}>
           kube-phoenix
@@ -131,6 +146,8 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
       >
         {content}
       </Drawer>
+
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </>
   )
 }
