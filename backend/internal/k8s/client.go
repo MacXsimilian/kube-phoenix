@@ -343,6 +343,53 @@ type ContainerMetrics struct {
 	MemBytes  int64
 }
 
+// GetAllPodMetrics fetches cluster-wide pod metrics from the Metrics Server.
+// Returns a map keyed by "namespace/podName" with the summed CPU+mem across all containers.
+// Returns an empty map (no error) when Metrics Server is unavailable.
+func (c *Client) GetAllPodMetrics(ctx context.Context) (map[string]ContainerMetrics, error) {
+	data, err := c.cs.RESTClient().
+		Get().
+		AbsPath("/apis/metrics.k8s.io/v1beta1/pods").
+		DoRaw(ctx)
+	if err != nil {
+		return map[string]ContainerMetrics{}, nil //nolint:nilerr
+	}
+
+	var resp struct {
+		Items []struct {
+			Metadata struct {
+				Name      string `json:"name"`
+				Namespace string `json:"namespace"`
+			} `json:"metadata"`
+			Containers []struct {
+				Usage struct {
+					CPU    string `json:"cpu"`
+					Memory string `json:"memory"`
+				} `json:"usage"`
+			} `json:"containers"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return map[string]ContainerMetrics{}, nil //nolint:nilerr
+	}
+
+	result := make(map[string]ContainerMetrics, len(resp.Items))
+	for _, item := range resp.Items {
+		var totalCPU, totalMem int64
+		for _, c := range item.Containers {
+			if q, err := resource.ParseQuantity(c.Usage.CPU); err == nil {
+				totalCPU += q.MilliValue()
+			}
+			if q, err := resource.ParseQuantity(c.Usage.Memory); err == nil {
+				totalMem += q.Value()
+			}
+		}
+		key := item.Metadata.Namespace + "/" + item.Metadata.Name
+		result[key] = ContainerMetrics{CPUMillis: totalCPU, MemBytes: totalMem}
+	}
+	return result, nil
+}
+
 // GetPodMetrics queries the Metrics Server API for current pod resource usage.
 // Returns an empty map (no error) when Metrics Server is unavailable.
 func (c *Client) GetPodMetrics(ctx context.Context, namespace, name string) (map[string]ContainerMetrics, error) {
