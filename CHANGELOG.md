@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+- **cluster:** show live CPU/memory usage per pod in node and workload detail drawers (via `GetAllPodMetrics` cluster-wide Metrics Server call)
+
+### Bug Fixes
+
+- **metrics:** `GetAllPodMetrics` now logs a WARN with the actual HTTP status code on failure instead of silently swallowing errors as `"unknown"`
+- **rbac:** add `metrics.k8s.io` get/list to Helm ClusterRole — required for live pod usage when using the dedicated kube-phoenix SA
+
 ## [0.1.56](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.55...v0.1.56) (2026-03-15)
 
 
