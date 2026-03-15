@@ -343,14 +343,14 @@ Cards within each section (Sleep / Wake) can be reordered by dragging the handle
 
 ### Default schedules
 
-Four schedules are seeded on first startup, all in **plan mode**. Switch to `apply` when you are confident the guardrails and namespace filters are correct.
+Four schedules are seeded on first startup, all in **plan mode** and **disabled**. Enable them and switch to `apply` when you are confident in the guardrails and namespace filters.
 
-| Name | Cron | Type |
-|---|---|---|
-| Weekday Scale Down | `0 0 * * 1-5` | `scale_down` |
-| Weekday Scale Up | `0 8 * * 1-5` | `scale_up` |
-| Weekend Scale Down | `0 0 * * 0,6` | `scale_down` |
-| Weekend Scale Up | `0 8 * * 0,6` | `scale_up` |
+| Name | Cron | Timezone | Type |
+|---|---|---|---|
+| Weekday Sleep | `5 19 * * 1-5` | Europe/Budapest | `scale_down` |
+| Weekday Wake | `0 7 * * 1-5` | Europe/Budapest | `scale_up` |
+| Weekend Sleep | `0 0 * * 6,0` | Europe/Budapest | `scale_down` |
+| Weekend Wake | `0 7 * * 1` | Europe/Budapest | `scale_up` |
 
 ---
 
@@ -373,6 +373,7 @@ WebSocket connections authenticate via `?token=<base64(user:pass)>`.
 | `GET` | `/api/executions/:id` | Get execution |
 | `GET` | `/api/executions/:id/logs` | Get all log lines for an execution |
 | `GET` | `/ws/executions/:id/logs` | WebSocket — live log streaming |
+| `GET` | `/api/cluster/stream` | SSE stream — pushed overview updates every ~10 s |
 | `GET` | `/api/cluster/workloads` | List Deployments and StatefulSets |
 | `GET` | `/api/cluster/nodes` | List nodes with protection status |
 | `GET` | `/api/cluster/nodes/:name/pods` | List non-DaemonSet pods on a node |
@@ -442,7 +443,7 @@ release-please.yml
 Images published on release:
 
 ```
-ghcr.io/macxsimilian/kube-phoenix:0.1.36
+ghcr.io/macxsimilian/kube-phoenix:<semver>
 ghcr.io/macxsimilian/kube-phoenix:latest
 ```
 
