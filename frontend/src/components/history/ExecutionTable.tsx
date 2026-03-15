@@ -128,6 +128,16 @@ export default function ExecutionTable({
     }
   }, [data, initialExecId, autoOpened, onSelect])
 
+  if (isError && !data?.items?.length) {
+    return (
+      <Paper>
+        <Alert severity="warning" sx={{ mx: 2, mt: 2, mb: 2 }}>
+          Could not load executions — showing last known data.
+        </Alert>
+      </Paper>
+    )
+  }
+
   return (
     <Paper>
       {isError && (

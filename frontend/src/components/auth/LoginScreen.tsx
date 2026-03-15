@@ -23,8 +23,13 @@ export default function LoginScreen() {
     setLoading(true)
     try {
       await login(username, password)
-    } catch {
-      setError('Invalid credentials. Please try again.')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : ''
+      if (msg === 'Invalid credentials' || msg.includes('401')) {
+        setError('Invalid credentials. Please try again.')
+      } else {
+        setError('Could not reach the server. Please try again.')
+      }
     } finally {
       setLoading(false)
     }

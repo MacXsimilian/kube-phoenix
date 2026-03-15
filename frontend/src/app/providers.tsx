@@ -4,6 +4,8 @@ import { useMemo } from 'react'
 import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { QueryClientProvider } from '@tanstack/react-query'
+import Box from '@mui/material/Box'
+import Alert from '@mui/material/Alert'
 import { createAppTheme } from '@/theme/theme'
 import { queryClient } from '@/lib/queryClient'
 import AppShell from '@/components/layout/AppShell'
@@ -12,8 +14,15 @@ import LoginScreen from '@/components/auth/LoginScreen'
 import { ThemeModeProvider, useThemeMode } from '@/lib/themeMode'
 
 function AppContent({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, checking } = useAuth()
+  const { isAuthenticated, checking, backendError } = useAuth()
   if (checking) return null
+  if (backendError) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>
+        <Alert severity="error">Backend unavailable — please check the server and try again.</Alert>
+      </Box>
+    )
+  }
   if (!isAuthenticated) return <LoginScreen />
   return <AppShell>{children}</AppShell>
 }
