@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.59](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.58...v0.1.59) (2026-03-15)
+
+
+### Bug Fixes
+
+* **metrics:** log HTTP status code on metrics API failure ([90f840e](https://github.com/MacXsimilian/kube-phoenix/commit/90f840e0853289ff0ad5766603d6e3d9bf6c8ffa))
+* **metrics:** log HTTP status code on metrics API failure ([df29f63](https://github.com/MacXsimilian/kube-phoenix/commit/df29f63880d18fda8720839a27ff1eaaa0db4b06))
+
 ## [0.1.58](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.57...v0.1.58) (2026-03-15)
 
 
