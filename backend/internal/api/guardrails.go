@@ -24,7 +24,7 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updates := map[string]interface{}{}
-	for _, f := range []string{"skip_namespaces", "skip_ns_node", "skip_node_labels", "skip_node_taints"} {
+	for _, f := range []string{"system_namespaces", "skip_namespaces", "skip_ns_node", "skip_node_labels", "skip_node_taints"} {
 		if v, ok := body[f]; ok {
 			updates[f] = v
 		}
