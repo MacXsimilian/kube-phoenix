@@ -286,35 +286,35 @@ targetGroupBinding:
 
 ### Helm values reference
 
-| Value | Default | Description |
-|---|---|---|
-| `image.repository` | `ghcr.io/macxsimilian/kube-phoenix` | Image repository |
-| `image.tag` | `latest` | Image tag to deploy |
-| `replicaCount` | `1` | Number of app replicas |
-| `postgresql.enabled` | `true` | Deploy in-cluster PostgreSQL StatefulSet |
-| `postgresql.auth.username` | `kube_phoenix` | PostgreSQL username |
-| `postgresql.auth.password` | `kube_phoenix` | PostgreSQL password — **change in production** |
-| `postgresql.auth.database` | `kube_phoenix` | PostgreSQL database name |
-| `postgresql.persistence.enabled` | `true` | Persist PostgreSQL data via a PVC |
-| `postgresql.persistence.size` | `1Gi` | PVC size |
-| `postgresql.persistence.storageClass` | `""` | StorageClass — `""` uses the cluster default |
-| `externalDatabase.url` | `""` | Full DSN when `postgresql.enabled=false` |
-| `secret.basicAuthUser` | `admin` | Basic Auth username |
-| `secret.basicAuthPassword` | `kube-phoenix` | Basic Auth password — **change in production** |
-| `secret.existingSecret` | `""` | Pre-existing Secret containing `DATABASE_URL`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD` |
-| `ingress.enabled` | `false` | Enable Kubernetes Ingress |
-| `ingress.className` | `""` | Ingress class name |
-| `ingress.annotations` | `{}` | Ingress annotations |
-| `ingress.host` | `""` | Hostname to expose the app on |
-| `ingress.tls` | `[]` | TLS configuration |
-| `targetGroupBinding.enabled` | `false` | Enable AWS TargetGroupBinding |
-| `targetGroupBinding.targetGroupARN` | `""` | ARN of the pre-created target group |
-| `targetGroupBinding.targetType` | `ip` | `ip` or `instance` |
-| `targetGroupBinding.vpcID` | `""` | VPC ID — only needed if the controller cannot auto-detect it |
-| `resources.requests.cpu` | `50m` | CPU request |
-| `resources.requests.memory` | `64Mi` | Memory request |
-| `resources.limits.cpu` | `200m` | CPU limit |
-| `resources.limits.memory` | `256Mi` | Memory limit |
+| Value                                  | Default                              | Description                                                                                  |
+| :------------------------------------- | :----------------------------------- | :------------------------------------------------------------------------------------------- |
+| `image.repository`                     | `ghcr.io/macxsimilian/kube-phoenix`  | Image repository                                                                             |
+| `image.tag`                            | `latest`                             | Image tag to deploy                                                                          |
+| `replicaCount`                         | `1`                                  | Number of app replicas                                                                       |
+| `postgresql.enabled`                   | `true`                               | Deploy in-cluster PostgreSQL StatefulSet                                                     |
+| `postgresql.auth.username`             | `kube_phoenix`                       | PostgreSQL username                                                                          |
+| `postgresql.auth.password`             | `kube_phoenix`                       | PostgreSQL password — **change in production**                                               |
+| `postgresql.auth.database`             | `kube_phoenix`                       | PostgreSQL database name                                                                     |
+| `postgresql.persistence.enabled`       | `true`                               | Persist PostgreSQL data via a PVC                                                            |
+| `postgresql.persistence.size`          | `1Gi`                                | PVC size                                                                                     |
+| `postgresql.persistence.storageClass`  | `""`                                 | StorageClass — `""` uses the cluster default                                                 |
+| `externalDatabase.url`                 | `""`                                 | Full DSN when `postgresql.enabled=false`                                                     |
+| `secret.basicAuthUser`                 | `admin`                              | Basic Auth username                                                                          |
+| `secret.basicAuthPassword`             | `kube-phoenix`                       | Basic Auth password — **change in production**                                               |
+| `secret.existingSecret`                | `""`                                 | Pre-existing Secret containing `DATABASE_URL`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD`     |
+| `ingress.enabled`                      | `false`                              | Enable Kubernetes Ingress                                                                    |
+| `ingress.className`                    | `""`                                 | Ingress class name                                                                           |
+| `ingress.annotations`                  | `{}`                                 | Ingress annotations                                                                          |
+| `ingress.host`                         | `""`                                 | Hostname to expose the app on                                                                |
+| `ingress.tls`                          | `[]`                                 | TLS configuration                                                                            |
+| `targetGroupBinding.enabled`           | `false`                              | Enable AWS TargetGroupBinding                                                                |
+| `targetGroupBinding.targetGroupARN`    | `""`                                 | ARN of the pre-created target group                                                          |
+| `targetGroupBinding.targetType`        | `ip`                                 | `ip` or `instance`                                                                           |
+| `targetGroupBinding.vpcID`             | `""`                                 | VPC ID — only needed if the controller cannot auto-detect it                                 |
+| `resources.requests.cpu`               | `50m`                                | CPU request                                                                                  |
+| `resources.requests.memory`            | `64Mi`                               | Memory request                                                                               |
+| `resources.limits.cpu`                 | `200m`                               | CPU limit                                                                                    |
+| `resources.limits.memory`              | `256Mi`                              | Memory limit                                                                                 |
 
 Full reference: [helm/kube-phoenix/values.yaml](helm/kube-phoenix/values.yaml)
 
@@ -324,12 +324,12 @@ Full reference: [helm/kube-phoenix/values.yaml](helm/kube-phoenix/values.yaml)
 
 ### Environment variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL DSN — e.g. `host=localhost user=kube_phoenix password=kube_phoenix dbname=kube_phoenix port=5432 sslmode=disable` |
-| `BASIC_AUTH_USER` | No | HTTP Basic Auth username. Unset = auth disabled (dev mode). |
-| `BASIC_AUTH_PASSWORD` | No | HTTP Basic Auth password. |
-| `CORS_ALLOWED_ORIGIN` | No | Allowed CORS origin (e.g. `https://kube-phoenix.example.com`). Unset = no cross-origin requests permitted. Useful when the frontend is served from a different origin during development. |
+| Variable              | Required | Description                                                                                                                                                                              |
+| :-------------------- | :------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`        | Yes      | PostgreSQL DSN — e.g. `host=localhost user=kube_phoenix password=kube_phoenix dbname=kube_phoenix port=5432 sslmode=disable`                                                             |
+| `BASIC_AUTH_USER`     | No       | HTTP Basic Auth username. Unset = auth disabled (dev mode).                                                                                                                              |
+| `BASIC_AUTH_PASSWORD` | No       | HTTP Basic Auth password.                                                                                                                                                                |
+| `CORS_ALLOWED_ORIGIN` | No       | Allowed CORS origin (e.g. `https://kube-phoenix.example.com`). Unset = no cross-origin requests permitted. Useful when the frontend is served from a different origin during development. |
 
 ### Authentication
 
@@ -347,16 +347,16 @@ Each schedule defines when the scaler fires, how it fires, and which namespaces 
 
 ### Schedule fields
 
-| Field | Description |
-|---|---|
-| **Name** | Human-readable label |
-| **Type** | `scale_down` (sleep) or `scale_up` (wake) — immutable after creation |
-| **Cron expression** | Standard 5-field cron (`minute hour dom month dow`) |
-| **Timezone** | IANA timezone — e.g. `Europe/Budapest`. Defaults to `UTC`. |
-| **Mode** | `plan` — logs what would happen, no changes; `apply` — executes for real |
-| **Namespace filter** | Comma-separated namespace names to target. Leave empty to target all namespaces. |
-| **Enabled** | Whether the schedule is active. Disabled schedules are skipped by the cron engine. |
-| **Position** | Display order within each type group. Set automatically; updated via drag-and-drop. |
+| Field                | Description                                                                        |
+| :------------------- | :--------------------------------------------------------------------------------- |
+| **Name**             | Human-readable label                                                               |
+| **Type**             | `scale_down` (sleep) or `scale_up` (wake) — immutable after creation              |
+| **Cron expression**  | Standard 5-field cron (`minute hour dom month dow`)                                |
+| **Timezone**         | IANA timezone — e.g. `Europe/Budapest`. Defaults to `UTC`.                         |
+| **Mode**             | `plan` — logs what would happen, no changes; `apply` — executes for real          |
+| **Namespace filter** | Comma-separated namespace names to target. Leave empty to target all namespaces.   |
+| **Enabled**          | Whether the schedule is active. Disabled schedules are skipped by the cron engine. |
+| **Position**         | Display order within each type group. Set automatically; updated via drag-and-drop. |
 
 The toggle switch on each schedule card persists the change immediately — no need to open the edit dialog. The switch shows an optimistic update while the request is in flight and reverts automatically on failure.
 
@@ -366,12 +366,12 @@ Cards within each section (Sleep / Wake) can be reordered by dragging the handle
 
 Four schedules are seeded on first startup, all in **plan mode** and **disabled**. Enable and switch to `apply` when you are confident the guardrails and namespace filters are correct. All default schedules use the `Europe/Budapest` timezone — adjust to your own timezone after installation.
 
-| Name | Cron | Type | When (Europe/Budapest) |
-|---|---|---|---|
-| Weekday Sleep | `5 19 * * 1-5` | `scale_down` | Mon–Fri 19:05 |
-| Weekday Wake | `0 7 * * 1-5` | `scale_up` | Mon–Fri 07:00 |
-| Weekend Sleep | `0 0 * * 6,0` | `scale_down` | Sat–Sun 00:00 |
-| Weekend Wake | `0 7 * * 1` | `scale_up` | Mon 07:00 |
+| Name          | Cron            | Type         | When (Europe/Budapest) |
+| :------------ | :-------------- | :----------- | :--------------------- |
+| Weekday Sleep | `5 19 * * 1-5`  | `scale_down` | Mon–Fri 19:05          |
+| Weekday Wake  | `0 7 * * 1-5`   | `scale_up`   | Mon–Fri 07:00          |
+| Weekend Sleep | `0 0 * * 6,0`   | `scale_down` | Sat–Sun 00:00          |
+| Weekend Wake  | `0 7 * * 1`     | `scale_up`   | Mon 07:00              |
 
 ---
 
@@ -381,30 +381,30 @@ All `/api/*` and `/ws/*` endpoints require Basic Auth when configured. `/healthz
 
 WebSocket connections authenticate via `?token=<base64(user:pass)>`.
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/healthz` | Health check (DB ping) |
-| `GET` | `/api/schedules` | List all schedules ordered by position (includes `nextRun` per schedule) |
-| `POST` | `/api/schedules` | Create schedule |
-| `PUT` | `/api/schedules/reorder` | Reorder within a type — body: `{"type":"scale_down","ids":[3,1,2]}` |
-| `GET` | `/api/schedules/:id` | Get schedule |
-| `PUT` | `/api/schedules/:id` | Update schedule (`type` is immutable) |
-| `DELETE` | `/api/schedules/:id` | Delete schedule |
-| `GET` | `/api/executions` | List executions (filters: `schedule_id`, `status`, `page`, `page_size`) |
-| `GET` | `/api/executions/:id` | Get execution |
-| `GET` | `/api/executions/:id/logs` | Get all log lines for an execution |
-| `GET` | `/ws/executions/:id/logs` | WebSocket — live log streaming |
-| `GET` | `/api/overview` | Pre-aggregated dashboard summary (cache-backed) |
-| `GET` | `/api/cluster/stream` | SSE stream of overview updates (~10 s cadence) |
-| `GET` | `/api/cluster/workloads` | List Deployments and StatefulSets |
-| `GET` | `/api/cluster/nodes` | List nodes with protection status |
-| `GET` | `/api/cluster/nodes/:name/pods` | List non-DaemonSet pods on a node |
-| `GET` | `/api/cluster/pods/:namespace/:name` | Full pod detail — containers, conditions, events, labels, annotations |
-| `GET` | `/api/cluster/workloads/:namespace/:kind/:name/pods` | List pods belonging to a Deployment or StatefulSet |
-| `GET` | `/api/guardrails` | Get guardrails config |
-| `PUT` | `/api/guardrails` | Update guardrails |
-| `POST` | `/api/trigger` | Manually trigger a schedule — `{"scheduleId": 1, "mode": "plan"}` |
-| `POST` | `/api/admin/reset-db` | Reset database — streams NDJSON progress; body: `{"confirm":"RESET DATABASE"}` |
+| Method   | Path                                               | Description                                                                      |
+| :------- | :------------------------------------------------- | :------------------------------------------------------------------------------- |
+| `GET`    | `/healthz`                                         | Health check (DB ping)                                                           |
+| `GET`    | `/api/schedules`                                   | List all schedules ordered by position (includes `nextRun` per schedule)         |
+| `POST`   | `/api/schedules`                                   | Create schedule                                                                  |
+| `PUT`    | `/api/schedules/reorder`                           | Reorder within a type — body: `{"type":"scale_down","ids":[3,1,2]}`              |
+| `GET`    | `/api/schedules/:id`                               | Get schedule                                                                     |
+| `PUT`    | `/api/schedules/:id`                               | Update schedule (`type` is immutable)                                            |
+| `DELETE` | `/api/schedules/:id`                               | Delete schedule                                                                  |
+| `GET`    | `/api/executions`                                  | List executions (filters: `schedule_id`, `status`, `page`, `page_size`)          |
+| `GET`    | `/api/executions/:id`                              | Get execution                                                                    |
+| `GET`    | `/api/executions/:id/logs`                         | Get all log lines for an execution                                               |
+| `GET`    | `/ws/executions/:id/logs`                          | WebSocket — live log streaming                                                   |
+| `GET`    | `/api/overview`                                    | Pre-aggregated dashboard summary (cache-backed)                                  |
+| `GET`    | `/api/cluster/stream`                              | SSE stream of overview updates (~10 s cadence)                                   |
+| `GET`    | `/api/cluster/workloads`                           | List Deployments and StatefulSets                                                |
+| `GET`    | `/api/cluster/nodes`                               | List nodes with protection status                                                |
+| `GET`    | `/api/cluster/nodes/:name/pods`                    | List non-DaemonSet pods on a node                                                |
+| `GET`    | `/api/cluster/pods/:namespace/:name`               | Full pod detail — containers, conditions, events, labels, annotations            |
+| `GET`    | `/api/cluster/workloads/:namespace/:kind/:name/pods` | List pods belonging to a Deployment or StatefulSet                             |
+| `GET`    | `/api/guardrails`                                  | Get guardrails config                                                            |
+| `PUT`    | `/api/guardrails`                                  | Update guardrails                                                                |
+| `POST`   | `/api/trigger`                                     | Manually trigger a schedule — `{"scheduleId": 1, "mode": "plan"}`                |
+| `POST`   | `/api/admin/reset-db`                              | Reset database — streams NDJSON progress; body: `{"confirm":"RESET DATABASE"}`   |
 
 ---
 
@@ -432,12 +432,12 @@ ci.yml
 
 CI runs on every push to `master` and on all pull requests. Docker builds happen only on release — CI never pushes images.
 
-| Job | Trigger | What it does |
-|---|---|---|
-| **Frontend build** | push + PR | `npm install`, `npm audit`, `npm run build` |
-| **Backend build** | push + PR | `go vet`, `go test`, `go build`, `govulncheck`, golangci-lint + gosec |
-| **Helm lint** | push + PR | `helm lint helm/kube-phoenix` |
-| **Secret scan** | push + PR | TruffleHog scans the diff for verified leaked secrets |
+| Job                | Trigger   | What it does                                                        |
+| :----------------- | :-------- | :------------------------------------------------------------------ |
+| **Frontend build** | push + PR | `npm install`, `npm audit`, `npm run build`                         |
+| **Backend build**  | push + PR | `go vet`, `go test`, `go build`, `govulncheck`, golangci-lint + gosec |
+| **Helm lint**      | push + PR | `helm lint helm/kube-phoenix`                                       |
+| **Secret scan**    | push + PR | TruffleHog scans the diff for verified leaked secrets               |
 
 ### Release workflow
 
@@ -455,12 +455,12 @@ release-please.yml
   └── helm chart push → oci://ghcr.io/macxsimilian/helm
 ```
 
-| Job | Trigger | What it does |
-|---|---|---|
-| **release-please** | push to `master` | Opens/updates Release PR; on merge: creates tag + GitHub Release |
-| **Docker build & push** | release created | Builds and pushes to GHCR with semver and `latest` tags |
-| **Trivy scan** | after docker push | Fails on CRITICAL/HIGH unfixed CVEs |
-| **Helm push** | release created | Packages and pushes chart to GHCR OCI registry |
+| Job                     | Trigger           | What it does                                                    |
+| :---------------------- | :---------------- | :-------------------------------------------------------------- |
+| **release-please**      | push to `master`  | Opens/updates Release PR; on merge: creates tag + GitHub Release |
+| **Docker build & push** | release created   | Builds and pushes to GHCR with semver and `latest` tags         |
+| **Trivy scan**          | after docker push | Fails on CRITICAL/HIGH unfixed CVEs                             |
+| **Helm push**           | release created   | Packages and pushes chart to GHCR OCI registry                  |
 
 Images published on release:
 
@@ -486,16 +486,16 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide — local setup, branc
 
 **Quick reference — conventional commit prefixes:**
 
-| Prefix | Version bump | Use for |
-|---|---|---|
-| `feat:` | minor | new feature |
-| `fix:` | patch | bug fix |
-| `perf:` | patch | performance improvement |
-| `feat!:` / `BREAKING CHANGE:` | major | breaking API or behaviour change |
-| `docs:` | none | documentation only |
-| `ci:` | none | CI/CD changes |
-| `chore:` | none | maintenance, dependencies, config |
-| `refactor:` | none | code restructure, no behaviour change |
+| Prefix                        | Version bump | Use for                                |
+| :---------------------------- | :----------- | :------------------------------------- |
+| `feat:`                       | minor        | new feature                            |
+| `fix:`                        | patch        | bug fix                                |
+| `perf:`                       | patch        | performance improvement                |
+| `feat!:` / `BREAKING CHANGE:` | major        | breaking API or behaviour change       |
+| `docs:`                       | none         | documentation only                     |
+| `ci:`                         | none         | CI/CD changes                          |
+| `chore:`                      | none         | maintenance, dependencies, config      |
+| `refactor:`                   | none         | code restructure, no behaviour change  |
 
 ---
 
@@ -543,12 +543,12 @@ kube-phoenix/
 
 ## Tech stack
 
-| Layer | Technology |
-|---|---|
-| Backend | Go 1.25, chi v5.2, GORM v1.31, robfig/cron v3, client-go |
-| Frontend | Next.js 16, React 19, Material UI v7, TanStack Query v5 |
-| Database | PostgreSQL 16 |
-| Packaging | Helm 4, GHCR (OCI), GitHub Actions |
+| Layer     | Technology                                                |
+| :-------- | :-------------------------------------------------------- |
+| Backend   | Go 1.25, chi v5.2, GORM v1.31, robfig/cron v3, client-go |
+| Frontend  | Next.js 16, React 19, Material UI v7, TanStack Query v5   |
+| Database  | PostgreSQL 16                                             |
+| Packaging | Helm 4, GHCR (OCI), GitHub Actions                        |
 
 The Go backend embeds the Next.js static export via `//go:embed` — one binary, one container, no separate web server.
 
@@ -556,14 +556,14 @@ The Go backend embeds the Next.js static export via `//go:embed` — one binary,
 
 ## Roadmap
 
-| Item | Status | Notes |
-|---|---|---|
-| Keycloak / OIDC auth | Planned | Replace HTTP Basic Auth; retain WS token flow |
-| Slack / email notifications | Planned | Alert on scale failures and manual triggers |
-| Multi-cluster support | Planned | Switch between kubeconfig contexts in the UI |
-| OpenAPI spec | Planned | Swagger UI served at `/api/docs` |
-| GitLab CI pipeline | Planned | Mirror of the GitHub Actions workflow |
-| Emergency wake button | In progress | One-click full cluster wake bypassing schedule |
+| Item                        | Status      | Notes                                           |
+| :-------------------------- | :---------- | :---------------------------------------------- |
+| Keycloak / OIDC auth        | Planned     | Replace HTTP Basic Auth; retain WS token flow   |
+| Slack / email notifications | Planned     | Alert on scale failures and manual triggers     |
+| Multi-cluster support       | Planned     | Switch between kubeconfig contexts in the UI    |
+| OpenAPI spec                | Planned     | Swagger UI served at `/api/docs`                |
+| GitLab CI pipeline          | Planned     | Mirror of the GitHub Actions workflow           |
+| Emergency wake button       | In progress | One-click full cluster wake bypassing schedule  |
 
 ---
 
