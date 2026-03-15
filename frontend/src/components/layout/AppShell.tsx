@@ -8,11 +8,13 @@ import IconButton from '@mui/material/IconButton'
 import Typography from '@mui/material/Typography'
 import MenuIcon from '@mui/icons-material/Menu'
 import Sidebar from './Sidebar'
+import AboutModal from './AboutModal'
 
 export const DRAWER_WIDTH = 240
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -31,7 +33,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <IconButton edge="start" onClick={() => setMobileOpen(true)} sx={{ mr: 1 }} aria-label="Open navigation menu">
             <MenuIcon />
           </IconButton>
-          <Typography variant="subtitle1" fontWeight={700} letterSpacing={-0.5}>
+          <Typography
+            variant="subtitle1"
+            fontWeight={700}
+            letterSpacing={-0.5}
+            onClick={() => setAboutOpen(true)}
+            sx={{ cursor: 'pointer', '&:hover': { color: 'primary.light' } }}
+          >
             kube-phoenix
           </Typography>
         </Toolbar>
@@ -42,6 +50,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
       />
+
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
 
       <Box
         component="main"
