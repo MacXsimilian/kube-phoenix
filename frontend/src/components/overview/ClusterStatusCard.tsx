@@ -25,20 +25,11 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import Skeleton from '@mui/material/Skeleton'
 import { getWorkloads, getNodes, getSchedules, triggerRun, getExecution } from '@/lib/api'
 import type { Execution } from '@/lib/types'
+import { timeUntil } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
 import LogViewer from '@/components/history/LogViewer'
 
 type TriggerType = 'scale_down' | 'scale_up'
-
-function timeUntil(iso: string): string {
-  const diff = new Date(iso).getTime() - Date.now()
-  if (diff <= 0) return 'now'
-  const m = Math.floor(diff / 60000)
-  if (m < 60) return `in ${m}m`
-  const h = Math.floor(m / 60)
-  const rem = m % 60
-  return rem > 0 ? `in ${h}h ${rem}m` : `in ${h}h`
-}
 
 export default function ClusterStatusCard() {
   const qc = useQueryClient()
@@ -144,7 +135,15 @@ export default function ClusterStatusCard() {
             </Box>
           ) : null}
 
-          {!isLoading && (
+          {!isLoading && isError && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" fontWeight={700} color="text.secondary">
+                Status Unknown
+              </Typography>
+            </Box>
+          )}
+
+          {!isLoading && !isError && (
             <>
               {/* Status indicator */}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: sleepingByNs.length > 0 ? 1.5 : 3 }}>

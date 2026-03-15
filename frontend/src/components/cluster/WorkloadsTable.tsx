@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'next/navigation'
 import Paper from '@mui/material/Paper'
@@ -25,13 +25,9 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import Tooltip from '@mui/material/Tooltip'
 import { getWorkloads, getGuardrails } from '@/lib/api'
 import type { Workload } from '@/lib/types'
+import { sinceMs } from '@/lib/formatters'
+import { STATUS_COLORS } from '@/components/cluster/statusColors'
 import WorkloadDetailDrawer from './WorkloadDetailDrawer'
-
-const STATUS_COLORS: Record<Workload['status'], { bgcolor: string; color: string; label: string }> = {
-  running: { bgcolor: 'rgba(34,197,94,0.12)', color: '#22C55E', label: 'Running' },
-  sleeping: { bgcolor: 'rgba(245,158,11,0.12)', color: '#F59E0B', label: 'Sleeping' },
-  partial: { bgcolor: 'rgba(59,130,246,0.12)', color: '#3B82F6', label: 'Partial' },
-}
 
 export default function WorkloadsTable() {
   const searchParams = useSearchParams()
@@ -48,6 +44,12 @@ export default function WorkloadsTable() {
   const validStatuses = ['running', 'sleeping', 'partial']
   const initialStatus = searchParams.get('status') ?? 'all'
   const [statusFilter, setStatusFilter] = useState(validStatuses.includes(initialStatus) ? initialStatus : 'all')
+
+  useEffect(() => {
+    const v = searchParams.get('status') ?? 'all'
+    setStatusFilter(validStatuses.includes(v) ? v : 'all')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
   const [sortCol, setSortCol] = useState<'namespace' | 'name' | 'kind' | 'replicas' | 'status' | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [affectedOnly, setAffectedOnly] = useState(false)
@@ -61,13 +63,6 @@ export default function WorkloadsTable() {
       setSortCol(col)
       setSortDir('asc')
     }
-  }
-
-  function sinceMs(ms: number): string {
-    const s = Math.floor((Date.now() - ms) / 1000)
-    if (s < 10) return 'just now'
-    if (s < 60) return `${s}s ago`
-    return `${Math.floor(s / 60)}m ago`
   }
 
   const namespaces = useMemo(
