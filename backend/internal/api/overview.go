@@ -74,7 +74,9 @@ func (h *Handler) writeSSEOverview(w http.ResponseWriter, flusher http.Flusher) 
 	if err != nil {
 		return
 	}
-	fmt.Fprintf(w, "data: %s\n\n", data)
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+		return
+	}
 	flusher.Flush()
 }
 
