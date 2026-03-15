@@ -66,6 +66,7 @@ export const updateGuardrails = (data: Partial<Guardrails>): Promise<Guardrails>
   req<Guardrails>('/api/guardrails', {
     method: 'PUT',
     body: JSON.stringify({
+      system_namespaces: data.systemNamespaces,
       skip_namespaces: data.skipNamespaces,
       skip_ns_node: data.skipNsNode,
       skip_node_labels: data.skipNodeLabels,
