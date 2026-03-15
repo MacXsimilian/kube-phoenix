@@ -60,7 +60,8 @@ function EmptySlot({ label }: { label: string }) {
   return (
     <Box
       sx={{
-        border: '1px dashed rgba(255,255,255,0.12)',
+        border: '1px dashed',
+        borderColor: 'divider',
         borderRadius: 2,
         p: 3,
         textAlign: 'center',
@@ -171,7 +172,7 @@ export default function SchedulesPage() {
             size="small"
             startIcon={<AddIcon fontSize="small" />}
             variant="outlined"
-            sx={{ borderColor: 'rgba(255,255,255,0.15)' }}
+            sx={{ borderColor: 'divider' }}
             onClick={() => setDialog({ open: true, defaultType: 'scale_down' })}
           >
             Add
@@ -222,7 +223,7 @@ export default function SchedulesPage() {
             size="small"
             startIcon={<AddIcon fontSize="small" />}
             variant="outlined"
-            sx={{ borderColor: 'rgba(255,255,255,0.15)' }}
+            sx={{ borderColor: 'divider' }}
             onClick={() => setDialog({ open: true, defaultType: 'scale_up' })}
           >
             Add

@@ -24,7 +24,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         sx={{
           display: { md: 'none' },
           bgcolor: 'background.paper',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
           boxShadow: 'none',
           zIndex: (t) => t.zIndex.appBar,
         }}
