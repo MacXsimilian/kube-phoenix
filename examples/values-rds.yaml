@@ -1,0 +1,34 @@
+# Example: External RDS / Aurora PostgreSQL
+#
+# Use this when you want kube-phoenix to connect to an existing
+# PostgreSQL instance instead of the bundled in-cluster StatefulSet.
+#
+# Usage:
+#   helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
+#     --namespace kube-phoenix --create-namespace \
+#     -f examples/values-rds.yaml \
+#     --set externalDatabase.password=<your-db-password> \
+#     --set secret.basicAuthPassword=<your-ui-password>
+
+postgresql:
+  enabled: false   # disable the in-cluster StatefulSet
+
+externalDatabase:
+  host: "kube-phoenix.xxxxxx.eu-central-1.rds.amazonaws.com"
+  port: 5432
+  username: kube_phoenix
+  password: ""       # pass via --set or a pre-existing Secret
+  database: kube_phoenix
+  sslmode: require
+
+secret:
+  basicAuthUser: admin
+  basicAuthPassword: ""  # pass via --set or a pre-existing Secret
+
+# Optionally reference a pre-existing Secret instead of letting
+# the chart create one:
+#
+#   secret:
+#     existingSecret: kube-phoenix-credentials
+#
+# The Secret must contain keys: DATABASE_URL, BASIC_AUTH_USER, BASIC_AUTH_PASSWORD
