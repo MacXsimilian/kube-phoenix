@@ -29,7 +29,7 @@ Scale down your cluster at night, wake it up in the morning. No more paying for 
 
 | Layer | Tech |
 |---|---|
-| Backend | Go 1.25, chi, GORM, robfig/cron v3, client-go |
+| Backend | Go 1.25, chi v5.2, GORM v1.31, robfig/cron v3, client-go |
 | Frontend | Next.js 15, React 19, Material UI v6, TanStack Query v5 |
 | Database | PostgreSQL 16 |
 | Deploy | Helm 3, GHCR image, GitHub Actions CI |
