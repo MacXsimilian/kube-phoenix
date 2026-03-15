@@ -43,7 +43,7 @@ export default function ActivityFeed() {
 
   return (
     <>
-    <Card>
+    <Card sx={{ height: '100%' }}>
       <CardContent sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
           <Typography variant="subtitle2" color="text.secondary">
