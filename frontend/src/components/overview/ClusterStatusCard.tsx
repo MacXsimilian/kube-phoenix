@@ -269,7 +269,7 @@ export default function ClusterStatusCard() {
                       variant="outlined"
                       startIcon={<BedtimeIcon fontSize="small" />}
                       onClick={() => { setMode('plan'); setDialog({ open: true, type: 'scale_down' }) }}
-                      sx={{ borderColor: 'rgba(255,255,255,0.15)', color: 'text.secondary' }}
+                      sx={{ borderColor: 'divider', color: 'text.secondary' }}
                     >
                       Run Sleep Now
                     </Button>
@@ -281,7 +281,7 @@ export default function ClusterStatusCard() {
                       variant="outlined"
                       startIcon={<WbSunnyIcon fontSize="small" />}
                       onClick={() => { setMode('plan'); setDialog({ open: true, type: 'scale_up' }) }}
-                      sx={{ borderColor: 'rgba(255,255,255,0.15)', color: 'text.secondary' }}
+                      sx={{ borderColor: 'divider', color: 'text.secondary' }}
                     >
                       Run Wake Now
                     </Button>
