@@ -70,7 +70,10 @@ export default function ScheduleCard({
     onMutate: () => {
       setLocalEnabled((v) => !v)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['schedules'] })
+      qc.invalidateQueries({ queryKey: ['overview'] })
+    },
     onError: (err: unknown) => {
       setLocalEnabled(schedule.enabled)
       onNotify?.(err instanceof Error ? err.message : 'Toggle failed', 'error')

@@ -47,6 +47,13 @@ func main() {
 		k8s = nil
 	}
 
+	// ── Cluster cache ─────────────────────────────────────────────────────
+	var cache *k8sclient.ClusterCache
+	if k8s != nil {
+		cache = k8sclient.NewClusterCache(k8s)
+		cache.Start(context.Background())
+	}
+
 	// ── Scheduler ─────────────────────────────────────────────────────────
 	sched := scheduler.New(st, k8s)
 	if k8s != nil {
@@ -58,7 +65,7 @@ func main() {
 	}
 
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(st, k8s, sched)
+	router := api.NewRouter(st, k8s, sched, cache)
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
 		Handler:      router,

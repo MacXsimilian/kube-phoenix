@@ -125,6 +125,16 @@ export interface PodEvent {
   lastSeen: string  // RFC3339
 }
 
+export interface Overview {
+  clusterStatus: 'awake' | 'sleeping' | 'partial'
+  runningCount: number
+  sleepingCount: number
+  nodeCount: number
+  sleepingByNs: { namespace: string; count: number }[]
+  nextRun?: { name: string; nextRun: string }
+  cacheAgeMs: number
+}
+
 export interface PodDetail {
   name: string
   namespace: string
