@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { alpha, useTheme } from '@mui/material/styles'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import Drawer from '@mui/material/Drawer'
@@ -40,6 +41,8 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
   const pathname = usePathname()
   const { logout } = useAuth()
   const [aboutOpen, setAboutOpen] = useState(false)
+  const theme = useTheme()
+  const primary = theme.palette.primary.main
 
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -80,9 +83,9 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
                 mb: 0.5,
                 borderRadius: 2,
                 color: active ? 'primary.main' : 'text.secondary',
-                bgcolor: active ? 'rgba(124,58,237,0.12)' : 'transparent',
+                bgcolor: active ? alpha(primary, 0.10) : 'transparent',
                 '&:hover': {
-                  bgcolor: active ? 'rgba(124,58,237,0.18)' : 'action.hover',
+                  bgcolor: active ? alpha(primary, 0.16) : 'action.hover',
                 },
               }}
             >
