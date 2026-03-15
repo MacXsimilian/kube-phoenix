@@ -54,7 +54,7 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
       <Table size="small" sx={{ '& td, & th': { fontSize: 12 } }}>
         <TableHead>
           <TableRow>
-            {['NAME', 'IMAGE', 'READY', 'RESTARTS', 'CPU use', 'MEM use', 'CPU req/lim', 'MEM req/lim', 'LAST STATE'].map((h) => (
+            {['NAME', 'IMAGE', 'READY', 'RESTARTS', 'CPU req/lim', 'MEM req/lim', 'LAST STATE'].map((h) => (
               <TableCell key={h} sx={{ color: 'text.disabled', fontSize: 10, fontWeight: 700, py: 0.5, whiteSpace: 'nowrap' }}>
                 {h}
               </TableCell>
@@ -77,12 +77,6 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
               </TableCell>
               <TableCell sx={{ py: 0.75, fontFamily: 'monospace', color: c.restartCount > 0 ? '#FBBF24' : 'text.primary' }}>
                 {c.restartCount}
-              </TableCell>
-              <TableCell sx={{ py: 0.75, fontFamily: 'monospace', whiteSpace: 'nowrap', color: c.cpuUsage > 0 ? 'text.primary' : 'text.disabled' }}>
-                {c.cpuUsage > 0 ? fmtCpu(c.cpuUsage) : '—'}
-              </TableCell>
-              <TableCell sx={{ py: 0.75, fontFamily: 'monospace', whiteSpace: 'nowrap', color: c.memUsage > 0 ? 'text.primary' : 'text.disabled' }}>
-                {c.memUsage > 0 ? fmtMem(c.memUsage) : '—'}
               </TableCell>
               <TableCell sx={{ py: 0.75, fontFamily: 'monospace', color: 'text.secondary', whiteSpace: 'nowrap' }}>
                 {resourceCell(c.cpuRequest, c.cpuLimit, fmtCpu)}

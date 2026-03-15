@@ -109,12 +109,12 @@ function PodRow({ pod, onClick }: { pod: NodePod; onClick?: () => void }) {
       </TableCell>
       <TableCell sx={{ py: 0.75 }}>
         <Typography sx={{ fontSize: 12, fontFamily: 'monospace', color: 'text.secondary' }}>
-          {pod.cpuRequest > 0 ? fmtCpu(pod.cpuRequest) : '—'}
+          {pod.cpuUsage > 0 ? fmtCpu(pod.cpuUsage) : '—'}
         </Typography>
       </TableCell>
       <TableCell sx={{ py: 0.75 }}>
         <Typography sx={{ fontSize: 12, fontFamily: 'monospace', color: 'text.secondary' }}>
-          {pod.memRequest > 0 ? fmtMem(pod.memRequest) : '—'}
+          {pod.memUsage > 0 ? fmtMem(pod.memUsage) : '—'}
         </Typography>
       </TableCell>
       <TableCell sx={{ py: 0.75 }}>

@@ -91,6 +91,8 @@ export interface NodePod {
   totalContainers: number
   cpuRequest: number
   memRequest: number
+  cpuUsage: number
+  memUsage: number
   startedAt: string
 }
 
