@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.57](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.56...v0.1.57) (2026-03-15)
+
+
+### Features
+
+* **cluster:** show actual CPU/mem usage in node and workload pod lists ([8c661d4](https://github.com/MacXsimilian/kube-phoenix/commit/8c661d4491d629be65e17cb16e865369f09a54df))
+* **cluster:** show actual CPU/mem usage in node and workload pod lists ([adcf8cb](https://github.com/MacXsimilian/kube-phoenix/commit/adcf8cbd7191253bea7f20a382a133369d8e7f03))
+
 ## [0.1.56](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.55...v0.1.56) (2026-03-15)
 
 
