@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.49](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.48...v0.1.49) (2026-03-15)
+
+
+### Features
+
+* add light/dark/system theme mode switcher ([bbf520e](https://github.com/MacXsimilian/kube-phoenix/commit/bbf520e83f38043b75e4a1fa98c35baf04a64044))
+* light/dark/system theme mode switcher ([579cf0d](https://github.com/MacXsimilian/kube-phoenix/commit/579cf0d0851799cc965bb5cbd24e4410dbc99ab8))
+
 ## [0.1.48](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.47...v0.1.48) (2026-03-15)
 
 
