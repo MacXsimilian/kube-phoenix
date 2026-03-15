@@ -2,6 +2,7 @@ package scaler
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -44,6 +45,7 @@ func emit(ch chan<- LogLine, level, msg string) {
 	select {
 	case ch <- LogLine{Level: level, Message: msg, Time: time.Now()}:
 	default:
+		slog.Warn("scaler: log line dropped — channel full", "level", level)
 	}
 }
 

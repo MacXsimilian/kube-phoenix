@@ -123,13 +123,15 @@ func (s *Store) ListExecutions(f ExecutionFilter) (*ExecutionPage, error) {
 func (s *Store) FinishExecution(id uint, status string, counts map[string]int) error {
 	now := time.Now()
 	return s.db.Model(&Execution{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"finished_at":   now,
-		"status":        status,
-		"count_scaled":  counts["scaled"],
-		"count_drained": counts["drained"],
-		"count_deleted": counts["deleted"],
-		"count_skipped": counts["skipped"],
-		"count_errors":  counts["errors"],
+		"finished_at":     now,
+		"status":          status,
+		"count_scaled":    counts["scaled"],
+		"count_drained":   counts["drained"],
+		"count_deleted":   counts["deleted"],
+		"count_skipped":   counts["skipped"],
+		"count_errors":    counts["errors"],
+		"count_saved":     counts["saved"],
+		"count_protected": counts["protected"],
 	}).Error
 }
 
