@@ -50,9 +50,18 @@ func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 			f.ScheduleID = &uid
 		}
 	}
-	f.Status = q.Get("status")
+	if s := q.Get("status"); s != "" {
+		if s != "running" && s != "success" && s != "failed" {
+			jsonError(w, "status must be running, success, or failed", http.StatusBadRequest)
+			return
+		}
+		f.Status = s
+	}
 	if p := q.Get("page"); p != "" {
 		page, _ := strconv.Atoi(p)
+		if page < 0 {
+			page = 0
+		}
 		f.Page = page
 	}
 	if ps := q.Get("page_size"); ps != "" {
@@ -68,8 +77,7 @@ func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 
 	page, err := h.store.ListExecutions(f)
 	if err != nil {
-		slog.Error("list executions failed", "err", err)
-		jsonError(w, err.Error(), http.StatusInternalServerError)
+		jsonInternalError(w, err, "list executions failed")
 		return
 	}
 	jsonOK(w, page)
@@ -86,8 +94,7 @@ func (h *Handler) getExecution(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			jsonError(w, "not found", http.StatusNotFound)
 		} else {
-			slog.Error("get execution failed", "execID", id, "err", err)
-			jsonError(w, err.Error(), http.StatusInternalServerError)
+			jsonInternalError(w, err, "get execution failed")
 		}
 		return
 	}
@@ -102,7 +109,7 @@ func (h *Handler) getExecutionLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	lines, err := h.store.GetLogLines(id)
 	if err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
+		jsonInternalError(w, err, "get execution logs failed")
 		return
 	}
 	jsonOK(w, lines)
