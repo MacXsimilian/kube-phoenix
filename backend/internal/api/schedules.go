@@ -2,12 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"github.com/robfig/cron/v3"
+	"gorm.io/gorm"
 )
 
 type scheduleResponse struct {
@@ -36,7 +38,12 @@ func (h *Handler) getSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	sc, err := h.store.GetSchedule(id)
 	if err != nil {
-		jsonError(w, "not found", http.StatusNotFound)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			jsonError(w, "not found", http.StatusNotFound)
+		} else {
+			slog.Error("get schedule failed", "scheduleID", id, "err", err)
+			jsonError(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 	jsonOK(w, sc)
@@ -110,6 +117,7 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 
 	sc, err := h.store.UpdateSchedule(id, updates)
 	if err != nil {
+		slog.Error("update schedule failed", "scheduleID", id, "err", err)
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
