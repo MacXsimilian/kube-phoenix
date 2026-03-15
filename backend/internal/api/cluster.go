@@ -324,13 +324,13 @@ type ContainerDetailResponse struct {
 	Image        string `json:"image"`
 	Ready        bool   `json:"ready"`
 	RestartCount int32  `json:"restartCount"`
-	CPURequest   int64  `json:"cpuRequest"`  // millicores
-	MemRequest   int64  `json:"memRequest"`  // bytes
-	CPULimit     int64  `json:"cpuLimit"`    // millicores, 0 = no limit set
-	MemLimit     int64  `json:"memLimit"`    // bytes, 0 = no limit set
-	CPUUsage     int64  `json:"cpuUsage"`    // millicores, 0 = unavailable
-	MemUsage     int64  `json:"memUsage"`    // bytes, 0 = unavailable
-	LastState    string `json:"lastState"`   // terminated reason or ""
+	CPURequest   int64  `json:"cpuRequest"` // millicores
+	MemRequest   int64  `json:"memRequest"` // bytes
+	CPULimit     int64  `json:"cpuLimit"`   // millicores, 0 = no limit set
+	MemLimit     int64  `json:"memLimit"`   // bytes, 0 = no limit set
+	CPUUsage     int64  `json:"cpuUsage"`   // millicores, 0 = unavailable
+	MemUsage     int64  `json:"memUsage"`   // bytes, 0 = unavailable
+	LastState    string `json:"lastState"`  // terminated reason or ""
 }
 
 type PodConditionResponse struct {
@@ -339,7 +339,7 @@ type PodConditionResponse struct {
 }
 
 type PodEventResponse struct {
-	Type     string `json:"type"`     // "Normal" | "Warning"
+	Type     string `json:"type"` // "Normal" | "Warning"
 	Reason   string `json:"reason"`
 	Message  string `json:"message"`
 	Count    int32  `json:"count"`
@@ -347,20 +347,20 @@ type PodEventResponse struct {
 }
 
 type PodDetailResponse struct {
-	Name       string                    `json:"name"`
-	Namespace  string                    `json:"namespace"`
-	Phase      string                    `json:"phase"`
-	NodeName   string                    `json:"nodeName"`
-	PodIP      string                    `json:"podIP"`
-	HostIP     string                    `json:"hostIP"`
-	QOSClass   string                    `json:"qosClass"`
-	StartedAt  string                    `json:"startedAt"` // RFC3339 or ""
+	Name             string                    `json:"name"`
+	Namespace        string                    `json:"namespace"`
+	Phase            string                    `json:"phase"`
+	NodeName         string                    `json:"nodeName"`
+	PodIP            string                    `json:"podIP"`
+	HostIP           string                    `json:"hostIP"`
+	QOSClass         string                    `json:"qosClass"`
+	StartedAt        string                    `json:"startedAt"` // RFC3339 or ""
 	NodeInstanceType string                    `json:"nodeInstanceType"`
 	Labels           map[string]string         `json:"labels"`
 	Annotations      map[string]string         `json:"annotations"`
-	Containers  []ContainerDetailResponse `json:"containers"`
-	Conditions []PodConditionResponse    `json:"conditions"`
-	Events     []PodEventResponse        `json:"events"`
+	Containers       []ContainerDetailResponse `json:"containers"`
+	Conditions       []PodConditionResponse    `json:"conditions"`
+	Events           []PodEventResponse        `json:"events"`
 }
 
 func (h *Handler) getPodDetail(w http.ResponseWriter, r *http.Request) {
@@ -474,7 +474,7 @@ func (h *Handler) getPodDetail(w http.ResponseWriter, r *http.Request) {
 		Annotations:      annotations,
 		Containers:       containers,
 		Conditions:       conditions,
-		Events:     podEvents,
+		Events:           podEvents,
 	})
 }
 
