@@ -31,6 +31,11 @@ func (b *Broker) Subscribe(execID uint) chan store.LogLine {
 	return ch
 }
 
+// Unsubscribe removes ch from the subscriber list and closes it.
+// Safe to call after Close: Close deletes the execID map key before releasing
+// the lock, so the loop below finds an empty slice and never reaches close(ch),
+// avoiding a double-close panic. Any future refactor of Close must preserve
+// this invariant (delete the key before unlocking).
 func (b *Broker) Unsubscribe(execID uint, ch chan store.LogLine) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
