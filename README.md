@@ -14,16 +14,16 @@ kube-phoenix is a self-hosted web application for managing cluster sleep/wake sc
 
 ## Table of Contents
 
+- [Why kube-phoenix?](#why-kube-phoenix)
 - [How it works](#how-it-works)
 - [Architecture](#architecture)
 - [Features](#features)
 - [Quick Start](#quick-start)
-  - [Prerequisites](#prerequisites)
+  - [Helm install (recommended)](#helm-install)
   - [Local development](#local-development)
   - [Production build](#production-build)
   - [Docker](#docker)
 - [Deployment](#deployment)
-  - [Helm install](#helm-install)
   - [External database](#external-database)
   - [Accessing the UI](#accessing-the-ui)
   - [AWS ALB (TargetGroupBinding)](#aws-alb-targetgroupbinding)
@@ -39,10 +39,30 @@ kube-phoenix is a self-hosted web application for managing cluster sleep/wake sc
   - [CI pipeline](#ci-pipeline)
   - [Release workflow](#release-workflow)
 - [Contributing](#contributing)
-  - [Branching strategy](#branching-strategy)
-  - [Conventional commits](#conventional-commits)
 - [Project structure](#project-structure)
 - [Roadmap](#roadmap)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## Why kube-phoenix?
+
+| | kube-phoenix | Karpenter consolidation | KEDA | Raw CronJobs |
+|---|:---:|:---:|:---:|:---:|
+| Visual schedule management | ✅ | ❌ | ❌ | ❌ |
+| Dry-run before applying | ✅ | ❌ | ❌ | ❌ |
+| Live execution logs | ✅ | ❌ | ❌ | ❌ |
+| Guardrails / namespace exclusions | ✅ | ⚠️ partial | ⚠️ partial | ❌ |
+| Restores exact replica counts on wake | ✅ | ❌ | ❌ | ❌ |
+| Per-schedule namespace scope | ✅ | ❌ | ❌ | ❌ |
+| Works with any node autoscaler | ✅ | AWS / EKS only | ✅ | ✅ |
+| Single binary, no extra infra | ✅ | built-in | ❌ | built-in |
+
+**Karpenter consolidation** can drain idle nodes but cannot restore workloads to their original replica counts, has no schedule UI, and no dry-run mode.
+
+**KEDA** scales workloads based on event/metric sources — not time-of-day schedules with full cluster drain.
+
+**Raw CronJobs** with `kubectl scale` scripts work but have no observability, no guardrails, no plan mode, and are painful to configure and debug.
 
 ---
 
@@ -82,37 +102,37 @@ For each node
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Browser                              │
-│           Next.js 16 + React 19 + Material UI v7            │
-│   Overview · Schedules · Cluster State · Guardrails ·       │
-│   History · Settings                                        │
-└───────────────────────┬─────────────────────────────────────┘
-                        │  HTTP /api/*   WebSocket /ws/*
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Go 1.25 Binary  (port 8080)                    │
-│                                                             │
-│   Chi router ──► API handlers                               │
-│                       │                                     │
-│   robfig/cron ──► Scheduler ──► Scaler                      │
-│                       │             │                       │
-│   WS log broker ◄─────┘         client-go ──► Kubernetes   │
-│                                                             │
-│   GORM ──► PostgreSQL 16                                    │
-│                                                             │
-│   //go:embed static ──► serves Next.js SPA                  │
-│   (one binary, one container, no nginx)                     │
-└─────────────────────────────────────────────────────────────┘
-                        │
-          ┌─────────────┴─────────────┐
-          ▼                           ▼
-   Kubernetes API               PostgreSQL
-   (workloads, nodes,           (schedules,
-    pods, events,                executions,
-    Metrics Server)              guardrails,
-                                 log lines)
+```mermaid
+flowchart TB
+    Browser["**Browser**\nNext.js 16 · React 19 · MUI v7\nOverview · Schedules · Cluster State · Guardrails · History · Settings"]
+
+    subgraph Binary["Go 1.25 Binary — port 8080"]
+        direction TB
+        Router["Chi Router + BasicAuth middleware"]
+        Handlers["API Handlers"]
+        Scheduler["Scheduler\nrobfig/cron v3"]
+        Scaler["Scaler\nscale_down / scale_up"]
+        Cache["ClusterCache\n10 s background refresh"]
+        Broker["WS Log Broker\npub/sub fan-out"]
+        GORM["GORM"]
+        SPA["//go:embed\nNext.js SPA"]
+    end
+
+    K8s[("Kubernetes API\nDeployments · StatefulSets\nNodes · Pods · Events\nMetrics Server")]
+    PG[("PostgreSQL 16\nschedules · executions\nguardrails · log lines")]
+
+    Browser -- "HTTP /api/*\nSSE /api/cluster/stream" --> Router
+    Browser -- "WS /ws/executions/:id/logs" --> Router
+    Router --> Handlers
+    Router --> SPA
+    Handlers --> Scheduler
+    Handlers --> Cache
+    Handlers --> GORM
+    Scheduler --> Scaler
+    Scheduler --> Broker
+    Scaler --> K8s
+    Cache --> K8s
+    GORM --> PG
 ```
 
 ---
@@ -151,14 +171,31 @@ The Cluster State page offers three levels of detail in resizable side drawers:
 
 ## Quick Start
 
-### Prerequisites
+### Helm install
 
-- Go 1.25+
-- Node.js 22+
-- Docker (for local PostgreSQL)
-- `kubectl` configured against your cluster (the backend starts without it — cluster endpoints return empty data)
+The fastest path to a running instance. Requires Helm 3 and a Kubernetes cluster.
+
+```bash
+helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
+  --namespace kube-phoenix \
+  --create-namespace \
+  --set secret.basicAuthPassword=<your-password>
+```
+
+Then access the UI:
+
+```bash
+kubectl port-forward -n kube-phoenix svc/kube-phoenix 8080:80
+# Open http://localhost:8080
+```
+
+All schedules are seeded **disabled** in **plan mode** — nothing will scale until you explicitly enable a schedule and switch it to `apply` mode.
+
+See [Deployment](#deployment) for external database, Ingress, and AWS ALB options.
 
 ### Local development
+
+**Prerequisites:** Go 1.25+, Node.js 22+, Docker
 
 ```bash
 # 1. Start PostgreSQL
@@ -192,17 +229,7 @@ make docker-build
 
 ## Deployment
 
-The Helm chart deploys the application, an optional in-cluster PostgreSQL StatefulSet, RBAC resources, and a dedicated namespace.
-
-### Helm install
-
-```bash
-helm upgrade --install kube-phoenix helm/kube-phoenix \
-  --namespace kube-phoenix \
-  --create-namespace \
-  --set image.tag=<git-sha> \
-  --set secret.basicAuthPassword=<your-password>
-```
+The Helm chart deploys the application, an optional in-cluster PostgreSQL StatefulSet, RBAC resources, and a dedicated namespace. For the basic install command see [Quick Start → Helm install](#helm-install).
 
 ### External database
 
@@ -219,13 +246,6 @@ helm upgrade --install kube-phoenix helm/kube-phoenix \
 Alternatively, set the individual `externalDatabase.*` fields (`host`, `port`, `username`, `password`, `database`, `sslmode`) instead of a full DSN.
 
 ### Accessing the UI
-
-**Port-forward:**
-
-```bash
-kubectl port-forward -n kube-phoenix svc/kube-phoenix 8080:80
-# Open http://localhost:8080
-```
 
 **Kubernetes Ingress:**
 
@@ -462,36 +482,9 @@ ghcr.io/macxsimilian/kube-phoenix:latest
 
 ## Contributing
 
-### Branching strategy
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide — local setup, branching strategy, commit conventions, and PR checklist.
 
-kube-phoenix uses GitHub Flow — a single protected `master` branch, short-lived feature branches, and pull requests.
-
-```
-master  (protected, always deployable)
-  ├── feat/emergency-wake    → PR → master
-  ├── fix/activityfeed-jsx   → PR → master
-  └── ci/add-govulncheck     → PR → master
-```
-
-- Branch off `master` for any non-trivial change.
-- Small fixes (typos, one-liners) can be pushed directly if you have admin bypass enabled.
-- Never create tags manually — release-please owns all tags and releases.
-
-```bash
-# 1. Branch off master
-git checkout master && git pull
-git checkout -b feat/your-feature
-
-# 2. Commit with a conventional prefix
-git commit -m "feat: add emergency wake endpoint"
-
-# 3. Push and open a PR against master
-git push -u origin feat/your-feature
-
-# 4. CI runs automatically; merge once green and approved
-```
-
-### Conventional commits
+**Quick reference — conventional commit prefixes:**
 
 | Prefix | Version bump | Use for |
 |---|---|---|
@@ -563,9 +556,75 @@ The Go backend embeds the Next.js static export via `//go:embed` — one binary,
 
 ## Roadmap
 
-- [ ] Keycloak OIDC (replace basic auth)
-- [ ] Slack / email notifications
-- [ ] Multi-cluster support
+| Item | Status | Notes |
+|---|---|---|
+| Keycloak / OIDC auth | Planned | Replace HTTP Basic Auth; retain WS token flow |
+| Slack / email notifications | Planned | Alert on scale failures and manual triggers |
+| Multi-cluster support | Planned | Switch between kubeconfig contexts in the UI |
+| OpenAPI spec | Planned | Swagger UI served at `/api/docs` |
+| GitLab CI pipeline | Planned | Mirror of the GitHub Actions workflow |
+| Emergency wake button | In progress | One-click full cluster wake bypassing schedule |
+
+---
+
+## Troubleshooting
+
+### A schedule ran but nothing was scaled
+
+1. Check the execution log in the **History** page — every skip is logged with a reason.
+2. Confirm the schedule is in **apply** mode, not **plan** mode. All default schedules start in plan mode.
+3. Confirm the schedule is **enabled** — the toggle on the Schedules page.
+4. Check that the target namespaces are not in **Guardrails → Skip Namespaces**.
+
+### The backend crashes on startup
+
+The most common cause is a missing or malformed `DATABASE_URL`.
+
+```
+FATAL: DATABASE_URL is required
+```
+
+Check that the environment variable is set and the PostgreSQL instance is reachable from the pod. Run `kubectl logs -n kube-phoenix deployment/kube-phoenix` for the full error.
+
+### Cluster State shows no workloads or nodes
+
+The Kubernetes client uses the pod's ServiceAccount token (in-cluster config). Possible causes:
+
+- **Running locally without a cluster:** expected — cluster endpoints return empty data, not an error.
+- **RBAC not applied:** verify the ClusterRole and ClusterRoleBinding exist: `kubectl get clusterrolebinding kube-phoenix`.
+- **Cache not yet populated:** on cold start the ClusterCache populates asynchronously. Wait a few seconds and refresh.
+
+### A workload is stuck with the `previous-replicas` annotation
+
+This happens when a scale-up run was interrupted or partially failed. The workload has `replicas=0` and the annotation present, so it looks sleeping but the wake didn't complete.
+
+Fix manually:
+
+```bash
+# Restore replicas (replace <n> with the saved value from the annotation)
+kubectl scale deployment <name> -n <namespace> --replicas=<n>
+
+# Remove the annotation
+kubectl annotate deployment <name> -n <namespace> previous-replicas-
+```
+
+Then recheck the History log for the failed execution to understand why the wake failed.
+
+### Metrics Server data is missing in pod detail
+
+kube-phoenix calls the Kubernetes Metrics Server API for live CPU/memory. If the Metrics Server is not installed in your cluster, usage values will show as `—` rather than causing an error. Install it with:
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
+
+### WebSocket log streaming disconnects immediately
+
+WebSocket connections authenticate via `?token=<base64(user:pass)>`. If credentials are wrong, the connection is closed with `4401`. Verify your browser is sending the correct base64 token — the kube-phoenix UI handles this automatically when you log in through the login screen.
+
+### CORS errors in the browser during local development
+
+Set `CORS_ALLOWED_ORIGIN=http://localhost:3000` on the backend process when running the frontend dev server separately from the backend.
 
 ---
 
