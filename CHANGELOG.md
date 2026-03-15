@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.45](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.44...v0.1.45) (2026-03-15)
+
+
+### Bug Fixes
+
+* **schedules:** resolve stale closure causing toggle not to persist ([1171b6a](https://github.com/MacXsimilian/kube-phoenix/commit/1171b6aa5458c0ab9e14081c6e45e8f0fd1297fc))
+* **schedules:** resolve stale closure causing toggle not to persist ([66ec7c5](https://github.com/MacXsimilian/kube-phoenix/commit/66ec7c5d97694f015fc69138c34cf15645428b05))
+
 ## [0.1.44](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.43...v0.1.44) (2026-03-15)
 
 
