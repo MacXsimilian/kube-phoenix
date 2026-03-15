@@ -28,6 +28,9 @@ func (h *Handler) resetDB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Audit log — record caller identity before any destructive work begins.
+	slog.Warn("admin: reset-db initiated", "remote_addr", r.RemoteAddr)
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		jsonError(w, "streaming not supported", http.StatusInternalServerError)
