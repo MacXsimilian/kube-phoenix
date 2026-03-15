@@ -119,7 +119,7 @@ function ProtectedChipInput({
         <Typography variant="body2" fontWeight={600}>System-Protected Namespaces</Typography>
       </Box>
       <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
-        These namespaces are never scaled. Removing any entry requires explicit confirmation.
+        Always-on namespaces. Only remove an entry if you know what you're doing.
       </Typography>
 
       {/* Chip container */}
