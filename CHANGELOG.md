@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.51](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.50...v0.1.51) (2026-03-15)
+
+
+### Bug Fixes
+
+* address audit findings — logging, WS goroutine leak, scaler drain safety, count persistence ([8816975](https://github.com/MacXsimilian/kube-phoenix/commit/88169751119ea127ab8414a5e758bfbbdb2c5ee1))
+* audit findings — logging, WS goroutine safety, drain reliability, count persistence ([b09887c](https://github.com/MacXsimilian/kube-phoenix/commit/b09887c687afce6d8bd1f3920d31275616453400))
+
 ## [0.1.50](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.49...v0.1.50) (2026-03-15)
 
 
