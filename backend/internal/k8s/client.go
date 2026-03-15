@@ -48,7 +48,7 @@ func New() (*Client, error) {
 func (c *Client) ListDeployments(ctx context.Context, namespace string) ([]appsv1.Deployment, error) {
 	list, err := c.cs.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list deployments in %q: %w", namespace, err)
 	}
 	return list.Items, nil
 }
@@ -56,34 +56,43 @@ func (c *Client) ListDeployments(ctx context.Context, namespace string) ([]appsv
 func (c *Client) ScaleDeployment(ctx context.Context, namespace, name string, replicas int32) error {
 	scale, err := c.cs.AppsV1().Deployments(namespace).GetScale(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return err
+		return fmt.Errorf("get scale %s/%s: %w", namespace, name, err)
 	}
 	scale.Spec.Replicas = replicas
 	_, err = c.cs.AppsV1().Deployments(namespace).UpdateScale(ctx, name, scale, metav1.UpdateOptions{})
-	return err
+	if err != nil {
+		return fmt.Errorf("update scale %s/%s: %w", namespace, name, err)
+	}
+	return nil
 }
 
 func (c *Client) AnnotateDeployment(ctx context.Context, namespace, name, key, value string) error {
 	d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return err
+		return fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
 	}
 	if d.Annotations == nil {
 		d.Annotations = map[string]string{}
 	}
 	d.Annotations[key] = value
 	_, err = c.cs.AppsV1().Deployments(namespace).Update(ctx, d, metav1.UpdateOptions{})
-	return err
+	if err != nil {
+		return fmt.Errorf("annotate deployment %s/%s: %w", namespace, name, err)
+	}
+	return nil
 }
 
 func (c *Client) RemoveDeploymentAnnotation(ctx context.Context, namespace, name, key string) error {
 	d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return err
+		return fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
 	}
 	delete(d.Annotations, key)
 	_, err = c.cs.AppsV1().Deployments(namespace).Update(ctx, d, metav1.UpdateOptions{})
-	return err
+	if err != nil {
+		return fmt.Errorf("remove annotation deployment %s/%s: %w", namespace, name, err)
+	}
+	return nil
 }
 
 // ─── StatefulSets ─────────────────────────────────────────────────────────────
@@ -91,7 +100,7 @@ func (c *Client) RemoveDeploymentAnnotation(ctx context.Context, namespace, name
 func (c *Client) ListStatefulSets(ctx context.Context, namespace string) ([]appsv1.StatefulSet, error) {
 	list, err := c.cs.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list statefulsets in %q: %w", namespace, err)
 	}
 	return list.Items, nil
 }
@@ -99,34 +108,43 @@ func (c *Client) ListStatefulSets(ctx context.Context, namespace string) ([]apps
 func (c *Client) ScaleStatefulSet(ctx context.Context, namespace, name string, replicas int32) error {
 	scale, err := c.cs.AppsV1().StatefulSets(namespace).GetScale(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return err
+		return fmt.Errorf("get scale %s/%s: %w", namespace, name, err)
 	}
 	scale.Spec.Replicas = replicas
 	_, err = c.cs.AppsV1().StatefulSets(namespace).UpdateScale(ctx, name, scale, metav1.UpdateOptions{})
-	return err
+	if err != nil {
+		return fmt.Errorf("update scale %s/%s: %w", namespace, name, err)
+	}
+	return nil
 }
 
 func (c *Client) AnnotateStatefulSet(ctx context.Context, namespace, name, key, value string) error {
 	ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return err
+		return fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
 	}
 	if ss.Annotations == nil {
 		ss.Annotations = map[string]string{}
 	}
 	ss.Annotations[key] = value
 	_, err = c.cs.AppsV1().StatefulSets(namespace).Update(ctx, ss, metav1.UpdateOptions{})
-	return err
+	if err != nil {
+		return fmt.Errorf("annotate statefulset %s/%s: %w", namespace, name, err)
+	}
+	return nil
 }
 
 func (c *Client) RemoveStatefulSetAnnotation(ctx context.Context, namespace, name, key string) error {
 	ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return err
+		return fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
 	}
 	delete(ss.Annotations, key)
 	_, err = c.cs.AppsV1().StatefulSets(namespace).Update(ctx, ss, metav1.UpdateOptions{})
-	return err
+	if err != nil {
+		return fmt.Errorf("remove annotation statefulset %s/%s: %w", namespace, name, err)
+	}
+	return nil
 }
 
 // ─── Nodes ────────────────────────────────────────────────────────────────────
@@ -134,7 +152,7 @@ func (c *Client) RemoveStatefulSetAnnotation(ctx context.Context, namespace, nam
 func (c *Client) ListNodes(ctx context.Context) ([]corev1.Node, error) {
 	list, err := c.cs.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list nodes: %w", err)
 	}
 	return list.Items, nil
 }
@@ -142,11 +160,14 @@ func (c *Client) ListNodes(ctx context.Context) ([]corev1.Node, error) {
 func (c *Client) CordonNode(ctx context.Context, name string) error {
 	node, err := c.cs.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return err
+		return fmt.Errorf("cordon node %q: %w", name, err)
 	}
 	node.Spec.Unschedulable = true
 	_, err = c.cs.CoreV1().Nodes().Update(ctx, node, metav1.UpdateOptions{})
-	return err
+	if err != nil {
+		return fmt.Errorf("cordon node %q: %w", name, err)
+	}
+	return nil
 }
 
 // CountNonDaemonSetPods returns the number of non-DaemonSet pods on a node.
@@ -266,7 +287,7 @@ func (c *Client) DeleteNode(ctx context.Context, name string) error {
 func (c *Client) ListPods(ctx context.Context, namespace string) ([]corev1.Pod, error) {
 	list, err := c.cs.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list pods in %q: %w", namespace, err)
 	}
 	return list.Items, nil
 }
@@ -280,7 +301,7 @@ func (c *Client) ListPodsOnNode(ctx context.Context, nodeName string) ([]corev1.
 		FieldSelector: "spec.nodeName=" + nodeName,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list pods on node %q: %w", nodeName, err)
 	}
 	return list.Items, nil
 }
@@ -304,7 +325,7 @@ func (c *Client) ListNamespaces(ctx context.Context) ([]corev1.Namespace, error)
 func (c *Client) GetPod(ctx context.Context, namespace, name string) (*corev1.Pod, error) {
 	pod, err := c.cs.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get pod %s/%s: %w", namespace, name, err)
 	}
 	return pod, nil
 }
@@ -312,7 +333,7 @@ func (c *Client) GetPod(ctx context.Context, namespace, name string) (*corev1.Po
 func (c *Client) GetNode(ctx context.Context, name string) (*corev1.Node, error) {
 	node, err := c.cs.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get node %q: %w", name, err)
 	}
 	return node, nil
 }
@@ -369,7 +390,7 @@ func (c *Client) GetPodEvents(ctx context.Context, namespace, podName string) ([
 		FieldSelector: "involvedObject.name=" + podName,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get events for pod %s/%s: %w", namespace, podName, err)
 	}
 	return list.Items, nil
 }
