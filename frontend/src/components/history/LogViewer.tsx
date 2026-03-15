@@ -32,6 +32,7 @@ import DnsIcon from '@mui/icons-material/Dns'
 import StorageIcon from '@mui/icons-material/Storage'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import { getExecutionLogs, wsLogsUrl } from '@/lib/api'
+import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { Execution, LogLine } from '@/lib/types'
 
 const LEVEL_COLORS: Record<LogLine['level'], string> = {
@@ -187,10 +188,10 @@ function ExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: b
                 </Typography>
                 <Table size="small" sx={{ '& td': { border: 0, py: 0.25, px: 0.5 } }}>
                   <TableBody>
-                    {items.map((w, i) => {
+                    {items.map((w) => {
                       const chip = ACTION_CHIP[w.action]
                       return (
-                        <TableRow key={i}>
+                        <TableRow key={`${w.kind}/${w.name}/${w.action}`}>
                           <TableCell sx={{ width: 90, pr: 1 }}>
                             <Typography variant="caption" sx={{ color: '#64748B', fontFamily: 'monospace', fontSize: 11 }}>
                               {w.kind}
@@ -229,10 +230,10 @@ function ExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: b
             </Box>
             <Table size="small" sx={{ '& td': { border: 0, py: 0.25, px: 0.5 } }}>
               <TableBody>
-                {nodes.map((n, i) => {
+                {nodes.map((n) => {
                   const chip = NODE_CHIP[n.action]
                   return (
-                    <TableRow key={i}>
+                    <TableRow key={`${n.name}/${n.action}`}>
                       <TableCell sx={{ flex: 1 }}>
                         <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 12, color: '#E2E8F0' }}>
                           {n.name}
@@ -256,8 +257,8 @@ function ExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: b
         {/* Errors */}
         {errors.length > 0 && (
           <Box sx={{ px: 2, pt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-            {errors.map((e, i) => (
-              <Alert key={i} severity="error" sx={{ py: 0, fontSize: 11 }}>
+            {errors.map((e) => (
+              <Alert key={e} severity="error" sx={{ py: 0, fontSize: 11 }}>
                 {e}
               </Alert>
             ))}
@@ -301,29 +302,11 @@ export default function LogViewer({
   const [liveLines, setLiveLines] = useState<LogLine[]>([])
   const [copied, setCopied] = useState(false)
   const [wsError, setWsError] = useState(false)
-  const [drawerWidth, setDrawerWidth] = useState(640)
+  const [drawerWidth, handleResizeMouseDown, handleResizeTouchStart] = useDrawerResize(640)
   const [currentErrorIdx, setCurrentErrorIdx] = useState(-1)
   const bottomRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const lineEls = useRef<(HTMLElement | null)[]>([])
-
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    const startX = e.clientX
-    const startWidth = drawerWidth
-
-    const onMouseMove = (mv: MouseEvent) => {
-      const delta = startX - mv.clientX
-      const next = Math.min(Math.max(startWidth + delta, 360), window.innerWidth * 0.9)
-      setDrawerWidth(Math.round(next))
-    }
-    const onMouseUp = () => {
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
-    }
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
-  }, [drawerWidth])
 
   const isRunning = execution?.status === 'running'
 
@@ -412,6 +395,7 @@ export default function LogViewer({
         {/* Resize handle */}
         <Box
           onMouseDown={handleResizeMouseDown}
+          onTouchStart={handleResizeTouchStart}
           sx={{
             position: 'absolute',
             left: -4,

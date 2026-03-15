@@ -8,6 +8,7 @@ import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
 import Alert from '@mui/material/Alert'
+import Snackbar from '@mui/material/Snackbar'
 import AddIcon from '@mui/icons-material/Add'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
@@ -45,6 +46,16 @@ export default function SchedulesPage() {
     schedule?: Schedule
     defaultType?: 'scale_down' | 'scale_up'
   }>({ open: false })
+
+  const [snack, setSnack] = useState<{
+    open: boolean
+    msg: string
+    severity: 'success' | 'error'
+  }>({ open: false, msg: '', severity: 'success' })
+
+  function notify(msg: string, severity: 'success' | 'error') {
+    setSnack({ open: true, msg, severity })
+  }
 
   const sleepSchedules = schedules.filter((s) => s.type === 'scale_down')
   const wakeSchedules = schedules.filter((s) => s.type === 'scale_up')
@@ -100,6 +111,7 @@ export default function SchedulesPage() {
                 schedule={sc}
                 onEdit={() => setDialog({ open: true, schedule: sc })}
                 onDelete={() => qc.invalidateQueries({ queryKey: ['schedules'] })}
+                onNotify={notify}
               />
             ))}
           </Box>
@@ -137,6 +149,7 @@ export default function SchedulesPage() {
                 schedule={sc}
                 onEdit={() => setDialog({ open: true, schedule: sc })}
                 onDelete={() => qc.invalidateQueries({ queryKey: ['schedules'] })}
+                onNotify={notify}
               />
             ))}
           </Box>
@@ -148,7 +161,24 @@ export default function SchedulesPage() {
         schedule={dialog.schedule}
         defaultType={dialog.defaultType}
         onClose={() => setDialog({ open: false })}
+        onSaved={() => notify('Schedule saved', 'success')}
       />
+
+      {/* Single shared Snackbar for all schedule mutations */}
+      <Snackbar
+        open={snack.open}
+        autoHideDuration={4000}
+        onClose={() => setSnack((s) => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Alert
+          severity={snack.severity}
+          onClose={() => setSnack((s) => ({ ...s, open: false }))}
+          sx={{ width: '100%' }}
+        >
+          {snack.msg}
+        </Alert>
+      </Snackbar>
     </>
   )
 }

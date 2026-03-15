@@ -35,10 +35,12 @@ export default function ScheduleCard({
   schedule,
   onEdit,
   onDelete,
+  onNotify,
 }: {
   schedule: Schedule
   onEdit: () => void
   onDelete: () => void
+  onNotify?: (msg: string, severity: 'success' | 'error') => void
 }) {
   const qc = useQueryClient()
   const router = useRouter()
@@ -46,8 +48,16 @@ export default function ScheduleCard({
   const [runMode, setRunMode] = useState<'plan' | 'apply'>('plan')
   const [deleteDialog, setDeleteDialog] = useState(false)
   const [undoOpen, setUndoOpen] = useState(false)
-  const [mutationError, setMutationError] = useState<string | null>(null)
   const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Optimistic enabled state — flips immediately on toggle, reverts on error
+  const [localEnabled, setLocalEnabled] = useState(schedule.enabled)
+  useEffect(() => {
+    if (!toggleEnabled.isPending) {
+      setLocalEnabled(schedule.enabled)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schedule.enabled])
 
   useEffect(() => {
     return () => {
@@ -55,13 +65,16 @@ export default function ScheduleCard({
     }
   }, [])
 
-  const onMutError = (err: unknown) =>
-    setMutationError(err instanceof Error ? err.message : 'Operation failed')
-
   const toggleEnabled = useMutation({
-    mutationFn: () => updateSchedule(schedule.id, { enabled: !schedule.enabled }),
+    mutationFn: () => updateSchedule(schedule.id, { enabled: !localEnabled }),
+    onMutate: () => {
+      setLocalEnabled((v) => !v)
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['schedules'] }),
-    onError: onMutError,
+    onError: (err: unknown) => {
+      setLocalEnabled(schedule.enabled)
+      onNotify?.(err instanceof Error ? err.message : 'Toggle failed', 'error')
+    },
   })
 
   const trigger = useMutation({
@@ -73,14 +86,19 @@ export default function ScheduleCard({
     },
     onError: (err: unknown) => {
       setRunDialog(false)
-      onMutError(err)
+      onNotify?.(err instanceof Error ? err.message : 'Trigger failed', 'error')
     },
   })
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteSchedule(schedule.id),
-    onSuccess: () => onDelete(),
-    onError: onMutError,
+    onSuccess: () => {
+      onDelete()
+      onNotify?.(`"${schedule.name}" deleted`, 'success')
+    },
+    onError: (err: unknown) => {
+      onNotify?.(err instanceof Error ? err.message : 'Delete failed', 'error')
+    },
   })
 
   function handleDeleteConfirm() {
@@ -110,12 +128,14 @@ export default function ScheduleCard({
           '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' },
         }}
       >
-        {/* Enable toggle */}
+        {/* Enable toggle — optimistic, disabled while pending */}
         <Switch
-          checked={schedule.enabled}
+          checked={localEnabled}
           onChange={() => toggleEnabled.mutate()}
+          disabled={toggleEnabled.isPending}
           color="primary"
           size="small"
+          inputProps={{ 'aria-label': `Enable ${schedule.name}` }}
         />
 
         {/* Main info */}
@@ -134,7 +154,7 @@ export default function ScheduleCard({
                 color: schedule.mode === 'apply' ? 'warning.main' : 'info.main',
               }}
             />
-            {!schedule.enabled && (
+            {!localEnabled && (
               <Chip
                 label="Disabled"
                 size="small"
@@ -208,6 +228,7 @@ export default function ScheduleCard({
             onChange={(_, v) => v && setRunMode(v)}
             fullWidth
             size="small"
+            aria-label="Execution mode"
           >
             <ToggleButton value="plan">Plan (dry-run)</ToggleButton>
             <ToggleButton
@@ -251,19 +272,7 @@ export default function ScheduleCard({
         </DialogActions>
       </Dialog>
 
-      {/* Mutation error snackbar */}
-      <Snackbar
-        open={mutationError !== null}
-        autoHideDuration={6000}
-        onClose={() => setMutationError(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert severity="error" onClose={() => setMutationError(null)} sx={{ width: '100%' }}>
-          {mutationError}
-        </Alert>
-      </Snackbar>
-
-      {/* Undo snackbar */}
+      {/* Undo snackbar — local to this card (positional, tied to the undo timer) */}
       <Snackbar
         open={undoOpen}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}

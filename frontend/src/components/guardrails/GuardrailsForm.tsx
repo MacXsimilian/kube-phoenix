@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, KeyboardEvent } from 'react'
+import { useState, useEffect, useRef, KeyboardEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Grid from '@mui/material/Grid'
 import Card from '@mui/material/Card'
@@ -12,6 +12,7 @@ import TextField from '@mui/material/TextField'
 import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
+import Snackbar from '@mui/material/Snackbar'
 import SaveIcon from '@mui/icons-material/Save'
 import { getGuardrails, updateGuardrails } from '@/lib/api'
 
@@ -113,11 +114,15 @@ export default function GuardrailsForm() {
   const [skipNsNode, setSkipNsNode] = useState<string[]>([])
   const [skipLabels, setSkipLabels] = useState<string[]>([])
   const [skipTaints, setSkipTaints] = useState<string[]>([])
-  const [saved, setSaved] = useState(false)
+  const [snackOpen, setSnackOpen] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const initialised = useRef(false)
 
+  // Only initialise local state once — when data first loads.
+  // Subsequent background refetches do NOT reset the form mid-edit.
   useEffect(() => {
-    if (g) {
+    if (g && !initialised.current) {
+      initialised.current = true
       setSkipNs(fromCsv(g.skipNamespaces))
       setSkipNsNode(fromCsv(g.skipNsNode))
       setSkipLabels(fromCsv(g.skipNodeLabels))
@@ -136,8 +141,7 @@ export default function GuardrailsForm() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['guardrails'] })
       setSaveError(null)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      setSnackOpen(true)
     },
     onError: (err: unknown) => {
       setSaveError(err instanceof Error ? err.message : 'Failed to save guardrails')
@@ -161,84 +165,92 @@ export default function GuardrailsForm() {
   }
 
   return (
-    <Grid container spacing={3}>
-      {/* Workload exclusions */}
-      <Grid item xs={12} md={6}>
-        <Card sx={{ height: '100%' }}>
-          <CardContent sx={{ p: 3 }}>
-            <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
-              Workload Exclusions
-            </Typography>
-            <Typography variant="body2" color="text.secondary" mb={2.5}>
-              Workloads in these namespaces are never scaled.
-            </Typography>
-            <ChipInput
-              label="Skip Namespaces"
-              hint="e.g. kube-system, monitoring"
-              values={skipNs}
-              onChange={setSkipNs}
-            />
-          </CardContent>
-        </Card>
+    <>
+      <Grid container spacing={3}>
+        {/* Workload exclusions */}
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: '100%' }}>
+            <CardContent sx={{ p: 3 }}>
+              <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
+                Workload Exclusions
+              </Typography>
+              <Typography variant="body2" color="text.secondary" mb={2.5}>
+                Workloads in these namespaces are never scaled.
+              </Typography>
+              <ChipInput
+                label="Skip Namespaces"
+                hint="e.g. kube-system, monitoring"
+                values={skipNs}
+                onChange={setSkipNs}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Node protection */}
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: '100%' }}>
+            <CardContent sx={{ p: 3 }}>
+              <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
+                Node Protection
+              </Typography>
+              <Typography variant="body2" color="text.secondary" mb={2.5}>
+                Nodes will not be drained if any of the following conditions match.
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                <ChipInput
+                  label="Critical Namespaces (protect nodes)"
+                  hint="Nodes running pods from these namespaces are never drained"
+                  values={skipNsNode}
+                  onChange={setSkipNsNode}
+                />
+                <ChipInput
+                  label="Skip Node Labels"
+                  hint="key=value format, e.g. karpenter.k8s.aws/ec2nodeclass=default"
+                  values={skipLabels}
+                  onChange={setSkipLabels}
+                />
+                <ChipInput
+                  label="Skip Node Taints"
+                  hint="key=value:effect format, e.g. karpenter-eks-base=true:NoSchedule"
+                  values={skipTaints}
+                  onChange={setSkipTaints}
+                />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Save */}
+        <Grid item xs={12}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Button
+              variant="contained"
+              startIcon={save.isPending ? <CircularProgress size={14} /> : <SaveIcon fontSize="small" />}
+              disabled={save.isPending}
+              onClick={() => save.mutate()}
+            >
+              Save Guardrails
+            </Button>
+            {saveError && (
+              <Alert severity="error" sx={{ py: 0.5 }}>
+                {saveError}
+              </Alert>
+            )}
+          </Box>
+        </Grid>
       </Grid>
 
-      {/* Node protection */}
-      <Grid item xs={12} md={6}>
-        <Card sx={{ height: '100%' }}>
-          <CardContent sx={{ p: 3 }}>
-            <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
-              Node Protection
-            </Typography>
-            <Typography variant="body2" color="text.secondary" mb={2.5}>
-              Nodes will not be drained if any of the following conditions match.
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-              <ChipInput
-                label="Critical Namespaces (protect nodes)"
-                hint="Nodes running pods from these namespaces are never drained"
-                values={skipNsNode}
-                onChange={setSkipNsNode}
-              />
-              <ChipInput
-                label="Skip Node Labels"
-                hint="key=value format, e.g. karpenter.k8s.aws/ec2nodeclass=default"
-                values={skipLabels}
-                onChange={setSkipLabels}
-              />
-              <ChipInput
-                label="Skip Node Taints"
-                hint="key=value:effect format, e.g. karpenter-eks-base=true:NoSchedule"
-                values={skipTaints}
-                onChange={setSkipTaints}
-              />
-            </Box>
-          </CardContent>
-        </Card>
-      </Grid>
-
-      {/* Save */}
-      <Grid item xs={12}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Button
-            variant="contained"
-            startIcon={save.isPending ? <CircularProgress size={14} /> : <SaveIcon fontSize="small" />}
-            disabled={save.isPending}
-            onClick={() => save.mutate()}
-          >
-            Save Guardrails
-          </Button>
-          {saved && (
-            <Alert severity="success" sx={{ py: 0.5 }}>
-              Guardrails saved successfully.
-            </Alert>
-          )}
-          {saveError && (
-            <Alert severity="error" sx={{ py: 0.5 }}>
-              {saveError}
-            </Alert>
-          )}
-        </Box>
-      </Grid>
-    </Grid>
+      <Snackbar
+        open={snackOpen}
+        autoHideDuration={3000}
+        onClose={() => setSnackOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Alert severity="success" onClose={() => setSnackOpen(false)} sx={{ width: '100%' }}>
+          Guardrails saved successfully.
+        </Alert>
+      </Snackbar>
+    </>
   )
 }

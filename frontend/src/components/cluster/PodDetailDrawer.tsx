@@ -1,6 +1,5 @@
 'use client'
 
-import { useCallback, useState } from 'react'
 import Box from '@mui/material/Box'
 import Divider from '@mui/material/Divider'
 import Drawer from '@mui/material/Drawer'
@@ -8,28 +7,12 @@ import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import CloseIcon from '@mui/icons-material/Close'
+import { useDrawerResize } from '@/lib/useDrawerResize'
 import PodDetailContent from './PodDetailContent'
 import type { NodePod } from '@/lib/types'
 
 export default function PodDetailDrawer({ pod, onClose }: { pod: NodePod | null; onClose: () => void }) {
-  const [drawerWidth, setDrawerWidth] = useState(520)
-
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    const startX = e.clientX
-    const startWidth = drawerWidth
-    const onMouseMove = (mv: MouseEvent) => {
-      const delta = startX - mv.clientX
-      const next = Math.min(Math.max(startWidth + delta, 360), window.innerWidth * 0.9)
-      setDrawerWidth(Math.round(next))
-    }
-    const onMouseUp = () => {
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
-    }
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
-  }, [drawerWidth])
+  const [drawerWidth, handleResizeMouseDown, handleResizeTouchStart] = useDrawerResize(520)
 
   return (
     <Drawer
@@ -50,6 +33,7 @@ export default function PodDetailDrawer({ pod, onClose }: { pod: NodePod | null;
       {/* Resize handle */}
       <Box
         onMouseDown={handleResizeMouseDown}
+        onTouchStart={handleResizeTouchStart}
         sx={{
           position: 'absolute',
           left: -4, top: 0, bottom: 0, width: 8,
