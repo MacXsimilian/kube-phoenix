@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -23,24 +23,90 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import Brightness4Icon from '@mui/icons-material/Brightness4'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import Skeleton from '@mui/material/Skeleton'
-import { getWorkloads, getNodes, getSchedules, triggerRun, getExecution } from '@/lib/api'
-import type { Execution } from '@/lib/types'
+import { getOverview, getSchedules, triggerRun, getExecution } from '@/lib/api'
+import { getAuthHeader } from '@/lib/auth'
+import type { Execution, Overview } from '@/lib/types'
 import { timeUntil } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
 import LogViewer from '@/components/history/LogViewer'
 
 type TriggerType = 'scale_down' | 'scale_up'
 
+// useClusterStream subscribes to the backend SSE stream and pushes received
+// Overview updates directly into the TanStack Query cache, eliminating polling.
+function useClusterStream() {
+  const qc = useQueryClient()
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    const controller = new AbortController()
+
+    async function connect() {
+      while (mountedRef.current) {
+        try {
+          const res = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/cluster/stream`,
+            { signal: controller.signal, headers: { ...getAuthHeader() } },
+          )
+          if (!res.ok || !res.body) {
+            await new Promise((r) => setTimeout(r, 5_000))
+            continue
+          }
+          const reader = res.body.getReader()
+          const decoder = new TextDecoder()
+          let buf = ''
+          while (mountedRef.current) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buf += decoder.decode(value, { stream: true })
+            const lines = buf.split('\n')
+            buf = lines.pop() ?? ''
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  qc.setQueryData<Overview>(['overview'], JSON.parse(line.slice(6)))
+                } catch { /* skip malformed events */ }
+              }
+            }
+          }
+        } catch {
+          if (!mountedRef.current) break
+          await new Promise((r) => setTimeout(r, 3_000))
+        }
+      }
+    }
+
+    connect()
+    return () => {
+      mountedRef.current = false
+      controller.abort()
+    }
+  }, [qc])
+}
+
 export default function ClusterStatusCard() {
   const qc = useQueryClient()
   const router = useRouter()
 
-  const { data: workloads = [], isLoading: loadingWorkloads, isError: errorWorkloads } = useQuery({ queryKey: ['workloads'], queryFn: getWorkloads, refetchInterval: 30_000 })
-  const { data: nodes = [], isLoading: loadingNodes, isError: errorNodes } = useQuery({ queryKey: ['nodes'], queryFn: getNodes, refetchInterval: 30_000 })
-  const { data: schedules = [], isLoading: loadingSchedules, isError: errorSchedules } = useQuery({ queryKey: ['schedules'], queryFn: getSchedules, refetchInterval: 30_000 })
+  // Single overview query — fed by SSE in real time, polls as fallback
+  const { data: overview, isLoading, isError } = useQuery({
+    queryKey: ['overview'],
+    queryFn: getOverview,
+    staleTime: 25_000,
+    refetchInterval: 30_000,
+  })
 
-  const isLoading = loadingWorkloads || loadingNodes || loadingSchedules
-  const isError = errorWorkloads || errorNodes || errorSchedules
+  // Schedules only needed for trigger button (find schedule ID by type)
+  const { data: schedules = [] } = useQuery({
+    queryKey: ['schedules'],
+    queryFn: getSchedules,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  })
+
+  // Subscribe to SSE — updates the overview query cache in real time
+  useClusterStream()
 
   const [dialog, setDialog] = useState<{ open: boolean; type: TriggerType } | null>(null)
   const [mode, setMode] = useState<'plan' | 'apply'>('plan')
@@ -78,37 +144,16 @@ export default function ClusterStatusCard() {
     },
   })
 
-  const sleeping = workloads.filter((w) => w.status === 'sleeping').length
-  const running = workloads.filter((w) => w.status === 'running').length
-  const activeNodes = nodes.length
-
+  const sleeping = overview?.sleepingCount ?? 0
+  const running = overview?.runningCount ?? 0
+  const activeNodes = overview?.nodeCount ?? 0
+  const sleepingByNs = overview?.sleepingByNs ?? []
   const isPartial = sleeping > 0 && running > 0
   const isSleeping = sleeping > 0 && running === 0
 
   const statusColor = isSleeping ? '#F59E0B' : isPartial ? '#F97316' : '#22C55E'
   const statusLabel = isSleeping ? 'Cluster Sleeping' : isPartial ? 'Partially Sleeping' : 'Cluster Awake'
   const StatusIcon = isSleeping ? BedtimeIcon : isPartial ? Brightness4Icon : WbSunnyIcon
-
-  // Namespaces with sleeping workloads (shown when partially sleeping)
-  const sleepingByNs = useMemo(() => {
-    if (!isPartial) return []
-    const map = new Map<string, number>()
-    workloads.filter((w) => w.status === 'sleeping').forEach((w) => {
-      map.set(w.namespace, (map.get(w.namespace) ?? 0) + 1)
-    })
-    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]).slice(0, 4)
-  }, [workloads, isPartial])
-
-  // Next upcoming enabled schedule
-  const nextRun = useMemo(() =>
-    [...schedules]
-      .filter((s) => s.enabled && s.nextRun)
-      .sort((a, b) => new Date(a.nextRun!).getTime() - new Date(b.nextRun!).getTime())[0]
-  , [schedules])
-
-  // Impact counts for button tooltips
-  const wouldScale = workloads.filter((w) => w.status === 'running').length
-  const wouldWake  = workloads.filter((w) => w.status === 'sleeping').length
 
   return (
     <>
@@ -182,10 +227,10 @@ export default function ClusterStatusCard() {
                     {sleepingByNs.length} namespace{sleepingByNs.length !== 1 ? 's' : ''} with sleeping workloads
                   </Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {sleepingByNs.map(([ns, count]) => (
+                    {sleepingByNs.map(({ namespace, count }) => (
                       <Chip
-                        key={ns}
-                        label={`${ns} · ${count}`}
+                        key={namespace}
+                        label={`${namespace} · ${count}`}
                         size="small"
                         sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(249,115,22,0.12)', color: '#F97316', '& .MuiChip-label': { px: 0.75 } }}
                       />
@@ -218,7 +263,7 @@ export default function ClusterStatusCard() {
 
               {/* Action buttons with impact tooltips */}
               <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-                <Tooltip title={`Will scale down ~${wouldScale} running workload${wouldScale !== 1 ? 's' : ''}`} arrow>
+                <Tooltip title={`Will scale down ~${running} running workload${running !== 1 ? 's' : ''}`} arrow>
                   <span>
                     <Button
                       variant="outlined"
@@ -230,7 +275,7 @@ export default function ClusterStatusCard() {
                     </Button>
                   </span>
                 </Tooltip>
-                <Tooltip title={`Will restore ~${wouldWake} sleeping workload${wouldWake !== 1 ? 's' : ''}`} arrow>
+                <Tooltip title={`Will restore ~${sleeping} sleeping workload${sleeping !== 1 ? 's' : ''}`} arrow>
                   <span>
                     <Button
                       variant="outlined"
@@ -245,7 +290,7 @@ export default function ClusterStatusCard() {
               </Box>
 
               {/* Next run badge */}
-              {nextRun && (
+              {overview?.nextRun && (
                 <Box
                   sx={{
                     display: 'inline-flex',
@@ -261,7 +306,7 @@ export default function ClusterStatusCard() {
                 >
                   <AccessTimeIcon sx={{ fontSize: 13, color: 'primary.light' }} />
                   <Typography variant="caption" sx={{ color: 'primary.light', fontWeight: 500 }}>
-                    Next: {nextRun.name} · {timeUntil(nextRun.nextRun!)}
+                    Next: {overview.nextRun.name} · {timeUntil(overview.nextRun.nextRun)}
                   </Typography>
                 </Box>
               )}

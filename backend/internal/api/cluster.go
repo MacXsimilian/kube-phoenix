@@ -6,9 +6,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -42,15 +45,43 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "kubernetes client unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	ctx := r.Context()
-	var result []WorkloadResponse
 
-	// Deployments
-	deployments, err := h.k8s.ListDeployments(ctx, "")
-	if err != nil {
-		jsonError(w, "failed to list deployments: "+err.Error(), http.StatusInternalServerError)
+	// Cache-first: serve from in-memory snapshot when ready
+	if h.cache != nil {
+		if snap := h.cache.Snapshot(); snap.Ready() {
+			jsonOK(w, buildWorkloadResponse(snap.Deployments, snap.StatefulSets))
+			return
+		}
+	}
+
+	// Fallback: fetch deployments and statefulsets in parallel
+	ctx := r.Context()
+	var (
+		deployments  []appsv1.Deployment
+		statefulsets []appsv1.StatefulSet
+		dErr, ssErr  error
+		wg           sync.WaitGroup
+	)
+	wg.Add(2)
+	go func() { defer wg.Done(); deployments, dErr = h.k8s.ListDeployments(ctx, "") }()
+	go func() { defer wg.Done(); statefulsets, ssErr = h.k8s.ListStatefulSets(ctx, "") }()
+	wg.Wait()
+
+	if dErr != nil {
+		jsonError(w, "failed to list deployments: "+dErr.Error(), http.StatusInternalServerError)
 		return
 	}
+	if ssErr != nil {
+		jsonError(w, "failed to list statefulsets: "+ssErr.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	jsonOK(w, buildWorkloadResponse(deployments, statefulsets))
+}
+
+func buildWorkloadResponse(deployments []appsv1.Deployment, statefulsets []appsv1.StatefulSet) []WorkloadResponse {
+	var result []WorkloadResponse
+
 	for _, d := range deployments {
 		current := int32(0)
 		if d.Spec.Replicas != nil {
@@ -76,12 +107,6 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// StatefulSets
-	statefulsets, err := h.k8s.ListStatefulSets(ctx, "")
-	if err != nil {
-		jsonError(w, "failed to list statefulsets: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
 	for _, ss := range statefulsets {
 		current := int32(0)
 		if ss.Spec.Replicas != nil {
@@ -110,7 +135,7 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 	if result == nil {
 		result = []WorkloadResponse{}
 	}
-	jsonOK(w, result)
+	return result
 }
 
 func workloadStatus(current int32, saved *int32) string {
@@ -128,7 +153,6 @@ func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "kubernetes client unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	ctx := r.Context()
 
 	g, err := h.store.GetGuardrails()
 	if err != nil {
@@ -136,18 +160,42 @@ func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nodes, err := h.k8s.ListNodes(ctx)
-	if err != nil {
-		jsonError(w, "failed to list nodes: "+err.Error(), http.StatusInternalServerError)
-		return
+	var nodes []corev1.Node
+	var allPods []corev1.Pod
+
+	// Cache-first: serve from in-memory snapshot when ready
+	if h.cache != nil {
+		if snap := h.cache.Snapshot(); snap.Ready() {
+			nodes = snap.Nodes
+			allPods = snap.Pods
+		}
 	}
 
-	// Pod counts per node (excluding daemonsets)
-	allPods, err := h.k8s.ListAllPods(ctx)
-	if err != nil {
-		slog.Error("get nodes: failed to list pods — pod counts will be zero", "err", err)
-		allPods = []corev1.Pod{}
+	if nodes == nil {
+		// Fallback: fetch nodes and pods in parallel (previously serial)
+		ctx := r.Context()
+		var nErr, pErr error
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); nodes, nErr = h.k8s.ListNodes(ctx) }()
+		go func() { defer wg.Done(); allPods, pErr = h.k8s.ListAllPods(ctx) }()
+		wg.Wait()
+
+		if nErr != nil {
+			jsonError(w, "failed to list nodes: "+nErr.Error(), http.StatusInternalServerError)
+			return
+		}
+		if pErr != nil {
+			slog.Error("get nodes: failed to list pods — pod counts will be zero", "err", pErr)
+			allPods = []corev1.Pod{}
+		}
 	}
+
+	jsonOK(w, buildNodeResponse(nodes, allPods, g))
+}
+
+func buildNodeResponse(nodes []corev1.Node, allPods []corev1.Pod, g *store.Guardrails) []NodeResponse {
+	// Pod counts per node (excluding daemonsets)
 	podCounts := map[string]int{}
 	criticalNodes := map[string]bool{}
 	cpuRequested := map[string]int64{}
@@ -206,7 +254,7 @@ func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 	if result == nil {
 		result = []NodeResponse{}
 	}
-	jsonOK(w, result)
+	return result
 }
 
 type NodePodResponse struct {
