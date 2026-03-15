@@ -37,6 +37,8 @@ type TriggerType = 'scale_down' | 'scale_up'
 function useClusterStream() {
   const qc = useQueryClient()
   const mountedRef = useRef(true)
+  const [disconnected, setDisconnected] = useState(false)
+  const failCountRef = useRef(0)
 
   useEffect(() => {
     mountedRef.current = true
@@ -50,9 +52,13 @@ function useClusterStream() {
             { signal: controller.signal, headers: { ...getAuthHeader() } },
           )
           if (!res.ok || !res.body) {
+            failCountRef.current += 1
+            if (failCountRef.current > 1) setDisconnected(true)
             await new Promise((r) => setTimeout(r, 5_000))
             continue
           }
+          failCountRef.current = 0
+          setDisconnected(false)
           const reader = res.body.getReader()
           const decoder = new TextDecoder()
           let buf = ''
@@ -72,6 +78,8 @@ function useClusterStream() {
           }
         } catch {
           if (!mountedRef.current) break
+          failCountRef.current += 1
+          if (failCountRef.current > 1) setDisconnected(true)
           await new Promise((r) => setTimeout(r, 3_000))
         }
       }
@@ -83,6 +91,8 @@ function useClusterStream() {
       controller.abort()
     }
   }, [qc])
+
+  return disconnected
 }
 
 export default function ClusterStatusCard() {
@@ -106,7 +116,7 @@ export default function ClusterStatusCard() {
   })
 
   // Subscribe to SSE — updates the overview query cache in real time
-  useClusterStream()
+  const streamDisconnected = useClusterStream()
 
   const [dialog, setDialog] = useState<{ open: boolean; type: TriggerType } | null>(null)
   const [mode, setMode] = useState<'plan' | 'apply'>('plan')
@@ -136,6 +146,7 @@ export default function ClusterStatusCard() {
     onSuccess: ({ executionId }) => {
       setDialog(null)
       qc.invalidateQueries({ queryKey: ['executions'] })
+      qc.invalidateQueries({ queryKey: ['overview'] })
       setTriggerExecId(executionId)
     },
     onError: (err: unknown) => {
@@ -159,9 +170,14 @@ export default function ClusterStatusCard() {
     <>
       <Card sx={{ height: '100%' }}>
         <CardContent sx={{ p: 3 }}>
-          <Typography variant="subtitle2" color="text.secondary" mb={2}>
-            CLUSTER STATUS
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Typography variant="subtitle2" color="text.secondary">
+              CLUSTER STATUS
+            </Typography>
+            {streamDisconnected && (
+              <Chip label="Live updates paused" size="small" sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(245,158,11,0.15)', color: 'warning.main' }} />
+            )}
+          </Box>
 
           {isError && (
             <Alert severity="warning" sx={{ mb: 2 }}>
