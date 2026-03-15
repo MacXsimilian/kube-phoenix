@@ -54,7 +54,7 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
           cursor: 'pointer',
           borderRadius: 2,
           mx: 0.5,
-          '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
+          '&:hover': { bgcolor: 'action.hover' },
         }}
       >
         <Typography sx={{ fontSize: 22, lineHeight: 1, userSelect: 'none' }}>🐦‍🔥</Typography>
@@ -82,7 +82,7 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
                 color: active ? 'primary.main' : 'text.secondary',
                 bgcolor: active ? 'rgba(124,58,237,0.12)' : 'transparent',
                 '&:hover': {
-                  bgcolor: active ? 'rgba(124,58,237,0.18)' : 'rgba(255,255,255,0.05)',
+                  bgcolor: active ? 'rgba(124,58,237,0.18)' : 'action.hover',
                 },
               }}
             >
