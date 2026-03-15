@@ -77,52 +77,41 @@ kube-phoenix is a web application that manages Kubernetes cluster **sleep/wake s
 
 ## 2. High-Level Architecture Diagram
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                          Kubernetes Cluster                              │
-│                                                                          │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │                  kube-phoenix namespace                          │    │
-│  │                                                                  │    │
-│  │  ┌──────────────────────────────────────────────────────────┐   │    │
-│  │  │             kube-phoenix Pod (single container)           │   │    │
-│  │  │                                                           │   │    │
-│  │  │  ┌─────────────────────────────────────────────────────┐ │   │    │
-│  │  │  │                  Go Binary (:8080)                   │ │   │    │
-│  │  │  │                                                       │ │   │    │
-│  │  │  │  ┌─────────────┐  ┌──────────┐  ┌────────────────┐  │ │   │    │
-│  │  │  │  │  Chi Router │  │Scheduler │  │  Scaler Runner │  │ │   │    │
-│  │  │  │  │  + Middleware│  │(cron v3) │  │  (scale_down   │  │ │   │    │
-│  │  │  │  └──────┬──────┘  └────┬─────┘  │   scale_up)    │  │ │   │    │
-│  │  │  │         │              │         └───────┬────────┘  │ │   │    │
-│  │  │  │  ┌──────▼──────┐  ┌───▼───┐            │            │ │   │    │
-│  │  │  │  │ API Handlers│  │ Store │◄───────────┘            │ │   │    │
-│  │  │  │  │ /api/*      │  │(GORM) │                         │ │   │    │
-│  │  │  │  │ /ws/*       │  └───┬───┘                         │ │   │    │
-│  │  │  │  └──────┬──────┘      │                             │ │   │    │
-│  │  │  │         │             │                             │ │   │    │
-│  │  │  │  ┌──────▼──────┐  ┌───▼──────────────┐            │ │   │    │
-│  │  │  │  │  SPA Static │  │   PostgreSQL DB   │            │ │   │    │
-│  │  │  │  │  (embedded) │  │   (same ns or     │            │ │   │    │
-│  │  │  │  └─────────────┘  │    external RDS)  │            │ │   │    │
-│  │  │  │                   └───────────────────┘            │ │   │    │
-│  │  │  │                                                     │ │   │    │
-│  │  │  │  ┌─────────────────────────────────────────────┐   │ │   │    │
-│  │  │  │  │          k8s Client (client-go)             │   │ │   │    │
-│  │  │  │  └─────────────────────┬───────────────────────┘   │ │   │    │
-│  │  │  └────────────────────────┼───────────────────────────┘ │   │    │
-│  │  └───────────────────────────┼───────────────────────────────┘   │    │
-│  └───────────────────────────────┼───────────────────────────────────┘    │
-│                                  │ Kubernetes API Server                   │
-│                                  │ (ClusterRole grants)                    │
-│       ┌──────────────────────────▼───────────────────┐                    │
-│       │          Workload Namespaces                  │                    │
-│       │  Deployments  StatefulSets  Pods  Nodes       │                    │
-│       └───────────────────────────────────────────────┘                    │
-└──────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    Browser["External Browser"]
+    ALB["Ingress / ALB"]
 
-External browser ──HTTPS──► Ingress/ALB ──HTTP──► Service :80 ──► Pod :8080
-                                                    (or NodePort)
+    subgraph Cluster["Kubernetes Cluster"]
+        subgraph NS["kube-phoenix namespace"]
+            subgraph Pod["kube-phoenix Pod (single container)"]
+                subgraph Binary["Go Binary — :8080"]
+                    Router["Chi Router\n+ BasicAuth middleware"]
+                    Handlers["API Handlers\n/api/*  /ws/*"]
+                    Scheduler["Scheduler\n(robfig/cron v3)"]
+                    Scaler["Scaler Runner\nscale_down / scale_up"]
+                    Store["Store\n(GORM)"]
+                    SPA["SPA Static\n(//go:embed)"]
+                    K8sClient["k8s Client\n(client-go)"]
+                end
+            end
+            PG[("PostgreSQL DB\nsame namespace\nor external RDS")]
+        end
+        subgraph Workloads["Workload Namespaces"]
+            K8sAPI["Kubernetes API Server\n(ClusterRole grants)\nDeployments · StatefulSets · Pods · Nodes"]
+        end
+    end
+
+    Browser -- "HTTPS" --> ALB
+    ALB -- "HTTP :80" --> Router
+    Router --> Handlers
+    Router --> SPA
+    Handlers --> Scheduler
+    Handlers --> Store
+    Scheduler --> Scaler
+    Scaler --> K8sClient
+    K8sClient --> K8sAPI
+    Store --> PG
 ```
 
 ### Request flow summary
