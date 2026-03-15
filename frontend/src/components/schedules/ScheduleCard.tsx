@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
+import { keyframes } from '@mui/system'
 import Paper from '@mui/material/Paper'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -25,11 +26,21 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
+import CheckIcon from '@mui/icons-material/Check'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import { updateSchedule, deleteSchedule, triggerRun } from '@/lib/api'
 import { cronToText } from '@/lib/cronToText'
 import type { Schedule } from '@/lib/types'
 
 const DELETE_DELAY_MS = 5000
+
+const fadeAway = keyframes`
+  0%   { opacity: 1 }
+  60%  { opacity: 1 }
+  100% { opacity: 0 }
+`
+
+type ToggleFeedback = 'idle' | 'saved' | 'failed'
 
 export default function ScheduleCard({
   schedule,
@@ -49,6 +60,7 @@ export default function ScheduleCard({
   const [deleteDialog, setDeleteDialog] = useState(false)
   const [undoOpen, setUndoOpen] = useState(false)
   const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Optimistic enabled state — flips immediately on toggle, reverts on error
   const [localEnabled, setLocalEnabled] = useState(schedule.enabled)
@@ -58,21 +70,30 @@ export default function ScheduleCard({
 
   useEffect(() => {
     return () => {
-      if (deleteTimer.current) clearTimeout(deleteTimer.current)
+      if (deleteTimer.current)  clearTimeout(deleteTimer.current)
+      if (feedbackTimer.current) clearTimeout(feedbackTimer.current)
     }
   }, [])
+
+  const [toggleFeedback, setToggleFeedback] = useState<ToggleFeedback>('idle')
 
   const toggleEnabled = useMutation({
     mutationFn: (newEnabled: boolean) => updateSchedule(schedule.id, { enabled: newEnabled }),
     onMutate: (newEnabled) => {
       setLocalEnabled(newEnabled)
+      // clear any previous feedback when a new toggle starts
+      setToggleFeedback('idle')
+      if (feedbackTimer.current) clearTimeout(feedbackTimer.current)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] })
       qc.invalidateQueries({ queryKey: ['overview'] })
+      setToggleFeedback('saved')
+      feedbackTimer.current = setTimeout(() => setToggleFeedback('idle'), 1500)
     },
     onError: (err: unknown) => {
       setLocalEnabled(schedule.enabled)
+      setToggleFeedback('failed')
       onNotify?.(err instanceof Error ? err.message : 'Toggle failed', 'error')
     },
   })
@@ -125,22 +146,41 @@ export default function ScheduleCard({
           display: 'flex',
           alignItems: 'center',
           gap: 2,
+          border: '1px solid',
+          borderColor: toggleFeedback === 'failed' ? 'rgba(248,113,113,0.28)' : 'transparent',
+          transition: 'border-color 0.25s, background-color 0.15s',
           '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' },
         }}
       >
-        {/* Enable toggle — optimistic, disabled while pending */}
-        <Switch
-          checked={localEnabled}
-          onChange={() => toggleEnabled.mutate(!localEnabled)}
-          disabled={toggleEnabled.isPending}
-          color="primary"
-          size="small"
-          slotProps={{ input: { 'aria-label': `Enable ${schedule.name}` } }}
-        />
+        {/* Enable toggle — spinner overlay while pending */}
+        <Box sx={{ position: 'relative', display: 'inline-flex', flexShrink: 0, alignItems: 'center' }}>
+          <Switch
+            checked={localEnabled}
+            onChange={() => toggleEnabled.mutate(!localEnabled)}
+            disabled={toggleEnabled.isPending}
+            color="primary"
+            size="small"
+            sx={{ opacity: toggleEnabled.isPending ? 0.35 : 1, transition: 'opacity 0.15s' }}
+            slotProps={{ input: { 'aria-label': localEnabled ? `Disable ${schedule.name}` : `Enable ${schedule.name}` } }}
+          />
+          {toggleEnabled.isPending && (
+            <CircularProgress
+              size={14}
+              sx={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                color: 'primary.main',
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+        </Box>
 
         {/* Main info */}
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
             <Typography variant="body1" fontWeight={600}>
               {schedule.name}
             </Typography>
@@ -160,6 +200,41 @@ export default function ScheduleCard({
                 size="small"
                 sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(255,255,255,0.07)' }}
               />
+            )}
+
+            {/* Inline toggle feedback */}
+            {toggleFeedback === 'saved' && (
+              <Box
+                component="span"
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 0.4,
+                  color: 'success.main',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  animation: `${fadeAway} 1.5s ease forwards`,
+                }}
+              >
+                <CheckIcon sx={{ fontSize: 12 }} />
+                Saved
+              </Box>
+            )}
+            {toggleFeedback === 'failed' && (
+              <Box
+                component="span"
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 0.4,
+                  color: 'error.main',
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                <ErrorOutlineIcon sx={{ fontSize: 12 }} />
+                Failed
+              </Box>
             )}
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
