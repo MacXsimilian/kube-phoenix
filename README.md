@@ -335,8 +335,11 @@ Each schedule defines when the scaler fires, how it fires, and which namespaces 
 | **Mode** | `plan` — logs what would happen, no changes; `apply` — executes for real |
 | **Namespace filter** | Comma-separated namespace names to target. Leave empty to target all namespaces. |
 | **Enabled** | Whether the schedule is active. Disabled schedules are skipped by the cron engine. |
+| **Position** | Display order within each type group. Set automatically; updated via drag-and-drop. |
 
 The toggle switch on each schedule card persists the change immediately — no need to open the edit dialog. The switch shows an optimistic update while the request is in flight and reverts automatically on failure.
+
+Cards within each section (Sleep / Wake) can be reordered by dragging the handle on the right edge. The new order is persisted to the database and shared across all users — dragging in one section never affects the other.
 
 ### Default schedules
 
@@ -360,8 +363,9 @@ WebSocket connections authenticate via `?token=<base64(user:pass)>`.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/healthz` | Health check (DB ping) |
-| `GET` | `/api/schedules` | List all schedules (includes `nextRun` per schedule) |
+| `GET` | `/api/schedules` | List all schedules ordered by position (includes `nextRun` per schedule) |
 | `POST` | `/api/schedules` | Create schedule |
+| `PUT` | `/api/schedules/reorder` | Reorder within a type — body: `{"type":"scale_down","ids":[3,1,2]}` |
 | `GET` | `/api/schedules/:id` | Get schedule |
 | `PUT` | `/api/schedules/:id` | Update schedule (`type` is immutable) |
 | `DELETE` | `/api/schedules/:id` | Delete schedule |

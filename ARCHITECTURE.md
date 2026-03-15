@@ -376,7 +376,11 @@ The `/healthz` endpoint must be reachable by the Kubernetes liveness probe. Kube
 
 **`listSchedules` (GET /api/schedules)**
 
-Fetches all Schedule rows from PostgreSQL, then for each schedule queries `scheduler.NextRun(id)` to get the next cron fire time. The NextRun is appended to the response JSON as a virtual field. This is a deliberate join-at-application-layer pattern rather than storing NextRun in the database, because it is always derived from the cron expression and cannot become stale.
+Fetches all Schedule rows from PostgreSQL ordered by `position asc, id asc`, then for each schedule queries `scheduler.NextRun(id)` to get the next cron fire time. The NextRun is appended to the response JSON as a virtual field. This is a deliberate join-at-application-layer pattern rather than storing NextRun in the database, because it is always derived from the cron expression and cannot become stale.
+
+**`reorderSchedules` (PUT /api/schedules/reorder)**
+
+Accepts `{"type": "scale_down"|"scale_up", "ids": [...]}` and bulk-updates the `position` column for each ID within a single transaction. Only IDs matching the specified type are affected — the `WHERE id = ? AND type = ?` clause silently ignores any mismatched IDs, so it is not possible to cross-contaminate the sleep and wake orderings. Returns the full updated schedule list. The route is registered before `/{id}` in the router so chi does not interpret `"reorder"` as a numeric ID.
 
 **`createSchedule` (POST /api/schedules)**
 
@@ -872,6 +876,7 @@ type Schedule struct {
     Enabled         bool      `gorm:"default:true"`
     NamespaceFilter string    `gorm:"default:''"`        // CSV, empty = all
     TimeoutMinutes  int       `gorm:"default:120"`
+    Position        int       // display order within each type group; lower = higher in list
     CreatedAt       time.Time
     UpdatedAt       time.Time
 }
