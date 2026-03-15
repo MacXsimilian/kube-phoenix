@@ -382,7 +382,7 @@ export default function LogViewer({
         anchor="right"
         open={!!execution}
         onClose={onClose}
-        PaperProps={{
+        slotProps={{ paper: {
           sx: {
             width: { xs: '100vw', md: drawerWidth },
             bgcolor: 'background.paper',
@@ -390,7 +390,7 @@ export default function LogViewer({
             flexDirection: 'column',
             overflow: 'visible',
           },
-        }}
+        } }}
       >
         {/* Resize handle */}
         <Box

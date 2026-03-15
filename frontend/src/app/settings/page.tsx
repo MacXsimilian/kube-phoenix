@@ -48,7 +48,7 @@ function ResetProgressDialog({
       onClose={done ? onClose : undefined}
       maxWidth="sm"
       fullWidth
-      PaperProps={{ sx: { bgcolor: 'background.paper' } }}
+      slotProps={{ paper: { sx: { bgcolor: 'background.paper' } } }}
     >
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         {!done && <CircularProgress size={18} sx={{ flexShrink: 0 }} />}
