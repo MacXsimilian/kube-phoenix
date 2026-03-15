@@ -2,8 +2,11 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
+
+	"gorm.io/gorm"
 )
 
 type triggerRequest struct {
@@ -33,8 +36,11 @@ func (h *Handler) trigger(w http.ResponseWriter, r *http.Request) {
 	slog.Info("manual trigger requested", "scheduleID", req.ScheduleID, "mode", req.Mode)
 	execID, err := h.scheduler.RunNow(req.ScheduleID, req.Mode)
 	if err != nil {
-		slog.Error("manual trigger failed", "scheduleID", req.ScheduleID, "mode", req.Mode, "err", err)
-		jsonError(w, err.Error(), http.StatusInternalServerError)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			jsonError(w, "schedule not found", http.StatusNotFound)
+		} else {
+			jsonInternalError(w, err, "manual trigger failed")
+		}
 		return
 	}
 	slog.Info("manual trigger accepted", "scheduleID", req.ScheduleID, "execID", execID, "mode", req.Mode)

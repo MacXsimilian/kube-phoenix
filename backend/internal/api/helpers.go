@@ -25,6 +25,11 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	}
 }
 
+func jsonInternalError(w http.ResponseWriter, err error, msg string) {
+	slog.Error(msg, "err", err)
+	jsonError(w, "internal server error", http.StatusInternalServerError)
+}
+
 func parseID(r *http.Request, param string) (uint, error) {
 	id, err := strconv.ParseUint(chi.URLParam(r, param), 10, 64)
 	return uint(id), err

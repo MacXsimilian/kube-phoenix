@@ -28,6 +28,7 @@ func (s *Store) UpdateSchedule(id uint, updates map[string]interface{}) (*Schedu
 	allowed := map[string]bool{
 		"name": true, "cron_expr": true, "timezone": true,
 		"mode": true, "enabled": true, "namespace_filter": true,
+		"timeout_minutes": true,
 	}
 	for k := range updates {
 		if !allowed[k] {
@@ -50,7 +51,14 @@ func (s *Store) UpdateSchedule(id uint, updates map[string]interface{}) (*Schedu
 }
 
 func (s *Store) DeleteSchedule(id uint) error {
-	return s.db.Delete(&Schedule{}, id).Error
+	result := s.db.Delete(&Schedule{}, id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // ─── Guardrails ───────────────────────────────────────────────────────────────
@@ -61,7 +69,11 @@ func (s *Store) GetGuardrails() (*Guardrails, error) {
 }
 
 func (s *Store) UpdateGuardrails(updates map[string]interface{}) (*Guardrails, error) {
-	if err := s.db.Model(&Guardrails{}).Where("id = 1").Updates(updates).Error; err != nil {
+	keys := make([]string, 0, len(updates))
+	for k := range updates {
+		keys = append(keys, k)
+	}
+	if err := s.db.Model(&Guardrails{}).Where("id = 1").Select(keys).Updates(updates).Error; err != nil {
 		return nil, err
 	}
 	return s.GetGuardrails()

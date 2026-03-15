@@ -97,17 +97,24 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 }
 
 // corsHandler returns a CORS middleware.
-// In production (basic auth enabled) only same-origin requests are allowed.
+// In production (basic auth enabled) origins are restricted to the value of
+// CORS_ALLOWED_ORIGIN. If that env var is unset, no cross-origin requests are
+// allowed (same-origin only via empty AllowedOrigins).
 // In dev mode (no auth) the wildcard is used for convenience.
 func corsHandler() func(http.Handler) http.Handler {
 	allowedOrigins := []string{"*"}
 	if os.Getenv("BASIC_AUTH_USER") != "" {
-		// Restrict to same-origin. Adjust if you deploy behind a different hostname.
-		allowedOrigins = []string{"https://*", "http://*"}
+		// Restrict to an explicit origin or deny all cross-origin requests.
+		if origin := os.Getenv("CORS_ALLOWED_ORIGIN"); origin != "" {
+			allowedOrigins = []string{origin}
+		} else {
+			allowedOrigins = []string{}
+		}
 	}
 	return cors.Handler(cors.Options{
-		AllowedOrigins: allowedOrigins,
-		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type"},
+		AllowedOrigins:   allowedOrigins,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		AllowCredentials: false,
 	})
 }
