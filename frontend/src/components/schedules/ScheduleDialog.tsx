@@ -112,6 +112,7 @@ export default function ScheduleDialog({
       isEdit ? updateSchedule(schedule!.id, form) : createSchedule(form),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schedules'] })
+      qc.invalidateQueries({ queryKey: ['overview'] })
       setMutError(null)
       setSaveSnack(true)
       onSaved?.()

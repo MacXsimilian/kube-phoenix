@@ -19,11 +19,11 @@ function ClusterTabs() {
     setTab(searchParams.get('tab') === 'nodes' ? 1 : 0)
   }, [searchParams])
 
-  const { data: workloads = [] } = useQuery({ queryKey: ['workloads'], queryFn: getWorkloads, refetchInterval: 30_000 })
-  const { data: nodes = [] } = useQuery({ queryKey: ['nodes'], queryFn: getNodes, refetchInterval: 30_000 })
+  const { data: workloads = [], isError: workloadsError } = useQuery({ queryKey: ['workloads'], queryFn: getWorkloads, refetchInterval: 30_000 })
+  const { data: nodes = [], isError: nodesError } = useQuery({ queryKey: ['nodes'], queryFn: getNodes, refetchInterval: 30_000 })
 
-  const workloadLabel = workloads.length ? `Workloads (${workloads.length})` : 'Workloads'
-  const nodeLabel = nodes.length ? `Nodes (${nodes.length})` : 'Nodes'
+  const workloadLabel = workloadsError ? 'Workloads (?)' : workloads.length ? `Workloads (${workloads.length})` : 'Workloads'
+  const nodeLabel = nodesError ? 'Nodes (?)' : nodes.length ? `Nodes (${nodes.length})` : 'Nodes'
 
   return (
     <>

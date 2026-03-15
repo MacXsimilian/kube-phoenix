@@ -103,6 +103,7 @@ export default function ScheduleCard({
     onSuccess: () => {
       setRunDialog(false)
       qc.invalidateQueries({ queryKey: ['executions'] })
+      qc.invalidateQueries({ queryKey: ['overview'] })
       router.push('/history/')
     },
     onError: (err: unknown) => {
