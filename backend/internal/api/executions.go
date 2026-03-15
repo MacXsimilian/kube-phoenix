@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	"gorm.io/gorm"
 )
 
 const (
@@ -66,6 +68,7 @@ func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 
 	page, err := h.store.ListExecutions(f)
 	if err != nil {
+		slog.Error("list executions failed", "err", err)
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -80,7 +83,12 @@ func (h *Handler) getExecution(w http.ResponseWriter, r *http.Request) {
 	}
 	exec, err := h.store.GetExecution(id)
 	if err != nil {
-		jsonError(w, "not found", http.StatusNotFound)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			jsonError(w, "not found", http.StatusNotFound)
+		} else {
+			slog.Error("get execution failed", "execID", id, "err", err)
+			jsonError(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 	jsonOK(w, exec)
@@ -122,15 +130,16 @@ func (h *Handler) wsExecutionLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("ws: client connected", "execID", id, "remote_addr", conn.RemoteAddr())
-	defer func() {
-		slog.Info("ws: client disconnected", "execID", id, "remote_addr", conn.RemoteAddr())
-		_ = conn.Close()
-	}()
 
 	// Read pump: consume incoming frames (pings, pong, close) so the TCP
 	// buffer doesn't fill up and the connection can be cleanly torn down.
 	// Without this goroutine, an ungraceful client disconnect leaks the
 	// write-side goroutine until the next write times out.
+	//
+	// Defer order (LIFO) is intentional:
+	//   1. conn.Close() fires first  — unblocks the read pump's ReadMessage
+	//   2. <-done fires second       — waits for the read pump goroutine to exit
+	// This guarantees no goroutine leak regardless of which exit path fires.
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -144,11 +153,23 @@ func (h *Handler) wsExecutionLogs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
+	defer func() { <-done }() // declared first → runs second (after conn.Close)
+	defer func() {
+		slog.Info("ws: client disconnected", "execID", id, "remote_addr", conn.RemoteAddr())
+		_ = conn.Close()
+	}() // declared second → runs first
 
 	// Send existing log lines
 	existing, err := h.store.GetLogLines(id)
 	if err != nil {
 		slog.Error("ws: failed to fetch existing log lines", "execID", id, "err", err)
+		// Notify the client so they know history is incomplete
+		_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+		_ = conn.WriteJSON(store.LogLine{
+			Level:     "warn",
+			Message:   "Could not load historical log lines — database error. Live lines will continue below.",
+			Timestamp: time.Now(),
+		})
 	}
 	for _, line := range existing {
 		if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {

@@ -85,9 +85,13 @@ func (c *ClusterCache) refresh(ctx context.Context) {
 	go func() { defer wg.Done(); statefulSets, errs[3] = c.client.ListStatefulSets(ctx, "") }()
 	wg.Wait()
 
-	for _, err := range errs {
+	resourceNames := [4]string{"nodes", "pods", "deployments", "statefulsets"}
+	anyOK := false
+	for i, err := range errs {
 		if err != nil {
-			slog.Warn("cluster cache refresh error", "err", err)
+			slog.Warn("cluster cache refresh error", "resource", resourceNames[i], "err", err)
+		} else {
+			anyOK = true
 		}
 	}
 
@@ -104,7 +108,12 @@ func (c *ClusterCache) refresh(ctx context.Context) {
 	if errs[3] == nil {
 		c.snap.StatefulSets = statefulSets
 	}
-	c.snap.FetchedAt = time.Now()
+	// Only advance FetchedAt when at least one fetch succeeded.
+	// If all four fail, snap.Ready() stays false and handlers fall back to
+	// live K8s calls rather than serving a stale zero-value snapshot.
+	if anyOK {
+		c.snap.FetchedAt = time.Now()
+	}
 	c.mu.Unlock()
 
 	c.notify()
