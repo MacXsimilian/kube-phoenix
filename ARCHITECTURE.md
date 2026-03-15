@@ -187,7 +187,7 @@ kube-phoenix/
 │
 ├── frontend/
 │   ├── next.config.mjs           # output:'export', trailingSlash:true
-│   ├── package.json              # next@15, @mui/material@6, @tanstack/react-query@5
+│   ├── package.json              # next@16, @mui/material@7, @tanstack/react-query@5
 │   │
 │   └── src/
 │       ├── app/
@@ -240,7 +240,7 @@ kube-phoenix/
 │
 ├── helm/
 │   └── kube-phoenix/
-│       ├── Chart.yaml             # version: 0.1.19, appVersion: 0.1.30
+│       ├── Chart.yaml             # Helm chart version and appVersion (managed by release-please)
 │       ├── values.yaml            # All configurable defaults
 │       └── templates/
 │           ├── _helpers.tpl       # Named template helpers
@@ -284,11 +284,11 @@ main()
   ├─ k8s.New()                   ──► Tries InClusterConfig → kubeconfig fallback
   │   └─ if error: slog.Warn, k8s = nil (k8s operations disabled but server runs)
   │
-  ├─ scheduler.New(store, k8s, broker)
+  ├─ scheduler.New(store, k8s)
   │   └─ if k8s != nil: scheduler.Start()
   │   └─ if k8s == nil: scheduler created but not started (manual trigger blocked)
   │
-  ├─ api.NewRouter(store, k8s, scheduler)  ──► Returns http.Handler (Chi mux)
+  ├─ api.NewRouter(store, k8s, scheduler, cache)  ──► Returns http.Handler (Chi mux)
   │
   └─ http.Server{Addr: ":8080", WriteTimeout: 0}
       └─ WriteTimeout=0 is critical: allows WebSocket and SSE to stream indefinitely
@@ -304,7 +304,7 @@ main()
 
 **Graceful shutdown sequence:**
 1. OS sends SIGINT or SIGTERM.
-2. `signal.NotifyContext` cancels the root context.
+2. `signal.Notify` delivers the signal to a buffered channel; `main` unblocks.
 3. `server.Shutdown(ctx)` is called with a 30-second deadline.
 4. In-flight HTTP requests are allowed to complete.
 5. The scheduler's `Stop()` method halts the cron dispatcher (ongoing scale operations run to completion in their goroutines — they are not force-killed).
@@ -321,11 +321,12 @@ The router is built with `go-chi/chi/v5`. Chi was chosen over `net/http` ServeMu
 
 ```
 Every request passes through:
-  1. middleware.RequestID     — generates/propagates X-Request-ID header
-  2. middleware.Logger        — structured request log (method, path, status, latency)
-  3. middleware.Recoverer     — catches panics, returns 500, logs stack trace
-  4. cors.Handler             — sets CORS headers (see below)
-  5. middleware.MaxBytesReader(1MB) — protects against large body attacks
+  1. middleware.RequestID        — generates/propagates X-Request-ID header
+  2. authmw.RedactWSToken        — strips ?token= from URL before it reaches the logger
+  3. middleware.Logger           — structured request log (method, path, status, latency)
+  4. middleware.Recoverer        — catches panics, returns 500, logs stack trace
+  5. cors.Handler                — sets CORS headers (see below)
+  6. middleware.MaxBytesReader(1MB) — protects against large body attacks
 ```
 
 **CORS policy:**
@@ -335,10 +336,12 @@ Every request passes through:
 AllowedOrigins: []string{"*"}
 
 // In production (BASIC_AUTH_USER set):
-AllowedOrigins: []string{"https://*", "http://*"}
+// If CORS_ALLOWED_ORIGIN is set, restrict to that origin.
+// Otherwise, deny all cross-origin requests (same-origin only).
+AllowedOrigins: []string{origin}  // or []string{} if CORS_ALLOWED_ORIGIN is unset
 ```
 
-The wildcard in dev allows the Next.js dev server (typically `localhost:3000`) to call the backend without CORS errors. In production the policy is tightened to require an explicit scheme, which at minimum prevents non-browser environments from bypassing the same-origin check.
+The wildcard in dev allows the Next.js dev server (typically `localhost:3000`) to call the backend without CORS errors. In production, cross-origin requests are restricted to the value of the `CORS_ALLOWED_ORIGIN` environment variable. If that variable is unset, no cross-origin requests are permitted — the application is same-origin only.
 
 **Route groups:**
 
@@ -956,10 +959,10 @@ func New(dsn string) (*Store, error) {
 #### Queries (`internal/store/queries.go`)
 
 **SeedDefaults** — runs only if the schedules table is empty. Seeds:
-1. "Weekday Sleep" — `scale_down`, `0 20 * * 1-5`, UTC, plan mode
-2. "Weekday Wake" — `scale_up`, `0 7 * * 1-5`, UTC, plan mode
-3. "Weekend Sleep" — `scale_down`, `0 20 * * 6,0`, UTC, plan mode
-4. "Weekend Wake" — `scale_up`, `0 7 * * 6,0`, UTC, plan mode
+1. "Weekday Sleep" — `scale_down`, `5 19 * * 1-5`, Europe/Budapest, plan mode, disabled
+2. "Weekday Wake" — `scale_up`, `0 7 * * 1-5`, Europe/Budapest, plan mode, disabled
+3. "Weekend Sleep" — `scale_down`, `0 0 * * 6,0`, Europe/Budapest, plan mode, disabled
+4. "Weekend Wake" — `scale_up`, `0 7 * * 1`, Europe/Budapest, plan mode, disabled
 
 And one Guardrails row with sensible defaults:
 - `SkipNamespaces`: `kube-system,kube-public,kube-node-lease,kube-phoenix`
@@ -1643,7 +1646,7 @@ This provides a safe preview before committing to a live scale operation. All sc
 
 ```
 helm/kube-phoenix/
-├── Chart.yaml                 # chart version 0.1.19, appVersion 0.1.30
+├── Chart.yaml                 # chart version and appVersion (managed by release-please)
 ├── values.yaml                # all configurable defaults
 └── templates/
     ├── _helpers.tpl           # named template helpers
@@ -1738,7 +1741,7 @@ The distroless base image has a read-only filesystem. The `/tmp` emptyDir provid
 Controlled by `values.postgresql.enabled`. When enabled, creates:
 1. A Kubernetes `Secret` with PostgreSQL credentials.
 2. A `ClusterIP` Service (port 5432).
-3. A `StatefulSet` with a single PostgreSQL 15 replica and a `PersistentVolumeClaim` for data.
+3. A `StatefulSet` with a single PostgreSQL 16 replica and a `PersistentVolumeClaim` for data.
 
 This is suitable for development and small deployments. Production deployments should use Amazon RDS or similar managed PostgreSQL with automated backups, multi-AZ, and point-in-time recovery.
 
@@ -1928,7 +1931,7 @@ Dependabot PRs go through the same CI pipeline as any other PR — secret scan, 
 | Docker | Latest | For container builds |
 | kubectl | Latest | For k8s interaction |
 | helm | 4.x | For Helm operations |
-| PostgreSQL | 15+ | Local database |
+| PostgreSQL | 16+ | Local database |
 
 > **Note:** Go is not installed on the project maintainer's machine at the time of writing. Backend changes must be built in CI or via Docker.
 
@@ -1967,9 +1970,9 @@ make dev-backend
 # Navigate to http://localhost:3000
 ```
 
-**Option 2: Docker Compose (if available)**
+**Option 2: Docker Compose**
 
-No `docker-compose.yml` is included in the repository at this time. The recommended local setup is running frontend and backend separately as described above.
+A `docker-compose.yml` is included at the repository root. It provides a local PostgreSQL instance. Run `make dev` (equivalent to `docker compose up postgres -d`) before starting the backend.
 
 **Option 3: Full Docker build**
 
@@ -2165,4 +2168,4 @@ go build ./cmd/server/
 ---
 
 *End of ARCHITECTURE.md*
-*Document covers: 2 source code languages, 30+ source files, 4 database models, 18 API routes, 5 frontend pages, 25+ React components, 3-stage Docker build, Helm chart with 10 templates, 2 GitHub Actions workflows.*
+*Document covers: 2 source code languages, 30+ source files, 4 database models, 20+ API routes, 6 frontend pages, 25+ React components, 3-stage Docker build, Helm chart with 10 templates, 2 GitHub Actions workflows.*
