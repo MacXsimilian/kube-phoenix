@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.56](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.55...v0.1.56) (2026-03-15)
+
+
+### Bug Fixes
+
+* **ui:** rework light mode — fix all hardcoded dark colors ([f38ba65](https://github.com/MacXsimilian/kube-phoenix/commit/f38ba65b0fa262e826e809f5ea6c614a323d6ee4))
+
 ## [0.1.55](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.54...v0.1.55) (2026-03-15)
 
 
