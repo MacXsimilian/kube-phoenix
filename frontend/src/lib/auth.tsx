@@ -8,6 +8,7 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
 interface AuthState {
   isAuthenticated: boolean
   checking: boolean
+  backendError: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => void
 }
@@ -23,6 +24,7 @@ export function getAuthHeader(): Record<string, string> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null)
   const [checking, setChecking] = useState(true)
+  const [backendError, setBackendError] = useState(false)
 
   useEffect(() => {
     const stored = sessionStorage.getItem(STORAGE_KEY)
@@ -33,8 +35,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     // Probe: if backend has no basic auth (dev mode), skip login screen
     fetch(`${BASE}/api/schedules`)
-      .then(res => { if (res.ok) setToken('__no_auth__') })
-      .catch(() => {})
+      .then(res => {
+        if (res.ok) {
+          setToken('__no_auth__')
+        } else if (res.status !== 401 && res.status !== 403) {
+          setBackendError(true)
+        }
+      })
+      .catch(() => { setBackendError(true) })
       .finally(() => setChecking(false))
   }, [])
 
@@ -43,7 +51,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await fetch(`${BASE}/api/schedules`, {
       headers: { Authorization: `Basic ${t}` },
     })
-    if (!res.ok) throw new Error('Invalid credentials')
+    if (res.status === 401 || res.status === 403) throw new Error('Invalid credentials')
+    if (!res.ok) throw new Error(`Server error (${res.status})`)
     sessionStorage.setItem(STORAGE_KEY, t)
     setToken(t)
   }, [])
@@ -54,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated: !!token, checking, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated: !!token, checking, backendError, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

@@ -258,13 +258,20 @@ export default function GuardrailsForm() {
     )
   }
 
-  if (loadError) {
+  if (loadError && !g) {
     return <Alert severity="error">Could not load guardrails — please refresh the page.</Alert>
   }
 
   return (
     <>
       <Grid container spacing={3}>
+        {loadError && g && (
+          <Grid size={12}>
+            <Alert severity="warning" sx={{ mb: 1 }}>
+              Could not refresh guardrails — showing last known values.
+            </Alert>
+          </Grid>
+        )}
         {/* System-protected namespaces — full width, visually distinct */}
         <Grid size={12}>
           <Card sx={{ border: '1px solid', borderColor: 'rgba(245,158,11,0.25)', bgcolor: 'rgba(245,158,11,0.02)' }}>
