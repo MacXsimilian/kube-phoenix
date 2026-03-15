@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Bug Fixes
+
+* **ui:** rework light mode — replace all hardcoded dark hex/RGBA values with theme tokens across 10 components; drawer backgrounds, LogViewer terminal, settings dialog, dividers, sidebar active state
+
 ## [0.1.53](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.52...v0.1.53) (2026-03-15)
 
 

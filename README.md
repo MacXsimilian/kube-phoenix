@@ -125,7 +125,7 @@ For each node
 - **Schedules** — multiple sleep and wake schedules with cron expressions, per-schedule timezones, and optional namespace filters for partial scale-down; inline enable/disable toggle persists immediately without opening the edit dialog
 - **History** — full execution log with live WebSocket streaming; scrollable run summary with jump-to-error navigation and error/workload count badges
 - **Manual triggers** — run any schedule immediately in plan (dry-run) or apply mode
-- **Settings** — danger zone with a double-confirmation Reset Database operation (drops all tables, reseeds defaults)
+- **Settings** — light/dark/system theme switcher (persisted in `localStorage`); danger zone with a double-confirmation Reset Database operation (drops all tables, reseeds defaults)
 
 ### Cluster State drill-down
 
@@ -535,7 +535,7 @@ kube-phoenix/
 │       │   ├── layout/             # AppShell, Sidebar
 │       │   └── ...
 │       ├── lib/                    # API client (auth-aware), auth context, TypeScript types
-│       └── theme/                  # Dark purple MUI theme
+│       └── theme/                  # MUI theme — dark (default) + light mode
 └── helm/kube-phoenix/
     ├── Chart.yaml
     ├── values.yaml
