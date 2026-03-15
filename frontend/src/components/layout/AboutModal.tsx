@@ -10,8 +10,9 @@ import Button from '@mui/material/Button'
 import Divider from '@mui/material/Divider'
 import CloseIcon from '@mui/icons-material/Close'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import pkg from '../../../package.json'
 
-const VERSION = '0.1.0'
+const VERSION = pkg.version
 const REPO_URL = 'https://github.com/MacXsimilian/kube-phoenix'
 
 export default function AboutModal({ open, onClose }: { open: boolean; onClose: () => void }) {
