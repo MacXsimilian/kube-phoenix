@@ -1,4 +1,4 @@
-import type { Schedule, ScheduleInput, Guardrails, Execution, LogLine, Workload, Node, NodePod, ExecutionPage, PodDetail } from './types'
+import type { Schedule, ScheduleInput, Guardrails, Execution, LogLine, Workload, Node, NodePod, ExecutionPage, PodDetail, Overview } from './types'
 import { getAuthHeader } from './auth'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
@@ -95,6 +95,11 @@ export const getExecution = (id: number): Promise<Execution> =>
 
 export const getExecutionLogs = (id: number): Promise<LogLine[]> =>
   req<LogLine[]>(`/api/executions/${id}/logs`)
+
+// ── Overview ──────────────────────────────────────────────────────────────────
+
+export const getOverview = (): Promise<Overview> =>
+  req<Overview>('/api/overview')
 
 // ── Cluster ───────────────────────────────────────────────────────────────────
 

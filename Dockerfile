@@ -2,6 +2,9 @@
 # Always build on the host platform — Next.js output is arch-independent.
 FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
 
+ARG NEXT_PUBLIC_APP_VERSION
+ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
+
 WORKDIR /app/frontend
 COPY frontend/package.json ./
 RUN npm install
