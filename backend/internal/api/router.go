@@ -19,10 +19,11 @@ type Handler struct {
 	store     *store.Store
 	k8s       *k8s.Client
 	scheduler *scheduler.Scheduler
+	cache     *k8s.ClusterCache
 }
 
-func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Scheduler) *chi.Mux {
-	h := &Handler{store: st, k8s: k8sClient, scheduler: sched}
+func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Scheduler, cache *k8s.ClusterCache) *chi.Mux {
+	h := &Handler{store: st, k8s: k8sClient, scheduler: sched, cache: cache}
 
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.RequestID) // injects X-Request-Id header; correlates log lines
@@ -66,6 +67,10 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 			r.Get("/executions", h.listExecutions)
 			r.Get("/executions/{id}", h.getExecution)
 			r.Get("/executions/{id}/logs", h.getExecutionLogs)
+
+			// Overview — pre-aggregated dashboard summary (reads from cache)
+			r.Get("/overview", h.getOverview)
+			r.Get("/cluster/stream", h.streamCluster)
 
 			// Cluster state
 			r.Get("/cluster/workloads", h.getWorkloads)
