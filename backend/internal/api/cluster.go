@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,6 +41,13 @@ type NodeResponse struct {
 	Cordoned         bool   `json:"cordoned"`
 }
 
+// validK8sName reports whether s is a valid Kubernetes resource name.
+var validK8sName = regexp.MustCompile(`^[a-z0-9][a-z0-9\-\.]{0,252}[a-z0-9]$|^[a-z0-9]$`)
+
+func isValidK8sName(s string) bool {
+	return validK8sName.MatchString(s)
+}
+
 func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 	if h.k8s == nil {
 		jsonError(w, "kubernetes client unavailable", http.StatusServiceUnavailable)
@@ -68,11 +76,11 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 
 	if dErr != nil {
-		jsonError(w, "failed to list deployments: "+dErr.Error(), http.StatusInternalServerError)
+		jsonInternalError(w, dErr, "list deployments failed")
 		return
 	}
 	if ssErr != nil {
-		jsonError(w, "failed to list statefulsets: "+ssErr.Error(), http.StatusInternalServerError)
+		jsonInternalError(w, ssErr, "list statefulsets failed")
 		return
 	}
 
@@ -156,7 +164,7 @@ func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 
 	g, err := h.store.GetGuardrails()
 	if err != nil {
-		jsonError(w, "guardrails: "+err.Error(), http.StatusInternalServerError)
+		jsonInternalError(w, err, "get guardrails failed")
 		return
 	}
 
@@ -182,7 +190,7 @@ func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 		wg.Wait()
 
 		if nErr != nil {
-			jsonError(w, "failed to list nodes: "+nErr.Error(), http.StatusInternalServerError)
+			jsonInternalError(w, nErr, "list nodes failed")
 			return
 		}
 		if pErr != nil {
@@ -276,11 +284,15 @@ func (h *Handler) getNodePods(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nodeName := chi.URLParam(r, "name")
+	if !isValidK8sName(nodeName) {
+		jsonError(w, "invalid resource name", http.StatusBadRequest)
+		return
+	}
 	ctx := r.Context()
 
 	pods, err := h.k8s.ListPodsOnNode(ctx, nodeName)
 	if err != nil {
-		jsonError(w, "failed to list pods: "+err.Error(), http.StatusInternalServerError)
+		jsonInternalError(w, err, "list pods on node failed")
 		return
 	}
 
@@ -418,11 +430,15 @@ func (h *Handler) getPodDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	namespace := chi.URLParam(r, "namespace")
 	name := chi.URLParam(r, "name")
+	if !isValidK8sName(namespace) || !isValidK8sName(name) {
+		jsonError(w, "invalid resource name", http.StatusBadRequest)
+		return
+	}
 	ctx := r.Context()
 
 	pod, err := h.k8s.GetPod(ctx, namespace, name)
 	if err != nil {
-		jsonError(w, "failed to get pod: "+err.Error(), http.StatusInternalServerError)
+		jsonInternalError(w, err, "get pod failed")
 		return
 	}
 
@@ -536,11 +552,15 @@ func (h *Handler) getWorkloadPods(w http.ResponseWriter, r *http.Request) {
 	namespace := chi.URLParam(r, "namespace")
 	kind := chi.URLParam(r, "kind") // Deployment | StatefulSet
 	name := chi.URLParam(r, "name")
+	if !isValidK8sName(namespace) || !isValidK8sName(name) {
+		jsonError(w, "invalid resource name", http.StatusBadRequest)
+		return
+	}
 	ctx := r.Context()
 
 	pods, err := h.k8s.ListPods(ctx, namespace)
 	if err != nil {
-		jsonError(w, "failed to list pods: "+err.Error(), http.StatusInternalServerError)
+		jsonInternalError(w, err, "list pods failed")
 		return
 	}
 
