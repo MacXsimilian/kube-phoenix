@@ -56,6 +56,7 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 			// Schedules — full CRUD
 			r.Get("/schedules", h.listSchedules)
 			r.Post("/schedules", h.createSchedule)
+			r.Put("/schedules/reorder", h.reorderSchedules)
 			r.Get("/schedules/{id}", h.getSchedule)
 			r.Put("/schedules/{id}", h.updateSchedule)
 			r.Delete("/schedules/{id}", h.deleteSchedule)

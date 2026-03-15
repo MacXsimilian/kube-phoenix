@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { keyframes } from '@mui/system'
@@ -28,6 +28,7 @@ import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import CheckIcon from '@mui/icons-material/Check'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import { updateSchedule, deleteSchedule, triggerRun } from '@/lib/api'
 import { cronToText } from '@/lib/cronToText'
 import type { Schedule } from '@/lib/types'
@@ -47,11 +48,13 @@ export default function ScheduleCard({
   onEdit,
   onDelete,
   onNotify,
+  dragHandleProps,
 }: {
   schedule: Schedule
   onEdit: () => void
   onDelete: () => void
   onNotify?: (msg: string, severity: 'success' | 'error') => void
+  dragHandleProps?: React.HTMLAttributes<HTMLDivElement>
 }) {
   const qc = useQueryClient()
   const router = useRouter()
@@ -278,6 +281,26 @@ export default function ScheduleCard({
             </IconButton>
           </Tooltip>
         </Box>
+
+        {/* Drag handle — only rendered when dragHandleProps are provided */}
+        {dragHandleProps && (
+          <Box
+            {...dragHandleProps}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              color: 'text.disabled',
+              cursor: 'grab',
+              flexShrink: 0,
+              pl: 0.5,
+              '&:hover': { color: 'text.secondary' },
+              '&:active': { cursor: 'grabbing' },
+            }}
+            aria-label="Drag to reorder"
+          >
+            <DragIndicatorIcon fontSize="small" />
+          </Box>
+        )}
       </Paper>
 
       {/* Run Now dialog */}

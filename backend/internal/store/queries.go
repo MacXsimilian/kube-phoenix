@@ -11,7 +11,23 @@ import (
 
 func (s *Store) ListSchedules() ([]Schedule, error) {
 	var schedules []Schedule
-	return schedules, s.db.Find(&schedules).Error
+	return schedules, s.db.Order("position asc, id asc").Find(&schedules).Error
+}
+
+// ReorderSchedules sets the position of each schedule ID within the given type.
+// All provided IDs must belong to the specified type; the WHERE clause filters
+// out any mismatches so other schedules are never affected.
+func (s *Store) ReorderSchedules(scheduleType string, ids []uint) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for pos, id := range ids {
+			if err := tx.Model(&Schedule{}).
+				Where("id = ? AND type = ?", id, scheduleType).
+				Update("position", pos).Error; err != nil {
+				return fmt.Errorf("reorder schedule %d: %w", id, err)
+			}
+		}
+		return nil
+	})
 }
 
 func (s *Store) GetSchedule(id uint) (*Schedule, error) {
@@ -221,6 +237,22 @@ func (s *Store) DropAllTables() error {
 func (s *Store) MigrateSchema() error {
 	if err := s.db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{}); err != nil {
 		return fmt.Errorf("migrate: %w", err)
+	}
+	// Backfill positions for existing rows after the column is first added.
+	// When ALL schedules have position=0 it means the column was just created;
+	// we assign positions by type + id order so the list stays stable.
+	var total, zeroCount int64
+	s.db.Model(&Schedule{}).Count(&total)
+	s.db.Model(&Schedule{}).Where("position = 0").Count(&zeroCount)
+	if total > 0 && total == zeroCount {
+		var schedules []Schedule
+		s.db.Order("type asc, id asc").Find(&schedules)
+		typePos := map[string]int{}
+		for _, sc := range schedules {
+			pos := typePos[sc.Type]
+			s.db.Model(&Schedule{}).Where("id = ?", sc.ID).Update("position", pos)
+			typePos[sc.Type]++
+		}
 	}
 	return nil
 }
