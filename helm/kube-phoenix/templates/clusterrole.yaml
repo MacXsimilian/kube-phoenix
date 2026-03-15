@@ -30,4 +30,9 @@ rules:
   - apiGroups: ["apps"]
     resources: ["replicasets"]
     verbs: ["list"]
+
+  # metrics.k8s.io — needed for live CPU/mem usage in node and workload pod lists
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
 {{- end }}
