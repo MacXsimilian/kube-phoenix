@@ -132,12 +132,12 @@ For each node
 The Cluster State page offers three levels of detail in resizable side drawers:
 
 **Nodes tab**
-- Click a node row → Node detail drawer — resource bars (CPU/mem), zone, instance type, cordon status, and a searchable pod list grouped by namespace
+- Click a node row → Node detail drawer — resource bars (CPU/mem), zone, instance type, cordon status, and a searchable pod list grouped by namespace with **live CPU/memory usage per pod** (from Metrics Server)
 - Click a pod in the node drawer → Pod detail replaces in-place; a breadcrumb back button returns to the node view
 
 **Workloads tab**
 - Sortable table with a live row count footer and an "affected-only" filter that previews what the next sleep run would scale
-- Click a workload row → Workload detail drawer — replica progress bar (ready/current/saved), kind and status chips, searchable pod list
+- Click a workload row → Workload detail drawer — replica progress bar (ready/current/saved), kind and status chips, searchable pod list with **live CPU/memory usage per pod** (from Metrics Server)
 - Click a pod in the workload drawer → Pod detail drawer opens alongside it
 
 **Pod detail** shows:
