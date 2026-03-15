@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.47](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.46...v0.1.47) (2026-03-15)
+
+
+### Features
+
+* **schedules:** add inline toggle feedback — spinner, Saved label, F… ([c131b16](https://github.com/MacXsimilian/kube-phoenix/commit/c131b1635d80c554f5f5b646a9b4a43237ee47ea))
+* **schedules:** add inline toggle feedback — spinner, Saved label, Failed state ([578ef88](https://github.com/MacXsimilian/kube-phoenix/commit/578ef8837282b869ccc7b8fdf69c2f09d418459e))
+
 ## [0.1.46](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.45...v0.1.46) (2026-03-15)
 
 
