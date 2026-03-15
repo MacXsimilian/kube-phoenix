@@ -10,11 +10,8 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import {
-  CSS,
-  restrictToVerticalAxis,
-  restrictToParentElement,
-} from '@dnd-kit/utilities'
+import { CSS } from '@dnd-kit/utilities'
+import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifiers'
 import {
   SortableContext,
   useSortable,
