@@ -1,15 +1,28 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.59](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.58...v0.1.59) (2026-03-15)
 
-### Features
-
-- **cluster:** show live CPU/memory usage per pod in node and workload detail drawers (via `GetAllPodMetrics` cluster-wide Metrics Server call)
 
 ### Bug Fixes
 
-- **metrics:** `GetAllPodMetrics` now logs a WARN with the actual HTTP status code on failure instead of silently swallowing errors as `"unknown"`
-- **rbac:** add `metrics.k8s.io` get/list to Helm ClusterRole — required for live pod usage when using the dedicated kube-phoenix SA
+* **metrics:** log HTTP status code on metrics API failure ([90f840e](https://github.com/MacXsimilian/kube-phoenix/commit/90f840e0853289ff0ad5766603d6e3d9bf6c8ffa))
+* **metrics:** log HTTP status code on metrics API failure ([df29f63](https://github.com/MacXsimilian/kube-phoenix/commit/df29f63880d18fda8720839a27ff1eaaa0db4b06))
+
+## [0.1.58](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.57...v0.1.58) (2026-03-15)
+
+
+### Bug Fixes
+
+* **metrics:** surface API errors and add metrics.k8s.io RBAC rule ([f3914d4](https://github.com/MacXsimilian/kube-phoenix/commit/f3914d4978aba4a33d387527d9f5e7fc3d61ad8d))
+* **metrics:** surface API errors and add metrics.k8s.io RBAC rule ([01941b0](https://github.com/MacXsimilian/kube-phoenix/commit/01941b05718a7b6f6fc585b09e285c5004213df8))
+
+## [0.1.57](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.56...v0.1.57) (2026-03-15)
+
+
+### Features
+
+* **cluster:** show actual CPU/mem usage in node and workload pod lists ([8c661d4](https://github.com/MacXsimilian/kube-phoenix/commit/8c661d4491d629be65e17cb16e865369f09a54df))
+* **cluster:** show actual CPU/mem usage in node and workload pod lists ([adcf8cb](https://github.com/MacXsimilian/kube-phoenix/commit/adcf8cbd7191253bea7f20a382a133369d8e7f03))
 
 ## [0.1.56](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.55...v0.1.56) (2026-03-15)
 
