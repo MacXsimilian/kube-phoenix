@@ -131,7 +131,7 @@ export default function ScheduleDialog({
         onClose={onClose}
         maxWidth="sm"
         fullWidth
-        PaperProps={{ sx: { bgcolor: 'background.paper' } }}
+        slotProps={{ paper: { sx: { bgcolor: 'background.paper' } } }}
       >
         <DialogTitle fontWeight={700}>
           {isEdit ? 'Edit Schedule' : `New ${isSleep ? 'Sleep' : 'Wake'} Schedule`}
@@ -186,7 +186,7 @@ export default function ScheduleDialog({
                   ? 'Invalid cron expression — must be 5 fields (e.g. 0 22 * * 1-5)'
                   : cronToText(form.cronExpr)
               }
-              inputProps={{ style: { fontFamily: 'monospace' } }}
+              slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
             />
 
             {/* Timezone */}
@@ -239,7 +239,7 @@ export default function ScheduleDialog({
               fullWidth
               size="small"
               helperText="Comma-separated namespaces to target. Leave empty to target all namespaces."
-              inputProps={{ style: { fontFamily: 'monospace' } }}
+              slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
               placeholder="e.g. staging,preview"
             />
 

@@ -168,7 +168,7 @@ export default function GuardrailsForm() {
     <>
       <Grid container spacing={3}>
         {/* Workload exclusions */}
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Card sx={{ height: '100%' }}>
             <CardContent sx={{ p: 3 }}>
               <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
@@ -188,7 +188,7 @@ export default function GuardrailsForm() {
         </Grid>
 
         {/* Node protection */}
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Card sx={{ height: '100%' }}>
             <CardContent sx={{ p: 3 }}>
               <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
@@ -222,7 +222,7 @@ export default function GuardrailsForm() {
         </Grid>
 
         {/* Save */}
-        <Grid item xs={12}>
+        <Grid size={12}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Button
               variant="contained"

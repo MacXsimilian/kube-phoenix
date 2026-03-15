@@ -135,7 +135,7 @@ export default function ScheduleCard({
           disabled={toggleEnabled.isPending}
           color="primary"
           size="small"
-          inputProps={{ 'aria-label': `Enable ${schedule.name}` }}
+          slotProps={{ input: { 'aria-label': `Enable ${schedule.name}` } }}
         />
 
         {/* Main info */}
@@ -208,7 +208,7 @@ export default function ScheduleCard({
       <Dialog
         open={runDialog}
         onClose={() => setRunDialog(false)}
-        PaperProps={{ sx: { bgcolor: 'background.paper', minWidth: 340 } }}
+        slotProps={{ paper: { sx: { bgcolor: 'background.paper', minWidth: 340 } } }}
       >
         <DialogTitle fontWeight={700}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -256,7 +256,7 @@ export default function ScheduleCard({
       <Dialog
         open={deleteDialog}
         onClose={() => setDeleteDialog(false)}
-        PaperProps={{ sx: { bgcolor: 'background.paper', minWidth: 320 } }}
+        slotProps={{ paper: { sx: { bgcolor: 'background.paper', minWidth: 320 } } }}
       >
         <DialogTitle fontWeight={700}>Delete Schedule?</DialogTitle>
         <DialogContent>
