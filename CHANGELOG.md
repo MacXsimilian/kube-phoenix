@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.39](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.38...v0.1.39) (2026-03-15)
+
+
+### Bug Fixes
+
+* history UX corrections and browser native auth popup ([15378a9](https://github.com/MacXsimilian/kube-phoenix/commit/15378a9ce931601ea238b24643d73b28b022a6a5))
+* history UX corrections and browser native auth popup ([d51942c](https://github.com/MacXsimilian/kube-phoenix/commit/d51942c51496bb44f00db5049850076fbf6f3ee0))
+
 ## [0.1.38](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.37...v0.1.38) (2026-03-14)
 
 
