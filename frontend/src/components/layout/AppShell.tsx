@@ -28,7 +28,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         }}
       >
         <Toolbar sx={{ minHeight: 52 }}>
-          <IconButton edge="start" onClick={() => setMobileOpen(true)} sx={{ mr: 1 }}>
+          <IconButton edge="start" onClick={() => setMobileOpen(true)} sx={{ mr: 1 }} aria-label="Open navigation menu">
             <MenuIcon />
           </IconButton>
           <Typography variant="subtitle1" fontWeight={700} letterSpacing={-0.5}>

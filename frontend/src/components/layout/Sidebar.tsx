@@ -1,6 +1,7 @@
 'use client'
 
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
+import Link from 'next/link'
 import Drawer from '@mui/material/Drawer'
 import List from '@mui/material/List'
 import ListItemButton from '@mui/material/ListItemButton'
@@ -35,7 +36,6 @@ interface Props {
 
 export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
   const pathname = usePathname()
-  const router = useRouter()
   const { logout } = useAuth()
 
   const content = (
@@ -56,8 +56,10 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
           return (
             <ListItemButton
               key={href}
+              component={Link}
+              href={href}
               aria-current={active ? 'page' : undefined}
-              onClick={() => { router.push(href); onMobileClose() }}
+              onClick={onMobileClose}
               sx={{
                 mx: 1,
                 mb: 0.5,
