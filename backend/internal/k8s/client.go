@@ -352,7 +352,8 @@ func (c *Client) GetAllPodMetrics(ctx context.Context) (map[string]ContainerMetr
 		AbsPath("/apis/metrics.k8s.io/v1beta1/pods").
 		DoRaw(ctx)
 	if err != nil {
-		return map[string]ContainerMetrics{}, nil //nolint:nilerr
+		slog.Warn("GetAllPodMetrics: metrics API call failed", "err", err)
+		return map[string]ContainerMetrics{}, nil
 	}
 
 	var resp struct {
@@ -370,7 +371,8 @@ func (c *Client) GetAllPodMetrics(ctx context.Context) (map[string]ContainerMetr
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(data, &resp); err != nil {
-		return map[string]ContainerMetrics{}, nil //nolint:nilerr
+		slog.Warn("GetAllPodMetrics: failed to parse metrics response", "err", err, "body", string(data[:min(len(data), 512)]))
+		return map[string]ContainerMetrics{}, nil
 	}
 
 	result := make(map[string]ContainerMetrics, len(resp.Items))
