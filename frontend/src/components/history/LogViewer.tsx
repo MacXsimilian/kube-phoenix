@@ -32,16 +32,25 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import DnsIcon from '@mui/icons-material/Dns'
 import StorageIcon from '@mui/icons-material/Storage'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
+import { useTheme } from '@mui/material/styles'
 import { getExecutionLogs, wsLogsUrl } from '@/lib/api'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { Execution, LogLine } from '@/lib/types'
 
-const LEVEL_COLORS: Record<LogLine['level'], string> = {
+const LEVEL_COLORS_DARK: Record<LogLine['level'], string> = {
   info: '#22D3EE',
   ok: '#22C55E',
   plan: '#C084FC',
   error: '#F87171',
   warn: '#FBBF24',
+}
+
+const LEVEL_COLORS_LIGHT: Record<LogLine['level'], string> = {
+  info: '#0369A1',
+  ok: '#15803D',
+  plan: '#6D28D9',
+  error: '#B91C1C',
+  warn: '#92400E',
 }
 
 // ── Summary parsing ──────────────────────────────────────────────────────────
@@ -184,7 +193,7 @@ function ExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: b
             </Box>
             {Object.entries(byNs).map(([ns, items]) => (
               <Box key={ns} sx={{ mb: 1 }}>
-                <Typography variant="caption" sx={{ color: '#94A3B8', pl: 0.5, fontFamily: 'monospace', display: 'block', mb: 0.25 }}>
+                <Typography variant="caption" sx={{ color: 'text.secondary', pl: 0.5, fontFamily: 'monospace', display: 'block', mb: 0.25 }}>
                   {ns}
                 </Typography>
                 <Table size="small" sx={{ '& td': { border: 0, py: 0.25, px: 0.5 } }}>
@@ -194,12 +203,12 @@ function ExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: b
                       return (
                         <TableRow key={`${w.kind}/${w.name}/${w.action}`}>
                           <TableCell sx={{ width: 90, pr: 1 }}>
-                            <Typography variant="caption" sx={{ color: '#64748B', fontFamily: 'monospace', fontSize: 11 }}>
+                            <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', fontSize: 11 }}>
                               {w.kind}
                             </Typography>
                           </TableCell>
                           <TableCell sx={{ flex: 1 }}>
-                            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 12, color: '#E2E8F0' }}>
+                            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 12, color: 'text.primary' }}>
                               {w.name}
                             </Typography>
                           </TableCell>
@@ -273,6 +282,8 @@ function ExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: b
 // ── Log line row ──────────────────────────────────────────────────────────────
 
 function LogLineRow({ line }: { line: LogLine }) {
+  const theme = useTheme()
+  const levelColors = theme.palette.mode === 'dark' ? LEVEL_COLORS_DARK : LEVEL_COLORS_LIGHT
   return (
     <Box
       component="div"
@@ -280,7 +291,7 @@ function LogLineRow({ line }: { line: LogLine }) {
         fontFamily: 'monospace',
         fontSize: 12,
         lineHeight: 1.7,
-        color: LEVEL_COLORS[line.level] ?? '#CBD5E1',
+        color: levelColors[line.level] ?? 'text.primary',
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-all',
       }}
@@ -484,7 +495,7 @@ export default function LogViewer({
                 {errorIndices.length > 0 && (
                   <Tooltip title={`Jump to error${errorIndices.length > 1 ? ` (${currentErrorIdx === -1 ? 1 : currentErrorIdx + 1}/${errorIndices.length})` : ''}`}>
                     <IconButton size="small" onClick={jumpToError} aria-label="Jump to error">
-                      <ReportProblemIcon fontSize="small" sx={{ color: '#F87171' }} />
+                      <ReportProblemIcon fontSize="small" sx={{ color: 'error.main' }} />
                     </IconButton>
                   </Tooltip>
                 )}
@@ -530,7 +541,7 @@ export default function LogViewer({
                   Could not load logs.
                 </Alert>
               )}
-              <Box sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: '#0A0A0F', minHeight: 0 }}>
+              <Box sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: 'background.default', minHeight: 0 }}>
                 {lines.length === 0 && !isRunning && !logsError && (
                   <Typography variant="body2" color="text.secondary">
                     No log lines found.

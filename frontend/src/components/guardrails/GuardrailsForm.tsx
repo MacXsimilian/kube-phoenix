@@ -61,7 +61,7 @@ function ChipInput({
       <Box
         sx={{
           display: 'flex', flexWrap: 'wrap', gap: 0.75,
-          p: 1.5, border: '1px solid rgba(255,255,255,0.15)', borderRadius: 2,
+          p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2,
           minHeight: 52, cursor: 'text',
           '&:focus-within': { borderColor: 'primary.main' },
         }}
@@ -128,11 +128,11 @@ function ProtectedChipInput({
           display: 'flex', flexWrap: 'wrap', gap: 0.75,
           p: 1.5,
           border: '1px solid',
-          borderColor: 'rgba(245,158,11,0.35)',
+          borderColor: 'warning.main',
           borderRadius: 2,
           minHeight: 52,
           cursor: 'text',
-          bgcolor: 'rgba(245,158,11,0.04)',
+          bgcolor: 'rgba(245,158,11,0.06)',
           '&:focus-within': { borderColor: 'warning.main' },
         }}
         onClick={() => document.getElementById('protected-chip-input')?.focus()}
@@ -274,7 +274,7 @@ export default function GuardrailsForm() {
         )}
         {/* System-protected namespaces — full width, visually distinct */}
         <Grid size={12}>
-          <Card sx={{ border: '1px solid', borderColor: 'rgba(245,158,11,0.25)', bgcolor: 'rgba(245,158,11,0.02)' }}>
+          <Card sx={{ border: '1px solid', borderColor: 'rgba(245,158,11,0.40)', bgcolor: 'rgba(245,158,11,0.03)' }}>
             <CardContent sx={{ p: 3 }}>
               <ProtectedChipInput values={systemNs} onChange={setSystemNs} />
             </CardContent>
