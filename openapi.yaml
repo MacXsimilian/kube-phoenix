@@ -7,14 +7,15 @@ info:
 
     All `/api/*` and `/ws/*` endpoints require HTTP Basic Auth when
     `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` are configured on the server.
-    `/healthz` is always open.
+    `/healthz` and `/metrics` are always open.
 
     WebSocket connections (`/ws/executions/{id}/logs`) authenticate via a
-    `?token=<base64(user:pass)>` query parameter.
+    `?token=<base64(user:pass)>` query parameter because browsers cannot set
+    `Authorization` headers on WebSocket upgrades.
 
     The SSE endpoint (`/api/cluster/stream`) uses a standard HTTP request
     with the `Authorization` header.
-  version: "1.0.0"
+  version: "1.1.0"
   license:
     name: Apache 2.0
     url: https://github.com/MacXsimilian/kube-phoenix/blob/master/LICENSE
@@ -34,6 +35,7 @@ components:
 
   schemas:
     Schedule:
+      description: A cron-based sleep or wake schedule.
       type: object
       properties:
         id:
@@ -72,11 +74,10 @@ components:
           type: integer
           description: Display order within the type group. Managed via the reorder endpoint.
         nextRun:
-          type: string
+          type: ["string", "null"]
           format: date-time
           readOnly: true
           description: Next scheduled fire time. Null if disabled or schedule is invalid.
-          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -91,6 +92,7 @@ components:
         - cronExpr
 
     ScheduleCreate:
+      description: Request body for creating a new schedule.
       type: object
       properties:
         name:
@@ -122,8 +124,8 @@ components:
         - cronExpr
 
     ScheduleUpdate:
+      description: Partial update — only provided fields are written. `type` is immutable and ignored.
       type: object
-      description: All fields optional. `type` is ignored (immutable).
       properties:
         name:
           type: string
@@ -142,6 +144,7 @@ components:
           type: integer
 
     Execution:
+      description: A record of a schedule execution (completed or in-progress).
       type: object
       properties:
         id:
@@ -156,9 +159,8 @@ components:
           type: string
           format: date-time
         finishedAt:
-          type: string
+          type: ["string", "null"]
           format: date-time
-          nullable: true
         status:
           type: string
           enum: [running, success, failed]
@@ -181,6 +183,7 @@ components:
           type: integer
 
     LogLine:
+      description: A single log entry within an execution.
       type: object
       properties:
         id:
@@ -199,6 +202,7 @@ components:
           format: date-time
 
     Guardrails:
+      description: Global guardrail configuration that protects namespaces, nodes, and workloads from the scaler.
       type: object
       properties:
         id:
@@ -229,7 +233,23 @@ components:
           format: date-time
           readOnly: true
 
+    GuardrailsUpdate:
+      description: Partial update for guardrails. Only provided fields are written.
+      type: object
+      properties:
+        systemNamespaces:
+          type: string
+        skipNamespaces:
+          type: string
+        skipNsNode:
+          type: string
+        skipNodeLabels:
+          type: string
+        skipNodeTaints:
+          type: string
+
     PaginatedExecutions:
+      description: Paginated list of executions.
       type: object
       properties:
         items:
@@ -238,12 +258,10 @@ components:
             $ref: "#/components/schemas/Execution"
         total:
           type: integer
-        page:
-          type: integer
-        pageSize:
-          type: integer
+          description: Total number of matching executions across all pages.
 
     OverviewResponse:
+      description: Pre-aggregated cluster summary for the dashboard.
       type: object
       properties:
         clusterStatus:
@@ -257,6 +275,7 @@ components:
           type: integer
         sleepingByNs:
           type: array
+          description: Top namespaces with sleeping workloads (max 4).
           items:
             type: object
             properties:
@@ -265,8 +284,8 @@ components:
               count:
                 type: integer
         nextRun:
-          nullable: true
-          type: object
+          type: ["object", "null"]
+          description: The next enabled schedule to fire. Null if no schedules are enabled.
           properties:
             name:
               type: string
@@ -277,7 +296,216 @@ components:
           type: integer
           description: Age of the ClusterCache snapshot in milliseconds.
 
+    TriggerResponse:
+      description: Response when a manual trigger is accepted.
+      type: object
+      properties:
+        executionId:
+          type: integer
+
+    WorkloadResponse:
+      description: A Deployment or StatefulSet with sleep status.
+      type: object
+      properties:
+        namespace:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [Deployment, StatefulSet]
+        currentReplicas:
+          type: integer
+        savedReplicas:
+          type: ["integer", "null"]
+          description: Original replica count stored in the `previous-replicas` annotation. Null if not sleeping.
+        readyReplicas:
+          type: integer
+        status:
+          type: string
+          enum: [running, sleeping, partial]
+
+    NodeResponse:
+      description: A Kubernetes node enriched with pod counts, resource allocations, and guardrail protection status.
+      type: object
+      properties:
+        name:
+          type: string
+        instanceType:
+          type: string
+        zone:
+          type: string
+        podCount:
+          type: integer
+          description: Non-DaemonSet pod count.
+        status:
+          type: string
+          enum: [active, protected, would-drain]
+        protectionReason:
+          type: string
+          description: Human-readable reason if status is protected. Empty otherwise.
+        cpuAllocatable:
+          type: integer
+          description: Millicores.
+        cpuRequested:
+          type: integer
+          description: Millicores.
+        memAllocatable:
+          type: integer
+          description: Bytes.
+        memRequested:
+          type: integer
+          description: Bytes.
+        createdAt:
+          type: string
+          format: date-time
+        cordoned:
+          type: boolean
+
+    NodePodResponse:
+      description: A pod running on a node (excludes DaemonSet pods).
+      type: object
+      properties:
+        name:
+          type: string
+        namespace:
+          type: string
+        ownerKind:
+          type: string
+        ownerName:
+          type: string
+        status:
+          type: string
+          description: Pod phase — Running, Pending, Failed, Succeeded, Unknown.
+        readyContainers:
+          type: integer
+        totalContainers:
+          type: integer
+        cpuRequest:
+          type: integer
+          description: Millicores.
+        memRequest:
+          type: integer
+          description: Bytes.
+        cpuUsage:
+          type: integer
+          description: Millicores (0 if metrics unavailable).
+        memUsage:
+          type: integer
+          description: Bytes (0 if metrics unavailable).
+        startedAt:
+          type: string
+          description: RFC3339 or empty string.
+
+    PodDetailResponse:
+      description: Comprehensive pod information with containers, conditions, and events.
+      type: object
+      properties:
+        name:
+          type: string
+        namespace:
+          type: string
+        phase:
+          type: string
+        nodeName:
+          type: string
+        podIP:
+          type: string
+        hostIP:
+          type: string
+        qosClass:
+          type: string
+        startedAt:
+          type: string
+          description: RFC3339 or empty string.
+        nodeInstanceType:
+          type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        annotations:
+          type: object
+          additionalProperties:
+            type: string
+        containers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContainerDetailResponse"
+        conditions:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              status:
+                type: string
+                enum: ["True", "False", "Unknown"]
+        events:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [Normal, Warning]
+              reason:
+                type: string
+              message:
+                type: string
+              count:
+                type: integer
+              lastSeen:
+                type: string
+                format: date-time
+
+    ContainerDetailResponse:
+      description: Container-level detail including resource requests, limits, and live usage.
+      type: object
+      properties:
+        name:
+          type: string
+        image:
+          type: string
+        ready:
+          type: boolean
+        restartCount:
+          type: integer
+        cpuRequest:
+          type: integer
+          description: Millicores.
+        memRequest:
+          type: integer
+          description: Bytes.
+        cpuLimit:
+          type: integer
+          description: Millicores (0 = no limit set).
+        memLimit:
+          type: integer
+          description: Bytes (0 = no limit set).
+        cpuUsage:
+          type: integer
+          description: Millicores (0 = unavailable).
+        memUsage:
+          type: integer
+          description: Bytes (0 = unavailable).
+        lastState:
+          type: string
+          description: Terminated reason or empty string.
+
+    ResetEvent:
+      description: A progress event emitted during database reset (NDJSON stream).
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [step, done, error]
+        message:
+          type: string
+
     Error:
+      description: Standard error response.
       type: object
       properties:
         error:
@@ -286,6 +514,7 @@ components:
 paths:
   /healthz:
     get:
+      operationId: healthCheck
       summary: Health check
       description: Returns 200 if the server is running and the database is reachable. No authentication required.
       security: []
@@ -303,11 +532,23 @@ paths:
                     example: ok
         "503":
           description: Unhealthy (database unreachable)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  error:
+                    type: string
+                    example: database unavailable
 
   /api/schedules:
     get:
+      operationId: listSchedules
       summary: List schedules
-      description: Returns all schedules ordered by type and position. Each schedule includes a `nextRun` field.
+      description: Returns all schedules ordered by position. Each schedule includes a computed `nextRun` field.
       tags: [Schedules]
       responses:
         "200":
@@ -318,8 +559,18 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Schedule"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
+      operationId: createSchedule
       summary: Create schedule
+      description: Creates a new schedule. Defaults to disabled, plan mode, UTC timezone.
       tags: [Schedules]
       requestBody:
         required: true
@@ -340,13 +591,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/schedules/reorder:
     put:
+      operationId: reorderSchedules
       summary: Reorder schedules
       description: |
         Bulk-updates the `position` field for schedules of a given type.
         Only IDs belonging to the specified type are affected — mismatched IDs are silently ignored.
+        Returns the full updated schedule list with `nextRun` fields.
       tags: [Schedules]
       requestBody:
         required: true
@@ -375,6 +636,20 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Schedule"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/schedules/{id}:
     parameters:
@@ -384,7 +659,9 @@ paths:
         schema:
           type: integer
     get:
+      operationId: getSchedule
       summary: Get schedule
+      description: Returns a single schedule by ID, including the computed `nextRun` field.
       tags: [Schedules]
       responses:
         "200":
@@ -393,11 +670,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Schedule"
+        "401":
+          description: Unauthorized
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     put:
+      operationId: updateSchedule
       summary: Update schedule
-      description: Partial update — only provided fields are written. `type` is ignored.
+      description: Partial update — only provided fields are written. `type` is immutable and ignored.
       tags: [Schedules]
       requestBody:
         required: true
@@ -412,43 +702,80 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Schedule"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     delete:
+      operationId: deleteSchedule
       summary: Delete schedule
+      description: Deletes a schedule by ID and reloads the scheduler.
       tags: [Schedules]
       responses:
         "204":
           description: Deleted
+        "401":
+          description: Unauthorized
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/executions:
     get:
+      operationId: listExecutions
       summary: List executions
+      description: Returns a paginated list of executions, ordered by start time descending.
       tags: [Executions]
       parameters:
         - name: schedule_id
           in: query
           schema:
             type: integer
-          description: Filter by schedule ID
+          description: Filter by schedule ID.
         - name: status
           in: query
           schema:
             type: string
             enum: [running, success, failed]
+          description: Filter by execution status.
         - name: page
           in: query
           schema:
             type: integer
-            default: 1
+            default: 0
+          description: Zero-based page index.
         - name: page_size
           in: query
           schema:
             type: integer
             default: 20
             maximum: 100
+          description: Number of items per page (max 100).
       responses:
         "200":
           description: OK
@@ -456,6 +783,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PaginatedExecutions"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/executions/{id}:
     parameters:
@@ -465,7 +806,9 @@ paths:
         schema:
           type: integer
     get:
+      operationId: getExecution
       summary: Get execution
+      description: Returns a single execution by ID with the associated schedule preloaded.
       tags: [Executions]
       responses:
         "200":
@@ -474,8 +817,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Execution"
+        "401":
+          description: Unauthorized
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/executions/{id}/logs:
     parameters:
@@ -485,8 +840,9 @@ paths:
         schema:
           type: integer
     get:
+      operationId: getExecutionLogs
       summary: Get execution logs
-      description: Returns all log lines for a completed execution ordered by seq ASC. For a running execution use the WebSocket endpoint instead.
+      description: Returns all log lines for an execution ordered by sequence number. For live streaming during a running execution, use the WebSocket endpoint instead.
       tags: [Executions]
       responses:
         "200":
@@ -497,14 +853,23 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/LogLine"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/overview:
     get:
+      operationId: getOverview
       summary: Dashboard overview
       description: |
         Pre-aggregated cluster summary for the Overview page.
         Reads from the in-memory ClusterCache — no Kubernetes or database I/O on the hot path.
-      tags: [Cluster]
+      tags: [Overview]
       responses:
         "200":
           description: OK
@@ -512,15 +877,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OverviewResponse"
+        "401":
+          description: Unauthorized
 
   /api/cluster/stream:
     get:
+      operationId: streamCluster
       summary: SSE overview stream
       description: |
         Server-Sent Events stream. Sends the current overview immediately on connect,
         then pushes a new `data:` event on every ClusterCache refresh (~10 s cadence).
         Each event payload is a JSON-serialised `OverviewResponse`.
-      tags: [Cluster]
+      tags: [Overview]
       responses:
         "200":
           description: SSE stream
@@ -528,9 +896,19 @@ paths:
             text/event-stream:
               schema:
                 type: string
+                description: Each `data:` line contains a JSON OverviewResponse.
+        "401":
+          description: Unauthorized
+        "503":
+          description: Cluster cache unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/cluster/workloads:
     get:
+      operationId: listWorkloads
       summary: List workloads
       description: Returns all Deployments and StatefulSets with sleep status derived from the `previous-replicas` annotation.
       tags: [Cluster]
@@ -542,12 +920,27 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
+                  $ref: "#/components/schemas/WorkloadResponse"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Kubernetes client unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/cluster/nodes:
     get:
+      operationId: listNodes
       summary: List nodes
-      description: Returns all nodes enriched with pod counts, resource requests, and guardrail protection status.
+      description: Returns all nodes enriched with non-DaemonSet pod counts, resource requests/allocatable, and guardrail protection status.
       tags: [Cluster]
       responses:
         "200":
@@ -557,7 +950,21 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
+                  $ref: "#/components/schemas/NodeResponse"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Kubernetes client unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/cluster/nodes/{name}/pods:
     parameters:
@@ -566,9 +973,11 @@ paths:
         required: true
         schema:
           type: string
+        description: Kubernetes node name.
     get:
+      operationId: listNodePods
       summary: List pods on a node
-      description: Returns non-DaemonSet pods on the specified node. Resolves ReplicaSet → Deployment owner chains for a human-readable workload name.
+      description: Returns non-DaemonSet pods on the specified node. Resolves ReplicaSet owners to top-level Deployment/StatefulSet names.
       tags: [Cluster]
       responses:
         "200":
@@ -578,7 +987,27 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
+                  $ref: "#/components/schemas/NodePodResponse"
+        "400":
+          description: Invalid node name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Kubernetes client unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/cluster/pods/{namespace}/{name}:
     parameters:
@@ -593,10 +1022,12 @@ paths:
         schema:
           type: string
     get:
+      operationId: getPodDetail
       summary: Get pod detail
       description: |
-        Returns comprehensive pod information: containers, conditions, recent events,
-        and live CPU/memory usage from the Metrics Server (degrades gracefully if absent).
+        Returns comprehensive pod information: containers with resource requests/limits/usage,
+        conditions, recent Kubernetes events, and live CPU/memory from the Metrics Server
+        (degrades gracefully if Metrics Server is absent).
       tags: [Cluster]
       responses:
         "200":
@@ -604,9 +1035,27 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-        "404":
-          description: Pod not found
+                $ref: "#/components/schemas/PodDetailResponse"
+        "400":
+          description: Invalid resource name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Kubernetes client unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/cluster/workloads/{namespace}/{kind}/{name}/pods:
     parameters:
@@ -627,7 +1076,9 @@ paths:
         schema:
           type: string
     get:
+      operationId: listWorkloadPods
       summary: List pods for a workload
+      description: Returns non-DaemonSet pods owned by the specified Deployment or StatefulSet.
       tags: [Cluster]
       responses:
         "200":
@@ -637,11 +1088,33 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
+                  $ref: "#/components/schemas/NodePodResponse"
+        "400":
+          description: Invalid resource name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Kubernetes client unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/guardrails:
     get:
+      operationId: getGuardrails
       summary: Get guardrails
+      description: Returns the current guardrail configuration.
       tags: [Guardrails]
       responses:
         "200":
@@ -650,15 +1123,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Guardrails"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     put:
+      operationId: updateGuardrails
       summary: Update guardrails
+      description: Partial update — only provided fields are written.
       tags: [Guardrails]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Guardrails"
+              $ref: "#/components/schemas/GuardrailsUpdate"
       responses:
         "200":
           description: Updated
@@ -666,11 +1149,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Guardrails"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/trigger:
     post:
+      operationId: triggerSchedule
       summary: Manually trigger a schedule
-      description: Runs the specified schedule immediately, outside its cron cadence.
+      description: Runs the specified schedule immediately, outside its cron cadence. Returns the new execution ID.
       tags: [Operations]
       requestBody:
         required: true
@@ -694,14 +1192,31 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Execution"
+                $ref: "#/components/schemas/TriggerResponse"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
         "404":
           description: Schedule not found
-        "409":
-          description: Schedule is already running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/admin/reset-db:
     post:
+      operationId: resetDatabase
       summary: Reset database
       description: |
         Drops all tables and reseeds defaults. Streams progress as newline-delimited JSON (NDJSON).
@@ -727,22 +1242,36 @@ paths:
           content:
             application/x-ndjson:
               schema:
-                type: string
+                $ref: "#/components/schemas/ResetEvent"
         "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "422":
           description: Missing or incorrect confirmation string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /ws/executions/{id}/logs:
     get:
+      operationId: wsExecutionLogs
       summary: Live log stream (WebSocket)
       description: |
         WebSocket upgrade. Streams log lines as JSON objects in real time during an active execution.
 
         On connect, all previously-emitted log lines for the execution are replayed in order,
-        followed by live lines as they are emitted. When the execution completes, the server
-        sends a final `{"done": true}` message and closes the connection.
+        followed by live lines as they are emitted. When the execution completes the server
+        closes the connection.
 
         **Authentication:** `?token=<base64(user:pass)>` query parameter (browsers cannot
         set `Authorization` headers on WebSocket upgrades).
+      security: []
       tags: [Executions]
       parameters:
         - name: id
@@ -761,12 +1290,23 @@ paths:
           description: Switching Protocols
         "401":
           description: Unauthorized
+        "404":
+          description: Execution not found
 
 tags:
   - name: Health
+    description: Server health and readiness probes.
   - name: Schedules
+    description: CRUD for sleep/wake cron schedules.
   - name: Executions
+    description: Execution history and log retrieval.
+  - name: Overview
+    description: Pre-aggregated dashboard summary and SSE stream.
   - name: Cluster
+    description: Live cluster state — workloads, nodes, and pods.
   - name: Guardrails
+    description: Global guardrail configuration for namespace/node protection.
   - name: Operations
+    description: Manual schedule triggers.
   - name: Admin
+    description: Administrative operations (danger zone).

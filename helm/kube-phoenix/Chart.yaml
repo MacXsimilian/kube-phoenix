@@ -4,6 +4,7 @@ description: Kubernetes cluster sleep/wake schedule manager
 type: application
 version: 0.1.19
 appVersion: 0.1.63
+kubeVersion: ">=1.25.0-0"
 keywords:
   - kubernetes
   - scaling
@@ -11,3 +12,6 @@ keywords:
 home: https://github.com/MacXsimilian/kube-phoenix
 sources:
   - https://github.com/MacXsimilian/kube-phoenix
+maintainers:
+  - name: MacXsimilian
+    url: https://github.com/MacXsimilian

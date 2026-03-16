@@ -8,6 +8,10 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -15,6 +19,7 @@ jobs:
   release-please:
     name: Release please
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
       tag_name: ${{ steps.rp.outputs.tag_name }}
@@ -28,6 +33,7 @@ jobs:
   docker:
     name: Docker release build & push
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created }}
     permissions:
@@ -80,6 +86,7 @@ jobs:
   scan:
     name: Vulnerability scan
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     needs: docker
     if: ${{ needs.docker.result == 'success' }}
     permissions:
@@ -97,6 +104,7 @@ jobs:
   helm-publish:
     name: Helm release package & push
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     needs: [release-please, docker]
     if: ${{ needs.release-please.outputs.release_created && needs.docker.result == 'success' }}
     permissions:
