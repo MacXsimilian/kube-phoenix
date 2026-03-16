@@ -249,6 +249,7 @@ kube-phoenix/
 └── .github/
     ├── workflows/
     │   ├── ci.yml                 # PR/push CI: build, test, lint, docker
+    │   ├── security.yml           # Trivy, govulncheck, npm audit, TruffleHog
     │   └── release-please.yml    # Automated release + helm OCI push
     └── dependabot.yml             # Weekly dependency updates
 ```
@@ -1784,12 +1785,13 @@ master  (protected — always deployable)
 
 ### Design principles
 
-Two workflows with distinct responsibilities:
+Three workflows with distinct responsibilities:
 
-| Workflow              | Trigger                     | Responsibility                                   |
-| :-------------------- | :-------------------------- | :----------------------------------------------- |
-| `ci.yml`              | every push to `master` + PR | Validate — fast feedback, no artifacts produced   |
-| `release-please.yml`  | push to `master`            | Ship — Docker image, Helm chart, GitHub Release   |
+| Workflow              | Trigger                              | Responsibility                                   |
+| :-------------------- | :----------------------------------- | :----------------------------------------------- |
+| `ci.yml`              | every push to `master` + PR          | Validate — fast feedback, no artifacts produced   |
+| `security.yml`        | every push to `master` + PR + weekly | Security — vuln checks, image scan, secret scan   |
+| `release-please.yml`  | push to `master`                     | Ship — Docker image, Helm chart, GitHub Release   |
 
 Docker builds only happen on release. CI never pushes images. This keeps the registry clean and prevents every commit from producing a deployable artifact.
 
@@ -1852,6 +1854,72 @@ steps:
 ```
 
 On direct pushes, scans `HEAD~1..HEAD`. On PRs, scans the full PR diff. The `--only-verified` flag means TruffleHog only reports secrets it can actively verify against the upstream service — no noise from test fixtures or example configs.
+
+---
+
+### security.yml — Dedicated Security Scanning
+
+Triggered on: `push` to `master`; `pull_request` targeting `master`; weekly schedule (Monday 06:00 UTC). No path filter — always runs on every push/PR to ensure security coverage is never skipped.
+
+**Job: govulncheck**
+```
+steps:
+  - checkout
+  - setup-go@v5 (go 1.26)
+  - cp ../openapi.yaml internal/docs/openapi.yaml
+  - govulncheck ./...          (checks actual call graph against Go vuln DB)
+```
+
+**Job: npm-audit**
+```
+steps:
+  - checkout
+  - setup-node@v4 (node 24)
+  - npm ci
+  - npm audit --audit-level=high --omit=dev
+```
+
+**Job: trivy-image** (builds the Docker image locally and scans it)
+```
+steps:
+  - checkout
+  - docker build -t kube-phoenix:scan .
+  - aquasecurity/trivy-action
+      image-ref: kube-phoenix:scan
+      severity: CRITICAL,HIGH
+      exit-code: 1
+      format: sarif → upload to GitHub Security tab
+```
+
+Unlike the release-time scan in `release-please.yml` which scans the published image, this job builds and scans the image on every PR — catching vulnerabilities before merge.
+
+**Job: trivy-fs** (filesystem scan for IaC misconfigurations and dependency vulnerabilities)
+```
+steps:
+  - checkout
+  - aquasecurity/trivy-action
+      scan-type: fs
+      scan-ref: .
+      severity: CRITICAL,HIGH
+      exit-code: 1
+      format: sarif → upload to GitHub Security tab
+```
+
+Catches Dockerfile misconfigurations, Helm template issues, and dependency vulnerabilities without needing to build a container image. Complements the image scan.
+
+**Job: secrets** (identical to the secret scan in ci.yml — duplicated here so the security workflow is self-contained)
+```
+steps:
+  - checkout (full history, fetch-depth: 0)
+  - trufflesecurity/trufflehog
+      base: HEAD~1 (push) or PR base SHA (PR)
+      head: HEAD   (push) or PR head SHA (PR)
+      extra_args: --only-verified
+```
+
+> **Weekly schedule rationale:** New CVEs are disclosed continuously. The weekly Monday run ensures vulnerabilities introduced by upstream dependencies are caught even when no code changes are made.
+
+> **SARIF uploads:** Both Trivy jobs upload results in SARIF format to GitHub's Security tab. This provides a unified view of all security findings alongside CodeQL results (if enabled). SARIF upload requires `security-events: write` permission.
 
 ---
 
@@ -2308,4 +2376,4 @@ kube_phoenix_active_schedules
 ---
 
 *End of ARCHITECTURE.md*
-*Document covers: 2 source code languages, 30+ source files, 4 database models, 20+ API routes, 6 frontend pages, 25+ React components, 3-stage Docker build, Helm chart with 10 templates, 2 GitHub Actions workflows.*
+*Document covers: 2 source code languages, 30+ source files, 4 database models, 20+ API routes, 6 frontend pages, 25+ React components, 3-stage Docker build, Helm chart with 10 templates, 3 GitHub Actions workflows.*
