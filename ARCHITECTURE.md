@@ -55,6 +55,7 @@ kube-phoenix is a web application that manages Kubernetes cluster **sleep/wake s
 | Cluster state visibility | Real-time view of workloads and nodes with health metrics                 |
 | History                  | Paginated execution history with per-execution log viewer                 |
 | Self-hosted              | Single binary embeds the full Next.js SPA; no separate web server needed  |
+| API documentation        | Swagger UI served at `/api/docs/`; raw OpenAPI 3.1 spec at `/api/docs/openapi.yaml` |
 
 ### Technology stack
 
@@ -338,6 +339,9 @@ The wildcard in dev allows the Next.js dev server (typically `localhost:3000`) t
 GET  /healthz                           ← unauthenticated, liveness probe
 
 Group: /  (with BasicAuth middleware)
+  ├─ GET  /api/docs            → 302 redirect to /api/docs/
+  ├─ GET  /api/docs/openapi.yaml → embedded OpenAPI 3.1 spec (application/yaml)
+  ├─ /*   /api/docs/           → Swagger UI (swaggest/swgui v5, embedded assets)
   ├─ /api/schedules           GET, POST
   ├─ /api/schedules/{id}      GET, PUT, DELETE
   ├─ /api/guardrails          GET, PUT
