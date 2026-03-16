@@ -38,8 +38,8 @@ Be respectful. Criticism of code and ideas is welcome; criticism of people is no
 
 | Tool | Version | Purpose |
 |---|---|---|
-| Go | 1.25.x | Backend |
-| Node.js | 22+ | Frontend |
+| Go | 1.26.x | Backend |
+| Node.js | 24+ | Frontend |
 | Docker | any | Local PostgreSQL via `docker-compose.yml` |
 | kubectl | any | Optional — cluster endpoints return empty data without it |
 
