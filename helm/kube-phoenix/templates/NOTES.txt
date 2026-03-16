@@ -1,0 +1,30 @@
+kube-phoenix has been deployed to namespace {{ include "kube-phoenix.namespace" . }}.
+
+{{- if .Values.ingress.enabled }}
+
+Access the UI at:
+  {{- if .Values.ingress.tls }}
+  https://{{ .Values.ingress.host }}
+  {{- else }}
+  http://{{ .Values.ingress.host }}
+  {{- end }}
+
+{{- else }}
+
+Access the UI via port-forward:
+
+  kubectl port-forward -n {{ include "kube-phoenix.namespace" . }} svc/{{ include "kube-phoenix.fullname" . }} 8080:{{ .Values.service.port }}
+  open http://localhost:8080
+
+{{- end }}
+
+{{- if not .Values.secret.existingSecret }}
+
+Default credentials:
+  User:     {{ .Values.secret.basicAuthUser }}
+  Password: (set via secret.basicAuthPassword)
+
+{{- end }}
+
+All schedules are seeded DISABLED in PLAN MODE — nothing will scale
+until you explicitly enable a schedule and switch it to apply mode.

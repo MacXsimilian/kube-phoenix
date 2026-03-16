@@ -92,8 +92,13 @@ ingress:
   enabled: false
   className: ""
   annotations: {}
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
   host: ""
   tls: []
+    # - secretName: kube-phoenix-tls
+    #   hosts:
+    #     - kube-phoenix.example.com
 
 # ── AWS TargetGroupBinding (AWS Load Balancer Controller) ─────────────────────
 #
@@ -167,6 +172,19 @@ terminationGracePeriodSeconds: 30
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# ── Network Policy ──────────────────────────────────────────────────────────
+# Restricts ingress to port 8080 and egress to DNS, PostgreSQL, and the
+# Kubernetes API server. Disable if your cluster does not support NetworkPolicy.
+networkPolicy:
+  enabled: false
+
+# ── Pod Disruption Budget ───────────────────────────────────────────────────
+# Protects against voluntary disruptions (node drains, cluster upgrades).
+podDisruptionBudget:
+  enabled: false
+  # minAvailable: 1
+  maxUnavailable: 1
 
 podAnnotations: {}
 podLabels: {}
