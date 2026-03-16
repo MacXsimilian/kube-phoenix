@@ -1628,20 +1628,20 @@ sequenceDiagram
     B->>H: GET /ws/executions/42/logs
     H->>H: Upgrade to WebSocket
 
-    rect rgb(40, 40, 60)
+    rect rgba(100, 100, 100, 0.1)
         Note over H,DB: Step 1 — Replay existing logs
         H->>DB: GetLogLines(42)
         DB-->>H: existing lines
         H-->>B: send existing lines
     end
 
-    rect rgb(40, 40, 60)
+    rect rgba(100, 100, 100, 0.1)
         Note over H,Br: Step 2 — Subscribe to live stream
         H->>Br: Subscribe(42)
         Br-->>H: buffered channel (cap 256)
     end
 
-    rect rgb(40, 40, 60)
+    rect rgba(100, 100, 100, 0.1)
         Note over H,DB: Step 3 — Race condition check
         H->>DB: GetExecution(42).Status
         alt status != running
@@ -1651,7 +1651,7 @@ sequenceDiagram
         end
     end
 
-    rect rgb(40, 40, 60)
+    rect rgba(100, 100, 100, 0.1)
         Note over B,S: Step 4 — Live streaming
         S->>Br: Publish(42, logLine)
         Br->>H: ch <- logLine
