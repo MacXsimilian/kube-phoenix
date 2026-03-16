@@ -249,6 +249,7 @@ kube-phoenix/
 └── .github/
     ├── workflows/
     │   ├── ci.yml                 # PR/push CI: build, test, lint, docker
+    │   ├── security.yml           # Trivy, govulncheck, npm audit, TruffleHog
     │   └── release-please.yml    # Automated release + helm OCI push
     └── dependabot.yml             # Weekly dependency updates
 ```
@@ -1784,12 +1785,13 @@ master  (protected — always deployable)
 
 ### Design principles
 
-Two workflows with distinct responsibilities:
+Three workflows with distinct responsibilities:
 
-| Workflow              | Trigger                     | Responsibility                                   |
-| :-------------------- | :-------------------------- | :----------------------------------------------- |
-| `ci.yml`              | every push to `master` + PR | Validate — fast feedback, no artifacts produced   |
-| `release-please.yml`  | push to `master`            | Ship — Docker image, Helm chart, GitHub Release   |
+| Workflow              | Trigger                              | Responsibility                                   |
+| :-------------------- | :----------------------------------- | :----------------------------------------------- |
+| `ci.yml`              | every push to `master` + PR          | Validate — fast feedback, no artifacts produced   |
+| `security.yml`        | every push to `master` + PR + weekly | Security — vuln checks, image scan, secret scan   |
+| `release-please.yml`  | push to `master`                     | Ship — Docker image, Helm chart, GitHub Release   |
 
 Docker builds only happen on release. CI never pushes images. This keeps the registry clean and prevents every commit from producing a deployable artifact.
 
@@ -1805,7 +1807,6 @@ steps:
   - checkout
   - setup-node@v4 (node 24)
   - npm ci
-  - npm audit --audit-level=high   (fail on high/critical CVEs in prod deps)
   - npm run build                  (Next.js static export → out/)
 ```
 
@@ -1821,7 +1822,6 @@ steps:
   - go test -coverprofile=coverage.out ./...
   - go tool cover -func=coverage.out
   - go build ./...
-  - govulncheck ./...          (checks actual call graph against Go vuln DB)
   - golangci-lint-action@v7    (gosec for SAST, errcheck, staticcheck, etc.)
 ```
 
@@ -1841,17 +1841,74 @@ steps:
   - helm lint helm/kube-phoenix/
 ```
 
-**Job: secrets** (push and PR — scans the diff only, not the full repo)
+> **Note:** Security-related checks (govulncheck, npm audit, secret scanning) have been moved to `security.yml` to avoid duplication. CI focuses purely on build validation.
+
+---
+
+### security.yml — Dedicated Security Scanning
+
+Triggered on: `push` to `master`; `pull_request` targeting `master`; weekly schedule (Monday 06:00 UTC). No path filter — always runs on every push/PR to ensure security coverage is never skipped.
+
+**Job: govulncheck**
+```
+steps:
+  - checkout
+  - setup-go@v5 (go 1.26)
+  - cp ../openapi.yaml internal/docs/openapi.yaml
+  - govulncheck ./...          (checks actual call graph against Go vuln DB)
+```
+
+**Job: npm-audit**
+```
+steps:
+  - checkout
+  - setup-node@v4 (node 24)
+  - npm ci
+  - npm audit --audit-level=high --omit=dev
+```
+
+**Job: trivy-image** (builds the Docker image with BuildKit + GHA cache, then scans it)
+```
+steps:
+  - checkout
+  - docker/setup-buildx-action
+  - docker/build-push-action (load: true, cache-from/to: type=gha)
+  - aquasecurity/trivy-action@v0.35.0
+      image-ref: kube-phoenix:scan
+      severity: CRITICAL,HIGH
+      exit-code: 1
+      format: sarif → upload to GitHub Security tab
+```
+
+Uses the same GHA cache as the release build, so subsequent runs reuse layers. Builds and scans the image on every PR — catching vulnerabilities before merge rather than after release.
+
+**Job: trivy-fs** (filesystem scan for IaC misconfigurations and dependency vulnerabilities)
+```
+steps:
+  - checkout
+  - aquasecurity/trivy-action
+      scan-type: fs
+      scan-ref: .
+      severity: CRITICAL,HIGH
+      exit-code: 1
+      format: sarif → upload to GitHub Security tab
+```
+
+Catches Dockerfile misconfigurations, Helm template issues, and dependency vulnerabilities without needing to build a container image. Complements the image scan.
+
+**Job: secrets** (the single source of truth for secret scanning — removed from ci.yml to avoid duplication)
 ```
 steps:
   - checkout (full history, fetch-depth: 0)
   - trufflesecurity/trufflehog
       base: HEAD~1 (push) or PR base SHA (PR)
       head: HEAD   (push) or PR head SHA (PR)
-      extra_args: --only-verified    (eliminates false positives)
+      extra_args: --only-verified
 ```
 
-On direct pushes, scans `HEAD~1..HEAD`. On PRs, scans the full PR diff. The `--only-verified` flag means TruffleHog only reports secrets it can actively verify against the upstream service — no noise from test fixtures or example configs.
+> **Weekly schedule rationale:** New CVEs are disclosed continuously. The weekly Monday run ensures vulnerabilities introduced by upstream dependencies are caught even when no code changes are made.
+
+> **SARIF uploads:** Both Trivy jobs upload results in SARIF format to GitHub's Security tab. This provides a unified view of all security findings alongside CodeQL results (if enabled). SARIF upload requires `security-events: write` permission.
 
 ---
 
@@ -1886,18 +1943,6 @@ tags produced:
   - ghcr.io/macxsimilian/kube-phoenix:v0.1-latest (branch float)
   - ghcr.io/macxsimilian/kube-phoenix:latest      (master only)
 ```
-
-**Job: scan** (needs: docker)
-```
-steps:
-  - aquasecurity/trivy-action
-      image-ref: ghcr.io/macxsimilian/kube-phoenix:<semver>
-      severity: CRITICAL,HIGH
-      exit-code: 1
-      ignore-unfixed: true
-```
-
-Scans the exact released image by semver tag. Fails the release workflow if unfixed CRITICAL or HIGH CVEs are found — the Helm push is blocked until scan passes.
 
 **Job: helm-publish** (needs: release-please + docker, only when both succeed)
 ```
@@ -2308,4 +2353,4 @@ kube_phoenix_active_schedules
 ---
 
 *End of ARCHITECTURE.md*
-*Document covers: 2 source code languages, 30+ source files, 4 database models, 20+ API routes, 6 frontend pages, 25+ React components, 3-stage Docker build, Helm chart with 10 templates, 2 GitHub Actions workflows.*
+*Document covers: 2 source code languages, 30+ source files, 4 database models, 20+ API routes, 6 frontend pages, 25+ React components, 3-stage Docker build, Helm chart with 10 templates, 3 GitHub Actions workflows.*

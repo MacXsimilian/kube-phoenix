@@ -4,13 +4,25 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
 
   - package-ecosystem: gomod
     directory: /backend
     schedule:
       interval: weekly
+    groups:
+      go-minor-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
 
   - package-ecosystem: npm
     directory: /frontend
     schedule:
       interval: weekly
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
