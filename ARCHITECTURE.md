@@ -1814,6 +1814,8 @@ steps:
 steps:
   - checkout
   - setup-go@v5 (go 1.25.8)
+  - cp ../openapi.yaml internal/docs/openapi.yaml   (seed go:embed path — see note below)
+  - diff ../openapi.yaml internal/docs/openapi.yaml (assert files are identical; fails build on drift)
   - go mod download
   - go vet ./...
   - go test -coverprofile=coverage.out ./...
@@ -1822,6 +1824,15 @@ steps:
   - govulncheck ./...          (checks actual call graph against Go vuln DB)
   - golangci-lint-action@v7    (gosec for SAST, errcheck, staticcheck, etc.)
 ```
+
+> **OpenAPI embed note:** `backend/internal/docs/openapi.yaml` is gitignored — it is a derived
+> file, not a source file. The canonical spec is `openapi.yaml` at the repository root.
+> CI copies it into the embed path before building so `//go:embed openapi.yaml` in
+> `internal/docs/docs.go` resolves correctly, then immediately diffs the copy against the
+> root to ensure they are byte-for-byte identical. Keeping only one committed copy
+> prevents silent drift where the served spec and the documented spec diverge.
+> goreportcard does not run CI steps, so it reports a warning for the missing embed file;
+> this is a known and accepted cosmetic score hit.
 
 **Job: helm**
 ```
