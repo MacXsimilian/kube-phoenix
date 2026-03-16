@@ -164,7 +164,7 @@ The Go backend embeds the Next.js static export via `//go:embed` — one binary,
 | Keycloak / OIDC auth        | Planned     | Replace HTTP Basic Auth; retain WS token flow   |
 | Slack / email notifications | Planned     | Alert on scale failures and manual triggers     |
 | Multi-cluster support       | Planned     | Switch between kubeconfig contexts in the UI    |
-| OpenAPI spec                | Planned     | Swagger UI served at `/api/docs`                |
+| OpenAPI spec                | Done        | Swagger UI served at `/api/docs/`               |
 | GitLab CI pipeline          | Planned     | Mirror of the GitHub Actions workflow           |
 | Emergency wake button       | In progress | One-click full cluster wake bypassing schedule  |
 

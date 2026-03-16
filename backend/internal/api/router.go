@@ -8,11 +8,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/docs"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"github.com/macxsimilian/kube-phoenix/backend/web"
+	swguiv5 "github.com/swaggest/swgui/v5"
 )
 
 type Handler struct {
@@ -27,7 +29,7 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.RequestID) // injects X-Request-Id header; correlates log lines
-	r.Use(authmw.RedactWSToken)   // must be before Logger — strips ?token= from URL before it is logged
+	r.Use(authmw.RedactWSToken)    // must be before Logger — strips ?token= from URL before it is logged
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
 	r.Use(corsHandler())
@@ -51,6 +53,15 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 	// All routes below require basic auth
 	r.Group(func(r chi.Router) {
 		r.Use(authmw.BasicAuth)
+
+		// Swagger UI — served at /api/docs/
+		// Chi's radix tree gives /api/docs/ priority over /api for docs paths,
+		// and the explicit Handle for openapi.yaml takes precedence over the mount.
+		r.Get("/api/docs", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/api/docs/", http.StatusFound)
+		})
+		r.Method(http.MethodGet, "/api/docs/openapi.yaml", docs.SpecHandler())
+		r.Mount("/api/docs/", swguiv5.NewHandler("kube-phoenix API", "/api/docs/openapi.yaml", "/api/docs/"))
 
 		r.Route("/api", func(r chi.Router) {
 			// Schedules — full CRUD
