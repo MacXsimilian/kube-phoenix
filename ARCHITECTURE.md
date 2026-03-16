@@ -21,6 +21,7 @@
    - 4.7 [Store / Database Layer](#47-store--database-layer)
    - 4.8 [WebSocket Log Broker](#48-websocket-log-broker)
    - 4.9 [SPA File Server](#49-spa-file-server)
+   - 4.10 [Backend Class Diagram](#410-backend-class-diagram)
 5. [Frontend Deep Dive](#5-frontend-deep-dive)
    - 5.1 [Next.js Configuration & Build Pipeline](#51-nextjs-configuration--build-pipeline)
    - 5.2 [Theme & Design System](#52-theme--design-system)
@@ -616,7 +617,7 @@ robfig/cron v3 parses the `CRON_TZ=` prefix and sets the location on the entry's
 ```
 run()
   │
-  ├─ Create logCh (chan store.LogLine, buffered 256)
+  ├─ Create logCh (chan scaler.LogLine, buffered 512)
   │
   ├─ goroutine: drain logCh → AppendLogLine (DB) + broker.Publish
   │   └─ WaitGroup to ensure all lines written before FinishExecution
@@ -638,7 +639,7 @@ run()
   └─ store.FinishExecution(executionID, counts, err)
       └─ sets Status = "success" or "failed"
       └─ sets FinishedAt = now()
-      └─ sets CountScaled, CountDrained, CountDeleted, CountSkipped, CountErrors
+      └─ sets CountSaved, CountScaled, CountDrained, CountDeleted, CountSkipped, CountProtected, CountErrors
 ```
 
 #### Broker struct
@@ -650,7 +651,7 @@ type Broker struct {
 }
 ```
 
-**`Subscribe(executionID uint) chan store.LogLine`** — creates a buffered channel of capacity 256, appends it to the subscriber list for that execution ID, returns the channel. The 256-capacity buffer means a slow WebSocket client can absorb bursts without blocking the scaler goroutine.
+**`Subscribe(executionID uint) chan store.LogLine`** — creates a buffered channel of capacity 512, appends it to the subscriber list for that execution ID, returns the channel. The 512-capacity buffer means a slow WebSocket client can absorb bursts without blocking the scaler goroutine.
 
 **`Unsubscribe(executionID uint, ch chan store.LogLine)`** — removes the channel from the subscriber list. Does NOT close the channel here (the reader closes it via `broker.Close`).
 
@@ -684,11 +685,13 @@ type LogLine struct {
 }
 
 type Counts struct {
-    Scaled   int
-    Drained  int
-    Deleted  int
-    Skipped  int
-    Errors   int
+    Saved     int
+    Scaled    int
+    Drained   int
+    Deleted   int
+    Skipped   int
+    Protected int
+    Errors    int
 }
 
 type Runner struct {
@@ -890,30 +893,33 @@ type Schedule struct {
 **Guardrails**
 ```go
 type Guardrails struct {
-    ID             uint      `gorm:"primarykey"`
-    SkipNamespaces string    // CSV: "kube-system,monitoring"
-    SkipNsNode     string    // CSV: namespaces that protect nodes
-    SkipNodeLabels string    // CSV: "key=value" pairs
-    SkipNodeTaints string    // CSV: "key=value:effect" pairs
-    UpdatedAt      time.Time
+    ID               uint      `gorm:"primarykey"`
+    SystemNamespaces string    // CSV: immutable protected defaults (requires confirmation to remove)
+    SkipNamespaces   string    // CSV: user-managed skip list, e.g. "monitoring,staging"
+    SkipNsNode       string    // CSV: namespaces that protect nodes
+    SkipNodeLabels   string    // CSV: "key=value" pairs
+    SkipNodeTaints   string    // CSV: "key=value:effect" pairs
+    UpdatedAt        time.Time
 }
 ```
 
 **Execution**
 ```go
 type Execution struct {
-    ID           uint       `gorm:"primarykey"`
-    ScheduleID   uint       `gorm:"index"`
-    Schedule     *Schedule  `gorm:"foreignKey:ScheduleID"`
-    StartedAt    time.Time  `gorm:"index"`
-    FinishedAt   *time.Time
-    Status       string     `gorm:"index"`  // "running" | "success" | "failed"
-    Mode         string     // "plan" | "apply"
-    CountScaled  int
-    CountDrained int
-    CountDeleted int
-    CountSkipped int
-    CountErrors  int
+    ID             uint       `gorm:"primarykey"`
+    ScheduleID     uint       `gorm:"index"`
+    Schedule       *Schedule  `gorm:"foreignKey:ScheduleID"`
+    StartedAt      time.Time  `gorm:"index"`
+    FinishedAt     *time.Time
+    Status         string     `gorm:"index"`  // "running" | "success" | "failed"
+    Mode           string     // "plan" | "apply"
+    CountSaved     int
+    CountScaled    int
+    CountDrained   int
+    CountDeleted   int
+    CountSkipped   int
+    CountProtected int
+    CountErrors    int
 }
 ```
 
@@ -1051,6 +1057,148 @@ func SPAHandler() http.Handler {
 The `//go:embed all:static` directive embeds the entire `web/static/` directory into the binary at compile time. The `all:` prefix includes hidden files (dotfiles). At build time, the Dockerfile copies `frontend/out/` (Next.js static export output) to `backend/web/static/` before running `go build`.
 
 The SPA handler serves actual files when they exist (JS chunks, CSS, images) and falls back to `index.html` for all other paths. This is required for Next.js client-side routing: when a user navigates directly to `/history/` or bookmarks `/cluster/`, the browser requests that path from the server, which must return `index.html` so React can boot and take over routing.
+
+### 4.10 Backend Class Diagram
+
+```mermaid
+classDiagram
+    direction LR
+
+    class Handler {
+        -store *Store
+        -k8s *Client
+        -scheduler *Scheduler
+        -cache *ClusterCache
+        +NewRouter() *chi.Mux
+        +listSchedules()
+        +createSchedule()
+        +updateSchedule()
+        +deleteSchedule()
+        +listExecutions()
+        +getExecution()
+        +getExecutionLogs()
+        +wsExecutionLogs()
+        +getOverview()
+        +streamCluster()
+        +getWorkloads()
+        +getNodes()
+        +trigger()
+        +resetDB()
+    }
+
+    class Scheduler {
+        -store *Store
+        -runner *Runner
+        -cron *cron.Cron
+        -entryID map~uint, EntryID~
+        -mu sync.Mutex
+        +Broker *Broker
+        +Start(ctx) error
+        +Stop()
+        +Reload() error
+        +Restart(ctx) error
+        +RunNow(scheduleID, mode) uint, error
+        +NextRun(scheduleID) *time.Time
+        -run(ctx, scheduleID, type, mode, nsFilter, timeout) uint, error
+    }
+
+    class Broker {
+        -mu sync.RWMutex
+        -subs map~uint, []chan LogLine~
+        +Subscribe(execID) chan LogLine
+        +Unsubscribe(execID, ch)
+        +Publish(execID, line)
+        +Close(execID)
+    }
+
+    class Runner {
+        -k8s *Client
+        -store *Store
+        +RunScaleDown(ctx, mode, nsFilter, logCh) *Counts, error
+        +RunScaleUp(ctx, mode, nsFilter, logCh) *Counts, error
+        -scaleDownWorkloads()
+        -restoreWorkloads()
+        -drainNodes()
+    }
+
+    class Store {
+        -db *gorm.DB
+        +New(dsn) *Store, error
+        +Ping() error
+        +ListSchedules() []Schedule
+        +CreateSchedule(s) error
+        +UpdateSchedule(id, fields) error
+        +DeleteSchedule(id) error
+        +GetGuardrails() Guardrails
+        +UpdateGuardrails(fields) error
+        +CreateExecution(e) error
+        +FinishExecution(id, counts, err) error
+        +AppendLogLine(execID, seq, level, msg) error
+        +GetLogLines(execID) []LogLine
+    }
+
+    class Client {
+        -cs *kubernetes.Clientset
+        +New() *Client, error
+        +ListDeployments(ctx, ns) []Deployment
+        +ScaleDeployment(ctx, ns, name, replicas)
+        +AnnotateDeployment(ctx, ns, name, key, val)
+        +ListNodes(ctx) []Node
+        +CordonNode(ctx, name)
+        +DrainNode(ctx, name, timeout)
+        +DeleteNode(ctx, name)
+        +ListAllPods(ctx) []Pod
+        +GetPodMetrics(ctx, ns, name) ContainerMetrics
+        +GetPodEvents(ctx, ns, name) []Event
+    }
+
+    class ClusterCache {
+        -client *Client
+        -mu sync.RWMutex
+        -snap CachedSnapshot
+        -subs []chan struct
+        +Start(ctx)
+        +Snapshot() CachedSnapshot
+        +Subscribe() chan struct
+        +Unsubscribe(ch)
+        -refresh(ctx)
+        -notify()
+    }
+
+    class CachedSnapshot {
+        +Nodes []Node
+        +Pods []Pod
+        +Deployments []Deployment
+        +StatefulSets []StatefulSet
+        +FetchedAt time.Time
+        +Ready() bool
+        +AgeMs() int64
+    }
+
+    class Counts {
+        +Saved int
+        +Scaled int
+        +Drained int
+        +Deleted int
+        +Skipped int
+        +Protected int
+        +Errors int
+    }
+
+    Handler --> Store : queries DB
+    Handler --> Client : direct k8s calls
+    Handler --> Scheduler : trigger, reload
+    Handler --> ClusterCache : read snapshots
+    Handler --> Broker : subscribe WS clients
+    Scheduler --> Runner : executes scale ops
+    Scheduler --> Broker : publishes log lines
+    Scheduler --> Store : creates executions
+    Runner --> Client : k8s API calls
+    Runner --> Store : reads guardrails
+    Runner ..> Counts : returns
+    ClusterCache --> Client : refreshes every 10s
+    ClusterCache --> CachedSnapshot : holds current state
+```
 
 ---
 
@@ -1365,50 +1513,60 @@ useEffect(() => {
 
 ## 6. Data Models & ER Diagram
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         PostgreSQL Schema                                │
-└──────────────────────────────────────────────────────────────────────────┘
+```mermaid
+erDiagram
+    schedules ||--o{ executions : "has many"
+    executions ||--o{ log_lines : "has many"
 
-┌─────────────────────────┐         ┌──────────────────────────────────────┐
-│        schedules         │         │              executions               │
-├─────────────────────────┤         ├──────────────────────────────────────┤
-│ id             BIGINT PK │◄────────│ id              BIGINT PK            │
-│ name           TEXT      │    1:N  │ schedule_id     BIGINT FK(schedules) │
-│ type           TEXT      │         │ started_at      TIMESTAMPTZ  IDX     │
-│ cron_expr      TEXT      │         │ finished_at     TIMESTAMPTZ  NULL    │
-│ timezone       TEXT      │         │ status          TEXT         IDX     │
-│ mode           TEXT      │         │ mode            TEXT                 │
-│ enabled        BOOLEAN   │         │ count_scaled    INT                  │
-│ namespace_filter TEXT    │         │ count_drained   INT                  │
-│ timeout_minutes  INT     │         │ count_deleted   INT                  │
-│ created_at     TIMESTAMPTZ│        │ count_skipped   INT                  │
-│ updated_at     TIMESTAMPTZ│        │ count_errors    INT                  │
-└─────────────────────────┘         └──────────────────────────────────────┘
-                                                        │ 1
-                                                        │
-                                                        │ N
-                                     ┌──────────────────────────────────────┐
-                                     │              log_lines               │
-                                     ├──────────────────────────────────────┤
-                                     │ id             BIGINT PK             │
-                                     │ execution_id   BIGINT FK(executions) │
-                                     │ seq            INT   ─┐              │
-                                     │ level          TEXT   │ COMPOSITE    │
-                                     │ message        TEXT   │ INDEX        │
-                                     │ timestamp      TIMESTAMPTZ ─┘        │
-                                     └──────────────────────────────────────┘
+    schedules {
+        bigint id PK
+        text name "not null"
+        text type "scale_down | scale_up"
+        text cron_expr "not null, 5-field"
+        text timezone "default UTC"
+        text mode "plan | apply"
+        boolean enabled "default true"
+        text namespace_filter "CSV, empty = all"
+        int timeout_minutes "default 120"
+        int position "display order"
+        timestamptz created_at
+        timestamptz updated_at
+    }
 
-┌─────────────────────────┐
-│        guardrails        │
-├─────────────────────────┤
-│ id               BIGINT PK  (always 1)                                   │
-│ skip_namespaces  TEXT    (CSV)                                            │
-│ skip_ns_node     TEXT    (CSV)                                            │
-│ skip_node_labels TEXT    (CSV, key=value pairs)                          │
-│ skip_node_taints TEXT    (CSV, key=value:effect pairs)                   │
-│ updated_at       TIMESTAMPTZ                                             │
-└─────────────────────────┘
+    executions {
+        bigint id PK
+        bigint schedule_id FK "indexed"
+        timestamptz started_at "indexed"
+        timestamptz finished_at "nullable"
+        text status "running | success | failed, indexed"
+        text mode "plan | apply"
+        int count_saved
+        int count_scaled
+        int count_drained
+        int count_deleted
+        int count_skipped
+        int count_protected
+        int count_errors
+    }
+
+    log_lines {
+        bigint id PK
+        bigint execution_id FK "composite index with seq"
+        int seq "monotonic per execution"
+        text level "info | ok | plan | error | warn"
+        text message
+        timestamptz timestamp
+    }
+
+    guardrails {
+        bigint id PK "singleton, always 1"
+        text system_namespaces "CSV, immutable defaults"
+        text skip_namespaces "CSV, user-managed"
+        text skip_ns_node "CSV, protects nodes"
+        text skip_node_labels "CSV, key=value"
+        text skip_node_taints "CSV, key=value:effect"
+        timestamptz updated_at
+    }
 ```
 
 **Why CSV strings instead of normalized tables:**
@@ -1427,40 +1585,64 @@ Database auto-increment IDs are not guaranteed to be in insertion order under co
 
 ## 7. WebSocket Architecture
 
-```
-Browser                    Go HTTP Handler                 Broker            Scaler
-   │                              │                           │                  │
-   │── GET /ws/executions/42/logs ─►│                          │                  │
-   │                              │── Upgrade to WebSocket ──►│                  │
-   │                              │                           │                  │
-   │                              │── GetLogLines(42) ───────► DB               │
-   │                              │◄── existing lines ─────── DB               │
-   │◄── send existing lines ──────│                           │                  │
-   │                              │                           │                  │
-   │                              │── Subscribe(42) ─────────►│                  │
-   │                              │                           │                  │
-   │                              │── GetExecution(42) status check             │
-   │                              │   if status != "running": unsubscribe, send │
-   │                              │   any lines written in the gap, close       │
-   │                              │                           │                  │
-   │                              │                           │◄─ Publish(line) ─│
-   │◄── send line ────────────────│◄── ch <- line ────────────│                  │
-   │                              │                           │◄─ Publish(line) ─│
-   │◄── send line ────────────────│◄── ch <- line ────────────│                  │
-   │                              │                           │                  │
-   │                              │  [ping ticker 30s]        │                  │
-   │◄── Ping frame ───────────────│                           │                  │
-   │── Pong frame ───────────────►│                           │                  │
-   │                              │                           │                  │
-   │                              │                           │◄─ Close(42) ─────│ (scaler done)
-   │                              │◄── ch closed ─────────────│                  │
-   │◄── WebSocket close (1000) ───│                           │                  │
-   │                              │                           │                  │
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant H as Go HTTP Handler
+    participant DB as PostgreSQL
+    participant Br as Broker
+    participant S as Scaler
+
+    B->>H: GET /ws/executions/42/logs
+    H->>H: Upgrade to WebSocket
+
+    rect rgb(40, 40, 60)
+        Note over H,DB: Step 1 — Replay existing logs
+        H->>DB: GetLogLines(42)
+        DB-->>H: existing lines
+        H-->>B: send existing lines
+    end
+
+    rect rgb(40, 40, 60)
+        Note over H,Br: Step 2 — Subscribe to live stream
+        H->>Br: Subscribe(42)
+        Br-->>H: buffered channel (cap 512)
+    end
+
+    rect rgb(40, 40, 60)
+        Note over H,DB: Step 3 — Race condition check
+        H->>DB: GetExecution(42).Status
+        alt status != running
+            H->>DB: GetLogLines(42) — fetch gap lines
+            H-->>B: send any missed lines
+            H-->>B: WebSocket close (1000)
+        end
+    end
+
+    rect rgb(40, 40, 60)
+        Note over B,S: Step 4 — Live streaming
+        S->>Br: Publish(42, logLine)
+        Br->>H: ch <- logLine
+        H-->>B: send logLine
+
+        S->>Br: Publish(42, logLine)
+        Br->>H: ch <- logLine
+        H-->>B: send logLine
+
+        loop Every 30s
+            H-->>B: Ping frame
+            B->>H: Pong frame
+        end
+
+        S->>Br: Close(42) — scaler done
+        Br->>H: close(ch)
+        H-->>B: WebSocket close (1000)
+    end
 ```
 
 **Concurrent WebSocket clients:** Multiple browser tabs can watch the same execution simultaneously. Each call to `broker.Subscribe(42)` creates a separate buffered channel. The broker fans out each log line to all subscriber channels independently. Slow clients receive lines at their own pace and are never blocked by other subscribers.
 
-**Slow client protection:** The subscriber channel has capacity 256. If a subscriber falls more than 256 lines behind (e.g., network congestion), new publishes use `select/default` to skip the full channel, logging a warning. The slow client continues to receive lines; it just misses lines during the overflow period. This is an intentional trade-off: never blocking the scaler for a slow UI client.
+**Slow client protection:** The subscriber channel has capacity 512. If a subscriber falls more than 512 lines behind (e.g., network congestion), new publishes use `select/default` to skip the full channel, logging a warning. The slow client continues to receive lines; it just misses lines during the overflow period. This is an intentional trade-off: never blocking the scaler for a slow UI client.
 
 **WebSocket vs Server-Sent Events:** WebSocket was chosen over SSE because:
 1. It supports bidirectional communication (ping/pong).
@@ -1472,57 +1654,63 @@ Browser                    Go HTTP Handler                 Broker            Sca
 
 ## 8. Authentication Architecture
 
-```
-  ┌────────────────────────────────────────────────────────────────────┐
-  │                     Authentication Decision Tree                   │
-  └────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Start["Request arrives"] --> AuthSet{"BASIC_AUTH_USER<br/>env var set?"}
 
-  Server startup:
-    BASIC_AUTH_USER set?
-      NO  → middleware returns next(handler) immediately (dev mode)
-            logs: "basic-auth: credentials not configured — authentication disabled"
-      YES → middleware active for all /api/* and /ws/* routes
+    AuthSet -- "No" --> DevMode["Dev mode<br/>skip auth, call next handler"]
 
-  Request arrives at middleware:
-    Is it a WebSocket upgrade? (Upgrade: websocket header)
-      YES → check ?token=<base64(user:pass)> query param
-              → base64 decode → split on ':' → extract user/pass
-      NO  → check Authorization: Basic <base64(user:pass)> header
+    AuthSet -- "Yes" --> IsWS{"WebSocket upgrade?<br/>(Upgrade: websocket)"}
 
-    Credentials extracted?
-      NO  → 401 Unauthorized + WWW-Authenticate: Basic realm="kube-phoenix"
-      YES → crypto/subtle.ConstantTimeCompare(user, BASIC_AUTH_USER)
-                                 AND
-            crypto/subtle.ConstantTimeCompare(pass, BASIC_AUTH_PASSWORD)
-              Both equal? YES → next(handler)
-                          NO  → 401 Unauthorized + log warning
+    IsWS -- "Yes" --> Token["Extract ?token=base64(user:pass)<br/>from query param"]
+    IsWS -- "No" --> Header["Extract Authorization: Basic base64<br/>from header"]
+
+    Token --> HasCreds{"Credentials<br/>extracted?"}
+    Header --> HasCreds
+
+    HasCreds -- "No" --> Reject401["401 Unauthorized<br/>WWW-Authenticate: Basic"]
+
+    HasCreds -- "Yes" --> Compare["crypto/subtle.ConstantTimeCompare<br/>user AND password"]
+
+    Compare --> Match{"Both match?"}
+    Match -- "Yes" --> Allow["next(handler)"]
+    Match -- "No" --> Reject401Log["401 Unauthorized<br/>+ log warning"]
 ```
 
 **Why `crypto/subtle.ConstantTimeCompare`:** Regular string comparison (`==`) in Go short-circuits on the first mismatched byte. This creates a timing oracle: an attacker making thousands of requests can measure response times to discover the correct credentials byte by byte. `ConstantTimeCompare` always takes the same time regardless of where the mismatch occurs, eliminating the timing oracle.
 
 **Frontend authentication flow:**
 
-```
-Browser                             Frontend                       Backend
-   │                                    │                              │
-   │── Open app ──────────────────────►│                              │
-   │                                    │── probe GET /api/schedules ─►│
-   │                                    │   (no Authorization header)  │
-   │                                    │◄── 200 OK (dev mode) ─────────│
-   │                                    │   token = "__no_auth__"       │
-   │◄── render app directly ────────────│                              │
-   │
-   │   OR
-   │
-   │                                    │◄── 401 Unauthorized ──────────│
-   │◄── render <LoginScreen> ───────────│                              │
-   │                                    │                              │
-   │── enter credentials ─────────────►│                              │
-   │                                    │── probe GET /api/schedules ─►│
-   │                                    │   Authorization: Basic ...    │
-   │                                    │◄── 200 OK ─────────────────────│
-   │                                    │   store token in sessionStorage│
-   │◄── render app ─────────────────────│                              │
+```mermaid
+sequenceDiagram
+    participant U as Browser
+    participant F as Frontend (React)
+    participant B as Backend (Go)
+
+    U->>F: Open app
+    F->>B: probe GET /api/schedules (no auth header)
+
+    alt Dev mode (BASIC_AUTH_USER unset)
+        B-->>F: 200 OK
+        F->>F: token = "__no_auth__"
+        F-->>U: render app directly
+    else Production (auth enabled)
+        B-->>F: 401 Unauthorized
+        F-->>U: render LoginScreen
+
+        U->>F: enter credentials
+        F->>F: token = btoa(user + ":" + pass)
+        F->>B: probe GET /api/schedules<br/>Authorization: Basic {token}
+
+        alt Credentials valid
+            B-->>F: 200 OK
+            F->>F: store token in sessionStorage
+            F-->>U: render app
+        else Credentials invalid
+            B-->>F: 401 Unauthorized
+            F-->>U: show error on LoginScreen
+        end
+    end
 ```
 
 **Security considerations:**
@@ -1641,6 +1829,74 @@ Every mutating operation is guarded by `isApply(mode)`. When `mode == "plan"`:
 - The execution is recorded in the database with `mode = "plan"`.
 
 This provides a safe preview before committing to a live scale operation. All schedules default to `mode = "plan"` at creation. An administrator must explicitly change to `mode = "apply"` to enable live operations.
+
+### Execution Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> running : scheduler.run() or RunNow()
+
+    running --> success : scaler completes without error
+    running --> failed : scaler returns error or timeout
+
+    success --> [*]
+    failed --> [*]
+
+    state running {
+        [*] --> Scaling
+        Scaling --> Draining : workloads done (scale_down only)
+        Draining --> Deleting : nodes drained
+        Scaling --> [*] : scale_up (no node ops)
+        Deleting --> [*]
+    }
+
+    note right of running
+        logCh open → Broker.Publish()
+        WebSocket clients receive live lines
+    end note
+
+    note right of success
+        FinishedAt set, logCh closed
+        Broker.Close() → WS clients disconnect
+    end note
+```
+
+### Schedule State
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    state "Disabled" as dis
+    state "Enabled (plan)" as plan
+    state "Enabled (apply)" as apply
+
+    [*] --> dis : seeded on first startup
+
+    dis --> plan : toggle enabled ON
+    dis --> apply : toggle enabled ON + set mode apply
+    plan --> dis : toggle enabled OFF
+    apply --> dis : toggle enabled OFF
+
+    plan --> apply : set mode to apply
+    apply --> plan : set mode to plan
+
+    note right of plan
+        Cron fires → dry-run only
+        Logs what WOULD happen
+        No K8s mutations
+    end note
+
+    note right of apply
+        Cron fires → live execution
+        Scales workloads, drains nodes
+    end note
+
+    note right of dis
+        Cron entry removed
+        Schedule skipped
+    end note
+```
 
 ---
 
