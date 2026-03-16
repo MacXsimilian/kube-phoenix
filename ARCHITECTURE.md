@@ -203,6 +203,7 @@ kube-phoenix/
 │       │   ├── schedules/
 │       │   │   ├── ScheduleCard.tsx
 │       │   │   ├── ScheduleDialog.tsx
+│       │   │   ├── CronBuilder.tsx    # visual cron builder (day/time picker + advanced raw cron toggle)
 │       │   │   └── SchedulePanel.tsx
 │       │   ├── cluster/
 │       │   │   ├── WorkloadsTable.tsx
@@ -1267,7 +1268,9 @@ layout.tsx (Inter font, HTML skeleton)
 
 **`ScheduleCard`** — displays a single schedule with type icon (moon/sun), cron expression rendered by `cronToText()`, mode badge, and an enabled toggle. The toggle uses an optimistic update — it flips immediately in local state via `useState`, fires `PUT /api/schedules/:id` with `{ enabled: <new value> }`, and reverts on error. Has edit and delete actions. The run button opens a mode selection dialog before calling the trigger API.
 
-**`ScheduleDialog`** — form for creating or editing a schedule. Fields: name, type (radio), cron expression, timezone (text), namespace filter (chip input), timeout (number), mode (radio), enabled (switch). Validates cron via a regex before submitting.
+**`ScheduleDialog`** — form for creating or editing a schedule. Fields: name, type (toggle), cron timing (via `CronBuilder`), timezone, namespace filter, mode (toggle), enabled (switch). Validates cron via `isValidCron()` before enabling the save button.
+
+**`CronBuilder`** — replaces the plain cron text input with a point-and-click builder. Visual mode shows a day-of-week chip row (Mon–Sun) and hour/minute dropdowns, with a live human-readable preview powered by `cronToText()`. An "Advanced raw cron" toggle in the header row swaps the picker for a raw 5-field text field (pre-seeded from the current visual state) and hides the preview. On open, existing cron expressions are parsed back into visual state if representable (fixed minute from the allowed set, `*` for dom and month); otherwise the dialog opens in advanced mode. Emits the cron string upward via `onChange` on every change.
 
 **`GuardrailsForm`** — four `ChipInput` fields (Skip Namespaces, Critical Namespaces, Skip Node Labels, Skip Node Taints). The `ChipInput` component renders chips for each value with delete buttons, and an inline text input for adding new values. Pressing Enter or Tab, or blurring the input, adds the current value as a chip. Backspace on empty input removes the last chip.
 
