@@ -37,6 +37,7 @@
 11. [CI/CD Pipeline](#11-cicd-pipeline)
 12. [Local Development Guide](#12-local-development-guide)
 13. [Key Design Decisions](#13-key-design-decisions)
+14. [Observability](#14-observability)
 
 ---
 
@@ -2163,6 +2164,132 @@ go build ./cmd/server/
 **Trade-off:** No debugging tools available inside the container. `kubectl exec` into the pod gives you nothing. All debugging must be done by analyzing logs or running a temporary debug sidecar. This is the correct trade-off for production security.
 
 **`:nonroot` variant:** Runs as a non-root user (uid 65532). This prevents privilege escalation attacks that require root access. The Helm chart does not override the security context, so the container inherits the distroless nonroot user.
+
+---
+
+## 14. Observability
+
+kube-phoenix exposes a Prometheus metrics endpoint at `/metrics`. The endpoint requires no authentication and is intended for in-cluster scraping by Prometheus or the Prometheus Operator.
+
+### 14.1 Endpoint
+
+| Path | Auth | Format |
+|------|------|--------|
+| `GET /metrics` | None | Prometheus text exposition format (OpenMetrics compatible) |
+
+The endpoint is registered outside the `BasicAuth` middleware group alongside `/healthz`, so it is always reachable by in-cluster scrapers without credentials.
+
+### 14.2 Metrics reference
+
+All metrics use the `kube_phoenix_` namespace prefix.
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `kube_phoenix_executions_total` | Counter | `status`, `mode`, `schedule_type` | Total completed executions. `status` is `success` or `failed`. `mode` is `plan` or `apply`. `schedule_type` is `scale_down` or `scale_up`. |
+| `kube_phoenix_execution_duration_seconds` | Histogram | `mode`, `schedule_type`, `status` | Wall-clock duration of each execution in seconds. Buckets: 5, 15, 30, 60, 120, 300, 600, 1800. |
+| `kube_phoenix_workloads_scaled_total` | Counter | `direction` | Workloads (Deployments + StatefulSets) scaled. `direction` is `down` or `up`. |
+| `kube_phoenix_nodes_drained_total` | Counter | — | Nodes drained during scale-down executions (apply mode only). |
+| `kube_phoenix_nodes_deleted_total` | Counter | — | Nodes deleted during scale-down executions (apply mode only). |
+| `kube_phoenix_active_schedules` | Gauge | `schedule_type`, `mode` | Number of enabled schedules, reset and recomputed on every scheduler reload. |
+
+In addition to these business metrics, the standard `prometheus/client_golang` process and Go runtime collectors are registered automatically:
+- `go_*` — goroutines, GC duration, memory stats
+- `process_*` — CPU time, open file descriptors, resident memory
+
+### 14.3 Implementation
+
+**Package:** `backend/internal/metrics/metrics.go`
+
+All metrics are declared as package-level variables using `promauto`, which registers them with the default Prometheus registry at init time. No explicit `Register()` call is needed.
+
+**Instrumentation points:**
+
+| Location | What is recorded |
+|----------|-----------------|
+| `scheduler.go` `run()` goroutine (on completion) | `ExecutionsTotal`, `ExecutionDuration`, `WorkloadsScaledTotal`, `NodesDrainedTotal`, `NodesDeletedTotal` |
+| `scheduler.go` `reload()` | `ActiveSchedules` — reset and recount on every cron reload |
+
+**Router registration** (`api/router.go`):
+
+```go
+// Outside the BasicAuth group — no credentials required
+r.Method(http.MethodGet, "/metrics", promhttp.Handler())
+```
+
+### 14.4 Helm — enabling Prometheus scraping
+
+#### Option A: Pod annotations (no Prometheus Operator required)
+
+Set `metrics.podAnnotations.enabled: true` (the default). The Helm chart adds the standard `prometheus.io/*` annotations to the Pod template, which any Prometheus instance using the [Kubernetes SD `pod` role](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#pod) will honour automatically.
+
+```yaml
+# values.yaml
+metrics:
+  podAnnotations:
+    enabled: true   # default — adds prometheus.io/* to the pod
+```
+
+Resulting pod annotations:
+```yaml
+prometheus.io/scrape: "true"
+prometheus.io/path:   /metrics
+prometheus.io/port:   "8080"
+```
+
+#### Option B: ServiceMonitor (Prometheus Operator / kube-prometheus-stack)
+
+Set `metrics.serviceMonitor.enabled: true`. This creates a `ServiceMonitor` CRD that the Prometheus Operator picks up based on its `serviceMonitorSelector`.
+
+```yaml
+metrics:
+  podAnnotations:
+    enabled: false        # optional — disable pod annotations when using ServiceMonitor
+  serviceMonitor:
+    enabled: true
+    interval: 30s         # scrape interval
+    scrapeTimeout: 10s
+    labels: {}            # add labels to match your Prometheus Operator's serviceMonitorSelector
+```
+
+#### Prometheus scrape config (without operator)
+
+```yaml
+scrape_configs:
+  - job_name: kube-phoenix
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [kube-phoenix]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        target_label: __metrics_path__
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: (.+):(?:\d+);(\d+)
+        replacement: $1:$2
+        target_label: __address__
+```
+
+### 14.5 Example Grafana queries
+
+```promql
+# Execution success rate (last 1h)
+rate(kube_phoenix_executions_total{status="success"}[1h])
+  /
+rate(kube_phoenix_executions_total[1h])
+
+# P95 execution duration
+histogram_quantile(0.95, rate(kube_phoenix_execution_duration_seconds_bucket[1h]))
+
+# Total workloads scaled down this week
+increase(kube_phoenix_workloads_scaled_total{direction="down"}[7d])
+
+# Currently enabled schedules by type
+kube_phoenix_active_schedules
+```
 
 ---
 
