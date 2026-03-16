@@ -66,6 +66,9 @@ jobs:
           go-version: "1.25.8"
           cache-dependency-path: backend/go.sum
 
+      - name: Copy OpenAPI spec into embed path
+        run: cp ../openapi.yaml internal/docs/openapi.yaml
+
       - run: go mod download
       - run: go vet ./...
       - run: go test -coverprofile=coverage.out ./...
