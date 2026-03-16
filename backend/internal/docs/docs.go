@@ -3,6 +3,7 @@ package docs
 import (
 	_ "embed"
 	"net/http"
+	"strconv"
 )
 
 //go:embed openapi.yaml
@@ -13,7 +14,7 @@ func SpecHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml")
 		w.Header().Set("Cache-Control", "public, max-age=300")
-		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Length", strconv.Itoa(len(spec)))
 		_, _ = w.Write(spec)
 	})
 }

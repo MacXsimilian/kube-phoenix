@@ -58,9 +58,9 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 		// Chi's radix tree gives /api/docs/ priority over /api for docs paths,
 		// and the explicit Handle for openapi.yaml takes precedence over the mount.
 		r.Get("/api/docs", func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, "/api/docs/", http.StatusMovedPermanently)
+			http.Redirect(w, r, "/api/docs/", http.StatusFound)
 		})
-		r.Handle("/api/docs/openapi.yaml", docs.SpecHandler())
+		r.Method(http.MethodGet, "/api/docs/openapi.yaml", docs.SpecHandler())
 		r.Mount("/api/docs/", swguiv5.NewHandler("kube-phoenix API", "/api/docs/openapi.yaml", "/api/docs/"))
 
 		r.Route("/api", func(r chi.Router) {
