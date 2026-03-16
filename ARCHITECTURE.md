@@ -651,7 +651,7 @@ type Broker struct {
 }
 ```
 
-**`Subscribe(executionID uint) chan store.LogLine`** — creates a buffered channel of capacity 512, appends it to the subscriber list for that execution ID, returns the channel. The 512-capacity buffer means a slow WebSocket client can absorb bursts without blocking the scaler goroutine.
+**`Subscribe(executionID uint) chan store.LogLine`** — creates a buffered channel of capacity 256, appends it to the subscriber list for that execution ID, returns the channel. The 256-capacity buffer means a slow WebSocket client can absorb bursts without blocking the scaler goroutine.
 
 **`Unsubscribe(executionID uint, ch chan store.LogLine)`** — removes the channel from the subscriber list. Does NOT close the channel here (the reader closes it via `broker.Close`).
 
@@ -1071,9 +1071,11 @@ classDiagram
         -cache *ClusterCache
         +NewRouter() *chi.Mux
         +listSchedules()
+        +getSchedule()
         +createSchedule()
         +updateSchedule()
         +deleteSchedule()
+        +reorderSchedules()
         +listExecutions()
         +getExecution()
         +getExecutionLogs()
@@ -1082,6 +1084,11 @@ classDiagram
         +streamCluster()
         +getWorkloads()
         +getNodes()
+        +getNodePods()
+        +getPodDetail()
+        +getWorkloadPods()
+        +getGuardrails()
+        +updateGuardrails()
         +trigger()
         +resetDB()
     }
@@ -1116,40 +1123,65 @@ classDiagram
         -store *Store
         +RunScaleDown(ctx, mode, nsFilter, logCh) *Counts, error
         +RunScaleUp(ctx, mode, nsFilter, logCh) *Counts, error
-        -scaleDownWorkloads()
-        -restoreWorkloads()
-        -drainNodes()
+        -info(ch, msg)
+        -ok(ch, msg)
+        -plan(ch, msg)
+        -errLog(ch, msg)
     }
 
     class Store {
         -db *gorm.DB
         +New(dsn) *Store, error
+        +DB() *gorm.DB
         +Ping() error
-        +ListSchedules() []Schedule
+        +ListSchedules() []Schedule, error
+        +GetSchedule(id) *Schedule, error
         +CreateSchedule(s) error
-        +UpdateSchedule(id, fields) error
+        +UpdateSchedule(id, fields) *Schedule, error
         +DeleteSchedule(id) error
-        +GetGuardrails() Guardrails
-        +UpdateGuardrails(fields) error
+        +ReorderSchedules(type, ids) error
+        +GetGuardrails() *Guardrails, error
+        +UpdateGuardrails(fields) *Guardrails, error
         +CreateExecution(e) error
-        +FinishExecution(id, counts, err) error
-        +AppendLogLine(execID, seq, level, msg) error
-        +GetLogLines(execID) []LogLine
+        +UpdateExecution(id, fields) error
+        +GetExecution(id) *Execution, error
+        +ListExecutions(filter) *ExecutionPage, error
+        +FinishExecution(id, status, counts) error
+        +AppendLogLine(line) error
+        +GetLogLines(execID) []LogLine, error
+        +CountLogLines(execID) int64, error
+        +SeedDefaults() error
+        +Tx(fn) error
+        +DropAllTables() error
+        +MigrateSchema() error
     }
 
     class Client {
         -cs *kubernetes.Clientset
         +New() *Client, error
-        +ListDeployments(ctx, ns) []Deployment
-        +ScaleDeployment(ctx, ns, name, replicas)
-        +AnnotateDeployment(ctx, ns, name, key, val)
-        +ListNodes(ctx) []Node
-        +CordonNode(ctx, name)
-        +DrainNode(ctx, name, timeout)
-        +DeleteNode(ctx, name)
-        +ListAllPods(ctx) []Pod
-        +GetPodMetrics(ctx, ns, name) ContainerMetrics
-        +GetPodEvents(ctx, ns, name) []Event
+        +ListDeployments(ctx, ns) []Deployment, error
+        +ScaleDeployment(ctx, ns, name, replicas) error
+        +AnnotateDeployment(ctx, ns, name, key, val) error
+        +RemoveDeploymentAnnotation(ctx, ns, name, key) error
+        +ListStatefulSets(ctx, ns) []StatefulSet, error
+        +ScaleStatefulSet(ctx, ns, name, replicas) error
+        +AnnotateStatefulSet(ctx, ns, name, key, val) error
+        +RemoveStatefulSetAnnotation(ctx, ns, name, key) error
+        +ListNodes(ctx) []Node, error
+        +CordonNode(ctx, name) error
+        +DrainNode(ctx, name, timeout) error
+        +DeleteNode(ctx, name) error
+        +CountNonDaemonSetPods(ctx, nodeName) int, error
+        +ListPods(ctx, ns) []Pod, error
+        +ListAllPods(ctx) []Pod, error
+        +ListPodsOnNode(ctx, nodeName) []Pod, error
+        +ListAllReplicaSets(ctx) []ReplicaSet, error
+        +ListNamespaces(ctx) []Namespace, error
+        +GetPod(ctx, ns, name) *Pod, error
+        +GetNode(ctx, name) *Node, error
+        +GetAllPodMetrics(ctx) map, error
+        +GetPodMetrics(ctx, ns, name) map, error
+        +GetPodEvents(ctx, ns, name) []Event, error
     }
 
     class ClusterCache {
@@ -1606,7 +1638,7 @@ sequenceDiagram
     rect rgb(40, 40, 60)
         Note over H,Br: Step 2 — Subscribe to live stream
         H->>Br: Subscribe(42)
-        Br-->>H: buffered channel (cap 512)
+        Br-->>H: buffered channel (cap 256)
     end
 
     rect rgb(40, 40, 60)
@@ -1642,7 +1674,7 @@ sequenceDiagram
 
 **Concurrent WebSocket clients:** Multiple browser tabs can watch the same execution simultaneously. Each call to `broker.Subscribe(42)` creates a separate buffered channel. The broker fans out each log line to all subscriber channels independently. Slow clients receive lines at their own pace and are never blocked by other subscribers.
 
-**Slow client protection:** The subscriber channel has capacity 512. If a subscriber falls more than 512 lines behind (e.g., network congestion), new publishes use `select/default` to skip the full channel, logging a warning. The slow client continues to receive lines; it just misses lines during the overflow period. This is an intentional trade-off: never blocking the scaler for a slow UI client.
+**Slow client protection:** The subscriber channel has capacity 256. If a subscriber falls more than 256 lines behind (e.g., network congestion), new publishes use `select/default` to skip the full channel, logging a warning. The slow client continues to receive lines; it just misses lines during the overflow period. This is an intentional trade-off: never blocking the scaler for a slow UI client.
 
 **WebSocket vs Server-Sent Events:** WebSocket was chosen over SSE because:
 1. It supports bidirectional communication (ping/pong).
