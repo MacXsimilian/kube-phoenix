@@ -71,6 +71,9 @@ jobs:
       - name: Copy OpenAPI spec into embed path
         run: cp ../openapi.yaml internal/docs/openapi.yaml
 
+      - name: Assert embedded spec matches root openapi.yaml
+        run: diff ../openapi.yaml internal/docs/openapi.yaml
+
       - run: go mod download
       - run: go vet ./...
       - run: go test -coverprofile=coverage.out ./...

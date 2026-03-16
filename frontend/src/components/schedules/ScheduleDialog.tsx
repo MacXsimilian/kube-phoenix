@@ -21,9 +21,9 @@ import Typography from '@mui/material/Typography'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import { createSchedule, updateSchedule } from '@/lib/api'
-import { cronToText } from '@/lib/cronToText'
 import { TIMEZONES } from '@/lib/constants'
 import type { Schedule, ScheduleInput } from '@/lib/types'
+import CronBuilder from './CronBuilder'
 
 function isValidCronField(field: string, min: number, max: number): boolean {
   if (field === '*') return true
@@ -175,19 +175,10 @@ export default function ScheduleDialog({
             />
 
             {/* Cron expression */}
-            <TextField
-              label="Cron Expression"
+            <CronBuilder
               value={form.cronExpr}
-              onChange={(e) => set('cronExpr', e.target.value)}
-              fullWidth
-              size="small"
+              onChange={(cron) => set('cronExpr', cron)}
               error={form.cronExpr.length > 0 && !isValidCron(form.cronExpr)}
-              helperText={
-                form.cronExpr.length > 0 && !isValidCron(form.cronExpr)
-                  ? 'Invalid cron expression — must be 5 fields (e.g. 0 22 * * 1-5)'
-                  : cronToText(form.cronExpr)
-              }
-              slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
             />
 
             {/* Timezone */}
