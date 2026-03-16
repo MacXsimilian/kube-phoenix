@@ -86,19 +86,19 @@ flowchart TB
         subgraph NS["kube-phoenix namespace"]
             subgraph Pod["kube-phoenix Pod (single container)"]
                 subgraph Binary["Go Binary — :8080"]
-                    Router["Chi Router\n+ BasicAuth middleware"]
-                    Handlers["API Handlers\n/api/*  /ws/*"]
-                    Scheduler["Scheduler\n(robfig/cron v3)"]
-                    Scaler["Scaler Runner\nscale_down / scale_up"]
-                    Store["Store\n(GORM)"]
-                    SPA["SPA Static\n(//go:embed)"]
-                    K8sClient["k8s Client\n(client-go)"]
+                    Router["Chi Router<br/>+ BasicAuth middleware"]
+                    Handlers["API Handlers<br/>/api/*  /ws/*"]
+                    Scheduler["Scheduler<br/>(robfig/cron v3)"]
+                    Scaler["Scaler Runner<br/>scale_down / scale_up"]
+                    Store["Store<br/>(GORM)"]
+                    SPA["SPA Static<br/>(//go:embed)"]
+                    K8sClient["k8s Client<br/>(client-go)"]
                 end
             end
-            PG[("PostgreSQL DB\nsame namespace\nor external RDS")]
+            PG[("PostgreSQL DB<br/>same namespace<br/>or external RDS")]
         end
         subgraph Workloads["Workload Namespaces"]
-            K8sAPI["Kubernetes API Server\n(ClusterRole grants)\nDeployments · StatefulSets · Pods · Nodes"]
+            K8sAPI["Kubernetes API Server<br/>(ClusterRole grants)<br/>Deployments · StatefulSets · Pods · Nodes"]
         end
     end
 
