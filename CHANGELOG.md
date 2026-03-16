@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.63](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.62...v0.1.63) (2026-03-16)
+
+
+### Features
+
+* replace cron text field with visual CronBuilder in schedule dialog ([53f4d8a](https://github.com/MacXsimilian/kube-phoenix/commit/53f4d8a2413febb5c33c6ad3097f66967dcd74b2))
+* replace cron text field with visual CronBuilder in schedule dialog ([0a56851](https://github.com/MacXsimilian/kube-phoenix/commit/0a5685120d4e6f0b5febfccb420fb8e72adbc225))
+
+
+### Bug Fixes
+
+* revert embedded openapi.yaml tracking; add CI sync assertion ([b47f7ea](https://github.com/MacXsimilian/kube-phoenix/commit/b47f7ea7b733a8db07d4bc0b53e7ba41c918508b))
+* track embedded openapi.yaml so go:embed resolves on CI ([9ce583e](https://github.com/MacXsimilian/kube-phoenix/commit/9ce583e14c01ce690df69d78311198285cc9aa6e))
+
 ## [0.1.62](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.61...v0.1.62) (2026-03-16)
 
 
