@@ -2,7 +2,6 @@
 backend/bin/
 backend/web/static/*
 !backend/web/static/.gitkeep
-backend/internal/docs/openapi.yaml
 
 # ── Node ──────────────────────────────────────────────────────────────────────
 frontend/node_modules/
