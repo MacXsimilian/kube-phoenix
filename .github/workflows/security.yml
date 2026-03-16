@@ -89,7 +89,7 @@ jobs:
           exit-code: "1"
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@ce28f5bb42b7a9f2c824e633a3f6ee835bab0761 # v3.28.16
+        uses: github/codeql-action/upload-sarif@b1bff81932f5cdfc8695c7752dcee935dcd061c8 # v4.33.0
         if: always()
         with:
           sarif_file: trivy-image.sarif
@@ -116,7 +116,7 @@ jobs:
           exit-code: "1"
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@ce28f5bb42b7a9f2c824e633a3f6ee835bab0761 # v3.28.16
+        uses: github/codeql-action/upload-sarif@b1bff81932f5cdfc8695c7752dcee935dcd061c8 # v4.33.0
         if: always()
         with:
           sarif_file: trivy-fs.sarif
