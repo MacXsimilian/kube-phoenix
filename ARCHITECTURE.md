@@ -62,7 +62,7 @@ kube-phoenix is a web application that manages Kubernetes cluster **sleep/wake s
 
 | Layer                   | Technology                                               |
 | :---------------------- | :------------------------------------------------------- |
-| Backend language        | Go 1.25                                                  |
+| Backend language        | Go 1.26                                                  |
 | HTTP router             | go-chi/chi v5.2                                          |
 | Database                | PostgreSQL via GORM v1.31 (gorm.io/driver/postgres v1.6) |
 | Scheduler               | robfig/cron v3 (5-field cron expressions)                |
@@ -1075,7 +1075,7 @@ const nextConfig = {
 
 **Build pipeline in CI:**
 ```
-npm install → npm run build → out/ directory → copied to backend/web/static/ → go build
+npm ci → npm run build → out/ directory → copied to backend/web/static/ → go build
 ```
 
 This tight coupling between frontend and backend builds is managed by the Dockerfile's multi-stage build.
@@ -1803,8 +1803,8 @@ Triggered on: `push` to `master`; `pull_request` targeting `master`. Path-filter
 ```
 steps:
   - checkout
-  - setup-node@v4 (node 22)
-  - npm install
+  - setup-node@v4 (node 24)
+  - npm ci
   - npm audit --audit-level=high   (fail on high/critical CVEs in prod deps)
   - npm run build                  (Next.js static export → out/)
 ```
@@ -1813,7 +1813,7 @@ steps:
 ```
 steps:
   - checkout
-  - setup-go@v5 (go 1.25.8)
+  - setup-go@v5 (go 1.26)
   - cp ../openapi.yaml internal/docs/openapi.yaml   (seed go:embed path — see note below)
   - diff ../openapi.yaml internal/docs/openapi.yaml (assert files are identical; fails build on drift)
   - go mod download
@@ -2168,7 +2168,7 @@ go build ./cmd/server/
 
 ### 13.11 Distroless base image
 
-**Decision:** `gcr.io/distroless/static-debian12:nonroot` as the final container image.
+**Decision:** `gcr.io/distroless/static-debian13:nonroot` as the final container image.
 
 **Why:**
 1. **Security:** Distroless contains no shell, no package manager, no system utilities. There is nothing for an attacker to use if they gain code execution. The attack surface is minimal.

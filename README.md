@@ -3,7 +3,7 @@
 [![Build Status](https://img.shields.io/github/actions/workflow/status/MacXsimilian/kube-phoenix/ci.yml?branch=master)](https://github.com/MacXsimilian/kube-phoenix/actions/workflows/ci.yml)
 [![Latest Release](https://img.shields.io/github/v/release/MacXsimilian/kube-phoenix?label=release&logo=github)](https://github.com/MacXsimilian/kube-phoenix/releases/latest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/macxsimilian/kube-phoenix/backend?cache=v2)](https://goreportcard.com/report/github.com/macxsimilian/kube-phoenix/backend)
-[![Go Version](https://img.shields.io/badge/go-1.25-00ADD8?logo=go&logoColor=white)](backend/go.mod)
+[![Go Version](https://img.shields.io/badge/go-1.26-00ADD8?logo=go&logoColor=white)](backend/go.mod)
 [![Docker](https://img.shields.io/badge/ghcr.io-kube--phoenix-2496ED?logo=docker&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/pkgs/container/kube-phoenix)
 [![Helm Chart](https://img.shields.io/badge/helm-oci%3A%2F%2Fghcr.io-0F1689?logo=helm&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/pkgs/container/helm%2Fkube-phoenix)
 [![Prometheus](https://img.shields.io/badge/metrics-prometheus-E6522C?logo=prometheus&logoColor=white)](#observability)
@@ -39,7 +39,7 @@ All schedules are seeded **disabled** in **plan mode** — nothing will scale un
 
 ### Local development
 
-**Prerequisites:** Go 1.25+, Node.js 22+, Docker
+**Prerequisites:** Go 1.26+, Node.js 24+, Docker
 
 ```bash
 make dev          # start PostgreSQL
@@ -106,7 +106,7 @@ For each node
 flowchart TB
     Browser["**Browser**<br/>Next.js 16 · React 19 · MUI v7"]
 
-    subgraph Binary["Go 1.25 Binary — port 8080"]
+    subgraph Binary["Go 1.26 Binary — port 8080"]
         direction TB
         Router["Chi Router + BasicAuth middleware"]
         Handlers["API Handlers"]
@@ -154,7 +154,7 @@ flowchart TB
 
 | Layer     | Technology                                                |
 | :-------- | :-------------------------------------------------------- |
-| Backend   | Go 1.25, chi v5.2, GORM v1.31, robfig/cron v3, client-go |
+| Backend   | Go 1.26, chi v5.2, GORM v1.31, robfig/cron v3, client-go |
 | Frontend  | Next.js 16, React 19, Material UI v7, TanStack Query v5   |
 | Database  | PostgreSQL 16                                             |
 | Packaging | Helm 4, GHCR (OCI), GitHub Actions                        |
