@@ -1,5 +1,13 @@
 # API Reference
 
+## Swagger UI
+
+Interactive API documentation is available at **`/api/docs/`** (Swagger UI v5, embedded — no CDN). The raw OpenAPI 3.1 spec is served at **`/api/docs/openapi.yaml`**. Both are protected by Basic Auth when configured.
+
+The canonical spec source is [`openapi.yaml`](../openapi.yaml) at the repo root.
+
+---
+
 All `/api/*` and `/ws/*` endpoints require Basic Auth when configured. `/healthz` is always open.
 
 WebSocket connections authenticate via `?token=<base64(user:pass)>` — browsers cannot set `Authorization` headers on WebSocket upgrades.
