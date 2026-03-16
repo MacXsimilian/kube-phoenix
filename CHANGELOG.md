@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.62](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.61...v0.1.62) (2026-03-16)
+
+
+### Features
+
+* add Prometheus metrics endpoint at /metrics ([61a2d0e](https://github.com/MacXsimilian/kube-phoenix/commit/61a2d0efea777ea4b6819a0e1ca573521eda8db5))
+* add Prometheus metrics endpoint at /metrics ([aa2b8c5](https://github.com/MacXsimilian/kube-phoenix/commit/aa2b8c55dd522e7ae66d17eb5a205e0647b1b2f9))
+
+
+### Bug Fixes
+
+* replace \n with &lt;br/&gt; in Mermaid diagram node labels ([e31bce4](https://github.com/MacXsimilian/kube-phoenix/commit/e31bce4b7d864a790343f217107f20bdc3a7f90d))
+* replace \n with &lt;br/&gt; in Mermaid diagram node labels ([3631928](https://github.com/MacXsimilian/kube-phoenix/commit/3631928e2df6854dfbbebc3de0377daa445bf0f6))
+
 ## [0.1.61](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.60...v0.1.61) (2026-03-16)
 
 
