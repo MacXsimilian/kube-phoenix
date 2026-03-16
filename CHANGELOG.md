@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.66](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.65...v0.1.66) (2026-03-16)
+
+
+### Bug Fixes
+
+* gofmt -s formatting and update stale version refs in docs ([bbbabf0](https://github.com/MacXsimilian/kube-phoenix/commit/bbbabf0ad3356ef993bae48693a033193f8ce13e))
+* gofmt -s formatting and update stale version refs in docs ([27abe0a](https://github.com/MacXsimilian/kube-phoenix/commit/27abe0a67df0e5e4281535ca886d87569c4ba8f9))
+
 ## [0.1.65](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.64...v0.1.65) (2026-03-16)
 
 
