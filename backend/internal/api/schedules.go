@@ -59,21 +59,8 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "name, type and cronExpr are required", http.StatusBadRequest)
 		return
 	}
-	if len(sc.Name) > 255 {
-		jsonError(w, "name must be 255 characters or fewer", http.StatusBadRequest)
-		return
-	}
-	if sc.TimeoutMinutes < 0 || sc.TimeoutMinutes > 1440 {
-		jsonError(w, "timeoutMinutes must be between 0 and 1440", http.StatusBadRequest)
-		return
-	}
-	if sc.Type != "scale_down" && sc.Type != "scale_up" {
-		jsonError(w, "type must be scale_down or scale_up", http.StatusBadRequest)
-		return
-	}
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	if _, err := parser.Parse(sc.CronExpr); err != nil {
-		jsonError(w, "invalid cron expression", http.StatusBadRequest)
+	if msg := validateScheduleFields(sc.Name, sc.CronExpr, sc.Type, sc.TimeoutMinutes); msg != "" {
+		jsonError(w, msg, http.StatusBadRequest)
 		return
 	}
 	if sc.Timezone == "" {
@@ -92,12 +79,30 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "schedule saved but scheduler reload failed", http.StatusInternalServerError)
 		return
 	}
-	// Set Content-Type before WriteHeader so the header is actually sent.
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(sc); err != nil {
 		slog.Error("json encode created schedule", "err", err)
 	}
+}
+
+// validateScheduleFields validates name, cronExpr, type, and timeoutMinutes.
+// Returns an error message or "" if valid.
+func validateScheduleFields(name, cronExpr, scheduleType string, timeoutMinutes int) string {
+	if len(name) > 255 {
+		return "name must be 255 characters or fewer"
+	}
+	if timeoutMinutes < 0 || timeoutMinutes > 1440 {
+		return "timeoutMinutes must be between 0 and 1440"
+	}
+	if scheduleType != "scale_down" && scheduleType != "scale_up" {
+		return "type must be scale_down or scale_up"
+	}
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	if _, err := parser.Parse(cronExpr); err != nil {
+		return "invalid cron expression"
+	}
+	return ""
 }
 
 func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
@@ -122,44 +127,9 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Validate cron_expr if present
-	if v, ok := updates["cron_expr"]; ok {
-		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-		if _, err := parser.Parse(fmt.Sprintf("%v", v)); err != nil {
-			jsonError(w, "invalid cron expression", http.StatusBadRequest)
-			return
-		}
-	}
-	// Validate timezone if present
-	if v, ok := updates["timezone"]; ok {
-		if _, err := time.LoadLocation(fmt.Sprintf("%v", v)); err != nil {
-			jsonError(w, "invalid timezone", http.StatusBadRequest)
-			return
-		}
-	}
-	// Validate mode if present
-	if v, ok := updates["mode"]; ok {
-		if m := fmt.Sprintf("%v", v); m != "plan" && m != "apply" {
-			jsonError(w, "mode must be plan or apply", http.StatusBadRequest)
-			return
-		}
-	}
-	// Validate name length if present
-	if v, ok := updates["name"]; ok {
-		if len(fmt.Sprintf("%v", v)) > 255 {
-			jsonError(w, "name must be 255 characters or fewer", http.StatusBadRequest)
-			return
-		}
-	}
-	// Validate timeout_minutes if present
-	if v, ok := updates["timeout_minutes"]; ok {
-		// JSON numbers decode as float64
-		if f, ok := v.(float64); ok {
-			if int(f) < 0 || int(f) > 1440 {
-				jsonError(w, "timeoutMinutes must be between 0 and 1440", http.StatusBadRequest)
-				return
-			}
-		}
+	if msg := validateScheduleUpdate(updates); msg != "" {
+		jsonError(w, msg, http.StatusBadRequest)
+		return
 	}
 
 	sc, err := h.store.UpdateSchedule(id, updates)
@@ -173,6 +143,39 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, sc)
+}
+
+// validateScheduleUpdate validates partial update fields. Returns an error message or "".
+func validateScheduleUpdate(updates map[string]interface{}) string {
+	if v, ok := updates["cron_expr"]; ok {
+		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+		if _, err := parser.Parse(fmt.Sprintf("%v", v)); err != nil {
+			return "invalid cron expression"
+		}
+	}
+	if v, ok := updates["timezone"]; ok {
+		if _, err := time.LoadLocation(fmt.Sprintf("%v", v)); err != nil {
+			return "invalid timezone"
+		}
+	}
+	if v, ok := updates["mode"]; ok {
+		if m := fmt.Sprintf("%v", v); m != "plan" && m != "apply" {
+			return "mode must be plan or apply"
+		}
+	}
+	if v, ok := updates["name"]; ok {
+		if len(fmt.Sprintf("%v", v)) > 255 {
+			return "name must be 255 characters or fewer"
+		}
+	}
+	if v, ok := updates["timeout_minutes"]; ok {
+		if f, ok := v.(float64); ok {
+			if int(f) < 0 || int(f) > 1440 {
+				return "timeoutMinutes must be between 0 and 1440"
+			}
+		}
+	}
+	return ""
 }
 
 func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {

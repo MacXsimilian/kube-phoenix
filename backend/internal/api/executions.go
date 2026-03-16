@@ -138,15 +138,49 @@ func (h *Handler) wsExecutionLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Info("ws: client connected", "execID", id, "remote_addr", conn.RemoteAddr())
 
-	// Read pump: consume incoming frames (pings, pong, close) so the TCP
-	// buffer doesn't fill up and the connection can be cleanly torn down.
-	// Without this goroutine, an ungraceful client disconnect leaks the
-	// write-side goroutine until the next write times out.
-	//
-	// Defer order (LIFO) is intentional:
-	//   1. conn.Close() fires first  — unblocks the read pump's ReadMessage
-	//   2. <-done fires second       — waits for the read pump goroutine to exit
-	// This guarantees no goroutine leak regardless of which exit path fires.
+	done := wsReadPump(conn)
+	defer func() { <-done }()
+	defer func() {
+		slog.Info("ws: client disconnected", "execID", id, "remote_addr", conn.RemoteAddr())
+		_ = conn.Close()
+	}()
+
+	// Send existing log lines
+	existing, err := h.store.GetLogLines(id)
+	if err != nil {
+		slog.Error("ws: failed to fetch existing log lines", "execID", id, "err", err)
+		_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+		_ = conn.WriteJSON(store.LogLine{
+			Level:     "warn",
+			Message:   "Could not load historical log lines — database error. Live lines will continue below.",
+			Timestamp: time.Now(),
+		})
+	}
+	if !wsSendLines(conn, existing) {
+		return
+	}
+
+	// If finished, we're done
+	if exec.Status != "running" {
+		return
+	}
+
+	sub := h.scheduler.Broker.Subscribe(id)
+	defer h.scheduler.Broker.Unsubscribe(id, sub)
+
+	// Re-check: execution may have finished between the first GetExecution call
+	// and Subscribe above.
+	if fresh, err := h.store.GetExecution(id); err == nil && fresh.Status != "running" {
+		wsDrainChannel(conn, sub)
+		return
+	}
+
+	wsStreamLoop(conn, done, sub, r)
+}
+
+// wsReadPump consumes incoming frames (pings, pong, close) so the TCP
+// buffer doesn't fill up. Returns a channel that closes when the read pump exits.
+func wsReadPump(conn *websocket.Conn) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -160,74 +194,55 @@ func (h *Handler) wsExecutionLogs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
-	defer func() { <-done }() // declared first → runs second (after conn.Close)
-	defer func() {
-		slog.Info("ws: client disconnected", "execID", id, "remote_addr", conn.RemoteAddr())
-		_ = conn.Close()
-	}() // declared second → runs first
+	return done
+}
 
-	// Send existing log lines
-	existing, err := h.store.GetLogLines(id)
-	if err != nil {
-		slog.Error("ws: failed to fetch existing log lines", "execID", id, "err", err)
-		// Notify the client so they know history is incomplete
-		_ = conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
-		_ = conn.WriteJSON(store.LogLine{
-			Level:     "warn",
-			Message:   "Could not load historical log lines — database error. Live lines will continue below.",
-			Timestamp: time.Now(),
-		})
-	}
-	for _, line := range existing {
+// wsSendLines writes a slice of log lines to the WebSocket. Returns false if sending fails.
+func wsSendLines(conn *websocket.Conn, lines []store.LogLine) bool {
+	for _, line := range lines {
 		if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
-			return
+			return false
 		}
 		if err := conn.WriteJSON(line); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// wsDrainChannel sends any remaining buffered lines from a subscription channel.
+func wsDrainChannel(conn *websocket.Conn, sub <-chan store.LogLine) {
+	for {
+		select {
+		case line, ok := <-sub:
+			if !ok {
+				return
+			}
+			if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
+				return
+			}
+			if err := conn.WriteJSON(line); err != nil {
+				return
+			}
+		default:
 			return
 		}
 	}
+}
 
-	// If finished, we're done
-	if exec.Status != "running" {
-		return
-	}
-
-	// Subscribe before the second status check so we don't miss lines published
-	// in the window between the first GetExecution call and Subscribe.
-	sub := h.scheduler.Broker.Subscribe(id)
-	defer h.scheduler.Broker.Unsubscribe(id, sub)
-
-	// Re-check: execution may have finished between the first GetExecution call
-	// and Subscribe above. If so, drain any buffered lines and exit cleanly.
-	if fresh, err := h.store.GetExecution(id); err == nil && fresh.Status != "running" {
-		for {
-			select {
-			case line, ok := <-sub:
-				if !ok {
-					return
-				}
-				if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
-					return
-				}
-				if err := conn.WriteJSON(line); err != nil {
-					return
-				}
-			default:
-				return
-			}
-		}
-	}
-
+// wsStreamLoop streams live log lines and sends periodic pings until the
+// subscription closes, the client disconnects, or the request context ends.
+func wsStreamLoop(conn *websocket.Conn, done <-chan struct{}, sub <-chan store.LogLine, r *http.Request) {
 	ping := time.NewTicker(wsPingInterval)
 	defer ping.Stop()
 
 	for {
 		select {
 		case <-done:
-			return // client disconnected
+			return
 		case line, ok := <-sub:
 			if !ok {
-				return // broker closed — execution finished
+				return
 			}
 			if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
 				return
