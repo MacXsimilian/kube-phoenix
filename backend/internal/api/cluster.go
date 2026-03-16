@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -11,9 +12,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type WorkloadResponse struct {
@@ -47,6 +50,106 @@ var validK8sName = regexp.MustCompile(`^[a-z0-9][a-z0-9\-\.]{0,252}[a-z0-9]$|^[a
 func isValidK8sName(s string) bool {
 	return validK8sName.MatchString(s)
 }
+
+// ── Shared pod helpers ────────────────────────────────────────────────────────
+
+type ownerRef struct{ Kind, Name string }
+
+// isDaemonOwned returns true if any owner reference is a DaemonSet.
+func isDaemonOwned(refs []metav1.OwnerReference) bool {
+	for _, ref := range refs {
+		if ref.Kind == "DaemonSet" {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveOwner returns the effective owner kind and name for a pod.
+// If the owner is a ReplicaSet, it resolves to the top-level owner (e.g. Deployment).
+func resolveOwner(refs []metav1.OwnerReference, namespace string, rsOwner map[string]ownerRef) (string, string) {
+	kind, name := "", ""
+	for _, ref := range refs {
+		kind = ref.Kind
+		name = ref.Name
+		break
+	}
+	if kind == "ReplicaSet" {
+		if top, ok := rsOwner[namespace+"/"+name]; ok {
+			return top.Kind, top.Name
+		}
+	}
+	return kind, name
+}
+
+// buildRSOwnerMap builds a map from "namespace/rsName" -> top-level owner for ReplicaSets.
+func buildRSOwnerMap(rss []appsv1.ReplicaSet) map[string]ownerRef {
+	m := map[string]ownerRef{}
+	for _, rs := range rss {
+		for _, ref := range rs.OwnerReferences {
+			m[rs.Namespace+"/"+rs.Name] = ownerRef{ref.Kind, ref.Name}
+			break
+		}
+	}
+	return m
+}
+
+// podResources sums CPU and memory requests across all containers in a pod.
+func podResources(containers []corev1.Container) (cpuReq, memReq int64) {
+	for _, c := range containers {
+		cpuReq += c.Resources.Requests.Cpu().MilliValue()
+		memReq += c.Resources.Requests.Memory().Value()
+	}
+	return
+}
+
+// readyCount returns the number of ready containers.
+func readyCount(statuses []corev1.ContainerStatus) int {
+	n := 0
+	for _, cs := range statuses {
+		if cs.Ready {
+			n++
+		}
+	}
+	return n
+}
+
+// podPhase returns the pod phase string, defaulting to "Unknown".
+func podPhase(pod corev1.Pod) string {
+	if phase := string(pod.Status.Phase); phase != "" {
+		return phase
+	}
+	return "Unknown"
+}
+
+// podStartTime returns RFC3339 start time or "".
+func podStartTime(pod corev1.Pod) string {
+	if pod.Status.StartTime != nil {
+		return pod.Status.StartTime.UTC().Format(time.RFC3339)
+	}
+	return ""
+}
+
+// buildNodePodResponse converts a pod into a NodePodResponse.
+func buildNodePodResponse(pod corev1.Pod, ownerKind, ownerName string, metrics k8s.ContainerMetrics) NodePodResponse {
+	cpuReq, memReq := podResources(pod.Spec.Containers)
+	return NodePodResponse{
+		Name:            pod.Name,
+		Namespace:       pod.Namespace,
+		OwnerKind:       ownerKind,
+		OwnerName:       ownerName,
+		Status:          podPhase(pod),
+		ReadyContainers: readyCount(pod.Status.ContainerStatuses),
+		TotalContainers: len(pod.Spec.Containers),
+		CPURequest:      cpuReq,
+		MemRequest:      memReq,
+		CPUUsage:        metrics.CPUMillis,
+		MemUsage:        metrics.MemBytes,
+		StartedAt:       podStartTime(pod),
+	}
+}
+
+// ── Workloads endpoint ────────────────────────────────────────────────────────
 
 func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 	if h.k8s == nil {
@@ -95,13 +198,15 @@ func buildWorkloadResponse(deployments []appsv1.Deployment, statefulsets []appsv
 		if d.Spec.Replicas != nil {
 			current = *d.Spec.Replicas
 		}
-		var saved *int32
-		if v, ok := d.Annotations["previous-replicas"]; ok {
-			if n, err := strconv.ParseInt(v, 10, 32); err == nil {
-				n32 := int32(n)
-				saved = &n32
-			} else {
-				slog.Warn("malformed previous-replicas annotation", "workload", d.Namespace+"/"+d.Name, "value", v)
+		saved := parseSavedReplicas(d.Annotations)
+		if saved == nil {
+			if v, ok := d.Annotations["previous-replicas"]; ok {
+				if n, err := strconv.ParseInt(v, 10, 32); err == nil {
+					n32 := int32(n)
+					saved = &n32
+				} else {
+					slog.Warn("malformed previous-replicas annotation", "workload", d.Namespace+"/"+d.Name, "value", v)
+				}
 			}
 		}
 		result = append(result, WorkloadResponse{
@@ -120,13 +225,15 @@ func buildWorkloadResponse(deployments []appsv1.Deployment, statefulsets []appsv
 		if ss.Spec.Replicas != nil {
 			current = *ss.Spec.Replicas
 		}
-		var saved *int32
-		if v, ok := ss.Annotations["previous-replicas"]; ok {
-			if n, err := strconv.ParseInt(v, 10, 32); err == nil {
-				n32 := int32(n)
-				saved = &n32
-			} else {
-				slog.Warn("malformed previous-replicas annotation", "workload", ss.Namespace+"/"+ss.Name, "value", v)
+		saved := parseSavedReplicas(ss.Annotations)
+		if saved == nil {
+			if v, ok := ss.Annotations["previous-replicas"]; ok {
+				if n, err := strconv.ParseInt(v, 10, 32); err == nil {
+					n32 := int32(n)
+					saved = &n32
+				} else {
+					slog.Warn("malformed previous-replicas annotation", "workload", ss.Namespace+"/"+ss.Name, "value", v)
+				}
 			}
 		}
 		result = append(result, WorkloadResponse{
@@ -156,6 +263,8 @@ func workloadStatus(current int32, saved *int32) string {
 	return "running"
 }
 
+// ── Nodes endpoint ────────────────────────────────────────────────────────────
+
 func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 	if h.k8s == nil {
 		jsonError(w, "kubernetes client unavailable", http.StatusServiceUnavailable)
@@ -180,7 +289,7 @@ func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if nodes == nil {
-		// Fallback: fetch nodes and pods in parallel (previously serial)
+		// Fallback: fetch nodes and pods in parallel
 		ctx := r.Context()
 		var nErr, pErr error
 		var wg sync.WaitGroup
@@ -211,19 +320,11 @@ func buildNodeResponse(nodes []corev1.Node, allPods []corev1.Pod, g *store.Guard
 	skipNsNode := splitCSVLocal(g.SkipNsNode)
 
 	for _, pod := range allPods {
-		isDaemon := false
-		for _, ref := range pod.OwnerReferences {
-			if ref.Kind == "DaemonSet" {
-				isDaemon = true
-				break
-			}
-		}
-		if !isDaemon {
+		if !isDaemonOwned(pod.OwnerReferences) {
 			podCounts[pod.Spec.NodeName]++
-			for _, c := range pod.Spec.Containers {
-				cpuRequested[pod.Spec.NodeName] += c.Resources.Requests.Cpu().MilliValue()
-				memRequested[pod.Spec.NodeName] += c.Resources.Requests.Memory().Value()
-			}
+			cpu, mem := podResources(pod.Spec.Containers)
+			cpuRequested[pod.Spec.NodeName] += cpu
+			memRequested[pod.Spec.NodeName] += mem
 		}
 		if skipNsNode[pod.Namespace] {
 			criticalNodes[pod.Spec.NodeName] = true
@@ -232,14 +333,8 @@ func buildNodeResponse(nodes []corev1.Node, allPods []corev1.Pod, g *store.Guard
 
 	var result []NodeResponse
 	for _, node := range nodes {
-		instanceType := node.Labels["node.kubernetes.io/instance-type"]
-		if instanceType == "" {
-			instanceType = node.Labels["beta.kubernetes.io/instance-type"]
-		}
-		zone := node.Labels["topology.kubernetes.io/zone"]
-		if zone == "" {
-			zone = node.Labels["failure-domain.beta.kubernetes.io/zone"]
-		}
+		instanceType := nodeLabel(node, "node.kubernetes.io/instance-type", "beta.kubernetes.io/instance-type")
+		zone := nodeLabel(node, "topology.kubernetes.io/zone", "failure-domain.beta.kubernetes.io/zone")
 
 		status, reason := nodeProtectionStatus(node.Name, node.Labels, node.Spec.Taints, g.SkipNodeLabels, g.SkipNodeTaints, criticalNodes)
 
@@ -264,6 +359,18 @@ func buildNodeResponse(nodes []corev1.Node, allPods []corev1.Pod, g *store.Guard
 	}
 	return result
 }
+
+// nodeLabel returns the first non-empty label value from the given keys.
+func nodeLabel(node corev1.Node, keys ...string) string {
+	for _, k := range keys {
+		if v := node.Labels[k]; v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// ── Node pods endpoint ────────────────────────────────────────────────────────
 
 type NodePodResponse struct {
 	Name            string `json:"name"`
@@ -299,88 +406,9 @@ func (h *Handler) getNodePods(w http.ResponseWriter, r *http.Request) {
 	}
 
 	podMetrics, _ := h.k8s.GetAllPodMetrics(ctx)
+	rsOwner := h.fetchRSOwnerMap(ctx, "getNodePods")
 
-	// Build ReplicaSet -> top-level owner map to resolve Deployment names
-	rss, err := h.k8s.ListAllReplicaSets(ctx)
-	if err != nil {
-		slog.Warn("getNodePods: failed to list replicasets — owners will show as ReplicaSet", "err", err)
-	}
-	type ownerRef struct{ kind, name string }
-	rsOwner := map[string]ownerRef{}
-	for _, rs := range rss {
-		for _, ref := range rs.OwnerReferences {
-			rsOwner[rs.Namespace+"/"+rs.Name] = ownerRef{ref.Kind, ref.Name}
-			break
-		}
-	}
-
-	var result []NodePodResponse
-	for _, pod := range pods {
-		ownerKind, ownerName := "", ""
-		isDaemon := false
-		for _, ref := range pod.OwnerReferences {
-			if ref.Kind == "DaemonSet" {
-				isDaemon = true
-				break
-			}
-			ownerKind = ref.Kind
-			ownerName = ref.Name
-		}
-		if isDaemon {
-			continue
-		}
-
-		// Resolve ReplicaSet -> Deployment (or other top-level owner)
-		if ownerKind == "ReplicaSet" {
-			if top, ok := rsOwner[pod.Namespace+"/"+ownerName]; ok {
-				ownerKind = top.kind
-				ownerName = top.name
-			}
-		}
-
-		ready := 0
-		for _, cs := range pod.Status.ContainerStatuses {
-			if cs.Ready {
-				ready++
-			}
-		}
-
-		var cpuReq, memReq int64
-		for _, c := range pod.Spec.Containers {
-			cpuReq += c.Resources.Requests.Cpu().MilliValue()
-			memReq += c.Resources.Requests.Memory().Value()
-		}
-
-		startedAt := ""
-		if pod.Status.StartTime != nil {
-			startedAt = pod.Status.StartTime.UTC().Format(time.RFC3339)
-		}
-
-		phase := string(pod.Status.Phase)
-		if phase == "" {
-			phase = "Unknown"
-		}
-
-		m := podMetrics[pod.Namespace+"/"+pod.Name]
-		result = append(result, NodePodResponse{
-			Name:            pod.Name,
-			Namespace:       pod.Namespace,
-			OwnerKind:       ownerKind,
-			OwnerName:       ownerName,
-			Status:          phase,
-			ReadyContainers: ready,
-			TotalContainers: len(pod.Spec.Containers),
-			CPURequest:      cpuReq,
-			MemRequest:      memReq,
-			CPUUsage:        m.CPUMillis,
-			MemUsage:        m.MemBytes,
-			StartedAt:       startedAt,
-		})
-	}
-
-	if result == nil {
-		result = []NodePodResponse{}
-	}
+	result := filterAndBuildPodResponses(pods, podMetrics, rsOwner, nil)
 	jsonOK(w, result)
 }
 
@@ -449,16 +477,39 @@ func (h *Handler) getPodDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	metricsMap, _ := h.k8s.GetPodMetrics(ctx, namespace, name)
+	containers := buildContainerDetails(pod.Spec.Containers, pod.Status.ContainerStatuses, metricsMap)
+	conditions := buildConditions(pod.Status.Conditions)
+	events := h.fetchPodEvents(ctx, namespace, name)
+
+	nodeInstanceType := h.resolveNodeInstanceType(ctx, pod.Spec.NodeName)
+
+	jsonOK(w, PodDetailResponse{
+		Name:             pod.Name,
+		Namespace:        pod.Namespace,
+		Phase:            string(pod.Status.Phase),
+		NodeName:         pod.Spec.NodeName,
+		NodeInstanceType: nodeInstanceType,
+		PodIP:            pod.Status.PodIP,
+		HostIP:           pod.Status.HostIP,
+		QOSClass:         string(pod.Status.QOSClass),
+		StartedAt:        podStartTime(*pod),
+		Labels:           nonNilMap(pod.Labels),
+		Annotations:      nonNilMap(pod.Annotations),
+		Containers:       containers,
+		Conditions:       conditions,
+		Events:           events,
+	})
+}
+
+func buildContainerDetails(specs []corev1.Container, statuses []corev1.ContainerStatus, metricsMap map[string]k8s.ContainerMetrics) []ContainerDetailResponse {
 	csMap := map[string]corev1.ContainerStatus{}
-	for _, cs := range pod.Status.ContainerStatuses {
+	for _, cs := range statuses {
 		csMap[cs.Name] = cs
 	}
 
-	// Fetch live metrics — silently ignore errors (Metrics Server may be absent)
-	metricsMap, _ := h.k8s.GetPodMetrics(ctx, namespace, name)
-
 	var containers []ContainerDetailResponse
-	for _, c := range pod.Spec.Containers {
+	for _, c := range specs {
 		cs := csMap[c.Name]
 		lastState := ""
 		if cs.LastTerminationState.Terminated != nil {
@@ -483,73 +534,64 @@ func (h *Handler) getPodDetail(w http.ResponseWriter, r *http.Request) {
 			LastState:    lastState,
 		})
 	}
+	return containers
+}
 
-	var conditions []PodConditionResponse
-	for _, cond := range pod.Status.Conditions {
-		conditions = append(conditions, PodConditionResponse{
+func buildConditions(conditions []corev1.PodCondition) []PodConditionResponse {
+	result := make([]PodConditionResponse, len(conditions))
+	for i, cond := range conditions {
+		result[i] = PodConditionResponse{
 			Type:   string(cond.Type),
 			Status: string(cond.Status),
-		})
+		}
 	}
+	return result
+}
 
+func (h *Handler) fetchPodEvents(ctx context.Context, namespace, name string) []PodEventResponse {
 	events, err := h.k8s.GetPodEvents(ctx, namespace, name)
 	if err != nil {
 		slog.Warn("getPodDetail: failed to get events", "err", err)
-		events = []corev1.Event{}
+		return []PodEventResponse{}
 	}
-	var podEvents []PodEventResponse
-	for _, e := range events {
-		podEvents = append(podEvents, PodEventResponse{
+	result := make([]PodEventResponse, len(events))
+	for i, e := range events {
+		result[i] = PodEventResponse{
 			Type:     e.Type,
 			Reason:   e.Reason,
 			Message:  e.Message,
 			Count:    e.Count,
 			LastSeen: e.LastTimestamp.UTC().Format(time.RFC3339),
-		})
-	}
-
-	startedAt := ""
-	if pod.Status.StartTime != nil {
-		startedAt = pod.Status.StartTime.UTC().Format(time.RFC3339)
-	}
-	labels := pod.Labels
-	if labels == nil {
-		labels = map[string]string{}
-	}
-	annotations := pod.Annotations
-	if annotations == nil {
-		annotations = map[string]string{}
-	}
-
-	nodeInstanceType := ""
-	if pod.Spec.NodeName != "" {
-		if node, err := h.k8s.GetNode(ctx, pod.Spec.NodeName); err == nil {
-			nodeInstanceType = node.Labels["node.kubernetes.io/instance-type"]
-			if nodeInstanceType == "" {
-				nodeInstanceType = node.Labels["beta.kubernetes.io/instance-type"]
-			}
 		}
 	}
+	return result
+}
 
-	jsonOK(w, PodDetailResponse{
-		Name:             pod.Name,
-		Namespace:        pod.Namespace,
-		Phase:            string(pod.Status.Phase),
-		NodeName:         pod.Spec.NodeName,
-		NodeInstanceType: nodeInstanceType,
-		PodIP:            pod.Status.PodIP,
-		HostIP:           pod.Status.HostIP,
-		QOSClass:         string(pod.Status.QOSClass),
-		StartedAt:        startedAt,
-		Labels:           labels,
-		Annotations:      annotations,
-		Containers:       containers,
-		Conditions:       conditions,
-		Events:           podEvents,
-	})
+func (h *Handler) resolveNodeInstanceType(ctx context.Context, nodeName string) string {
+	if nodeName == "" {
+		return ""
+	}
+	node, err := h.k8s.GetNode(ctx, nodeName)
+	if err != nil {
+		return ""
+	}
+	return nodeLabel(*node, "node.kubernetes.io/instance-type", "beta.kubernetes.io/instance-type")
+}
+
+func nonNilMap(m map[string]string) map[string]string {
+	if m == nil {
+		return map[string]string{}
+	}
+	return m
 }
 
 // ── Workload pods ─────────────────────────────────────────────────────────────
+
+// podFilter optionally filters pods by owner. If nil, all non-daemon pods are included.
+type podFilter struct {
+	Kind string
+	Name string
+}
 
 func (h *Handler) getWorkloadPods(w http.ResponseWriter, r *http.Request) {
 	if h.k8s == nil {
@@ -572,77 +614,45 @@ func (h *Handler) getWorkloadPods(w http.ResponseWriter, r *http.Request) {
 	}
 
 	podMetrics, _ := h.k8s.GetAllPodMetrics(ctx)
+	rsOwner := h.fetchRSOwnerMap(ctx, "getWorkloadPods")
 
+	result := filterAndBuildPodResponses(pods, podMetrics, rsOwner, &podFilter{Kind: kind, Name: name})
+	jsonOK(w, result)
+}
+
+// fetchRSOwnerMap fetches ReplicaSets and builds the owner resolution map.
+func (h *Handler) fetchRSOwnerMap(ctx context.Context, caller string) map[string]ownerRef {
 	rss, err := h.k8s.ListAllReplicaSets(ctx)
 	if err != nil {
-		slog.Warn("getWorkloadPods: failed to list replicasets", "err", err)
+		slog.Warn(caller+": failed to list replicasets — owners will show as ReplicaSet", "err", err)
 	}
-	type ownerRef struct{ kind, name string }
-	rsOwner := map[string]ownerRef{}
-	for _, rs := range rss {
-		for _, ref := range rs.OwnerReferences {
-			rsOwner[rs.Namespace+"/"+rs.Name] = ownerRef{ref.Kind, ref.Name}
-			break
-		}
-	}
+	return buildRSOwnerMap(rss)
+}
 
+// filterAndBuildPodResponses converts pods to NodePodResponse, filtering daemonset pods
+// and optionally filtering by owner.
+func filterAndBuildPodResponses(pods []corev1.Pod, podMetrics map[string]k8s.ContainerMetrics, rsOwner map[string]ownerRef, filter *podFilter) []NodePodResponse {
 	var result []NodePodResponse
 	for _, pod := range pods {
-		ownerKind, ownerName := "", ""
-		for _, ref := range pod.OwnerReferences {
-			ownerKind = ref.Kind
-			ownerName = ref.Name
-		}
-		if ownerKind == "ReplicaSet" {
-			if top, ok := rsOwner[pod.Namespace+"/"+ownerName]; ok {
-				ownerKind = top.kind
-				ownerName = top.name
-			}
-		}
-		if !strings.EqualFold(ownerKind, kind) || ownerName != name {
+		if isDaemonOwned(pod.OwnerReferences) {
 			continue
 		}
+		ownerKind, ownerName := resolveOwner(pod.OwnerReferences, pod.Namespace, rsOwner)
 
-		ready := 0
-		for _, cs := range pod.Status.ContainerStatuses {
-			if cs.Ready {
-				ready++
+		if filter != nil {
+			if !strings.EqualFold(ownerKind, filter.Kind) || ownerName != filter.Name {
+				continue
 			}
 		}
-		var cpuReq, memReq int64
-		for _, c := range pod.Spec.Containers {
-			cpuReq += c.Resources.Requests.Cpu().MilliValue()
-			memReq += c.Resources.Requests.Memory().Value()
-		}
-		startedAt := ""
-		if pod.Status.StartTime != nil {
-			startedAt = pod.Status.StartTime.UTC().Format(time.RFC3339)
-		}
-		phase := string(pod.Status.Phase)
-		if phase == "" {
-			phase = "Unknown"
-		}
+
 		m := podMetrics[pod.Namespace+"/"+pod.Name]
-		result = append(result, NodePodResponse{
-			Name:            pod.Name,
-			Namespace:       pod.Namespace,
-			OwnerKind:       ownerKind,
-			OwnerName:       ownerName,
-			Status:          phase,
-			ReadyContainers: ready,
-			TotalContainers: len(pod.Spec.Containers),
-			CPURequest:      cpuReq,
-			MemRequest:      memReq,
-			CPUUsage:        m.CPUMillis,
-			MemUsage:        m.MemBytes,
-			StartedAt:       startedAt,
-		})
+		result = append(result, buildNodePodResponse(pod, ownerKind, ownerName, m))
 	}
 
 	if result == nil {
 		result = []NodePodResponse{}
 	}
-	jsonOK(w, result)
+	return result
 }
 
 func nodeProtectionStatus(nodeName string, labels map[string]string, taints []corev1.Taint, skipLabels, skipTaints string, criticalNodes map[string]bool) (string, string) {
