@@ -17,7 +17,11 @@ docker-compose.override.yml
 .env
 .env.*
 .claude
-README.md
 helm
 k8s
 .github
+
+# Docs & mockups
+*.md
+docs
+*.html
