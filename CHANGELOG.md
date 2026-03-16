@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.65](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.64...v0.1.65) (2026-03-16)
+
+
+### Bug Fixes
+
+* **ci:** audit fixes across all workflows ([eb30eb2](https://github.com/MacXsimilian/kube-phoenix/commit/eb30eb2481a42361221264e6e0c713d6ec54825b))
+* **ci:** skip SARIF upload when Trivy output file is missing ([4cb328b](https://github.com/MacXsimilian/kube-phoenix/commit/4cb328b20c61f8cf64ac3cb9ea034b803e9b4aa9))
+* **ci:** use valid codeql-action SHA for SARIF upload ([0682a17](https://github.com/MacXsimilian/kube-phoenix/commit/0682a17fedc4856dbcf669d7759a15866bd3cb9d))
+
 ## [0.1.64](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.63...v0.1.64) (2026-03-16)
 
 
