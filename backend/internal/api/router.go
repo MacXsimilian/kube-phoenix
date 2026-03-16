@@ -48,10 +48,14 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := st.Ping(); err != nil {
 			slog.Error("healthz: database ping failed", "err", err)
-			http.Error(w, `{"error":"database unavailable"}`, http.StatusServiceUnavailable)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"error","error":"database unavailable"}`))
 			return
 		}
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
 	// All routes below require basic auth

@@ -24,10 +24,18 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Map camelCase JSON keys to snake_case GORM column names.
+	fieldMap := map[string]string{
+		"systemNamespaces": "system_namespaces",
+		"skipNamespaces":   "skip_namespaces",
+		"skipNsNode":       "skip_ns_node",
+		"skipNodeLabels":   "skip_node_labels",
+		"skipNodeTaints":   "skip_node_taints",
+	}
 	updates := map[string]interface{}{}
-	for _, f := range []string{"system_namespaces", "skip_namespaces", "skip_ns_node", "skip_node_labels", "skip_node_taints"} {
-		if v, ok := body[f]; ok {
-			updates[f] = v
+	for jsonKey, dbCol := range fieldMap {
+		if v, ok := body[jsonKey]; ok {
+			updates[dbCol] = v
 		}
 	}
 
@@ -47,13 +55,13 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 
 // validateGuardrailFields validates guardrail update fields. Returns an error message or "".
 func validateGuardrailFields(body map[string]interface{}) string {
-	if v, ok := body["skip_node_labels"]; ok {
+	if v, ok := body["skipNodeLabels"]; ok {
 		if msg := validateCSVEntries(fmt.Sprintf("%v", v), "=", 1,
 			func(entry string) string { return fmt.Sprintf("invalid node label %q: must be key=value", entry) }); msg != "" {
 			return msg
 		}
 	}
-	if v, ok := body["skip_node_taints"]; ok {
+	if v, ok := body["skipNodeTaints"]; ok {
 		for _, entry := range strings.Split(fmt.Sprintf("%v", v), ",") {
 			entry = strings.TrimSpace(entry)
 			if entry == "" {
@@ -65,9 +73,9 @@ func validateGuardrailFields(body map[string]interface{}) string {
 			}
 		}
 	}
-	if v, ok := body["system_namespaces"]; ok {
+	if v, ok := body["systemNamespaces"]; ok {
 		if strings.TrimSpace(fmt.Sprintf("%v", v)) == "" {
-			return "system_namespaces cannot be empty"
+			return "systemNamespaces cannot be empty"
 		}
 	}
 	return ""

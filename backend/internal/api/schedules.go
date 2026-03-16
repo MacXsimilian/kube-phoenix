@@ -46,7 +46,7 @@ func (h *Handler) getSchedule(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	jsonOK(w, sc)
+	jsonOK(w, scheduleResponse{Schedule: *sc, NextRun: h.scheduler.NextRun(sc.ID)})
 }
 
 func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
@@ -118,12 +118,22 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updates := map[string]interface{}{}
-	// Note: "type" is intentionally excluded — schedule type is immutable after creation
+	// Map camelCase JSON keys to snake_case GORM column names.
+	// "type" is intentionally excluded — schedule type is immutable after creation
 	// to preserve the semantic integrity of historical executions.
-	for _, f := range []string{"name", "cron_expr", "timezone", "mode", "enabled", "namespace_filter", "timeout_minutes"} {
-		if v, ok := body[f]; ok {
-			updates[f] = v
+	fieldMap := map[string]string{
+		"name":            "name",
+		"cronExpr":        "cron_expr",
+		"timezone":        "timezone",
+		"mode":            "mode",
+		"enabled":         "enabled",
+		"namespaceFilter": "namespace_filter",
+		"timeoutMinutes":  "timeout_minutes",
+	}
+	updates := map[string]interface{}{}
+	for jsonKey, dbCol := range fieldMap {
+		if v, ok := body[jsonKey]; ok {
+			updates[dbCol] = v
 		}
 	}
 
@@ -146,6 +156,8 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 }
 
 // validateScheduleUpdate validates partial update fields. Returns an error message or "".
+// validateScheduleUpdate validates partial update fields (keyed by GORM column name).
+// Returns an error message or "".
 func validateScheduleUpdate(updates map[string]interface{}) string {
 	if v, ok := updates["cron_expr"]; ok {
 		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
@@ -229,5 +241,9 @@ func (h *Handler) reorderSchedules(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	jsonOK(w, schedules)
+	resp := make([]scheduleResponse, len(schedules))
+	for i, sc := range schedules {
+		resp[i] = scheduleResponse{Schedule: sc, NextRun: h.scheduler.NextRun(sc.ID)}
+	}
+	jsonOK(w, resp)
 }
