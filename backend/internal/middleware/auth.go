@@ -78,6 +78,7 @@ func BasicAuth(next http.Handler) http.Handler {
 		if !ok || subtle.ConstantTimeCompare([]byte(u), []byte(user)) != 1 ||
 			subtle.ConstantTimeCompare([]byte(p), []byte(pass)) != 1 {
 			slog.Warn("basic-auth: unauthorized request", "remote_addr", r.RemoteAddr, "method", r.Method, "path", r.URL.Path)
+			w.Header().Set("WWW-Authenticate", `Basic realm="kube-phoenix"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
