@@ -1891,7 +1891,7 @@ steps:
       format: sarif → upload to GitHub Security tab
 ```
 
-Unlike the release-time scan in `release-please.yml` which scans the published image, this job builds and scans the image on every PR — catching vulnerabilities before merge.
+Builds and scans the image on every PR — catching vulnerabilities before merge rather than after release.
 
 **Job: trivy-fs** (filesystem scan for IaC misconfigurations and dependency vulnerabilities)
 ```
@@ -1954,18 +1954,6 @@ tags produced:
   - ghcr.io/macxsimilian/kube-phoenix:v0.1-latest (branch float)
   - ghcr.io/macxsimilian/kube-phoenix:latest      (master only)
 ```
-
-**Job: scan** (needs: docker)
-```
-steps:
-  - aquasecurity/trivy-action
-      image-ref: ghcr.io/macxsimilian/kube-phoenix:<semver>
-      severity: CRITICAL,HIGH
-      exit-code: 1
-      ignore-unfixed: true
-```
-
-Scans the exact released image by semver tag. Fails the release workflow if unfixed CRITICAL or HIGH CVEs are found — the Helm push is blocked until scan passes.
 
 **Job: helm-publish** (needs: release-please + docker, only when both succeed)
 ```
