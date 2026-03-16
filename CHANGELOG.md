@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.61](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.60...v0.1.61) (2026-03-16)
+
+
+### Bug Fixes
+
+* add WWW-Authenticate header so browsers prompt for credentials ([e7f3e1e](https://github.com/MacXsimilian/kube-phoenix/commit/e7f3e1e00d5633c1a636034b8b829077df33692a))
+* add WWW-Authenticate header so browsers prompt for credentials ([8592466](https://github.com/MacXsimilian/kube-phoenix/commit/859246623bc6d65e572afe5445c4bc9217349104))
+
 ## [0.1.60](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.59...v0.1.60) (2026-03-16)
 
 
