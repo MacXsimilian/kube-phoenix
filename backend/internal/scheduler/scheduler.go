@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scaler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"github.com/robfig/cron/v3"
@@ -164,6 +165,9 @@ func (s *Scheduler) reload() error {
 	}
 	s.entryID = map[uint]cron.EntryID{}
 
+	// Reset active-schedule gauges before re-counting.
+	metrics.ActiveSchedules.Reset()
+
 	for _, sc := range schedules {
 		if !sc.Enabled {
 			continue
@@ -186,6 +190,7 @@ func (s *Scheduler) reload() error {
 			continue
 		}
 		s.entryID[sc.ID] = eid
+		metrics.ActiveSchedules.WithLabelValues(sc.Type, sc.Mode).Inc()
 		slog.Info("scheduler: registered schedule", "scheduleID", sc.ID, "name", sc.Name, "cronExpr", sc.CronExpr, "timezone", sc.Timezone)
 	}
 	return nil
@@ -271,6 +276,22 @@ func (s *Scheduler) run(ctx context.Context, scheduleID uint, scheduleType, mode
 		if runErr != nil {
 			status = "failed"
 			slog.Error("scheduler: execution failed", "execID", execID, "err", runErr)
+		}
+
+		// Record Prometheus metrics for this execution.
+		duration := time.Since(exec.StartedAt).Seconds()
+		metrics.ExecutionsTotal.WithLabelValues(status, mode, scheduleType).Inc()
+		metrics.ExecutionDuration.WithLabelValues(mode, scheduleType, status).Observe(duration)
+		if counts != nil {
+			direction := "down"
+			if scheduleType == "scale_up" {
+				direction = "up"
+			}
+			metrics.WorkloadsScaledTotal.WithLabelValues(direction).Add(float64(counts.Scaled))
+			if scheduleType == "scale_down" {
+				metrics.NodesDrainedTotal.Add(float64(counts.Drained))
+				metrics.NodesDeletedTotal.Add(float64(counts.Deleted))
+			}
 		}
 
 		countMap := map[string]int{}

@@ -1,7 +1,12 @@
 # kube-phoenix 🐦‍🔥
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/MacXsimilian/kube-phoenix/ci.yml?branch=master)](https://github.com/MacXsimilian/kube-phoenix/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/MacXsimilian/kube-phoenix?label=release&logo=github)](https://github.com/MacXsimilian/kube-phoenix/releases/latest)
 [![Go Report Card](https://goreportcard.com/badge/github.com/macxsimilian/kube-phoenix/backend?cache=v2)](https://goreportcard.com/report/github.com/macxsimilian/kube-phoenix/backend)
+[![Go Version](https://img.shields.io/badge/go-1.25-00ADD8?logo=go&logoColor=white)](backend/go.mod)
+[![Docker](https://img.shields.io/badge/ghcr.io-kube--phoenix-2496ED?logo=docker&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/pkgs/container/kube-phoenix)
+[![Helm Chart](https://img.shields.io/badge/helm-oci%3A%2F%2Fghcr.io-0F1689?logo=helm&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/pkgs/container/helm%2Fkube-phoenix)
+[![Prometheus](https://img.shields.io/badge/metrics-prometheus-E6522C?logo=prometheus&logoColor=white)](#observability)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/MacXsimilian/kube-phoenix/blob/master/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/MacXsimilian/kube-phoenix)](https://github.com/MacXsimilian/kube-phoenix/stargazers)
 [![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](https://github.com/MacXsimilian/kube-phoenix/issues)
@@ -167,6 +172,28 @@ The Go backend embeds the Next.js static export via `//go:embed` — one binary,
 | OpenAPI spec                | Done        | Swagger UI served at `/api/docs/`               |
 | GitLab CI pipeline          | Planned     | Mirror of the GitHub Actions workflow           |
 | Emergency wake button       | In progress | One-click full cluster wake bypassing schedule  |
+
+---
+
+## Observability
+
+kube-phoenix exposes a Prometheus metrics endpoint at `/metrics` (no authentication required, suitable for in-cluster scraping).
+
+```yaml
+# prometheus.yml scrape config
+- job_name: kube-phoenix
+  static_configs:
+    - targets: ['kube-phoenix.kube-phoenix.svc.cluster.local:8080']
+```
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `kube_phoenix_executions_total` | Counter | `status`, `mode`, `schedule_type` | Total schedule executions |
+| `kube_phoenix_execution_duration_seconds` | Histogram | `mode`, `schedule_type`, `status` | Execution wall-clock duration |
+| `kube_phoenix_workloads_scaled_total` | Counter | `direction` | Workloads scaled (down/up) |
+| `kube_phoenix_nodes_drained_total` | Counter | — | Nodes drained during scale-down |
+| `kube_phoenix_nodes_deleted_total` | Counter | — | Nodes deleted during scale-down |
+| `kube_phoenix_active_schedules` | Gauge | `schedule_type`, `mode` | Enabled schedules by type and mode |
 
 ---
 

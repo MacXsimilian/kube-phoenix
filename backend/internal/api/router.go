@@ -14,6 +14,7 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"github.com/macxsimilian/kube-phoenix/backend/web"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swguiv5 "github.com/swaggest/swgui/v5"
 )
 
@@ -39,6 +40,9 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 			next.ServeHTTP(w, r)
 		})
 	})
+
+	// Prometheus metrics — no auth, intended for in-cluster scraping
+	r.Method(http.MethodGet, "/metrics", promhttp.Handler())
 
 	// Health endpoint — no auth, used by K8s liveness/readiness probes
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
