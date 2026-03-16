@@ -170,6 +170,16 @@ func (c *Client) CordonNode(ctx context.Context, name string) error {
 	return nil
 }
 
+// isDaemonSetPod returns true if any owner reference is a DaemonSet.
+func isDaemonSetPod(pod corev1.Pod) bool {
+	for _, ref := range pod.OwnerReferences {
+		if ref.Kind == "DaemonSet" {
+			return true
+		}
+	}
+	return false
+}
+
 // CountNonDaemonSetPods returns the number of non-DaemonSet pods on a node.
 // Used to compute a dynamic drain timeout before calling DrainNode.
 func (c *Client) CountNonDaemonSetPods(ctx context.Context, nodeName string) (int, error) {
@@ -181,14 +191,7 @@ func (c *Client) CountNonDaemonSetPods(ctx context.Context, nodeName string) (in
 	}
 	count := 0
 	for _, pod := range pods.Items {
-		isDaemon := false
-		for _, ref := range pod.OwnerReferences {
-			if ref.Kind == "DaemonSet" {
-				isDaemon = true
-				break
-			}
-		}
-		if !isDaemon {
+		if !isDaemonSetPod(pod) {
 			count++
 		}
 	}
@@ -198,12 +201,10 @@ func (c *Client) CountNonDaemonSetPods(ctx context.Context, nodeName string) (in
 // DrainNode cordons and evicts all non-DaemonSet pods from a node, waiting
 // up to the given timeout for them to terminate.
 func (c *Client) DrainNode(ctx context.Context, name string, timeout time.Duration) error {
-	// Cordon first
 	if err := c.CordonNode(ctx, name); err != nil {
 		return fmt.Errorf("cordon %s: %w", name, err)
 	}
 
-	// List all non-daemonset pods on the node
 	pods, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + name,
 	})
@@ -211,20 +212,16 @@ func (c *Client) DrainNode(ctx context.Context, name string, timeout time.Durati
 		return fmt.Errorf("list pods on %s: %w", name, err)
 	}
 
-	for _, pod := range pods.Items {
-		// Skip daemonset pods
-		isDaemonSet := false
-		for _, ref := range pod.OwnerReferences {
-			if ref.Kind == "DaemonSet" {
-				isDaemonSet = true
-				break
-			}
-		}
-		if isDaemonSet {
+	c.evictPods(ctx, name, pods.Items)
+	return c.waitForDrain(ctx, name, timeout)
+}
+
+// evictPods attempts to evict all non-DaemonSet pods, falling back to force delete.
+func (c *Client) evictPods(ctx context.Context, nodeName string, pods []corev1.Pod) {
+	for _, pod := range pods {
+		if isDaemonSetPod(pod) {
 			continue
 		}
-
-		// Try eviction first, fall back to delete
 		eviction := &policyv1.Eviction{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      pod.Name,
@@ -232,42 +229,36 @@ func (c *Client) DrainNode(ctx context.Context, name string, timeout time.Durati
 			},
 		}
 		if err := c.cs.PolicyV1().Evictions(pod.Namespace).Evict(ctx, eviction); err != nil {
-			// Fall back to force delete
 			grace := int64(0)
 			if delErr := c.cs.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
 				GracePeriodSeconds: &grace,
 			}); delErr != nil {
 				slog.Warn("drain: eviction failed and force-delete also failed",
-					"node", name, "namespace", pod.Namespace, "pod", pod.Name,
+					"node", nodeName, "namespace", pod.Namespace, "pod", pod.Name,
 					"evictErr", err, "deleteErr", delErr)
 			}
 		}
 	}
+}
 
-	// Wait up to timeout for evictable pods to terminate, honouring context cancellation.
+// waitForDrain polls until all non-DaemonSet pods are gone or timeout expires.
+func (c *Client) waitForDrain(ctx context.Context, nodeName string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		remaining, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{
-			FieldSelector: "spec.nodeName=" + name,
+			FieldSelector: "spec.nodeName=" + nodeName,
 		})
 		if err != nil {
-			return fmt.Errorf("poll pods on %s: %w", name, err)
+			return fmt.Errorf("poll pods on %s: %w", nodeName, err)
 		}
 		evictable := 0
 		for _, pod := range remaining.Items {
-			isDaemon := false
-			for _, ref := range pod.OwnerReferences {
-				if ref.Kind == "DaemonSet" {
-					isDaemon = true
-					break
-				}
-			}
-			if !isDaemon {
+			if !isDaemonSetPod(pod) {
 				evictable++
 			}
 		}
 		if evictable == 0 {
-			break
+			return nil
 		}
 		select {
 		case <-ctx.Done():

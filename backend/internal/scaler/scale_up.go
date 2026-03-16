@@ -3,7 +3,6 @@ package scaler
 import (
 	"context"
 	"fmt"
-	"strconv"
 )
 
 // RunScaleUp restores Deployments and StatefulSets from the previous-replicas annotation.
@@ -25,40 +24,22 @@ func (r *Runner) RunScaleUp(ctx context.Context, mode, namespaceFilter string, l
 		r.errLog(logCh, "Failed to list deployments: "+err.Error())
 		counts.Errors++
 	} else {
+		entries := make([]workloadEntry, 0, len(deployments))
 		for _, d := range deployments {
-			ns := d.Namespace
-			name := d.Name
-			if skipNS[ns] || !namespaceAllowed(ns, namespaceFilter) {
+			if skipNS[d.Namespace] || !namespaceAllowed(d.Namespace, namespaceFilter) {
 				continue
 			}
-			savedStr, ok := d.Annotations[annotationKey]
-			if !ok {
-				counts.Skipped++
-				continue
+			replicas := int32(0)
+			if d.Spec.Replicas != nil {
+				replicas = *d.Spec.Replicas
 			}
-			saved, err := strconv.ParseInt(savedStr, 10, 32)
-			if err != nil {
-				r.errLog(logCh, fmt.Sprintf("Invalid annotation on Deployment %s/%s: %s", ns, name, savedStr))
-				counts.Errors++
-				continue
-			}
-			wl := formatWorkload("Deployment", ns, name)
-
-			if isApply(mode) {
-				if err := r.k8s.ScaleDeployment(ctx, ns, name, int32(saved)); err != nil {
-					r.errLog(logCh, fmt.Sprintf("Failed to scale up %s: %s", wl, err))
-					counts.Errors++
-					continue
-				}
-				r.ok(logCh, fmt.Sprintf("Restored %s → %d", wl, saved))
-				if err := r.k8s.RemoveDeploymentAnnotation(ctx, ns, name, annotationKey); err != nil {
-					r.errLog(logCh, fmt.Sprintf("Failed to remove annotation from %s: %s", wl, err))
-				}
-			} else {
-				r.plan(logCh, fmt.Sprintf("Would restore %s → %d", wl, saved))
-			}
-			counts.Scaled++
+			entries = append(entries, workloadEntry{
+				Kind: "Deployment", Namespace: d.Namespace, Name: d.Name,
+				Replicas: replicas, Annotations: d.Annotations,
+				Scale: r.k8s.ScaleDeployment, RemoveAnnotation: r.k8s.RemoveDeploymentAnnotation,
+			})
 		}
+		r.restoreWorkloads(ctx, mode, entries, logCh, counts)
 	}
 
 	// ── Restore StatefulSets ───────────────────────────────────────────────
@@ -68,40 +49,22 @@ func (r *Runner) RunScaleUp(ctx context.Context, mode, namespaceFilter string, l
 		r.errLog(logCh, "Failed to list statefulsets: "+err.Error())
 		counts.Errors++
 	} else {
+		entries := make([]workloadEntry, 0, len(statefulsets))
 		for _, ss := range statefulsets {
-			ns := ss.Namespace
-			name := ss.Name
-			if skipNS[ns] || !namespaceAllowed(ns, namespaceFilter) {
+			if skipNS[ss.Namespace] || !namespaceAllowed(ss.Namespace, namespaceFilter) {
 				continue
 			}
-			savedStr, ok := ss.Annotations[annotationKey]
-			if !ok {
-				counts.Skipped++
-				continue
+			replicas := int32(0)
+			if ss.Spec.Replicas != nil {
+				replicas = *ss.Spec.Replicas
 			}
-			saved, err := strconv.ParseInt(savedStr, 10, 32)
-			if err != nil {
-				r.errLog(logCh, fmt.Sprintf("Invalid annotation on StatefulSet %s/%s: %s", ns, name, savedStr))
-				counts.Errors++
-				continue
-			}
-			wl := formatWorkload("StatefulSet", ns, name)
-
-			if isApply(mode) {
-				if err := r.k8s.ScaleStatefulSet(ctx, ns, name, int32(saved)); err != nil {
-					r.errLog(logCh, fmt.Sprintf("Failed to scale up %s: %s", wl, err))
-					counts.Errors++
-					continue
-				}
-				r.ok(logCh, fmt.Sprintf("Restored %s → %d", wl, saved))
-				if err := r.k8s.RemoveStatefulSetAnnotation(ctx, ns, name, annotationKey); err != nil {
-					r.errLog(logCh, fmt.Sprintf("Failed to remove annotation from %s: %s", wl, err))
-				}
-			} else {
-				r.plan(logCh, fmt.Sprintf("Would restore %s → %d", wl, saved))
-			}
-			counts.Scaled++
+			entries = append(entries, workloadEntry{
+				Kind: "StatefulSet", Namespace: ss.Namespace, Name: ss.Name,
+				Replicas: replicas, Annotations: ss.Annotations,
+				Scale: r.k8s.ScaleStatefulSet, RemoveAnnotation: r.k8s.RemoveStatefulSetAnnotation,
+			})
 		}
+		r.restoreWorkloads(ctx, mode, entries, logCh, counts)
 	}
 
 	r.info(logCh, fmt.Sprintf("Wake complete — restored %d workloads, %d errors", counts.Scaled, counts.Errors))
