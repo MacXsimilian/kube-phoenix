@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 )
 
 type NextRunInfo struct {
@@ -87,104 +89,128 @@ func (h *Handler) buildOverview() OverviewResponse {
 	}
 
 	if h.cache != nil {
-		snap := h.cache.Snapshot()
-		if snap.Ready() {
+		if snap := h.cache.Snapshot(); snap.Ready() {
 			resp.CacheAgeMs = snap.AgeMs()
-
-			running, sleeping := 0, 0
-			nsSleep := map[string]int{}
-
-			for _, d := range snap.Deployments {
-				current := int32(0)
-				if d.Spec.Replicas != nil {
-					current = *d.Spec.Replicas
-				}
-				var saved *int32
-				if v, ok := d.Annotations["previous-replicas"]; ok {
-					if n, err := strconv.ParseInt(v, 10, 32); err == nil {
-						n32 := int32(n)
-						saved = &n32
-					}
-				}
-				if workloadStatus(current, saved) == "sleeping" {
-					sleeping++
-					nsSleep[d.Namespace]++
-				} else {
-					running++
-				}
-			}
-
-			for _, ss := range snap.StatefulSets {
-				current := int32(0)
-				if ss.Spec.Replicas != nil {
-					current = *ss.Spec.Replicas
-				}
-				var saved *int32
-				if v, ok := ss.Annotations["previous-replicas"]; ok {
-					if n, err := strconv.ParseInt(v, 10, 32); err == nil {
-						n32 := int32(n)
-						saved = &n32
-					}
-				}
-				if workloadStatus(current, saved) == "sleeping" {
-					sleeping++
-					nsSleep[ss.Namespace]++
-				} else {
-					running++
-				}
-			}
-
-			resp.RunningCount = running
-			resp.SleepingCount = sleeping
-			resp.NodeCount = len(snap.Nodes)
-
-			switch {
-			case sleeping > 0 && running == 0:
-				resp.ClusterStatus = "sleeping"
-			case sleeping > 0:
-				resp.ClusterStatus = "partial"
-			}
-
-			// Top sleeping namespaces (up to 4), sorted by count desc
-			type nsEntry struct {
-				name  string
-				count int
-			}
-			var nsList []nsEntry
-			for name, count := range nsSleep {
-				nsList = append(nsList, nsEntry{name, count})
-			}
-			sort.Slice(nsList, func(i, j int) bool { return nsList[i].count > nsList[j].count })
-			if len(nsList) > 4 {
-				nsList = nsList[:4]
-			}
-			for _, ns := range nsList {
-				resp.SleepingByNs = append(resp.SleepingByNs, NsSleepCount{Namespace: ns.name, Count: ns.count})
-			}
+			populateWorkloadCounts(&resp, snap)
 		}
 	}
 
-	// Next scheduled run — scheduler.NextRun is an in-memory lookup, no I/O
-	schedules, err := h.store.ListSchedules()
-	if err == nil {
-		var earliestTime *time.Time
-		for _, s := range schedules {
-			if !s.Enabled {
-				continue
-			}
-			t := h.scheduler.NextRun(s.ID)
-			if t == nil {
-				continue
-			}
-			if earliestTime == nil || t.Before(*earliestTime) {
-				earliestTime = t
-				resp.NextRun = &NextRunInfo{
-					Name:    s.Name,
-					NextRun: t.UTC().Format(time.RFC3339),
-				}
-			}
-		}
-	}
-
+	h.populateNextRun(&resp)
 	return resp
+}
+
+// replicaInfo holds the fields needed to classify a workload's sleep status.
+type replicaInfo struct {
+	Namespace   string
+	Replicas    *int32
+	Annotations map[string]string
+}
+
+// countWorkloads tallies running vs sleeping workloads and tracks sleeping-by-namespace.
+func countWorkloads(items []replicaInfo) (running, sleeping int, nsSleep map[string]int) {
+	nsSleep = map[string]int{}
+	for _, item := range items {
+		current := int32(0)
+		if item.Replicas != nil {
+			current = *item.Replicas
+		}
+		saved := parseSavedReplicas(item.Annotations)
+		if workloadStatus(current, saved) == "sleeping" {
+			sleeping++
+			nsSleep[item.Namespace]++
+		} else {
+			running++
+		}
+	}
+	return
+}
+
+func parseSavedReplicas(annotations map[string]string) *int32 {
+	v, ok := annotations["previous-replicas"]
+	if !ok {
+		return nil
+	}
+	n, err := strconv.ParseInt(v, 10, 32)
+	if err != nil {
+		return nil
+	}
+	n32 := int32(n)
+	return &n32
+}
+
+func populateWorkloadCounts(resp *OverviewResponse, snap k8s.CachedSnapshot) {
+	deployItems := make([]replicaInfo, len(snap.Deployments))
+	for i, d := range snap.Deployments {
+		deployItems[i] = replicaInfo{Namespace: d.Namespace, Replicas: d.Spec.Replicas, Annotations: d.Annotations}
+	}
+	ssItems := make([]replicaInfo, len(snap.StatefulSets))
+	for i, ss := range snap.StatefulSets {
+		ssItems[i] = replicaInfo{Namespace: ss.Namespace, Replicas: ss.Spec.Replicas, Annotations: ss.Annotations}
+	}
+
+	dRunning, dSleeping, dNs := countWorkloads(deployItems)
+	ssRunning, ssSleeping, ssNs := countWorkloads(ssItems)
+
+	resp.RunningCount = dRunning + ssRunning
+	resp.SleepingCount = dSleeping + ssSleeping
+	resp.NodeCount = len(snap.Nodes)
+
+	// Merge namespace sleeping counts
+	nsSleep := dNs
+	for ns, count := range ssNs {
+		nsSleep[ns] += count
+	}
+
+	switch {
+	case resp.SleepingCount > 0 && resp.RunningCount == 0:
+		resp.ClusterStatus = "sleeping"
+	case resp.SleepingCount > 0:
+		resp.ClusterStatus = "partial"
+	}
+
+	resp.SleepingByNs = topSleepingNamespaces(nsSleep, 4)
+}
+
+func topSleepingNamespaces(nsSleep map[string]int, limit int) []NsSleepCount {
+	type nsEntry struct {
+		name  string
+		count int
+	}
+	var nsList []nsEntry
+	for name, count := range nsSleep {
+		nsList = append(nsList, nsEntry{name, count})
+	}
+	sort.Slice(nsList, func(i, j int) bool { return nsList[i].count > nsList[j].count })
+	if len(nsList) > limit {
+		nsList = nsList[:limit]
+	}
+	result := make([]NsSleepCount, len(nsList))
+	for i, ns := range nsList {
+		result[i] = NsSleepCount{Namespace: ns.name, Count: ns.count}
+	}
+	return result
+}
+
+func (h *Handler) populateNextRun(resp *OverviewResponse) {
+	schedules, err := h.store.ListSchedules()
+	if err != nil {
+		return
+	}
+	var earliestTime *time.Time
+	for _, s := range schedules {
+		if !s.Enabled {
+			continue
+		}
+		t := h.scheduler.NextRun(s.ID)
+		if t == nil {
+			continue
+		}
+		if earliestTime == nil || t.Before(*earliestTime) {
+			earliestTime = t
+			resp.NextRun = &NextRunInfo{
+				Name:    s.Name,
+				NextRun: t.UTC().Format(time.RFC3339),
+			}
+		}
+	}
 }
