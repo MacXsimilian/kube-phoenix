@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.60](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.59...v0.1.60) (2026-03-16)
+
+
+### Features
+
+* serve Swagger UI at /api/docs/ ([534022a](https://github.com/MacXsimilian/kube-phoenix/commit/534022a5b7be88c9fcef86b4fee562079a757bcb))
+
+
+### Bug Fixes
+
+* address senior engineer audit of swagger UI ([bda295b](https://github.com/MacXsimilian/kube-phoenix/commit/bda295b28c91dcf3329b216d499882ffed2265dd))
+* address swagger UI audit issues ([b4652af](https://github.com/MacXsimilian/kube-phoenix/commit/b4652afdc15a2723bb5383061ce1943111200020))
+
 ## [0.1.59](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.58...v0.1.59) (2026-03-15)
 
 
