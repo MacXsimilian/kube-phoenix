@@ -1807,7 +1807,6 @@ steps:
   - checkout
   - setup-node@v4 (node 24)
   - npm ci
-  - npm audit --audit-level=high   (fail on high/critical CVEs in prod deps)
   - npm run build                  (Next.js static export → out/)
 ```
 
@@ -1823,7 +1822,6 @@ steps:
   - go test -coverprofile=coverage.out ./...
   - go tool cover -func=coverage.out
   - go build ./...
-  - govulncheck ./...          (checks actual call graph against Go vuln DB)
   - golangci-lint-action@v7    (gosec for SAST, errcheck, staticcheck, etc.)
 ```
 
@@ -1843,17 +1841,7 @@ steps:
   - helm lint helm/kube-phoenix/
 ```
 
-**Job: secrets** (push and PR — scans the diff only, not the full repo)
-```
-steps:
-  - checkout (full history, fetch-depth: 0)
-  - trufflesecurity/trufflehog
-      base: HEAD~1 (push) or PR base SHA (PR)
-      head: HEAD   (push) or PR head SHA (PR)
-      extra_args: --only-verified    (eliminates false positives)
-```
-
-On direct pushes, scans `HEAD~1..HEAD`. On PRs, scans the full PR diff. The `--only-verified` flag means TruffleHog only reports secrets it can actively verify against the upstream service — no noise from test fixtures or example configs.
+> **Note:** Security-related checks (govulncheck, npm audit, secret scanning) have been moved to `security.yml` to avoid duplication. CI focuses purely on build validation.
 
 ---
 
@@ -1879,19 +1867,20 @@ steps:
   - npm audit --audit-level=high --omit=dev
 ```
 
-**Job: trivy-image** (builds the Docker image locally and scans it)
+**Job: trivy-image** (builds the Docker image with BuildKit + GHA cache, then scans it)
 ```
 steps:
   - checkout
-  - docker build -t kube-phoenix:scan .
-  - aquasecurity/trivy-action
+  - docker/setup-buildx-action
+  - docker/build-push-action (load: true, cache-from/to: type=gha)
+  - aquasecurity/trivy-action@v0.35.0
       image-ref: kube-phoenix:scan
       severity: CRITICAL,HIGH
       exit-code: 1
       format: sarif → upload to GitHub Security tab
 ```
 
-Builds and scans the image on every PR — catching vulnerabilities before merge rather than after release.
+Uses the same GHA cache as the release build, so subsequent runs reuse layers. Builds and scans the image on every PR — catching vulnerabilities before merge rather than after release.
 
 **Job: trivy-fs** (filesystem scan for IaC misconfigurations and dependency vulnerabilities)
 ```
@@ -1907,7 +1896,7 @@ steps:
 
 Catches Dockerfile misconfigurations, Helm template issues, and dependency vulnerabilities without needing to build a container image. Complements the image scan.
 
-**Job: secrets** (identical to the secret scan in ci.yml — duplicated here so the security workflow is self-contained)
+**Job: secrets** (the single source of truth for secret scanning — removed from ci.yml to avoid duplication)
 ```
 steps:
   - checkout (full history, fetch-depth: 0)
