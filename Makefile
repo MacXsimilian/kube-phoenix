@@ -18,7 +18,7 @@ dev:
 dev-frontend:
 	cd frontend && npm install && npm run dev
 
-dev-backend:
+dev-backend: copy-spec
 	cd backend && DATABASE_URL="host=localhost user=kube_phoenix password=kube_phoenix dbname=kube_phoenix port=5432 sslmode=disable" go run ./cmd/server/...
 
 # ── Build ─────────────────────────────────────────────────────────────────────
