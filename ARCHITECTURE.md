@@ -1805,7 +1805,7 @@ Triggered on: `push` to `master`; `pull_request` targeting `master`. Path-filter
 ```
 steps:
   - checkout
-  - setup-node@v4 (node 24)
+  - setup-node@v6 (node 24)
   - npm ci
   - npm run build                  (Next.js static export → out/)
 ```
@@ -1814,7 +1814,7 @@ steps:
 ```
 steps:
   - checkout
-  - setup-go@v5 (go 1.26)
+  - setup-go@v6 (go 1.26)
   - cp ../openapi.yaml internal/docs/openapi.yaml   (seed go:embed path — see note below)
   - diff ../openapi.yaml internal/docs/openapi.yaml (assert files are identical; fails build on drift)
   - go mod download
@@ -1853,7 +1853,7 @@ Triggered on: `push` to `master`; `pull_request` targeting `master`; weekly sche
 ```
 steps:
   - checkout
-  - setup-go@v5 (go 1.26)
+  - setup-go@v6 (go 1.26)
   - cp ../openapi.yaml internal/docs/openapi.yaml
   - govulncheck ./...          (checks actual call graph against Go vuln DB)
 ```
@@ -1862,7 +1862,7 @@ steps:
 ```
 steps:
   - checkout
-  - setup-node@v4 (node 24)
+  - setup-node@v6 (node 24)
   - npm ci
   - npm audit --audit-level=high --omit=dev
 ```

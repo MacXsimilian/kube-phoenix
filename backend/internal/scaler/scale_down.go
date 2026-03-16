@@ -163,4 +163,3 @@ func (r *Runner) drainAndDeleteNode(ctx context.Context, mode, name string, podC
 		counts.Deleted++
 	}
 }
-

@@ -106,13 +106,13 @@ func formatWorkload(kind, ns, name string) string {
 // workloadEntry is a uniform representation of a Deployment or StatefulSet
 // used by the shared scale-down and scale-up helpers.
 type workloadEntry struct {
-	Kind        string
-	Namespace   string
-	Name        string
-	Replicas    int32
-	Annotations map[string]string
-	Annotate    func(ctx context.Context, ns, name, key, value string) error
-	Scale       func(ctx context.Context, ns, name string, replicas int32) error
+	Kind             string
+	Namespace        string
+	Name             string
+	Replicas         int32
+	Annotations      map[string]string
+	Annotate         func(ctx context.Context, ns, name, key, value string) error
+	Scale            func(ctx context.Context, ns, name string, replicas int32) error
 	RemoveAnnotation func(ctx context.Context, ns, name, key string) error
 }
 
