@@ -141,6 +141,7 @@ flowchart TB
 - **History** — full execution log with live WebSocket streaming; jump-to-error navigation and error/workload count badges
 - **Manual triggers** — run any schedule immediately in plan (dry-run) or apply mode
 - **Settings** — light/dark/system theme switcher; danger zone with double-confirmation Reset Database
+- **Swagger UI** — interactive API docs at `/api/docs/`; raw OpenAPI 3.1 spec at `/api/docs/openapi.yaml`
 
 ---
 
@@ -182,7 +183,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, branching strategy, comm
 |---|---|
 | Deployment (external DB, Ingress, AWS ALB, Helm values) | [docs/deployment.md](docs/deployment.md) |
 | Configuration (env vars, auth, schedules) | [docs/configuration.md](docs/configuration.md) |
-| API reference | [docs/api.md](docs/api.md) |
+| API reference + Swagger UI | [docs/api.md](docs/api.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
 
 ---
