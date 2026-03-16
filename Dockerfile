@@ -26,6 +26,10 @@ COPY backend/ ./
 # Copy the built frontend into the embed directory
 COPY --from=frontend-builder /app/frontend/out ./web/static/
 
+# Copy the OpenAPI spec into the embed directory
+COPY openapi.yaml ./internal/docs/openapi.yaml
+
+RUN go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -o /bin/kube-phoenix ./cmd/server/...
 
 # ── Stage 3: Final minimal image ──────────────────────────────────────────────

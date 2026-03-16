@@ -4,7 +4,7 @@ HELM_CHART ?= helm/kube-phoenix
 HELM_RELEASE ?= kube-phoenix
 HELM_NAMESPACE ?= kube-phoenix
 
-.PHONY: frontend backend build docker-build \
+.PHONY: frontend backend build docker-build copy-spec \
         helm-lint helm-template helm-install helm-upgrade helm-uninstall \
         dev dev-frontend dev-backend
 
@@ -28,7 +28,10 @@ frontend:
 	rm -rf backend/web/static
 	cp -r frontend/out backend/web/static
 
-backend: frontend
+copy-spec:
+	cp openapi.yaml backend/internal/docs/openapi.yaml
+
+backend: frontend copy-spec
 	cd backend && go mod tidy && go build -o bin/kube-phoenix ./cmd/server/...
 
 build: backend

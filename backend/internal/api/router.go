@@ -8,11 +8,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/docs"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"github.com/macxsimilian/kube-phoenix/backend/web"
+	swguiv5 "github.com/swaggest/swgui/v5"
 )
 
 type Handler struct {
@@ -51,6 +53,13 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 	// All routes below require basic auth
 	r.Group(func(r chi.Router) {
 		r.Use(authmw.BasicAuth)
+
+		// Swagger UI — served at /api/docs/
+		r.Get("/api/docs", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/api/docs/", http.StatusMovedPermanently)
+		})
+		r.Get("/api/docs/openapi.yaml", docs.SpecHandler().ServeHTTP)
+		r.Mount("/api/docs/", swguiv5.NewHandler("kube-phoenix API", "/api/docs/openapi.yaml", "/api/docs/"))
 
 		r.Route("/api", func(r chi.Router) {
 			// Schedules — full CRUD
