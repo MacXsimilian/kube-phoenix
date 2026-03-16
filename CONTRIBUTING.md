@@ -28,7 +28,7 @@ Be respectful. Criticism of code and ideas is welcome; criticism of people is no
 
 - **Bug fixes and small improvements** — open a PR directly.
 - **New features** — open an issue first to discuss the approach. This avoids wasted effort if the direction doesn't fit the project.
-- **Security vulnerabilities** — see [SECURITY.md](SECURITY.md) for the responsible disclosure process.
+- **Security vulnerabilities** — do **not** open a public issue. Report privately via [GitHub Security Advisories](https://github.com/MacXsimilian/kube-phoenix/security/advisories/new). Include a reproduction case and the potential impact. You will receive a response within 7 days.
 
 ---
 
@@ -38,7 +38,7 @@ Be respectful. Criticism of code and ideas is welcome; criticism of people is no
 
 | Tool | Version | Purpose |
 |---|---|---|
-| Go | 1.25+ | Backend |
+| Go | 1.25.x | Backend |
 | Node.js | 22+ | Frontend |
 | Docker | any | Local PostgreSQL via `docker-compose.yml` |
 | kubectl | any | Optional — cluster endpoints return empty data without it |
@@ -70,13 +70,14 @@ make dev-backend
 **Run backend tests**
 
 ```bash
-cd backend && go test ./...
+cd backend && go test -coverprofile=coverage.out ./...
+cd backend && go tool cover -func=coverage.out
 ```
 
 **Lint**
 
 ```bash
-cd backend && golangci-lint run   # requires golangci-lint installed
+cd backend && golangci-lint run   # requires golangci-lint v2 installed
 cd frontend && npm run lint
 ```
 
@@ -86,10 +87,12 @@ cd frontend && npm run lint
 
 ```
 kube-phoenix/
+├── openapi.yaml                    # OpenAPI 3.x spec — update for every API change
 ├── backend/
 │   ├── cmd/server/main.go          # Entry point
 │   └── internal/
 │       ├── api/                    # HTTP handlers + Chi router
+│       ├── docs/                   # Embedded openapi.yaml (copied at build time)
 │       ├── scheduler/              # Cron wrapper + WebSocket log broker
 │       ├── scaler/                 # scale_down / scale_up logic
 │       ├── k8s/                    # Kubernetes client + ClusterCache
@@ -170,6 +173,7 @@ Before requesting review, confirm:
 - [ ] `npm run build` passes (frontend)
 - [ ] No new `golangci-lint` or `govulncheck` warnings introduced
 - [ ] New behaviour is covered by a test where practical
+- [ ] `openapi.yaml` updated if the change adds, removes, or modifies any API route or schema
 - [ ] README / ARCHITECTURE.md updated if the change affects documented behaviour, API routes, or configuration
 - [ ] Commit messages follow conventional commit format
 
@@ -177,14 +181,24 @@ Before requesting review, confirm:
 
 ## CI pipeline
 
-CI runs automatically on every PR. All jobs must pass before merging.
+CI runs automatically on every PR and on every push to `master`. All jobs must pass before merging.
+
+### On every PR / push to `master`
 
 | Job | What it checks |
 |---|---|
 | Frontend build | `npm install`, `npm audit` (high severity gate), `npm run build` |
-| Backend build | `go vet`, `go test`, `go build`, `govulncheck`, golangci-lint + gosec |
+| Backend build | `go vet`, `go test` + coverage report, `go build`, `govulncheck`, golangci-lint v2 (includes gosec) |
 | Helm lint | `helm lint helm/kube-phoenix` |
 | Secret scan | TruffleHog — verified leaked secrets only |
+
+### On push to `master` (after backend passes)
+
+| Job | What it checks |
+|---|---|
+| Go Report Card | Triggers a rescan at goreportcard.com for the backend package |
+
+All GitHub Actions action versions are pinned to a full commit SHA for supply chain integrity. When updating an action, always pin to the new SHA rather than a floating tag.
 
 ---
 
@@ -194,7 +208,9 @@ Release management is fully automated via [release-please](https://github.com/go
 
 1. Merge PRs to `master` with conventional commit messages.
 2. release-please opens a Release PR with the bumped version and CHANGELOG diff.
-3. Review and merge the Release PR.
-4. Docker image (`ghcr.io/macxsimilian/kube-phoenix`) and Helm chart (`oci://ghcr.io/macxsimilian/helm/kube-phoenix`) are published automatically.
+3. Review and merge the Release PR — this triggers the full release pipeline:
+   - Docker image built and pushed to `ghcr.io/macxsimilian/kube-phoenix` (semver tags + `latest`)
+   - Trivy vulnerability scan runs against the published image; CRITICAL/HIGH unfixed CVEs block the release
+   - Helm chart packaged and pushed to `oci://ghcr.io/macxsimilian/helm/kube-phoenix`
 
 **Never create tags manually.**
