@@ -170,3 +170,26 @@ affinity: {}
 
 podAnnotations: {}
 podLabels: {}
+
+# ── Metrics (Prometheus) ──────────────────────────────────────────────────────
+#
+# kube-phoenix exposes Prometheus metrics at /metrics (no auth required).
+#
+# podAnnotations.enabled: adds standard prometheus.io/* annotations to the pod
+#   so any Prometheus using annotation-based Kubernetes SD picks it up automatically.
+#   Set to false if you use a ServiceMonitor instead.
+#
+# serviceMonitor: creates a ServiceMonitor CRD for Prometheus Operator /
+#   kube-prometheus-stack users. The CRD must exist in the cluster.
+#   Add labels under serviceMonitor.labels to match your Prometheus Operator's
+#   serviceMonitorSelector (e.g. `release: kube-prometheus-stack`).
+
+metrics:
+  podAnnotations:
+    enabled: true   # adds prometheus.io/scrape, /path, /port to the pod
+  serviceMonitor:
+    enabled: false
+    namespace: ""         # defaults to release namespace
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}            # e.g. release: kube-prometheus-stack
