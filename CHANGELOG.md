@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.64](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.63...v0.1.64) (2026-03-16)
+
+
+### Bug Fixes
+
+* **api:** align handlers with camelCase JSON convention ([5f1f87a](https://github.com/MacXsimilian/kube-phoenix/commit/5f1f87a0b84e0fac95d73644611039dfe1de41a0))
+* **ci:** align versions, add caching and timeouts ([99d370d](https://github.com/MacXsimilian/kube-phoenix/commit/99d370d0edca8f59cd51d83a4ab1aa52041a10c5))
+* **helm:** harden security and add missing templates ([909d475](https://github.com/MacXsimilian/kube-phoenix/commit/909d475b3fccadc1ae47795567cc71ddae360c9c))
+* **openapi:** rewrite spec to match actual API behavior ([d5baa34](https://github.com/MacXsimilian/kube-phoenix/commit/d5baa3459bb02c8fcb72b96092bd41fa6828be2a))
+
 ## [0.1.63](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.62...v0.1.63) (2026-03-16)
 
 
