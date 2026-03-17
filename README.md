@@ -5,7 +5,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/macxsimilian/kube-phoenix/backend?cache=v2)](https://goreportcard.com/report/github.com/macxsimilian/kube-phoenix/backend)
 [![Go Version](https://img.shields.io/badge/go-1.26-00ADD8?logo=go&logoColor=white)](backend/go.mod)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](frontend/package.json)
-[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-6BA539?logo=openapiinitiative&logoColor=white)](docs/openapi.yaml)
+[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-6BA539?logo=openapiinitiative&logoColor=white)](openapi.yaml)
 [![Security Scan](https://img.shields.io/github/actions/workflow/status/MacXsimilian/kube-phoenix/security.yml?branch=master&label=security&logo=shieldsdotio&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/actions/workflows/security.yml)
 [![Docker](https://img.shields.io/badge/ghcr.io-kube--phoenix-2496ED?logo=docker&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/pkgs/container/kube-phoenix)
 [![Helm Chart](https://img.shields.io/badge/helm-oci%3A%2F%2Fghcr.io-0F1689?logo=helm&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/pkgs/container/helm%2Fkube-phoenix)
@@ -57,7 +57,7 @@ Authentication is disabled when `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` are un
 ```bash
 make build
 # Builds frontend → copies to backend/web/static → compiles Go binary
-# Output: bin/kube-phoenix
+# Output: backend/bin/kube-phoenix
 ```
 
 ### Docker
@@ -175,7 +175,7 @@ The Go backend embeds the Next.js static export via `//go:embed` — one binary,
 | Multi-cluster support       | Planned     | Switch between kubeconfig contexts in the UI    |
 | OpenAPI spec                | Done        | Swagger UI served at `/api/docs/`               |
 | GitLab CI pipeline          | Planned     | Mirror of the GitHub Actions workflow           |
-| Emergency wake button       | In progress | One-click full cluster wake bypassing schedule  |
+| Emergency wake button       | Planned     | One-click full cluster wake bypassing schedule  |
 
 ---
 
@@ -211,10 +211,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, branching strategy, comm
 
 | Topic | Link |
 |---|---|
+| Architecture & system design | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Deployment (external DB, Ingress, AWS ALB, Helm values) | [docs/deployment.md](docs/deployment.md) |
 | Configuration (env vars, auth, schedules) | [docs/configuration.md](docs/configuration.md) |
 | API reference + Swagger UI | [docs/api.md](docs/api.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
+| Release history | [CHANGELOG.md](CHANGELOG.md) |
 
 ---
 

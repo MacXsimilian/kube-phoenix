@@ -134,6 +134,7 @@ kube-phoenix/
 │
 ├── Dockerfile                    # 3-stage build (node → golang → distroless)
 ├── Makefile                      # Developer workflow targets
+├── openapi.yaml                  # OpenAPI 3.1 spec (canonical source)
 ├── ARCHITECTURE.md               # This document
 │
 ├── backend/
@@ -161,7 +162,15 @@ kube-phoenix/
 │   │   │   └── scale_up.go       # RunScaleUp implementation
 │   │   │
 │   │   ├── k8s/
-│   │   │   └── client.go         # Typed k8s API wrapper
+│   │   │   ├── client.go         # Typed k8s API wrapper
+│   │   │   └── cache.go          # ClusterCache — 10s background refresh
+│   │   │
+│   │   ├── docs/
+│   │   │   ├── docs.go           # Embedded OpenAPI spec + Swagger UI handler
+│   │   │   └── openapi.yaml      # Copy of root openapi.yaml (synced at build)
+│   │   │
+│   │   ├── metrics/
+│   │   │   └── metrics.go        # Prometheus metrics registration
 │   │   │
 │   │   ├── store/
 │   │   │   ├── models.go         # GORM model structs
@@ -185,7 +194,7 @@ kube-phoenix/
 │       ├── app/
 │       │   ├── layout.tsx         # Inter font, <Providers> wrapper
 │       │   ├── page.tsx           # Redirect → /overview/
-│       │   ├── providers.tsx      # QueryClient → Theme → Auth → AppShell
+│       │   ├── providers.tsx      # QueryClient → ThemeModeProvider → Theme → Auth → AppShell
 │       │   ├── overview/page.tsx
 │       │   ├── cluster/page.tsx
 │       │   ├── guardrails/page.tsx
@@ -196,7 +205,8 @@ kube-phoenix/
 │       ├── components/
 │       │   ├── layout/
 │       │   │   ├── AppShell.tsx   # Main layout: Sidebar + main content area
-│       │   │   └── Sidebar.tsx    # Navigation drawer (desktop permanent, mobile temporary)
+│       │   │   ├── Sidebar.tsx    # Navigation drawer (desktop permanent, mobile temporary)
+│       │   │   └── AboutModal.tsx # Version info modal
 │       │   ├── overview/
 │       │   │   ├── ClusterStatusCard.tsx
 │       │   │   ├── NextRunCard.tsx
@@ -204,8 +214,7 @@ kube-phoenix/
 │       │   ├── schedules/
 │       │   │   ├── ScheduleCard.tsx
 │       │   │   ├── ScheduleDialog.tsx
-│       │   │   ├── CronBuilder.tsx    # visual cron builder (day/time picker + advanced raw cron toggle)
-│       │   │   └── SchedulePanel.tsx
+│       │   │   └── CronBuilder.tsx    # visual cron builder (day/time picker + advanced raw cron toggle)
 │       │   ├── cluster/
 │       │   │   ├── WorkloadsTable.tsx
 │       │   │   ├── NodesTable.tsx
@@ -226,7 +235,11 @@ kube-phoenix/
 │       │   ├── auth.tsx           # AuthProvider, useAuth hook
 │       │   ├── types.ts           # TypeScript interfaces
 │       │   ├── queryClient.ts     # TanStack QueryClient singleton
-│       │   └── cronToText.ts      # 5-field cron → human readable
+│       │   ├── cronToText.ts      # 5-field cron → human readable
+│       │   ├── themeMode.tsx      # ThemeModeProvider + useThemeMode (light/dark/system)
+│       │   ├── constants.ts       # Shared constants
+│       │   ├── formatters.ts      # Display formatting utilities
+│       │   └── useDrawerResize.ts # Responsive drawer width hook
 │       │
 │       └── theme/
 │           └── theme.ts           # MUI theme — dark (default) + light mode, createAppTheme(mode)
@@ -245,7 +258,11 @@ kube-phoenix/
 │           ├── service.yaml       # ClusterIP :80 → :8080
 │           ├── ingress.yaml       # Optional ingress
 │           ├── targetgroupbinding.yaml  # Optional AWS ALB TGB
-│           └── postgresql.yaml    # Optional in-cluster PG StatefulSet
+│           ├── postgresql.yaml    # Optional in-cluster PG StatefulSet
+│           ├── networkpolicy.yaml # Optional pod-level firewall
+│           ├── pdb.yaml           # Optional PodDisruptionBudget
+│           ├── servicemonitor.yaml # Optional Prometheus ServiceMonitor
+│           └── NOTES.txt          # Post-install instructions
 │
 └── .github/
     ├── workflows/
@@ -287,7 +304,7 @@ main()
   └─ http.Server{Addr: ":8080", WriteTimeout: 0}
       └─ WriteTimeout=0 is critical: allows WebSocket and SSE to stream indefinitely
       └─ ReadTimeout: 15s, IdleTimeout: 60s
-      └─ Graceful shutdown: signal.NotifyContext(SIGINT, SIGTERM), 30s timeout
+      └─ Graceful shutdown: signal.Notify(SIGINT, SIGTERM) with buffered channel, 30s timeout
 ```
 
 **Why WriteTimeout is zero:** Go's `http.Server` enforces `WriteTimeout` across the entire response, including streaming. Setting it to 0 disables it, which is required for WebSocket connections and the NDJSON admin/reset-db stream. Without this setting, long-running executions (which can take hours) would have their WebSocket connections forcefully closed mid-stream.
@@ -354,8 +371,8 @@ Group: /  (with BasicAuth middleware)
   ├─ /api/executions/{id}/logs GET
   ├─ /api/cluster/workloads   GET
   ├─ /api/cluster/nodes       GET
-  ├─ /api/cluster/nodes/{node}/pods GET
-  ├─ /api/cluster/pods/{ns}/{pod}   GET
+  ├─ /api/cluster/nodes/{name}/pods GET
+  ├─ /api/cluster/pods/{namespace}/{name}   GET
   ├─ /api/cluster/workloads/{ns}/{kind}/{name}/pods GET
   ├─ /api/overview            GET  ← pre-aggregated dashboard summary (cache-backed)
   ├─ /api/cluster/stream      GET  ← SSE stream of overview updates (10 s cadence)
@@ -488,7 +505,7 @@ Server-Sent Events endpoint. On connect, sends the current overview immediately.
 
 Authentication: standard BasicAuth via the Authorization header (regular HTTP fetch, not EventSource, so headers work normally).
 
-**`getNodePods` (GET /api/cluster/nodes/{node}/pods)**
+**`getNodePods` (GET /api/cluster/nodes/{name}/pods)**
 
 Lists pods on a specific node. For each pod, resolves the owner chain: if a pod is owned by a ReplicaSet, it walks up to find the owning Deployment. This provides a human-readable "workload name" in the node detail drawer. Also calls `GetAllPodMetrics` to populate live CPU/memory usage per pod; degrades gracefully (shows `—`) if the Metrics Server is unavailable or returns a non-200 response.
 
@@ -496,7 +513,7 @@ Lists pods on a specific node. For each pod, resolves the owner chain: if a pod 
 
 Lists pods belonging to a Deployment or StatefulSet. Same owner-chain resolution and `GetAllPodMetrics` enrichment as `getNodePods`.
 
-**`getPodDetail` (GET /api/cluster/pods/{ns}/{pod})**
+**`getPodDetail` (GET /api/cluster/pods/{namespace}/{name})**
 
 Returns comprehensive pod information:
 - All containers (name, image, restartCount, ready state)
@@ -522,6 +539,7 @@ Returns the single guardrails row (id=1 always, seeded at startup).
 **`updateGuardrails` (PUT /api/guardrails)**
 
 Accepts a JSON body and applies a field whitelist:
+- `system_namespaces`
 - `skip_namespaces`
 - `skip_ns_node`
 - `skip_node_labels`
@@ -587,12 +605,13 @@ The scheduler lives in `internal/scheduler/scheduler.go` and is the heart of the
 
 ```go
 type Scheduler struct {
-    cron    *cron.Cron
-    entries map[uint]cron.EntryID  // scheduleID → cron entryID
     store   *store.Store
-    k8s     *k8s.Client
-    broker  *Broker
+    runner  *scaler.Runner
+    Broker  *Broker              // exported — used by API handlers for WebSocket subscriptions
+
     mu      sync.Mutex
+    cron    *cron.Cron
+    entryID map[uint]cron.EntryID // scheduleID → cron entryID
 }
 ```
 
@@ -612,7 +631,7 @@ robfig/cron v3 parses the `CRON_TZ=` prefix and sets the location on the entry's
 
 **`RunNow(scheduleID uint, mode string) (uint, error)`** — creates an Execution row and launches `run()` in a goroutine. Returns the execution ID immediately. This is what the trigger endpoint calls.
 
-**`run(scheduleID uint, executionID uint, mode string)`** — the actual execution goroutine:
+**`run(ctx context.Context, scheduleID uint, scheduleType, mode, namespaceFilter string, timeoutMinutes int) (uint, error)`** — the actual execution goroutine. Creates the Execution record internally and returns the execution ID:
 
 ```
 run()
@@ -626,10 +645,10 @@ run()
   │
   ├─ ctx with timeout (schedule.TimeoutMinutes * time.Minute, default 120min)
   │
-  ├─ if schedule.Type == "scale_down":
-  │     counts, err = runner.RunScaleDown(ctx, schedule, mode, logCh)
+  ├─ if scheduleType == "scale_down":
+  │     counts, err = runner.RunScaleDown(ctx, mode, namespaceFilter, logCh)
   │   else:
-  │     counts, err = runner.RunScaleUp(ctx, schedule, mode, logCh)
+  │     counts, err = runner.RunScaleUp(ctx, mode, namespaceFilter, logCh)
   │
   ├─ close(logCh)  ← signals drain goroutine to finish
   ├─ wg.Wait()    ← waits for all log lines to be written to DB
@@ -646,14 +665,14 @@ run()
 
 ```go
 type Broker struct {
-    mu   sync.Mutex
+    mu   sync.RWMutex
     subs map[uint][]chan store.LogLine
 }
 ```
 
 **`Subscribe(executionID uint) chan store.LogLine`** — creates a buffered channel of capacity 256, appends it to the subscriber list for that execution ID, returns the channel. The 256-capacity buffer means a slow WebSocket client can absorb bursts without blocking the scaler goroutine.
 
-**`Unsubscribe(executionID uint, ch chan store.LogLine)`** — removes the channel from the subscriber list. Does NOT close the channel here (the reader closes it via `broker.Close`).
+**`Unsubscribe(executionID uint, ch chan store.LogLine)`** — removes the channel from the subscriber list and closes it. Includes a guard against double-close panics.
 
 **`Publish(executionID uint, line store.LogLine)`** — fan-out under lock:
 ```go
@@ -700,6 +719,10 @@ type Runner struct {
 }
 ```
 
+**Shared abstractions:**
+- `workloadEntry` — a struct that unifies Deployments and StatefulSets into a common type with `Kind`, `Namespace`, `Name`, `Replicas`, and `SavedReplicas` fields. Both `RunScaleDown` and `RunScaleUp` build `[]workloadEntry` slices and delegate to shared helpers (`scaleDownWorkloads`, `restoreWorkloads`, `saveAnnotation`, `applyScale`).
+- `mergeCSV(a, b string) []string` — combines two comma-separated lists (e.g., `SystemNamespaces` + `SkipNamespaces`) into a deduplicated slice. Used to build the full skip list before filtering workloads.
+
 **Log emission helpers:**
 - `emit(ch, level, msg)` — sends a LogLine to the channel
 - `info(ch, msg)` — emit with level "info"
@@ -714,7 +737,7 @@ type Runner struct {
 #### scale_down.go — RunScaleDown
 
 ```
-RunScaleDown(ctx, schedule, mode, logCh) → (Counts, error)
+RunScaleDown(ctx, mode, namespaceFilter, logCh) → (*Counts, error)
   │
   ├─ Load guardrails from store
   │
@@ -776,7 +799,7 @@ RunScaleDown(ctx, schedule, mode, logCh) → (Counts, error)
 #### scale_up.go — RunScaleUp
 
 ```
-RunScaleUp(ctx, schedule, mode, logCh) → (Counts, error)
+RunScaleUp(ctx, mode, namespaceFilter, logCh) → (*Counts, error)
   │
   ├─ Load guardrails
   │
@@ -875,61 +898,64 @@ func New() (*Client, error) {
 **Schedule**
 ```go
 type Schedule struct {
-    ID              uint      `gorm:"primarykey"`
-    Name            string    `gorm:"not null"`
-    Type            string    `gorm:"not null"`          // "scale_down" | "scale_up"
-    CronExpr        string    `gorm:"not null"`
-    Timezone        string    `gorm:"default:'UTC'"`
-    Mode            string    `gorm:"default:'plan'"`    // "plan" | "apply"
-    Enabled         bool      `gorm:"default:true"`
-    NamespaceFilter string    `gorm:"default:''"`        // CSV, empty = all
-    TimeoutMinutes  int       `gorm:"default:120"`
-    Position        int       // display order within each type group; lower = higher in list
-    CreatedAt       time.Time
-    UpdatedAt       time.Time
+    ID              uint   `gorm:"primaryKey" json:"id"`
+    Name            string `json:"name"`
+    Type            string `json:"type"`            // "scale_down" | "scale_up"
+    CronExpr        string `json:"cronExpr"`
+    Timezone        string `json:"timezone"`
+    Mode            string `json:"mode"`            // "plan" | "apply"
+    Enabled         bool   `json:"enabled"`
+    NamespaceFilter string `json:"namespaceFilter"` // comma-separated; empty = all namespaces
+    TimeoutMinutes  int    `json:"timeoutMinutes"`  // 0 = use server default (120 min)
+    Position        int    `json:"position"`        // display order within each type group
+
+    CreatedAt time.Time `json:"createdAt"`
+    UpdatedAt time.Time `json:"updatedAt"`
 }
 ```
 
 **Guardrails**
 ```go
 type Guardrails struct {
-    ID               uint      `gorm:"primarykey"`
-    SystemNamespaces string    // CSV: immutable protected defaults (requires confirmation to remove)
-    SkipNamespaces   string    // CSV: user-managed skip list, e.g. "monitoring,staging"
-    SkipNsNode       string    // CSV: namespaces that protect nodes
-    SkipNodeLabels   string    // CSV: "key=value" pairs
-    SkipNodeTaints   string    // CSV: "key=value:effect" pairs
-    UpdatedAt        time.Time
+    ID               uint   `gorm:"primaryKey" json:"id"`
+    SystemNamespaces string `json:"systemNamespaces"` // CSV — protected system defaults
+    SkipNamespaces   string `json:"skipNamespaces"`   // CSV — user-managed skip list
+    SkipNsNode       string `json:"skipNsNode"`       // CSV — namespaces whose pods protect nodes
+    SkipNodeLabels   string `json:"skipNodeLabels"`   // CSV key=value
+    SkipNodeTaints   string `json:"skipNodeTaints"`   // CSV key=value:effect
+
+    UpdatedAt time.Time `json:"updatedAt"`
 }
 ```
 
 **Execution**
 ```go
 type Execution struct {
-    ID             uint       `gorm:"primarykey"`
-    ScheduleID     uint       `gorm:"index"`
-    Schedule       *Schedule  `gorm:"foreignKey:ScheduleID"`
-    StartedAt      time.Time  `gorm:"index"`
-    FinishedAt     *time.Time
-    Status         string     `gorm:"index"`  // "running" | "success" | "failed"
-    Mode           string     // "plan" | "apply"
-    CountSaved     int
-    CountScaled    int
-    CountDrained   int
-    CountDeleted   int
-    CountSkipped   int
-    CountProtected int
-    CountErrors    int
+    ID         uint       `gorm:"primaryKey" json:"id"`
+    ScheduleID uint       `gorm:"index" json:"scheduleId"`
+    Schedule   Schedule   `gorm:"foreignKey:ScheduleID" json:"schedule"`
+    StartedAt  time.Time  `gorm:"index" json:"startedAt"`
+    FinishedAt *time.Time `json:"finishedAt"`
+    Status     string     `gorm:"index" json:"status"` // "running" | "success" | "failed"
+    Mode       string     `json:"mode"`                // "plan" | "apply"
+
+    CountScaled    int `json:"countScaled"`
+    CountDrained   int `json:"countDrained"`
+    CountDeleted   int `json:"countDeleted"`
+    CountSkipped   int `json:"countSkipped"`
+    CountErrors    int `json:"countErrors"`
+    CountSaved     int `json:"countSaved"`
+    CountProtected int `json:"countProtected"`
 }
 ```
 
 **LogLine**
 ```go
 type LogLine struct {
-    ID          uint      `gorm:"primarykey"`
-    ExecutionID uint      `gorm:"index:idx_logline_exec_seq,priority:1"`
-    Seq         int       `gorm:"index:idx_logline_exec_seq,priority:2"`
-    Level       string
+    ID          uint      `gorm:"primaryKey" json:"id"`
+    ExecutionID uint      `gorm:"index:idx_logline_exec_seq" json:"executionId"`
+    Seq         int       `gorm:"index:idx_logline_exec_seq" json:"seq"`
+    Level       string    `json:"level"` // "info" | "ok" | "plan" | "error" | "warn"
     Message     string
     Timestamp   time.Time
 }
@@ -951,9 +977,18 @@ func New(dsn string) (*Store, error) {
     sqlDB.SetConnMaxLifetime(5 * time.Minute)
     // Auto-migrate all models
     db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{})
-    // Seed if empty
-    SeedDefaults(db)
     return &Store{db: db}, nil
+}
+```
+
+Note: `SeedDefaults()` is NOT called inside `New()`. It is called separately in `main.go` after `store.New()` returns:
+
+```go
+st, err := store.New(dsn)
+// ...
+if err := st.SeedDefaults(); err != nil {
+    slog.Error("seed failed", "err", err)
+    os.Exit(1)
 }
 ```
 
@@ -966,19 +1001,22 @@ func New(dsn string) (*Store, error) {
 
 #### Queries (`internal/store/queries.go`)
 
-**SeedDefaults** — runs only if the schedules table is empty. Seeds:
+**SeedDefaults** — a method on `*Store`, runs only if the schedules table is empty. Seeds:
 1. "Weekday Sleep" — `scale_down`, `5 19 * * 1-5`, Europe/Budapest, plan mode, disabled
 2. "Weekday Wake" — `scale_up`, `0 7 * * 1-5`, Europe/Budapest, plan mode, disabled
 3. "Weekend Sleep" — `scale_down`, `0 0 * * 6,0`, Europe/Budapest, plan mode, disabled
 4. "Weekend Wake" — `scale_up`, `0 7 * * 1`, Europe/Budapest, plan mode, disabled
 
-And one Guardrails row with sensible defaults:
-- `SkipNamespaces`: `kube-system,kube-public,kube-node-lease,kube-phoenix`
-- `SkipNsNode`: `kube-system`
+And one Guardrails row with production-ready defaults:
+- `SystemNamespaces`: `kube-system,kube-public,kube-node-lease,kube-phoenix`
+- `SkipNamespaces`: `default,karpenter,vault,velero,istio-gateway,istio-system,kyverno,kyverno-notation-aws,victoriametrics,monitoring,gitlab`
+- `SkipNsNode`: `victoriametrics,karpenter`
+- `SkipNodeLabels`: `karpenter.k8s.aws/ec2nodeclass=default`
+- `SkipNodeTaints`: `karpenter-eks-base=true:NoSchedule`
 
 **`UpdateSchedule(id, fields map[string]interface{}) error`** — does a partial update via GORM. The field whitelist is enforced in the API handler before calling this function, not here. To avoid GORM silently skipping zero-value booleans (e.g. `enabled=false`), the function collects the map keys and calls `Select(keys).Updates(map)` — the `Select` clause forces GORM to write every specified column regardless of value.
 
-**`AppendLogLine(executionID uint, seq int, level, message string)`** — the `seq` field is a monotonically increasing integer per execution, managed by the caller (scheduler). It is not auto-incremented by the database to avoid a round-trip to determine the next sequence number. The scheduler tracks `seq` as a local variable incremented atomically.
+**`AppendLogLine(line *LogLine) error`** — the `seq` field is a monotonically increasing integer per execution, managed by the caller (scheduler). It is not auto-incremented by the database to avoid a round-trip to determine the next sequence number. The scheduler tracks `seq` as a local variable incremented atomically.
 
 ### 4.8 WebSocket Log Broker
 
@@ -1032,7 +1070,7 @@ for line := range ch {
 
 ```go
 //go:embed all:static
-var static embed.FS
+var staticFiles embed.FS
 
 func SPAHandler() http.Handler {
     sub, _ := fs.Sub(static, "static")
@@ -1043,9 +1081,9 @@ func SPAHandler() http.Handler {
         f, err := sub.Open(strings.TrimPrefix(r.URL.Path, "/"))
         if err != nil {
             // Path not found: serve index.html (SPA client-side routing)
-            r = r.WithContext(r.Context())
-            r.URL.Path = "/"
-            fileServer.ServeHTTP(w, r)
+            r2 := r.Clone(r.Context())
+            r2.URL.Path = "/"
+            fileServer.ServeHTTP(w, r2)
             return
         }
         f.Close()
@@ -1312,7 +1350,7 @@ The `divider` token is computed from the mode: `rgba(255,255,255,0.07)` in dark,
    c. If 200: stores token in sessionStorage, updates context state.
    d. If 401: throws an error, `LoginScreen` displays it.
 
-**Auth header injection:** `getAuthHeader()` reads the token from sessionStorage at call time (not cached in closure). Returns `{}` if token is `__no_auth__` (dev mode, server ignores auth). Returns `{ Authorization: 'Basic <token>' }` otherwise.
+**Auth header injection:** `getAuthHeader()` reads the token from sessionStorage at call time (not cached in closure). Returns `{ Authorization: 'Basic __no_auth__' }` when the sentinel `__no_auth__` token is set (dev mode — the server ignores auth entirely). Returns `{ Authorization: 'Basic <token>' }` for real tokens, or `{}` if no token is stored.
 
 **Logout:** Clears sessionStorage and resets context state to unauthenticated. The login screen re-renders.
 
@@ -1768,7 +1806,7 @@ scheduler.run(scheduleID, executionID, "scale_down", mode)
          ├─ Create Execution record (status=running)
          │
          ▼
-scaler.RunScaleDown(ctx, schedule, mode, logCh)
+scaler.RunScaleDown(ctx, mode, namespaceFilter, logCh)
          │
          ├─ Phase 1: Workloads
          │    ├─ List all Deployments
@@ -1827,7 +1865,7 @@ scheduler.run(scheduleID, executionID, "scale_up", mode)
          ├─ Create Execution record (status=running)
          │
          ▼
-scaler.RunScaleUp(ctx, schedule, mode, logCh)
+scaler.RunScaleUp(ctx, mode, namespaceFilter, logCh)
          │
          ├─ Phase 1: Workloads (ONLY — no node operations)
          │    ├─ List all Deployments
@@ -1967,9 +2005,9 @@ The application requires cluster-wide (not namespaced) RBAC because it manages r
 | `statefulsets`       | get, list, watch, update, patch          | Same as deployments                     |
 | `deployments/scale`  | get, update                              | Read/write scale subresource            |
 | `statefulsets/scale` | get, update                              | Same                                    |
-| `replicasets`        | get, list                                | Owner chain resolution for pod display  |
+| `replicasets`        | list                                     | Owner chain resolution for pod display  |
 | `namespaces`         | list                                     | Namespace listing for UI                |
-| `events`             | get, list                                | Pod events for detail drawer            |
+| ~~`events`~~         | ~~get, list~~                            | _(Not in ClusterRole — events are accessed via the pods API)_ |
 
 ### Deployment manifest
 
@@ -2273,8 +2311,8 @@ Dependabot PRs go through the same CI pipeline as any other PR — secret scan, 
 
 | Tool | Version | Notes |
 |---|---|---|
-| Node.js | 22.x | Required for frontend |
-| Go | 1.25+ | Required for backend |
+| Node.js | 24.x | Required for frontend |
+| Go | 1.26+ | Required for backend |
 | Docker | Latest | For container builds |
 | kubectl | Latest | For k8s interaction |
 | helm | 4.x | For Helm operations |

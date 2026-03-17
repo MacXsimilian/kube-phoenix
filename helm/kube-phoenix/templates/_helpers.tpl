@@ -106,3 +106,12 @@ Selector labels.
 app.kubernetes.io/name: {{ include "kube-phoenix.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+{{/*
+Validate mutually exclusive values.
+*/}}
+{{- define "kube-phoenix.validateValues" -}}
+{{- if and .Values.ingress.enabled .Values.targetGroupBinding.enabled }}
+{{- fail "ingress.enabled and targetGroupBinding.enabled cannot both be true. Use one or the other." }}
+{{- end }}
+{{- end }}
