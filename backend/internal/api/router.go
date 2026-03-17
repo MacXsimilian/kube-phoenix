@@ -98,6 +98,7 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 			r.Get("/cluster/nodes", h.getNodes)
 			r.Get("/cluster/nodes/{name}/pods", h.getNodePods)
 			r.Get("/cluster/pods/{namespace}/{name}", h.getPodDetail)
+			r.Get("/cluster/pods/{namespace}/{name}/logs", h.getPodLogs)
 			r.Get("/cluster/workloads/{namespace}/{kind}/{name}/pods", h.getWorkloadPods)
 
 			// Manual trigger

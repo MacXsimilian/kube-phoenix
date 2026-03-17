@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -583,6 +584,78 @@ func nonNilMap(m map[string]string) map[string]string {
 		return map[string]string{}
 	}
 	return m
+}
+
+// ── Pod logs (streamed from K8s API — no DB) ─────────────────────────────────
+
+func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {
+	if h.k8s == nil {
+		jsonError(w, "kubernetes client unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	namespace := chi.URLParam(r, "namespace")
+	name := chi.URLParam(r, "name")
+	if !isValidK8sName(namespace) || !isValidK8sName(name) {
+		jsonError(w, "invalid resource name", http.StatusBadRequest)
+		return
+	}
+
+	container := r.URL.Query().Get("container")
+	previous := r.URL.Query().Get("previous") == "true"
+	follow := r.URL.Query().Get("follow") == "true"
+
+	tailLines := int64(500)
+	if v := r.URL.Query().Get("tailLines"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 && n <= 10000 {
+			tailLines = n
+		}
+	}
+
+	// Cannot follow previous logs
+	if previous {
+		follow = false
+	}
+
+	stream, err := h.k8s.GetPodLogs(r.Context(), namespace, name, container, tailLines, previous, follow)
+	if err != nil {
+		jsonInternalError(w, err, "get pod logs failed")
+		return
+	}
+	defer stream.Close()
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+
+	if !follow {
+		if _, err := io.Copy(w, stream); err != nil {
+			slog.Warn("getPodLogs: stream copy error", "err", err)
+		}
+		return
+	}
+
+	// Streaming mode: flush each chunk as it arrives
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// Fallback: just copy everything at once
+		if _, err := io.Copy(w, stream); err != nil {
+			slog.Warn("getPodLogs: stream copy error", "err", err)
+		}
+		return
+	}
+
+	buf := make([]byte, 4096)
+	for {
+		n, readErr := stream.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return
+			}
+			flusher.Flush()
+		}
+		if readErr != nil {
+			return
+		}
+	}
 }
 
 // ── Workload pods ─────────────────────────────────────────────────────────────
