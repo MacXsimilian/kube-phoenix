@@ -61,7 +61,7 @@ postgresql:
 externalDatabase:
   url: ""   # e.g. "host=mydb.example.com user=foo password=bar dbname=kube_phoenix port=5432 sslmode=require"
   # Individual fields — used when url is empty:
-  host: "postgres-host"
+  host: ""              # REQUIRED when postgresql.enabled=false
   port: 5432
   username: kube_phoenix
   password: ""

@@ -7,7 +7,23 @@
 | `DATABASE_URL`        | Yes      | PostgreSQL DSN — e.g. `host=localhost user=kube_phoenix password=kube_phoenix dbname=kube_phoenix port=5432 sslmode=disable`                                                              |
 | `BASIC_AUTH_USER`     | No       | HTTP Basic Auth username. Unset = auth disabled (dev mode).                                                                                                                               |
 | `BASIC_AUTH_PASSWORD` | No       | HTTP Basic Auth password.                                                                                                                                                                 |
-| `CORS_ALLOWED_ORIGIN` | No       | Allowed CORS origin (e.g. `https://kube-phoenix.example.com`). Unset = no cross-origin requests permitted. Useful when the frontend is served from a different origin during development. |
+| `CORS_ALLOWED_ORIGIN` | No       | Allowed CORS origin (e.g. `https://kube-phoenix.example.com`). When auth is enabled: unset = no cross-origin requests permitted. **In dev mode** (auth disabled): CORS allows all origins (`*`) regardless of this setting. |
+| `KUBECONFIG`          | No       | Path to kubeconfig file. Used as fallback when in-cluster config is unavailable (e.g. running locally). |
+
+### CLI flags
+
+| Flag    | Default | Description          |
+| :------ | :------ | :------------------- |
+| `-port` | `8080`  | Server listen port   |
+
+### Frontend build-time variables
+
+These are Next.js build-time variables, not backend runtime variables.
+
+| Variable                 | Default | Description                                          |
+| :----------------------- | :------ | :--------------------------------------------------- |
+| `NEXT_PUBLIC_API_URL`    | `""`    | API base URL for dev mode (empty = same-origin)      |
+| `NEXT_PUBLIC_APP_VERSION`| `""`    | Version string shown in About modal (set in Docker build) |
 
 ## Authentication
 
@@ -48,3 +64,11 @@ Four schedules are seeded on first startup, all in **plan mode** and **disabled*
 | Weekday Wake  | `0 7 * * 1-5`   | `scale_up`   | Mon–Fri 07:00          |
 | Weekend Sleep | `0 0 * * 6,0`   | `scale_down` | Sat–Sun 00:00          |
 | Weekend Wake  | `0 7 * * 1`     | `scale_up`   | Mon 07:00              |
+
+---
+
+## See also
+
+- [Deployment](deployment.md) — Helm installation and values reference
+- [Troubleshooting](troubleshooting.md) — common issues and fixes
+- [API Reference](api.md) — endpoint documentation
