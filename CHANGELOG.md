@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.67](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.66...v0.1.67) (2026-03-17)
+
+
+### Features
+
+* add streaming pod log viewer to cluster drawer ([f381091](https://github.com/MacXsimilian/kube-phoenix/commit/f381091a1c1e9808c2c5fa5ddeca47b37922e54a))
+* add streaming pod log viewer to cluster drawer ([bf3ca39](https://github.com/MacXsimilian/kube-phoenix/commit/bf3ca39f86cc5ac99e5726f244ccb4cf357cce09))
+
+
+### Bug Fixes
+
+* check stream.Close error return to satisfy errcheck linter ([5b4b61f](https://github.com/MacXsimilian/kube-phoenix/commit/5b4b61f939d329e579426dc528dcf7261be3b88c))
+
 ## [0.1.66](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.65...v0.1.66) (2026-03-16)
 
 
