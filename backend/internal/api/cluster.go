@@ -621,7 +621,7 @@ func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {
 		jsonInternalError(w, err, "get pod logs failed")
 		return
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
