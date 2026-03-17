@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
@@ -21,7 +21,9 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import TerminalIcon from '@mui/icons-material/Terminal'
 import { getPodDetail } from '@/lib/api'
 import { fmtCpu, fmtMem, podAge } from '@/lib/formatters'
+import PodLogViewer from './PodLogViewer'
 import type { PodContainer, PodCondition, PodEvent } from '@/lib/types'
+
 function resourceCell(req: number, limit: number, fmt: (n: number) => string) {
   const r = req > 0 ? fmt(req) : '—'
   const l = limit > 0 ? fmt(limit) : '∞'
@@ -191,7 +193,16 @@ function CollapsibleKVSection({ title, entries }: { title: string; entries: [str
 
 // ── main component ────────────────────────────────────────────────────────────
 
-export default function PodDetailContent({ namespace, podName, onShowLogs }: { namespace: string; podName: string; onShowLogs?: (containers: PodContainer[]) => void }) {
+export default function PodDetailContent({ namespace, podName }: { namespace: string; podName: string }) {
+  const [view, setView] = useState<'detail' | 'logs'>('detail')
+  const [containers, setContainers] = useState<PodContainer[]>([])
+
+  // Reset to detail view when pod changes
+  useEffect(() => {
+    setView('detail')
+    setContainers([])
+  }, [namespace, podName])
+
   const { data: pod, isLoading, isError, error } = useQuery({
     queryKey: ['pod-detail', namespace, podName],
     queryFn: () => getPodDetail(namespace, podName),
@@ -214,6 +225,19 @@ export default function PodDetailContent({ namespace, podName, onShowLogs }: { n
     )
   }
 
+  if (view === 'logs') {
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <PodLogViewer
+          namespace={namespace}
+          podName={podName}
+          containers={containers}
+          onBack={() => setView('detail')}
+        />
+      </Box>
+    )
+  }
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, p: 2.5 }}>
       {/* Overview row */}
@@ -231,17 +255,18 @@ export default function PodDetailContent({ namespace, podName, onShowLogs }: { n
           <Chip label={pod.qosClass} size="small" sx={{ height: 20, fontSize: 11 }} />
         )}
         <Box sx={{ flex: 1 }} />
-        {onShowLogs && (
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<TerminalIcon sx={{ fontSize: '14px !important' }} />}
-            onClick={() => onShowLogs(pod.containers ?? [])}
-            sx={{ fontSize: 11, textTransform: 'none', py: 0.25, px: 1.5 }}
-          >
-            Logs
-          </Button>
-        )}
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<TerminalIcon sx={{ fontSize: '14px !important' }} />}
+          onClick={() => {
+            setContainers(pod.containers ?? [])
+            setView('logs')
+          }}
+          sx={{ fontSize: 11, textTransform: 'none', py: 0.25, px: 1.5 }}
+        >
+          Logs
+        </Button>
       </Box>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
