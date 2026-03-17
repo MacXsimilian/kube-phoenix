@@ -55,4 +55,69 @@ WebSocket connections authenticate via `?token=<base64(user:pass)>`. If credenti
 
 ## CORS errors in the browser during local development
 
-Set `CORS_ALLOWED_ORIGIN=http://localhost:3000` on the backend process when running the frontend dev server separately from the backend.
+Set `CORS_ALLOWED_ORIGIN=http://localhost:3000` on the backend process when running the frontend dev server separately from the backend. Note: in dev mode (auth disabled), CORS allows all origins automatically.
+
+## Image pull errors (ImagePullBackOff)
+
+The pod is stuck in `ImagePullBackOff` or `ErrImagePull`.
+
+1. Verify the image exists: `docker pull <image>` from a machine with registry access.
+2. Check that `image.tag` in your Helm values matches an existing tag.
+3. If using a private registry, ensure `imagePullSecrets` are configured on the ServiceAccount or pod.
+4. Check pod events: `kubectl describe pod -n kube-phoenix <pod-name>`.
+
+## PostgreSQL PVC stuck in Pending
+
+The PostgreSQL StatefulSet pod stays in `Pending` because the PVC cannot be bound.
+
+1. Check if a default StorageClass exists: `kubectl get sc`. If not, create one or set `postgresql.persistence.storageClass` explicitly.
+2. Verify the StorageClass supports the requested access mode and size.
+3. Check PVC events: `kubectl describe pvc -n kube-phoenix`.
+
+## Init container waiting for PostgreSQL
+
+The main pod is stuck in `Init:0/1` — the init container is waiting for PostgreSQL to become ready.
+
+1. Check the PostgreSQL pod is running: `kubectl get pods -n kube-phoenix`.
+2. Check PostgreSQL logs: `kubectl logs -n kube-phoenix <postgresql-pod>`.
+3. Verify the `DATABASE_URL` or internal service DNS resolves correctly.
+4. If using an external database, ensure it is reachable from the cluster.
+
+## Pod OOMKilled
+
+The pod restarts with reason `OOMKilled` — it exceeded its memory limit.
+
+1. Check: `kubectl describe pod -n kube-phoenix <pod-name>` — look for `Last State: Terminated, Reason: OOMKilled`.
+2. Increase `resources.limits.memory` in Helm values (default is `256Mi`). For clusters with many workloads (500+), `512Mi` or more may be needed.
+3. Monitor memory usage via Prometheus: `container_memory_working_set_bytes{container="kube-phoenix"}`.
+
+## NetworkPolicy blocking traffic
+
+With `networkPolicy.enabled=true`, traffic between services may be blocked.
+
+1. Verify your cluster's CNI supports NetworkPolicy (e.g., Calico, Cilium). If not, set `networkPolicy.enabled=false`.
+2. If using an external database on a non-standard port, the default egress rules (port 5432) may not cover it. Disable the NetworkPolicy or customize egress rules.
+3. Check: `kubectl describe networkpolicy -n kube-phoenix`.
+
+## ServiceMonitor CRD not found
+
+Helm install fails with: `no matches for kind "ServiceMonitor" in version "monitoring.coreos.com/v1"`.
+
+1. The Prometheus Operator CRDs are not installed. Install them first, or set `metrics.serviceMonitor.enabled=false`.
+2. If using kube-prometheus-stack, the CRDs are included automatically.
+
+## Database connection lost at runtime
+
+The API returns 500 errors and `/healthz` fails after the app was previously running fine.
+
+1. Check PostgreSQL pod/RDS status — is it running and accepting connections?
+2. Check network connectivity from the app pod: `kubectl exec -n kube-phoenix <pod> -- /bin/sh -c "nc -zv <db-host> 5432"` (only works with non-distroless images).
+3. The app will auto-recover when the database becomes available again — GORM reconnects automatically. The pod will become ready once `/healthz` succeeds.
+
+---
+
+## See also
+
+- [Configuration](configuration.md) — environment variables and schedule setup
+- [Deployment](deployment.md) — Helm installation and values reference
+- [API Reference](api.md) — endpoint documentation
