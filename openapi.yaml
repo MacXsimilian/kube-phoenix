@@ -16,9 +16,16 @@ info:
     The SSE endpoint (`/api/cluster/stream`) uses a standard HTTP request
     with the `Authorization` header.
   version: "1.1.0"
+  contact:
+    name: kube-phoenix
+    url: https://github.com/MacXsimilian/kube-phoenix
   license:
     name: Apache 2.0
     url: https://github.com/MacXsimilian/kube-phoenix/blob/master/LICENSE
+
+externalDocs:
+  description: Project documentation
+  url: https://github.com/MacXsimilian/kube-phoenix#readme
 
 servers:
   - url: /
@@ -346,15 +353,19 @@ components:
           description: Human-readable reason if status is protected. Empty otherwise.
         cpuAllocatable:
           type: integer
+          format: int64
           description: Millicores.
         cpuRequested:
           type: integer
+          format: int64
           description: Millicores.
         memAllocatable:
           type: integer
+          format: int64
           description: Bytes.
         memRequested:
           type: integer
+          format: int64
           description: Bytes.
         createdAt:
           type: string
@@ -456,6 +467,7 @@ components:
                 type: string
               count:
                 type: integer
+                format: int32
               lastSeen:
                 type: string
                 format: date-time
@@ -670,6 +682,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Schedule"
+        "400":
+          description: Invalid schedule ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           description: Unauthorized
         "404":
@@ -730,6 +748,12 @@ paths:
       responses:
         "204":
           description: Deleted
+        "400":
+          description: Invalid schedule ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           description: Unauthorized
         "404":
@@ -817,6 +841,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Execution"
+        "400":
+          description: Invalid execution ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           description: Unauthorized
         "404":
@@ -853,6 +883,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/LogLine"
+        "400":
+          description: Invalid execution ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           description: Unauthorized
         "500":
@@ -1288,6 +1324,12 @@ paths:
       responses:
         "101":
           description: Switching Protocols
+        "400":
+          description: Invalid execution ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           description: Unauthorized
         "404":

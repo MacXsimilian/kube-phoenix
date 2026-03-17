@@ -73,34 +73,121 @@ targetGroupBinding:
 
 ## Helm values reference
 
-| Value                                  | Default                              | Description                                                                              |
-| :------------------------------------- | :----------------------------------- | :--------------------------------------------------------------------------------------- |
-| `image.repository`                     | `ghcr.io/macxsimilian/kube-phoenix`  | Image repository                                                                         |
-| `image.tag`                            | `latest`                             | Image tag to deploy                                                                      |
-| `replicaCount`                         | `1`                                  | Number of app replicas                                                                   |
-| `postgresql.enabled`                   | `true`                               | Deploy in-cluster PostgreSQL StatefulSet                                                 |
-| `postgresql.auth.username`             | `kube_phoenix`                       | PostgreSQL username                                                                      |
-| `postgresql.auth.password`             | `kube_phoenix`                       | PostgreSQL password — **change in production**                                           |
-| `postgresql.auth.database`             | `kube_phoenix`                       | PostgreSQL database name                                                                 |
-| `postgresql.persistence.enabled`       | `true`                               | Persist PostgreSQL data via a PVC                                                        |
-| `postgresql.persistence.size`          | `1Gi`                                | PVC size                                                                                 |
-| `postgresql.persistence.storageClass`  | `""`                                 | StorageClass — `""` uses the cluster default                                             |
-| `externalDatabase.url`                 | `""`                                 | Full DSN when `postgresql.enabled=false`                                                 |
-| `secret.basicAuthUser`                 | `admin`                              | Basic Auth username                                                                      |
-| `secret.basicAuthPassword`             | `kube-phoenix`                       | Basic Auth password — **change in production**                                           |
-| `secret.existingSecret`                | `""`                                 | Pre-existing Secret containing `DATABASE_URL`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD` |
-| `ingress.enabled`                      | `false`                              | Enable Kubernetes Ingress                                                                |
-| `ingress.className`                    | `""`                                 | Ingress class name                                                                       |
-| `ingress.annotations`                  | `{}`                                 | Ingress annotations                                                                      |
-| `ingress.host`                         | `""`                                 | Hostname to expose the app on                                                            |
-| `ingress.tls`                          | `[]`                                 | TLS configuration                                                                        |
-| `targetGroupBinding.enabled`           | `false`                              | Enable AWS TargetGroupBinding                                                            |
-| `targetGroupBinding.targetGroupARN`    | `""`                                 | ARN of the pre-created target group                                                      |
-| `targetGroupBinding.targetType`        | `ip`                                 | `ip` or `instance`                                                                       |
-| `targetGroupBinding.vpcID`             | `""`                                 | VPC ID — only needed if the controller cannot auto-detect it                             |
-| `resources.requests.cpu`               | `50m`                                | CPU request                                                                              |
-| `resources.requests.memory`            | `64Mi`                               | Memory request                                                                           |
-| `resources.limits.cpu`                 | `200m`                               | CPU limit                                                                                |
-| `resources.limits.memory`              | `256Mi`                              | Memory limit                                                                             |
+> **Note:** The Helm install command uses `--create-namespace` (Helm-managed). The chart also has `createNamespace: true` which creates a Namespace resource via template. To avoid a double-creation conflict, set `createNamespace: false` when using `--create-namespace`.
+
+### General
+
+| Value | Default | Description |
+| :---- | :------ | :---------- |
+| `nameOverride` | `""` | Override chart name |
+| `fullnameOverride` | `""` | Override full release name |
+| `image.repository` | `ghcr.io/macxsimilian/kube-phoenix` | Image repository |
+| `image.tag` | `""` | Image tag (defaults to Chart.AppVersion) |
+| `image.pullPolicy` | `IfNotPresent` | Image pull policy |
+| `replicaCount` | `1` | Number of app replicas |
+| `namespaceOverride` | `""` | Override deploy namespace |
+| `createNamespace` | `true` | Create namespace via chart template |
+
+### RBAC & Service Account
+
+| Value | Default | Description |
+| :---- | :------ | :---------- |
+| `serviceAccount.create` | `true` | Create a ServiceAccount |
+| `serviceAccount.name` | `""` | SA name (defaults to release name) |
+| `rbac.create` | `true` | Create ClusterRole + ClusterRoleBinding |
+
+### Database
+
+| Value | Default | Description |
+| :---- | :------ | :---------- |
+| `postgresql.enabled` | `true` | Deploy in-cluster PostgreSQL StatefulSet |
+| `postgresql.image.repository` | `postgres` | PostgreSQL image |
+| `postgresql.image.tag` | `16-alpine` | PostgreSQL version |
+| `postgresql.image.pullPolicy` | `IfNotPresent` | PostgreSQL pull policy |
+| `postgresql.auth.username` | `kube_phoenix` | PostgreSQL username |
+| `postgresql.auth.password` | `kube_phoenix` | PostgreSQL password — **change in production** |
+| `postgresql.auth.database` | `kube_phoenix` | PostgreSQL database name |
+| `postgresql.persistence.enabled` | `true` | Persist data via PVC |
+| `postgresql.persistence.size` | `1Gi` | PVC size |
+| `postgresql.persistence.storageClass` | `""` | StorageClass (`""` = cluster default) |
+| `postgresql.resources.requests.cpu` | `100m` | PostgreSQL CPU request |
+| `postgresql.resources.requests.memory` | `128Mi` | PostgreSQL memory request |
+| `postgresql.resources.limits.cpu` | `500m` | PostgreSQL CPU limit |
+| `postgresql.resources.limits.memory` | `512Mi` | PostgreSQL memory limit |
+| `externalDatabase.url` | `""` | Full DSN when `postgresql.enabled=false` |
+| `externalDatabase.host` | `""` | DB host — **required** when `postgresql.enabled=false` and `url` is empty |
+| `externalDatabase.port` | `5432` | DB port |
+| `externalDatabase.username` | `kube_phoenix` | DB username |
+| `externalDatabase.password` | `""` | DB password |
+| `externalDatabase.database` | `kube_phoenix` | DB name |
+| `externalDatabase.sslmode` | `require` | SSL mode |
+
+### Secret / Auth
+
+| Value | Default | Description |
+| :---- | :------ | :---------- |
+| `secret.existingSecret` | `""` | Pre-existing Secret (must contain `DATABASE_URL`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD`) |
+| `secret.basicAuthUser` | `admin` | Basic Auth username |
+| `secret.basicAuthPassword` | `kube-phoenix` | Basic Auth password — **change in production** |
+
+### Networking
+
+| Value | Default | Description |
+| :---- | :------ | :---------- |
+| `service.type` | `ClusterIP` | Service type |
+| `service.port` | `80` | Service port |
+| `service.targetPort` | `8080` | Container port |
+| `ingress.enabled` | `false` | Enable Kubernetes Ingress |
+| `ingress.className` | `""` | Ingress class name |
+| `ingress.annotations` | `{}` | Ingress annotations |
+| `ingress.host` | `""` | Hostname |
+| `ingress.tls` | `[]` | TLS configuration |
+| `targetGroupBinding.enabled` | `false` | Enable AWS TargetGroupBinding |
+| `targetGroupBinding.targetGroupARN` | `""` | Target group ARN |
+| `targetGroupBinding.targetType` | `ip` | `ip` or `instance` |
+| `targetGroupBinding.vpcID` | `""` | VPC ID (if auto-detect fails) |
+| `networkPolicy.enabled` | `false` | Enable NetworkPolicy |
+
+### Resources & Scheduling
+
+| Value | Default | Description |
+| :---- | :------ | :---------- |
+| `resources.requests.cpu` | `50m` | CPU request |
+| `resources.requests.memory` | `64Mi` | Memory request |
+| `resources.limits.cpu` | `200m` | CPU limit |
+| `resources.limits.memory` | `256Mi` | Memory limit |
+| `podSecurityContext.runAsNonRoot` | `true` | Run as non-root |
+| `podSecurityContext.runAsUser` | `65534` | UID |
+| `containerSecurityContext.allowPrivilegeEscalation` | `false` | Block privilege escalation |
+| `containerSecurityContext.readOnlyRootFilesystem` | `true` | Read-only root FS |
+| `livenessProbe.initialDelaySeconds` | `15` | Liveness probe delay |
+| `readinessProbe.initialDelaySeconds` | `5` | Readiness probe delay |
+| `terminationGracePeriodSeconds` | `30` | Graceful shutdown timeout |
+| `nodeSelector` | `{}` | Node selector |
+| `tolerations` | `[]` | Tolerations |
+| `affinity` | `{}` | Affinity rules |
+| `podDisruptionBudget.enabled` | `false` | Enable PDB |
+| `podDisruptionBudget.maxUnavailable` | `1` | Max unavailable pods |
+| `podAnnotations` | `{}` | Extra pod annotations |
+| `podLabels` | `{}` | Extra pod labels |
+
+### Metrics (Prometheus)
+
+| Value | Default | Description |
+| :---- | :------ | :---------- |
+| `metrics.podAnnotations.enabled` | `true` | Add `prometheus.io/*` annotations |
+| `metrics.serviceMonitor.enabled` | `false` | Create ServiceMonitor CRD |
+| `metrics.serviceMonitor.namespace` | `""` | ServiceMonitor namespace |
+| `metrics.serviceMonitor.interval` | `30s` | Scrape interval |
+| `metrics.serviceMonitor.scrapeTimeout` | `10s` | Scrape timeout |
+| `metrics.serviceMonitor.labels` | `{}` | Labels to match Prometheus Operator selector |
 
 Full source: [helm/kube-phoenix/values.yaml](../helm/kube-phoenix/values.yaml)
+
+---
+
+## See also
+
+- [Configuration](configuration.md) — environment variables and schedule setup
+- [Troubleshooting](troubleshooting.md) — common issues and fixes
+- [API Reference](api.md) — endpoint documentation
