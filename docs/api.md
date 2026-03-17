@@ -34,6 +34,7 @@ WebSocket connections authenticate via `?token=<base64(user:pass)>` — browsers
 | `GET` | `/api/cluster/nodes` | List nodes with protection status |
 | `GET` | `/api/cluster/nodes/{name}/pods` | List non-DaemonSet pods on a node |
 | `GET` | `/api/cluster/pods/{namespace}/{name}` | Full pod detail — containers, conditions, events, labels, annotations |
+| `GET` | `/api/cluster/pods/{namespace}/{name}/logs` | Stream container logs (query: `container`, `tailLines`, `follow`, `previous`) |
 | `GET` | `/api/cluster/workloads/{namespace}/{kind}/{name}/pods` | List pods belonging to a Deployment or StatefulSet |
 | `GET` | `/api/guardrails` | Get guardrails config |
 | `PUT` | `/api/guardrails` | Update guardrails |

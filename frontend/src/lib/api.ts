@@ -124,6 +124,75 @@ export const getPodDetail = (namespace: string, podName: string): Promise<PodDet
 export const getWorkloadPods = (namespace: string, kind: string, name: string): Promise<NodePod[]> =>
   req<NodePod[]>(`/api/cluster/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(kind)}/${encodeURIComponent(name)}/pods`)
 
+export async function getPodLogs(
+  namespace: string,
+  podName: string,
+  container?: string,
+  tailLines = 500,
+  previous = false,
+): Promise<string> {
+  const q = new URLSearchParams({ tailLines: String(tailLines) })
+  if (container) q.set('container', container)
+  if (previous) q.set('previous', 'true')
+  const res = await fetch(
+    `${BASE}/api/cluster/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/logs?${q}`,
+    { headers: { ...getAuthHeader() } },
+  )
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.error || `HTTP ${res.status}`)
+  }
+  return res.text()
+}
+
+export function streamPodLogs(
+  namespace: string,
+  podName: string,
+  container?: string,
+  tailLines = 100,
+  signal?: AbortSignal,
+): {
+  start: (onLine: (line: string) => void, onError: (err: Error) => void, onDone: () => void) => void
+} {
+  const q = new URLSearchParams({ tailLines: String(tailLines), follow: 'true' })
+  if (container) q.set('container', container)
+  const url = `${BASE}/api/cluster/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/logs?${q}`
+
+  return {
+    start(onLine, onError, onDone) {
+      fetch(url, { headers: { ...getAuthHeader() }, signal })
+        .then(async (res) => {
+          if (!res.ok) {
+            const body = await res.json().catch(() => null)
+            throw new Error(body?.error || `HTTP ${res.status}`)
+          }
+          const reader = res.body?.getReader()
+          if (!reader) { onDone(); return }
+          const decoder = new TextDecoder()
+          let buf = ''
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buf += decoder.decode(value, { stream: true })
+            const parts = buf.split('\n')
+            buf = parts.pop() ?? ''
+            for (const line of parts) {
+              if (line) onLine(line)
+            }
+          }
+          // Flush remaining buffer
+          if (buf) onLine(buf)
+          onDone()
+        })
+        .catch((err) => {
+          if (signal?.aborted) return
+          onError(err instanceof Error ? err : new Error(String(err)))
+        })
+    },
+  }
+}
+
 // ── Trigger ───────────────────────────────────────────────────────────────────
 
 export const triggerRun = (
