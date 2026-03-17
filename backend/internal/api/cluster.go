@@ -633,15 +633,11 @@ func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Streaming mode: flush each chunk as it arrives
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		// Fallback: just copy everything at once
-		if _, err := io.Copy(w, stream); err != nil {
-			slog.Warn("getPodLogs: stream copy error", "err", err)
-		}
-		return
-	}
+	// Streaming mode: use ResponseController.Flush which works through
+	// any middleware ResponseWriter wrappers (Go 1.20+).
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	rc := http.NewResponseController(w)
 
 	buf := make([]byte, 4096)
 	for {
@@ -650,7 +646,10 @@ func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {
 			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
 				return
 			}
-			flusher.Flush()
+			if flushErr := rc.Flush(); flushErr != nil {
+				slog.Warn("getPodLogs: flush error", "err", flushErr)
+				return
+			}
 		}
 		if readErr != nil {
 			return
