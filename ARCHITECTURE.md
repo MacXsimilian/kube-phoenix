@@ -55,6 +55,7 @@ kube-phoenix is a web application that manages Kubernetes cluster **sleep/wake s
 | Dry-run (plan) mode      | Every scale operation can be simulated before applying                    |
 | Live log streaming       | WebSocket-based log fan-out during an active execution                    |
 | Cluster state visibility | Real-time view of workloads and nodes with health metrics                 |
+| Pod log streaming        | Live container log viewer streamed directly from the K8s API (no DB)      |
 | History                  | Paginated execution history with per-execution log viewer                 |
 | Self-hosted              | Single binary embeds the full Next.js SPA; no separate web server needed  |
 | API documentation        | Swagger UI served at `/api/docs/`; raw OpenAPI 3.1 spec at `/api/docs/openapi.yaml` |
@@ -1483,7 +1484,9 @@ layout.tsx (Inter font, HTML skeleton)
 
 **`NodeDetailDrawer`** — MUI `Drawer` (right side, 480px). Shows node conditions, capacity, labels, taints, and a list of pods running on the node. Each pod is clickable, opening `PodDetailDrawer`.
 
-**`PodDetailDrawer`** / **`PodDetailContent`** — shows container statuses, resource requests, conditions, events, and live metrics. Metrics are shown with MUI `LinearProgress` bars (CPU and memory usage vs requested).
+**`PodDetailDrawer`** / **`PodDetailContent`** — shows container statuses, resource requests, conditions, events, and live metrics. Metrics are shown with MUI `LinearProgress` bars (CPU and memory usage vs requested). A "Logs" button in the overview row opens `PodLogViewer` inline within the drawer, replacing the detail view (back-arrow to return).
+
+**`PodLogViewer`** — streams live container logs via a chunked HTTP response (`GET /api/cluster/pods/{ns}/{name}/logs?follow=true`). The backend proxies the K8s pod logs API directly with `Follow: true` and flushes chunks as they arrive — zero database involvement. Features: container selector (multi-container pods), search with match counter and up/down navigation (Enter/Shift+Enter keyboard support), current-match highlight with left accent border, copy-to-clipboard, download as `.log`, auto-scroll toggle (auto-disables when user scrolls up), and a "Load older logs" button at the top. When a container has a `lastState` (e.g. OOMKilled), a contextual banner offers "View previous logs" which fetches a one-shot snapshot of the terminated container's output.
 
 **`ScheduleCard`** — displays a single schedule with type icon (moon/sun), cron expression rendered by `cronToText()`, mode badge, and an enabled toggle. The toggle uses an optimistic update — it flips immediately in local state via `useState`, fires `PUT /api/schedules/:id` with `{ enabled: <new value> }`, and reverts on error. Has edit and delete actions. The run button opens a mode selection dialog before calling the trigger API.
 

@@ -1093,6 +1093,80 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/cluster/pods/{namespace}/{name}/logs:
+    parameters:
+      - name: namespace
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getPodLogs
+      summary: Stream container logs
+      description: |
+        Proxies the Kubernetes pod logs API. Returns plain-text log output.
+        When `follow=true`, the response uses chunked transfer encoding and
+        streams new log lines as the container writes them. The connection
+        stays open until the client disconnects or the container terminates.
+        No database involvement — logs are streamed directly from the K8s API.
+      tags: [Cluster]
+      parameters:
+        - name: container
+          in: query
+          description: Container name (defaults to first container)
+          schema:
+            type: string
+        - name: tailLines
+          in: query
+          description: Number of lines from the end to start from (default 500, max 10000)
+          schema:
+            type: integer
+            default: 500
+        - name: follow
+          in: query
+          description: Stream live logs (chunked transfer encoding)
+          schema:
+            type: boolean
+            default: false
+        - name: previous
+          in: query
+          description: Return logs from the previously terminated container instance
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Plain-text log output (chunked when follow=true)
+          content:
+            text/plain:
+              schema:
+                type: string
+        "400":
+          description: Invalid resource name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Kubernetes client unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/cluster/workloads/{namespace}/{kind}/{name}/pods:
     parameters:
       - name: namespace
