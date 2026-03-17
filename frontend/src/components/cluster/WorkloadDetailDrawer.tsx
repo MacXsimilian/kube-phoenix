@@ -18,6 +18,7 @@ import TableRow from '@mui/material/TableRow'
 import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
+import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getWorkloadPods } from '@/lib/api'
@@ -25,7 +26,7 @@ import { fmtCpu, fmtMem, podAge, sinceMs } from '@/lib/formatters'
 import { STATUS_COLORS, POD_STATUS_STYLE } from '@/components/cluster/statusColors'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { NodePod, Workload } from '@/lib/types'
-import PodDetailDrawer from './PodDetailDrawer'
+import PodDetailContent from './PodDetailContent'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -128,63 +129,88 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
   }
 
   return (
-    <>
-      <Drawer
-        anchor="right"
-        open={workload != null}
-        onClose={handleClose}
-        slotProps={{ paper: {
-          sx: {
-            width: { xs: '100vw', md: drawerWidth },
-            bgcolor: 'background.paper',
-            borderLeft: '1px solid',
-            borderColor: 'divider',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'visible',
-          },
-        } }}
-      >
-        {/* Resize handle */}
-        <Box
-          onMouseDown={handleResizeMouseDown}
-          onTouchStart={handleResizeTouchStart}
-          sx={{
-            position: 'absolute',
-            left: -4, top: 0, bottom: 0, width: 8,
-            cursor: 'col-resize', zIndex: 1,
-            '&:hover': { bgcolor: 'primary.main', opacity: 0.4 },
-            display: { xs: 'none', md: 'block' },
-          }}
-        />
+    <Drawer
+      anchor="right"
+      open={workload != null}
+      onClose={handleClose}
+      slotProps={{ paper: {
+        sx: {
+          width: { xs: '100vw', md: drawerWidth },
+          bgcolor: 'background.paper',
+          borderLeft: '1px solid',
+          borderColor: 'divider',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'visible',
+        },
+      } }}
+    >
+      {/* Resize handle */}
+      <Box
+        onMouseDown={handleResizeMouseDown}
+        onTouchStart={handleResizeTouchStart}
+        sx={{
+          position: 'absolute',
+          left: -4, top: 0, bottom: 0, width: 8,
+          cursor: 'col-resize', zIndex: 1,
+          '&:hover': { bgcolor: 'primary.main', opacity: 0.4 },
+          display: { xs: 'none', md: 'block' },
+        }}
+      />
 
-        {workload && (
-          <>
-            {/* Header */}
-            <Box sx={{ px: 2.5, pt: 2.5, pb: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+      {workload && (
+        <>
+          {/* Header */}
+          <Box sx={{ px: 2.5, pt: 2.5, pb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+              <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                {selectedPod && (
+                  <Tooltip title={`Back to ${workload.name}`}>
+                    <IconButton size="small" onClick={() => setSelectedPod(null)} sx={{ mt: -0.25, flexShrink: 0 }} aria-label="Back to workload">
+                      <ArrowBackIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                )}
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11, display: 'block', mb: 0.25 }}>
-                    {workload.namespace}
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 13, wordBreak: 'break-all', lineHeight: 1.4 }}>
-                    {workload.name}
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 0.75, mt: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <Chip
-                      label={workload.kind}
-                      size="small"
-                      sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(124,58,237,0.12)', color: 'primary.main' }}
-                    />
-                    {sc && <Chip label={sc.label} size="small" sx={{ height: 18, fontSize: 10, bgcolor: sc.bgcolor, color: sc.color }} />}
-                  </Box>
+                  {selectedPod ? (
+                    <>
+                      <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11, display: 'block', mb: 0.25 }}>
+                        {workload.name}
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 13, wordBreak: 'break-all', lineHeight: 1.4 }}>
+                        {selectedPod.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
+                        {selectedPod.namespace}
+                      </Typography>
+                    </>
+                  ) : (
+                    <>
+                      <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11, display: 'block', mb: 0.25 }}>
+                        {workload.namespace}
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 13, wordBreak: 'break-all', lineHeight: 1.4 }}>
+                        {workload.name}
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 0.75, mt: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <Chip
+                          label={workload.kind}
+                          size="small"
+                          sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(124,58,237,0.12)', color: 'primary.main' }}
+                        />
+                        {sc && <Chip label={sc.label} size="small" sx={{ height: 18, fontSize: 10, bgcolor: sc.bgcolor, color: sc.color }} />}
+                      </Box>
+                    </>
+                  )}
                 </Box>
-                <IconButton size="small" onClick={handleClose} sx={{ mt: -0.25, flexShrink: 0 }} aria-label="Close workload detail">
-                  <CloseIcon sx={{ fontSize: 18 }} />
-                </IconButton>
               </Box>
+              <IconButton size="small" onClick={handleClose} sx={{ mt: -0.25, flexShrink: 0 }} aria-label="Close workload detail">
+                <CloseIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Box>
 
-              {/* Replica bar */}
+            {/* Replica bar — hidden in pod detail view */}
+            {!selectedPod && (
               <Box sx={{ mt: 1.5 }}>
                 <ReplicaBar
                   ready={workload.readyReplicas}
@@ -192,11 +218,20 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
                   saved={workload.savedReplicas}
                 />
               </Box>
+            )}
+          </Box>
+
+          <Divider />
+
+          {/* Pod detail content — replaces toolbar + pod list */}
+          {selectedPod && (
+            <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+              <PodDetailContent namespace={selectedPod.namespace} podName={selectedPod.name} />
             </Box>
+          )}
 
-            <Divider />
-
-            {/* Toolbar */}
+          {/* Toolbar — hidden in pod detail view */}
+          {!selectedPod && (
             <Box sx={{ px: 2.5, py: 1.25, display: 'flex', alignItems: 'center', gap: 1 }}>
               <TextField
                 size="small"
@@ -215,10 +250,12 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
                 </IconButton>
               </Tooltip>
             </Box>
+          )}
 
-            <Divider />
+          {!selectedPod && <Divider />}
 
-            {/* Pod list */}
+          {/* Pod list — hidden in pod detail view */}
+          {!selectedPod && (
             <Box sx={{ flex: 1, overflow: 'auto' }}>
               {isError ? (
                 <Alert severity="error" sx={{ m: 2 }}>
@@ -251,11 +288,9 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
                 </Table>
               )}
             </Box>
-          </>
-        )}
-      </Drawer>
-
-      <PodDetailDrawer pod={selectedPod} onClose={() => setSelectedPod(null)} />
-    </>
+          )}
+        </>
+      )}
+    </Drawer>
   )
 }
