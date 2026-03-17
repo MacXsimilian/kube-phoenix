@@ -15,6 +15,7 @@ services:
       timeout: 5s
       retries: 5
 
+  # Uses backend-builder stage (not distroless) for local dev — includes shell for debugging
   backend:
     build:
       context: .

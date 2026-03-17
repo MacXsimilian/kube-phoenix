@@ -37,11 +37,13 @@ Be respectful. Criticism of code and ideas is welcome; criticism of people is no
 **Prerequisites**
 
 | Tool | Version | Purpose |
-|---|---|---|
+| :--- | :------ | :------ |
 | Go | 1.26.x | Backend |
 | Node.js | 24+ | Frontend |
 | Docker | any | Local PostgreSQL via `docker-compose.yml` |
 | kubectl | any | Optional — cluster endpoints return empty data without it |
+| golangci-lint | v2+ | Backend linting (`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`) |
+| govulncheck | latest | Backend vulnerability checks (`go install golang.org/x/vuln/cmd/govulncheck@latest`) |
 
 **Start everything**
 
@@ -56,7 +58,9 @@ make dev-backend
 make dev-frontend
 ```
 
-The frontend dev server proxies `/api/*` to `http://localhost:8080`. Authentication is disabled when `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` are unset.
+In development, the frontend uses the `NEXT_PUBLIC_API_URL` environment variable to reach the backend API. When unset, it defaults to the same origin (relative `/api/*` paths). Set `NEXT_PUBLIC_API_URL=http://localhost:8080` when running the frontend dev server on a separate port. Authentication is disabled when `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` are unset.
+
+The backend auto-migrates the database schema and seeds default data (4 schedules + guardrails) on startup. No manual migration step is needed.
 
 **CORS during local development**
 
@@ -78,8 +82,9 @@ cd backend && go tool cover -func=coverage.out
 
 ```bash
 cd backend && golangci-lint run   # requires golangci-lint v2 installed
-cd frontend && npm run lint
 ```
+
+> **Note:** Frontend linting is not yet configured. See the roadmap for planned ESLint setup.
 
 ---
 
@@ -87,7 +92,7 @@ cd frontend && npm run lint
 
 ```
 kube-phoenix/
-├── openapi.yaml                    # OpenAPI 3.x spec — update for every API change
+├── openapi.yaml                    # OpenAPI 3.1 spec — update for every API change
 ├── backend/
 │   ├── cmd/server/main.go          # Entry point
 │   └── internal/
@@ -141,7 +146,7 @@ git push -u origin feat/your-feature
 kube-phoenix uses [Conventional Commits](https://www.conventionalcommits.org). release-please reads these to determine the version bump and generate the CHANGELOG automatically.
 
 | Prefix | Version bump | Use for |
-|---|---|---|
+| :----- | :----------- | :------ |
 | `feat:` | minor | new user-facing feature |
 | `fix:` | patch | bug fix |
 | `perf:` | patch | performance improvement |
@@ -151,6 +156,8 @@ kube-phoenix uses [Conventional Commits](https://www.conventionalcommits.org). r
 | `chore:` | none | maintenance, dependencies, config |
 | `refactor:` | none | code restructure, no behaviour change |
 | `test:` | none | test-only changes |
+
+> **Pre-1.0 note:** While the project is pre-1.0 (current version 0.1.x), release-please is configured with `bump-patch-for-minor-pre-major: true`. This means `feat:` commits bump the **patch** version (not minor), and `feat!:` / `BREAKING CHANGE:` commits bump **minor** (not major). After v1.0.0, the table above applies as written.
 
 **Examples**
 
@@ -181,22 +188,30 @@ Before requesting review, confirm:
 
 ## CI pipeline
 
-CI runs automatically on every PR and on every push to `master`. All jobs must pass before merging.
+Two workflows run automatically. All required jobs must pass before merging.
 
-### On every PR / push to `master`
+### CI workflow (`.github/workflows/ci.yml`)
+
+Runs on every PR and push to `master` when relevant paths change (`frontend/**`, `backend/**`, `openapi.yaml`, `Dockerfile`, `helm/**`, `.github/workflows/**`).
 
 | Job | What it checks |
-|---|---|
-| Frontend build | `npm install`, `npm audit` (high severity gate), `npm run build` |
-| Backend build | `go vet`, `go test` + coverage report, `go build`, `govulncheck`, golangci-lint v2 (includes gosec) |
+| :-- | :------------- |
+| Frontend build | `npm ci`, `npm run build` |
+| Backend build | `go vet`, `go test` + coverage report, `go build`, golangci-lint v2 (includes gosec), OpenAPI spec sync check |
 | Helm lint | `helm lint helm/kube-phoenix` |
-| Secret scan | TruffleHog — verified leaked secrets only |
+| Go Report Card | Triggers a rescan at goreportcard.com (on push to `master` only) |
 
-### On push to `master` (after backend passes)
+### Security workflow (`.github/workflows/security.yml`)
+
+Runs on every PR, push to `master`, **and weekly** (Monday 06:00 UTC).
 
 | Job | What it checks |
-|---|---|
-| Go Report Card | Triggers a rescan at goreportcard.com for the backend package |
+| :-- | :------------- |
+| govulncheck | Go dependency vulnerability scan |
+| npm audit | npm dependency audit (high severity gate) |
+| Trivy image scan | Container image vulnerability scan |
+| Trivy filesystem scan | IaC and dependency scan |
+| TruffleHog | Verified leaked secrets only |
 
 All GitHub Actions action versions are pinned to a full commit SHA for supply chain integrity. When updating an action, always pin to the new SHA rather than a floating tag.
 
