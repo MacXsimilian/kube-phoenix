@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.68](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.67...v0.1.68) (2026-03-17)
+
+
+### Features
+
+* add streaming pod log viewer to pod detail ([eee065c](https://github.com/MacXsimilian/kube-phoenix/commit/eee065c4ef7f51f36218dfa17e2748c9c2622983))
+* **cluster:** add streaming pod log viewer to pod detail ([899bb8c](https://github.com/MacXsimilian/kube-phoenix/commit/899bb8c773593e4c9de9e8546cd80a1ef17e0289))
+
 ## [0.1.67](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.66...v0.1.67) (2026-03-17)
 
 
