@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"time"
@@ -423,6 +424,25 @@ func (c *Client) GetPodMetrics(ctx context.Context, namespace, name string) (map
 		}
 	}
 	return result, nil
+}
+
+// GetPodLogs returns the raw log output for a container in a pod.
+// When follow is true the stream stays open and tails new output (like kubectl logs -f).
+// The caller is responsible for closing the returned io.ReadCloser.
+func (c *Client) GetPodLogs(ctx context.Context, namespace, name, container string, tailLines int64, previous, follow bool) (io.ReadCloser, error) {
+	opts := &corev1.PodLogOptions{
+		Container: container,
+		Previous:  previous,
+		Follow:    follow,
+	}
+	if tailLines > 0 {
+		opts.TailLines = &tailLines
+	}
+	stream, err := c.cs.CoreV1().Pods(namespace).GetLogs(name, opts).Stream(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get logs %s/%s (container=%s): %w", namespace, name, container, err)
+	}
+	return stream, nil
 }
 
 func (c *Client) GetPodEvents(ctx context.Context, namespace, podName string) ([]corev1.Event, error) {

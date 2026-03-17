@@ -143,7 +143,7 @@ flowchart TB
 ## Features
 
 - **Overview** — cluster health at a glance: current scale state, live indicator, partial-sleep namespace breakdown, schedule next-run countdown, and live activity feed with inline log drawer
-- **Cluster State** — live view of all Deployments, StatefulSets, and nodes with resizable drill-down drawers; pod detail includes live CPU/memory usage, annotations, node instance type, and Kubernetes events
+- **Cluster State** — live view of all Deployments, StatefulSets, and nodes with resizable drill-down drawers; pod detail includes live CPU/memory usage, annotations, node instance type, Kubernetes events, and a streaming container log viewer with search navigation
 - **Guardrails** — protect namespaces, node labels, and taints from ever being touched by the scaler
 - **Schedules** — multiple sleep and wake schedules with a visual cron builder (day-of-week picker, hour/minute dropdowns, live human-readable preview, and an advanced raw cron toggle for power users), per-schedule timezones, and optional namespace filters for partial scale-down; inline enable/disable toggle and drag-to-reorder
 - **History** — full execution log with live WebSocket streaming; jump-to-error navigation and error/workload count badges
