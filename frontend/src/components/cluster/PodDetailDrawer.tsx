@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Box from '@mui/material/Box'
 import Divider from '@mui/material/Divider'
 import Drawer from '@mui/material/Drawer'
@@ -9,10 +10,24 @@ import Typography from '@mui/material/Typography'
 import CloseIcon from '@mui/icons-material/Close'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import PodDetailContent from './PodDetailContent'
-import type { NodePod } from '@/lib/types'
+import PodLogViewer from './PodLogViewer'
+import type { NodePod, PodContainer } from '@/lib/types'
 
 export default function PodDetailDrawer({ pod, onClose }: { pod: NodePod | null; onClose: () => void }) {
   const [drawerWidth, handleResizeMouseDown, handleResizeTouchStart] = useDrawerResize(520)
+  const [view, setView] = useState<'detail' | 'logs'>('detail')
+  const [containers, setContainers] = useState<PodContainer[]>([])
+
+  // Reset to detail view when pod changes
+  useEffect(() => {
+    setView('detail')
+    setContainers([])
+  }, [pod?.name, pod?.namespace])
+
+  function handleShowLogs(podContainers: PodContainer[]) {
+    setContainers(podContainers)
+    setView('logs')
+  }
 
   return (
     <Drawer
@@ -44,7 +59,7 @@ export default function PodDetailDrawer({ pod, onClose }: { pod: NodePod | null;
         }}
       />
 
-      {pod && (
+      {pod && view === 'detail' && (
         <>
           <Box sx={{ px: 2.5, pt: 2.5, pb: 2, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
             <Box sx={{ minWidth: 0 }}>
@@ -65,7 +80,38 @@ export default function PodDetailDrawer({ pod, onClose }: { pod: NodePod | null;
           <Divider />
 
           <Box sx={{ flex: 1, overflow: 'auto' }}>
-            <PodDetailContent namespace={pod.namespace} podName={pod.name} />
+            <PodDetailContent namespace={pod.namespace} podName={pod.name} onShowLogs={handleShowLogs} />
+          </Box>
+        </>
+      )}
+
+      {pod && view === 'logs' && (
+        <>
+          <Box sx={{ px: 2.5, pt: 2.5, pb: 2, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11, display: 'block', mb: 0.25 }}>
+                {pod.namespace}
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 13, wordBreak: 'break-all', lineHeight: 1.4 }}>
+                {pod.name}
+              </Typography>
+            </Box>
+            <Tooltip title="Close">
+              <IconButton size="small" onClick={onClose} sx={{ mt: -0.25, flexShrink: 0 }} aria-label="Close pod detail">
+                <CloseIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+
+          <Divider />
+
+          <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <PodLogViewer
+              namespace={pod.namespace}
+              podName={pod.name}
+              containers={containers}
+              onBack={() => setView('detail')}
+            />
           </Box>
         </>
       )}

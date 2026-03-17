@@ -16,7 +16,9 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
+import Button from '@mui/material/Button'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import TerminalIcon from '@mui/icons-material/Terminal'
 import { getPodDetail } from '@/lib/api'
 import { fmtCpu, fmtMem, podAge } from '@/lib/formatters'
 import type { PodContainer, PodCondition, PodEvent } from '@/lib/types'
@@ -189,7 +191,7 @@ function CollapsibleKVSection({ title, entries }: { title: string; entries: [str
 
 // ── main component ────────────────────────────────────────────────────────────
 
-export default function PodDetailContent({ namespace, podName }: { namespace: string; podName: string }) {
+export default function PodDetailContent({ namespace, podName, onShowLogs }: { namespace: string; podName: string; onShowLogs?: (containers: PodContainer[]) => void }) {
   const { data: pod, isLoading, isError, error } = useQuery({
     queryKey: ['pod-detail', namespace, podName],
     queryFn: () => getPodDetail(namespace, podName),
@@ -227,6 +229,18 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
         />
         {pod.qosClass && (
           <Chip label={pod.qosClass} size="small" sx={{ height: 20, fontSize: 11 }} />
+        )}
+        <Box sx={{ flex: 1 }} />
+        {onShowLogs && (
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<TerminalIcon sx={{ fontSize: '14px !important' }} />}
+            onClick={() => onShowLogs(pod.containers ?? [])}
+            sx={{ fontSize: 11, textTransform: 'none', py: 0.25, px: 1.5 }}
+          >
+            Logs
+          </Button>
         )}
       </Box>
 
