@@ -1484,9 +1484,23 @@ layout.tsx (Inter font, HTML skeleton)
 
 **`NodeDetailDrawer`** — MUI `Drawer` (right side, 480px). Shows node conditions, capacity, labels, taints, and a list of pods running on the node. Each pod is clickable, opening `PodDetailDrawer`.
 
-**`PodDetailDrawer`** / **`PodDetailContent`** — shows container statuses, resource requests, conditions, events, and live metrics. Metrics are shown with MUI `LinearProgress` bars (CPU and memory usage vs requested). A "Logs" button in the overview row opens `PodLogViewer` inline within the drawer, replacing the detail view (back-arrow to return).
+**`PodDetailContent`** — self-contained component that shows container statuses, resource requests, conditions, events, and live metrics. Manages its own detail↔logs view toggle internally — a "Logs" button in the overview row switches to `PodLogViewer` inline (back-arrow to return). Used by both `WorkloadDetailDrawer` and `NodeDetailDrawer` without any wrapper.
 
-**`PodLogViewer`** — streams live container logs via a chunked HTTP response (`GET /api/cluster/pods/{ns}/{name}/logs?follow=true`). The backend proxies the K8s pod logs API directly with `Follow: true` and flushes chunks as they arrive — zero database involvement. Features: container selector (multi-container pods), search with match counter and up/down navigation (Enter/Shift+Enter keyboard support), current-match highlight with left accent border, copy-to-clipboard, download as `.log`, auto-scroll toggle (auto-disables when user scrolls up), and a "Load older logs" button at the top. When a container has a `lastState` (e.g. OOMKilled), a contextual banner offers "View previous logs" which fetches a one-shot snapshot of the terminated container's output.
+**`PodLogViewer`** — streams live container logs via a chunked HTTP response (`GET /api/cluster/pods/{ns}/{name}/logs?follow=true`). The streaming architecture:
+
+```
+Browser (fetch + ReadableStream)
+    ↕ chunked HTTP (text/plain, no Content-Length)
+Go handler (read 4KB chunks → Write → ResponseController.Flush)
+    ↕ io.ReadCloser (K8s streaming API)
+K8s API server → kubelet → container stdout/stderr
+```
+
+The backend proxies the K8s pod logs API directly with `Follow: true` and flushes each chunk via `http.ResponseController` (which traverses middleware wrapper chains). Headers `Cache-Control: no-cache` and `Connection: keep-alive` prevent intermediate proxy buffering. Zero database involvement — the Go handler is a stateless pipe.
+
+Lifecycle: user opens logs → `fetch()` with `AbortController` → Go handler opens K8s stream → chunks flow until user navigates away → `AbortController.abort()` cancels the fetch → Go request context is cancelled → K8s stream closes.
+
+Features: container selector (multi-container pods), search with match counter and up/down navigation (Enter/Shift+Enter keyboard support), current-match highlight with left accent border, copy-to-clipboard, download as `.log`, auto-scroll toggle (auto-disables when user scrolls up), and a "Load older logs" button at the top. When a container has a `lastState` (e.g. OOMKilled), a contextual banner offers "View previous logs" which fetches a one-shot snapshot of the terminated container's output.
 
 **`ScheduleCard`** — displays a single schedule with type icon (moon/sun), cron expression rendered by `cronToText()`, mode badge, and an enabled toggle. The toggle uses an optimistic update — it flips immediately in local state via `useState`, fires `PUT /api/schedules/:id` with `{ enabled: <new value> }`, and reverts on error. Has edit and delete actions. The run button opens a mode selection dialog before calling the trigger API.
 
