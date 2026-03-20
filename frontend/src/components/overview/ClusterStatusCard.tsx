@@ -28,6 +28,8 @@ import type { Execution, Overview } from '@/lib/types'
 import { timeUntil } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
 import LogViewer from '@/components/history/LogViewer'
+import { useAuth } from '@/lib/auth'
+import { canTriggerSchedules } from '@/lib/rbac'
 
 type TriggerType = 'scale_down' | 'scale_up'
 
@@ -97,6 +99,8 @@ function useClusterStream() {
 export default function ClusterStatusCard() {
   const qc = useQueryClient()
   const router = useRouter()
+  const { user } = useAuth()
+  const hasTrigger = canTriggerSchedules(user?.permissions)
 
   // Single overview query — fed by SSE in real time, polls as fallback
   const { data: overview, isLoading, isError } = useQuery({
@@ -278,24 +282,26 @@ export default function ClusterStatusCard() {
 
               {/* Action buttons with impact tooltips */}
               <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-                <Tooltip title={`Will scale down ~${running} running workload${running !== 1 ? 's' : ''}`} arrow>
+                <Tooltip title={hasTrigger ? `Will scale down ~${running} running workload${running !== 1 ? 's' : ''}` : 'You do not have permission to trigger schedules'} arrow>
                   <span>
                     <Button
                       variant="outlined"
                       startIcon={<BedtimeIcon fontSize="small" />}
                       onClick={() => { setMode('plan'); setDialog({ open: true, type: 'scale_down' }) }}
+                      disabled={!hasTrigger}
                       sx={{ borderColor: 'divider', color: 'text.secondary' }}
                     >
                       Run Sleep Now
                     </Button>
                   </span>
                 </Tooltip>
-                <Tooltip title={`Will restore ~${sleeping} sleeping workload${sleeping !== 1 ? 's' : ''}`} arrow>
+                <Tooltip title={hasTrigger ? `Will restore ~${sleeping} sleeping workload${sleeping !== 1 ? 's' : ''}` : 'You do not have permission to trigger schedules'} arrow>
                   <span>
                     <Button
                       variant="outlined"
                       startIcon={<WbSunnyIcon fontSize="small" />}
                       onClick={() => { setMode('plan'); setDialog({ open: true, type: 'scale_up' }) }}
+                      disabled={!hasTrigger}
                       sx={{ borderColor: 'divider', color: 'text.secondary' }}
                     >
                       Run Wake Now

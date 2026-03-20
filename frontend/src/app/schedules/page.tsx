@@ -32,6 +32,8 @@ import { getSchedules, reorderSchedules } from '@/lib/api'
 import type { Schedule } from '@/lib/types'
 import ScheduleCard from '@/components/schedules/ScheduleCard'
 import ScheduleDialog from '@/components/schedules/ScheduleDialog'
+import { useAuth } from '@/lib/auth'
+import { canEditSchedules, canTriggerSchedules } from '@/lib/rbac'
 
 // ── Sortable wrapper ────────────────────────────────────────────────────────
 // Thin component that wires dnd-kit's useSortable into ScheduleCard without
@@ -75,6 +77,9 @@ function EmptySlot({ label }: { label: string }) {
 }
 
 export default function SchedulesPage() {
+  const { user } = useAuth()
+  const hasEdit = canEditSchedules(user?.permissions)
+  const hasTrigger = canTriggerSchedules(user?.permissions)
   const qc = useQueryClient()
   const { data: schedules = [], isLoading, isError, error } = useQuery({
     queryKey: ['schedules'],
@@ -168,15 +173,17 @@ export default function SchedulesPage() {
           <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
             Scale down workloads and drain nodes
           </Typography>
-          <Button
-            size="small"
-            startIcon={<AddIcon fontSize="small" />}
-            variant="outlined"
-            sx={{ borderColor: 'divider' }}
-            onClick={() => setDialog({ open: true, defaultType: 'scale_down' })}
-          >
-            Add
-          </Button>
+          {hasEdit && (
+            <Button
+              size="small"
+              startIcon={<AddIcon fontSize="small" />}
+              variant="outlined"
+              sx={{ borderColor: 'divider' }}
+              onClick={() => setDialog({ open: true, defaultType: 'scale_down' })}
+            >
+              Add
+            </Button>
+          )}
         </Box>
 
         {sleepSchedules.length === 0 ? (
@@ -200,6 +207,8 @@ export default function SchedulesPage() {
                       onEdit={() => setDialog({ open: true, schedule: sc })}
                       onDelete={() => { qc.invalidateQueries({ queryKey: ['schedules'] }); qc.invalidateQueries({ queryKey: ['overview'] }) }}
                       onNotify={notify}
+                      canEdit={hasEdit}
+                      canTrigger={hasTrigger}
                     />
                   )
                 })}
@@ -219,15 +228,17 @@ export default function SchedulesPage() {
           <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
             Restore workloads from saved replica counts
           </Typography>
-          <Button
-            size="small"
-            startIcon={<AddIcon fontSize="small" />}
-            variant="outlined"
-            sx={{ borderColor: 'divider' }}
-            onClick={() => setDialog({ open: true, defaultType: 'scale_up' })}
-          >
-            Add
-          </Button>
+          {hasEdit && (
+            <Button
+              size="small"
+              startIcon={<AddIcon fontSize="small" />}
+              variant="outlined"
+              sx={{ borderColor: 'divider' }}
+              onClick={() => setDialog({ open: true, defaultType: 'scale_up' })}
+            >
+              Add
+            </Button>
+          )}
         </Box>
 
         {wakeSchedules.length === 0 ? (
@@ -251,6 +262,8 @@ export default function SchedulesPage() {
                       onEdit={() => setDialog({ open: true, schedule: sc })}
                       onDelete={() => { qc.invalidateQueries({ queryKey: ['schedules'] }); qc.invalidateQueries({ queryKey: ['overview'] }) }}
                       onNotify={notify}
+                      canEdit={hasEdit}
+                      canTrigger={hasTrigger}
                     />
                   )
                 })}
