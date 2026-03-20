@@ -45,4 +45,36 @@ var (
 		Name: "kube_phoenix_active_schedules",
 		Help: "Number of enabled schedules, partitioned by schedule_type and mode.",
 	}, []string{"schedule_type", "mode"})
+
+	// ─── User management metrics ─────────────────────────────────────────
+
+	// AuthAttemptsTotal counts login attempts by status and method.
+	AuthAttemptsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "kube_phoenix_auth_attempts_total",
+		Help: "Total login attempts, partitioned by status (success|failure) and method (local|oidc).",
+	}, []string{"status", "method"})
+
+	// UserActionsTotal counts user-initiated mutations.
+	UserActionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "kube_phoenix_user_actions_total",
+		Help: "Total user actions, partitioned by action, user, and resource_type.",
+	}, []string{"action", "user", "resource_type"})
+
+	// ActiveSessions is a gauge of currently valid sessions.
+	ActiveSessions = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "kube_phoenix_active_sessions",
+		Help: "Number of active (non-expired) sessions.",
+	})
+
+	// RateLimitHitsTotal counts rate-limit rejections.
+	RateLimitHitsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "kube_phoenix_rate_limit_hits_total",
+		Help: "Total rate-limit rejections, partitioned by type (per_ip|per_username).",
+	}, []string{"type"})
+
+	// AuditDropsTotal counts audit entries dropped due to a full buffer.
+	AuditDropsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "kube_phoenix_audit_drops_total",
+		Help: "Total audit log entries dropped because the async write buffer was full.",
+	})
 )

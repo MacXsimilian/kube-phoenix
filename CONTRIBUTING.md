@@ -58,7 +58,7 @@ make dev-backend
 make dev-frontend
 ```
 
-In development, the frontend uses the `NEXT_PUBLIC_API_URL` environment variable to reach the backend API. When unset, it defaults to the same origin (relative `/api/*` paths). Set `NEXT_PUBLIC_API_URL=http://localhost:8080` when running the frontend dev server on a separate port. Authentication is disabled when `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` are unset.
+In development, the frontend uses the `NEXT_PUBLIC_API_URL` environment variable to reach the backend API. When unset, it defaults to the same origin (relative `/api/*` paths). Set `NEXT_PUBLIC_API_URL=http://localhost:8080` when running the frontend dev server on a separate port. Authentication is disabled when `ADMIN_USER` / `ADMIN_PASSWORD` are unset.
 
 The backend auto-migrates the database schema and seeds default data (4 schedules + guardrails) on startup. No manual migration step is needed.
 

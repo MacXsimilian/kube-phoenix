@@ -1,17 +1,43 @@
-import type { Schedule, ScheduleInput, Guardrails, Execution, LogLine, Workload, Node, NodePod, ExecutionPage, PodDetail, Overview } from './types'
-import { getAuthHeader } from './auth'
+import type { Schedule, ScheduleInput, Guardrails, Execution, LogLine, Workload, Node, NodePod, ExecutionPage, PodDetail, Overview, User, AuditLogPage } from './types'
+import { getCSRFToken } from './auth'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
 
+// Mutation methods that require a CSRF token.
+const MUTATION_METHODS = new Set(['POST', 'PUT', 'DELETE', 'PATCH'])
+
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
+  const method = options?.method?.toUpperCase() ?? 'GET'
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...options?.headers as Record<string, string>,
+  }
+
+  // Attach CSRF token on mutation requests.
+  if (MUTATION_METHODS.has(method)) {
+    headers['X-CSRF-Token'] = getCSRFToken()
+  }
+
   const res = await fetch(`${BASE}${path}`, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeader(),
-      ...options?.headers,
-    },
+    credentials: 'include',
+    headers,
   })
+
+  // 401 → session expired or not authenticated.
+  if (res.status === 401) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('kp-session-expired'))
+    }
+    throw new Error('Session expired')
+  }
+
+  // 403 → permission denied — surface the backend message clearly.
+  if (res.status === 403) {
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.error || 'You do not have permission to perform this action')
+  }
+
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     throw new Error(body?.error || body?.message || `HTTP ${res.status}`)
@@ -136,7 +162,7 @@ export async function getPodLogs(
   if (previous) q.set('previous', 'true')
   const res = await fetch(
     `${BASE}/api/cluster/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/logs?${q}`,
-    { headers: { ...getAuthHeader() } },
+    { credentials: 'include' },
   )
   if (!res.ok) {
     const body = await res.json().catch(() => null)
@@ -160,7 +186,7 @@ export function streamPodLogs(
 
   return {
     start(onLine, onError, onDone) {
-      fetch(url, { headers: { ...getAuthHeader() }, signal })
+      fetch(url, { credentials: 'include', signal })
         .then(async (res) => {
           if (!res.ok) {
             const body = await res.json().catch(() => null)
@@ -181,7 +207,6 @@ export function streamPodLogs(
               if (line) onLine(line)
             }
           }
-          // Flush remaining buffer
           if (buf) onLine(buf)
           onDone()
         })
@@ -209,9 +234,10 @@ export const triggerRun = (
 export type ResetEvent = { type: 'step' | 'done' | 'error'; message: string }
 
 export async function* resetDatabaseStream(): AsyncGenerator<ResetEvent> {
-  const res = await fetch('/api/admin/reset-db', {
+  const res = await fetch(`${BASE}/api/admin/reset-db`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken() },
     body: JSON.stringify({ confirm: 'RESET DATABASE' }),
   })
 
@@ -240,6 +266,51 @@ export async function* resetDatabaseStream(): AsyncGenerator<ResetEvent> {
   }
 }
 
+// ── Users ─────────────────────────────────────────────────────────────────────
+
+export const getUsers = (): Promise<User[]> =>
+  req<User[]>('/api/users')
+
+export const createUserAPI = (data: { username: string; email?: string; password: string; role: string }): Promise<User> =>
+  req<User>('/api/users', { method: 'POST', body: JSON.stringify(data) })
+
+export const updateUserAPI = (id: number, data: Record<string, unknown>): Promise<User> =>
+  req<User>(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+
+export const deleteUserAPI = (id: number): Promise<void> =>
+  req<void>(`/api/users/${id}`, { method: 'DELETE' })
+
+export const changePasswordAPI = (currentPassword: string, newPassword: string): Promise<void> =>
+  req<void>('/api/auth/password', {
+    method: 'PUT',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  })
+
+// ── OIDC ──────────────────────────────────────────────────────────────────────
+
+export const getOIDCConfig = (): Promise<{ enabled: boolean }> =>
+  req<{ enabled: boolean }>('/api/auth/oidc/config')
+
+// ── Audit logs ────────────────────────────────────────────────────────────────
+
+export const getAuditLogs = (params?: {
+  user?: string
+  action?: string
+  from?: string
+  to?: string
+  page?: number
+  pageSize?: number
+}): Promise<AuditLogPage> => {
+  const q = new URLSearchParams()
+  if (params?.user) q.set('user', params.user)
+  if (params?.action) q.set('action', params.action)
+  if (params?.from) q.set('from', params.from)
+  if (params?.to) q.set('to', params.to)
+  if (params?.page !== undefined) q.set('page', String(params.page))
+  if (params?.pageSize) q.set('pageSize', String(params.pageSize))
+  return req<AuditLogPage>(`/api/audit-logs?${q}`)
+}
+
 // ── WebSocket URL helper ──────────────────────────────────────────────────────
 
 export const wsLogsUrl = (executionId: number): string => {
@@ -248,12 +319,6 @@ export const wsLogsUrl = (executionId: number): string => {
     ? apiUrl.replace(/^http/, 'ws')
     : `${typeof window !== 'undefined' ? window.location.origin.replace(/^http/, 'ws') : ''}`
 
-  const token = typeof window !== 'undefined' ? sessionStorage.getItem('kube-phoenix-auth') : null
-  const path = `/ws/executions/${executionId}/logs`
-  // Browsers dropped support for credentials in WebSocket URLs (wss://user:pass@host).
-  // Pass the base64 token as a query param instead; the backend middleware reads it.
-  if (token && token !== '__no_auth__') {
-    return `${base}${path}?token=${encodeURIComponent(token)}`
-  }
-  return `${base}${path}`
+  // Cookies are sent automatically on same-origin WebSocket upgrades — no token param needed.
+  return `${base}/ws/executions/${executionId}/logs`
 }

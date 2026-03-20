@@ -55,3 +55,44 @@ type LogLine struct {
 	Message     string    `json:"message"`
 	Timestamp   time.Time `json:"timestamp"`
 }
+
+// ─── User management ─────────────────────────────────────────────────────────
+
+type User struct {
+	ID           uint       `gorm:"primaryKey" json:"id"`
+	Username     string     `gorm:"uniqueIndex;size:255" json:"username"`
+	Email        string     `json:"email,omitempty"`
+	PasswordHash string     `gorm:"column:password_hash" json:"-"`
+	Role         string     `gorm:"size:20;default:viewer" json:"role"`     // admin | operator | viewer
+	Source       string     `gorm:"size:20;default:local" json:"source"`    // local | oidc
+	OIDCSubject  *string    `gorm:"uniqueIndex;size:255" json:"-"`          // OIDC sub claim
+	Enabled      bool       `gorm:"default:true" json:"enabled"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	UpdatedAt    time.Time  `json:"updatedAt"`
+	LastLoginAt  *time.Time `json:"lastLoginAt,omitempty"`
+}
+
+type Session struct {
+	ID           uint      `gorm:"primaryKey"`
+	Token        string    `gorm:"uniqueIndex;size:64"`
+	UserID       uint      `gorm:"index"`
+	User         User      `gorm:"foreignKey:UserID"`
+	IPAddress    string    `gorm:"size:45"`
+	UserAgent    string    `gorm:"size:512"`
+	ExpiresAt    time.Time `gorm:"index"` // sliding window
+	MaxExpiresAt time.Time // absolute hard cap
+	CreatedAt    time.Time
+}
+
+type AuditLog struct {
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	UserID       *uint     `gorm:"index" json:"userId,omitempty"`
+	Username     string    `json:"username"`
+	Action       string    `gorm:"index;size:100" json:"action"`
+	ResourceType string    `gorm:"size:50" json:"resourceType,omitempty"`
+	ResourceID   *uint     `json:"resourceId,omitempty"`
+	Before       string    `gorm:"type:jsonb" json:"before,omitempty"`
+	After        string    `gorm:"type:jsonb" json:"after,omitempty"`
+	IPAddress    string    `gorm:"size:45" json:"ipAddress,omitempty"`
+	Timestamp    time.Time `gorm:"index" json:"timestamp"`
+}

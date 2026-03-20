@@ -12,7 +12,7 @@
 #     --namespace kube-phoenix --create-namespace \
 #     -f examples/values-ingress-tls.yaml \
 #     --set ingress.host=kube-phoenix.example.com \
-#     --set secret.basicAuthPassword=<your-password>
+#     --set secret.adminPassword=<your-password>
 
 ingress:
   enabled: true
@@ -27,5 +27,5 @@ ingress:
       secretName: kube-phoenix-tls
 
 secret:
-  basicAuthUser: admin
-  basicAuthPassword: ""  # pass via --set
+  adminUser: admin
+  adminPassword: ""  # pass via --set
