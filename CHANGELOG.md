@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.71](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.70...v0.1.71) (2026-03-20)
+
+
+### Features
+
+* **settings:** add OIDC config status checker ([1e038af](https://github.com/MacXsimilian/kube-phoenix/commit/1e038af460f3b62949a63861c46a755dba554235))
+* **settings:** OIDC config status checker ([86ba7f0](https://github.com/MacXsimilian/kube-phoenix/commit/86ba7f0a4d9cd67a68a28653957ca8883732e385))
+
 ## [0.1.70](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.69...v0.1.70) (2026-03-20)
 
 
