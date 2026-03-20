@@ -8,7 +8,7 @@ The Helm chart deploys the application, an optional in-cluster PostgreSQL Statef
 helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
   --namespace kube-phoenix \
   --create-namespace \
-  --set secret.basicAuthPassword=<your-password>
+  --set secret.adminPassword=<your-password>
 ```
 
 Then access the UI:
@@ -126,9 +126,21 @@ targetGroupBinding:
 
 | Value | Default | Description |
 | :---- | :------ | :---------- |
-| `secret.existingSecret` | `""` | Pre-existing Secret (must contain `DATABASE_URL`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD`) |
-| `secret.basicAuthUser` | `admin` | Basic Auth username |
-| `secret.basicAuthPassword` | `kube-phoenix` | Basic Auth password — **change in production** |
+| `secret.existingSecret` | `""` | Pre-existing Secret (must contain `DATABASE_URL`, `ADMIN_USER`, `ADMIN_PASSWORD`) |
+| `secret.adminUser` | `admin` | Admin username (seeded on first startup) |
+| `secret.adminPassword` | `kube-phoenix` | Admin password — **change in production** |
+| `session.idleTimeout` | `8h` | Session sliding-window timeout |
+| `session.maxLifetime` | `24h` | Session absolute hard cap |
+| `session.cookieSecure` | `true` | Set `false` for HTTP-only environments |
+| `auditRetentionDays` | `90` | Auto-delete audit entries older than this (0 = keep forever) |
+| `oidc.enabled` | `false` | Enable Keycloak OIDC SSO |
+| `oidc.issuerURL` | `""` | Keycloak realm URL |
+| `oidc.clientID` | `""` | OIDC client ID |
+| `oidc.clientSecret` | `""` | OIDC client secret |
+| `oidc.redirectURL` | `""` | OIDC callback URL |
+| `oidc.groupsClaim` | `groups` | ID token claim for AD groups |
+| `oidc.roleAdminGroups` | `""` | AD groups mapping to admin role |
+| `oidc.roleOperatorGroups` | `""` | AD groups mapping to operator role |
 
 ### Networking
 

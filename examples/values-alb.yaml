@@ -16,7 +16,7 @@
 #     --namespace kube-phoenix --create-namespace \
 #     -f examples/values-alb.yaml \
 #     --set targetGroupBinding.targetGroupARN=arn:aws:elasticloadbalancing:... \
-#     --set secret.basicAuthPassword=<your-password>
+#     --set secret.adminPassword=<your-password>
 
 targetGroupBinding:
   enabled: true
@@ -30,5 +30,5 @@ ingress:
   enabled: false
 
 secret:
-  basicAuthUser: admin
-  basicAuthPassword: ""  # pass via --set
+  adminUser: admin
+  adminPassword: ""  # pass via --set

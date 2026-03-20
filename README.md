@@ -203,12 +203,11 @@ kube-phoenix exposes a Prometheus metrics endpoint at `/metrics` (no authenticat
 | `kube_phoenix_nodes_drained_total` | Counter | — | Nodes drained during scale-down |
 | `kube_phoenix_nodes_deleted_total` | Counter | — | Nodes deleted during scale-down |
 | `kube_phoenix_active_schedules` | Gauge | `schedule_type`, `mode` | Enabled schedules by type and mode |
-| `kube_phoenix_login_attempts_total` | Counter | `result` | Login attempts (success/failed) |
+| `kube_phoenix_auth_attempts_total` | Counter | `status`, `method` | Login attempts by outcome and method (local/oidc) |
+| `kube_phoenix_user_actions_total` | Counter | `action`, `user`, `resource_type` | User-initiated mutations (schedule.update, trigger.manual, etc.) |
 | `kube_phoenix_active_sessions` | Gauge | — | Currently active user sessions |
-| `kube_phoenix_auth_errors_total` | Counter | `reason` | Auth failures (expired, invalid, csrf) |
-| `kube_phoenix_audit_events_total` | Counter | `action` | Audit log events by action type |
-| `kube_phoenix_rate_limit_rejections_total` | Counter | `limiter` | Rate limiter rejections (ip/username) |
-| `kube_phoenix_oidc_logins_total` | Counter | `result` | OIDC login attempts (success/failed) |
+| `kube_phoenix_rate_limit_hits_total` | Counter | `type` | Rate limiter rejections (per_ip/per_username) |
+| `kube_phoenix_audit_drops_total` | Counter | — | Audit entries dropped due to full buffer |
 
 ---
 

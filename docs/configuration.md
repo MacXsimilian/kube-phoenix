@@ -5,10 +5,21 @@
 | Variable              | Required | Description                                                                                                                                                                               |
 | :-------------------- | :------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`        | Yes      | PostgreSQL DSN — e.g. `host=localhost user=kube_phoenix password=kube_phoenix dbname=kube_phoenix port=5432 sslmode=disable`                                                              |
-| `BASIC_AUTH_USER`     | No       | HTTP Basic Auth username. Unset = auth disabled (dev mode).                                                                                                                               |
-| `BASIC_AUTH_PASSWORD` | No       | HTTP Basic Auth password.                                                                                                                                                                 |
-| `CORS_ALLOWED_ORIGIN` | No       | Allowed CORS origin (e.g. `https://kube-phoenix.example.com`). When auth is enabled: unset = no cross-origin requests permitted. **In dev mode** (auth disabled): CORS allows all origins (`*`) regardless of this setting. |
-| `KUBECONFIG`          | No       | Path to kubeconfig file. Used as fallback when in-cluster config is unavailable (e.g. running locally). |
+| `ADMIN_USER`          | No       | Username for the seeded admin account (first startup only). Unset = auth disabled (dev mode).                                                                                             |
+| `ADMIN_PASSWORD`      | No       | Password for the seeded admin account (first startup only).                                                                                                                               |
+| `SESSION_IDLE_TIMEOUT`| No       | Sliding-window session timeout (default `8h`). Extended on each request.                                                                                                                  |
+| `SESSION_MAX_LIFETIME`| No       | Absolute session hard cap (default `24h`). Session dies regardless of activity.                                                                                                           |
+| `AUDIT_RETENTION_DAYS`| No       | Auto-delete audit log entries older than this many days (default `90`, `0` = keep forever).                                                                                               |
+| `COOKIE_SECURE`       | No       | Set to `false` for HTTP-only dev environments (default `true`).                                                                                                                           |
+| `CORS_ALLOWED_ORIGIN` | No       | Allowed CORS origin (e.g. `https://kube-phoenix.example.com`). Unset = same-origin only. In dev mode: CORS allows all origins (`*`).                                                     |
+| `KUBECONFIG`          | No       | Path to kubeconfig file. Used as fallback when in-cluster config is unavailable (e.g. running locally).                                                                                   |
+| `OIDC_ISSUER_URL`     | No       | Keycloak realm URL (e.g. `https://keycloak.example.com/realms/your-realm`). Enables OIDC SSO when set.                                                                                   |
+| `OIDC_CLIENT_ID`      | No       | Keycloak client ID (e.g. `kube-phoenix`).                                                                                                                                                 |
+| `OIDC_CLIENT_SECRET`  | No       | Keycloak client secret (leave empty for PKCE-only public clients).                                                                                                                        |
+| `OIDC_REDIRECT_URL`   | No       | Callback URL (e.g. `https://kube-phoenix.example.com/api/auth/oidc/callback`).                                                                                                            |
+| `OIDC_GROUPS_CLAIM`   | No       | ID token claim name containing AD groups (default `groups`).                                                                                                                              |
+| `OIDC_ROLE_ADMIN_GROUPS`   | No  | Comma-separated AD group names that map to the `admin` role.                                                                                                                              |
+| `OIDC_ROLE_OPERATOR_GROUPS`| No  | Comma-separated AD group names that map to the `operator` role. Unmatched users default to `viewer`.                                                                                      |
 
 ### CLI flags
 
@@ -27,11 +38,28 @@ These are Next.js build-time variables, not backend runtime variables.
 
 ## Authentication
 
-kube-phoenix uses a branded login screen backed by HTTP Basic Auth. Credentials are stored in `sessionStorage` and injected into every API request — no browser native auth dialog.
+kube-phoenix uses session-based authentication with HTTP-only cookies. Sessions are stored in PostgreSQL with dual expiry (idle timeout + absolute hard cap).
 
-Set `BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD` to enable authentication. When both are unset the application runs without authentication (dev mode).
+Set `ADMIN_USER` and `ADMIN_PASSWORD` to seed the first admin account on startup. When neither is set the application runs without authentication (dev mode).
 
-WebSocket log streams authenticate via a `?token=<base64(user:pass)>` query parameter — browsers cannot set `Authorization` headers on WebSocket upgrades.
+### Auth methods
+
+- **Local login** — username/password via `POST /api/auth/login`. Passwords are bcrypt-hashed. Rate-limited: 10 attempts per IP / 5 per username per 15-minute window.
+- **Keycloak OIDC** — set `OIDC_ISSUER_URL` to enable SSO. Uses Authorization Code flow with PKCE. AD groups from the ID token are mapped to roles (admin/operator/viewer) via `OIDC_ROLE_ADMIN_GROUPS` / `OIDC_ROLE_OPERATOR_GROUPS`. Unmatched users default to viewer. OIDC users are auto-provisioned on first login.
+
+### Roles
+
+| Role | Permissions |
+|---|---|
+| **admin** | Full access: manage users, edit schedules/guardrails, trigger, reset DB, view audit |
+| **operator** | Edit schedules/guardrails, trigger executions, view audit |
+| **viewer** | Read-only: view overview, schedules, and history |
+
+### Security
+
+- Session tokens are stored in HTTP-only, Secure, SameSite=Strict cookies (immune to XSS)
+- CSRF protection via double-submit cookie pattern (`__kp_csrf` cookie + `X-CSRF-Token` header)
+- WebSocket auth uses cookies automatically on same-origin upgrade (no query param needed)
 
 ## Schedules
 
