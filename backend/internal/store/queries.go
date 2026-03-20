@@ -2,6 +2,8 @@ package store
 
 import (
 	"fmt"
+	"log/slog"
+	"os"
 	"time"
 
 	"gorm.io/gorm"
@@ -214,6 +216,36 @@ func (s *Store) SeedDefaults() error {
 			return err
 		}
 	}
+
+	// ── Seed admin user ──────────────────────────────────────────────────
+	var userCount int64
+	if err := s.db.Model(&User{}).Count(&userCount).Error; err != nil {
+		return fmt.Errorf("seed: count users: %w", err)
+	}
+	if userCount == 0 {
+		adminUser := os.Getenv("ADMIN_USER")
+		adminPass := os.Getenv("ADMIN_PASSWORD")
+		if adminUser != "" && adminPass != "" {
+			hash, err := HashPassword(adminPass)
+			if err != nil {
+				return fmt.Errorf("seed: hash admin password: %w", err)
+			}
+			admin := User{
+				Username:     adminUser,
+				PasswordHash: hash,
+				Role:         "admin",
+				Source:       "local",
+				Enabled:      true,
+			}
+			if err := s.db.Create(&admin).Error; err != nil {
+				return fmt.Errorf("seed: create admin user: %w", err)
+			}
+			slog.Info("seed: admin user created from environment variables", "username", adminUser)
+		} else {
+			slog.Warn("seed: no users in database and ADMIN_USER/ADMIN_PASSWORD not set — no one can log in")
+		}
+	}
+
 	return nil
 }
 
@@ -227,7 +259,7 @@ func (s *Store) Tx(fn func(*gorm.DB) error) error {
 
 // DropAllTables drops all application tables in a single CASCADE statement.
 func (s *Store) DropAllTables() error {
-	if err := s.db.Exec("DROP TABLE IF EXISTS log_lines, executions, guardrails, schedules CASCADE").Error; err != nil {
+	if err := s.db.Exec("DROP TABLE IF EXISTS sessions, users, log_lines, executions, guardrails, schedules CASCADE").Error; err != nil {
 		return fmt.Errorf("drop tables: %w", err)
 	}
 	return nil
@@ -235,7 +267,7 @@ func (s *Store) DropAllTables() error {
 
 // MigrateSchema recreates the schema from the current models.
 func (s *Store) MigrateSchema() error {
-	if err := s.db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{}); err != nil {
+	if err := s.db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{}, &User{}, &Session{}, &AuditLog{}); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
 	// Backfill positions for existing rows after the column is first added.

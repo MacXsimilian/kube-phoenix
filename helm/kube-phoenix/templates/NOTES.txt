@@ -20,9 +20,22 @@ Access the UI via port-forward:
 
 {{- if not .Values.secret.existingSecret }}
 
-Default credentials:
-  User:     {{ .Values.secret.basicAuthUser }}
-  Password: (set via secret.basicAuthPassword)
+Admin credentials (seeded on first startup):
+  User:     {{ .Values.secret.adminUser }}
+  Password: (set via secret.adminPassword)
+
+{{- end }}
+
+{{- if .Values.oidc.enabled }}
+
+OIDC / Keycloak SSO is enabled:
+  Issuer: {{ .Values.oidc.issuerURL }}
+  Client: {{ .Values.oidc.clientID }}
+  Login screen will show "Login with SSO" button.
+  AD group → role mapping:
+    admin:    {{ .Values.oidc.roleAdminGroups | default "(none)" }}
+    operator: {{ .Values.oidc.roleOperatorGroups | default "(none)" }}
+    viewer:   (default for unmatched users)
 
 {{- end }}
 

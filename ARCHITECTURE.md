@@ -32,7 +32,7 @@
    - 5.7 [WebSocket Integration in the Frontend](#57-websocket-integration-in-the-frontend)
 6. [Data Models & ER Diagram](#6-data-models--er-diagram)
 7. [WebSocket Architecture](#7-websocket-architecture)
-8. [Authentication Architecture](#8-authentication-architecture)
+8. [Authentication & Authorization Architecture](#8-authentication--authorization-architecture)
 9. [Scale-Down / Scale-Up Flows](#9-scale-down--scale-up-flows)
 10. [Helm Chart & Kubernetes Deployment](#10-helm-chart--kubernetes-deployment)
 11. [CI/CD Pipeline](#11-cicd-pipeline)
@@ -57,6 +57,11 @@ kube-phoenix is a web application that manages Kubernetes cluster **sleep/wake s
 | Cluster state visibility | Real-time view of workloads and nodes with health metrics                 |
 | Pod log streaming        | Live container log viewer streamed directly from the K8s API (no DB)      |
 | History                  | Paginated execution history with per-execution log viewer                 |
+| User management          | Multi-user RBAC with three roles (admin, operator, viewer); bcrypt passwords |
+| Session-based auth       | HTTP-only cookie sessions with CSRF double-submit protection              |
+| Keycloak OIDC            | Authorization Code + PKCE flow, AD group-to-role mapping, account linking |
+| Audit logging            | Async audit trail with before/after diffs and configurable retention      |
+| Login rate limiting      | Per-IP (10/15 min) and per-username (5/15 min) throttling                 |
 | Self-hosted              | Single binary embeds the full Next.js SPA; no separate web server needed  |
 | API documentation        | Swagger UI served at `/api/docs/`; raw OpenAPI 3.1 spec at `/api/docs/openapi.yaml` |
 
@@ -90,7 +95,7 @@ flowchart TB
         subgraph NS["kube-phoenix namespace"]
             subgraph Pod["kube-phoenix Pod (single container)"]
                 subgraph Binary["Go Binary — :8080"]
-                    Router["Chi Router<br/>+ BasicAuth middleware"]
+                    Router["Chi Router<br/>+ Session Auth middleware"]
                     Handlers["API Handlers<br/>/api/*  /ws/*"]
                     Scheduler["Scheduler<br/>(robfig/cron v3)"]
                     Scaler["Scaler Runner<br/>scale_down / scale_up"]
@@ -152,6 +157,9 @@ kube-phoenix/
 │   │   │   ├── guardrails.go     # Guardrails get/update
 │   │   │   ├── trigger.go        # Manual run trigger
 │   │   │   ├── admin.go          # DB reset (streamed NDJSON)
+│   │   │   ├── auth.go           # Login, logout, me, password change, OIDC callbacks
+│   │   │   ├── users.go          # User CRUD (admin only)
+│   │   │   ├── audit.go          # Audit log listing
 │   │   │   └── helpers.go        # jsonOK, jsonError, parseID, splitCSVLocal
 │   │   │
 │   │   ├── scheduler/
@@ -178,8 +186,12 @@ kube-phoenix/
 │   │   │   ├── store.go          # DB connection + AutoMigrate
 │   │   │   └── queries.go        # All DB queries + SeedDefaults
 │   │   │
-│   │   └── middleware/
-│   │       └── auth.go           # HTTP Basic Auth middleware
+│   │   ├── middleware/
+│   │   │   ├── auth.go           # Session-based auth middleware + CSRF protection
+│   │   │   └── ratelimit.go      # Login rate limiting (per-IP, per-username)
+│   │   │
+│   │   └── audit/
+│   │       └── writer.go         # Async audit log writer with before/after diffs
 │   │
 │   ├── web/
 │   │   ├── embed.go              # //go:embed all:static + SPAHandler
@@ -201,6 +213,8 @@ kube-phoenix/
 │       │   ├── guardrails/page.tsx
 │       │   ├── schedules/page.tsx
 │       │   ├── history/page.tsx
+│       │   ├── users/page.tsx
+│       │   ├── audit/page.tsx
 │       │   └── settings/page.tsx
 │       │
 │       ├── components/
@@ -228,6 +242,10 @@ kube-phoenix/
 │       │   │   └── LogViewer.tsx
 │       │   ├── guardrails/
 │       │   │   └── GuardrailsForm.tsx
+│       │   ├── users/
+│       │   │   └── UsersTable.tsx
+│       │   ├── audit/
+│       │   │   └── AuditLogTable.tsx
 │       │   └── auth/
 │       │       └── LoginScreen.tsx
 │       │
@@ -292,6 +310,10 @@ main()
   ├─ Read DATABASE_URL from env  ──► log.Fatal if empty
   │
   ├─ store.New(DATABASE_URL)     ──► Opens PostgreSQL, runs AutoMigrate, seeds defaults
+  │   └─ Seeds admin user from ADMIN_USER / ADMIN_PASSWORD if no users exist
+  │
+  ├─ audit.NewWriter(store)      ──► Starts async audit log writer goroutine
+  │   └─ Starts daily retention cleanup (AUDIT_RETENTION_DAYS)
   │
   ├─ k8s.New()                   ──► Tries InClusterConfig → kubeconfig fallback
   │   └─ if error: slog.Warn, k8s = nil (k8s operations disabled but server runs)
@@ -300,7 +322,7 @@ main()
   │   └─ if k8s != nil: scheduler.Start()
   │   └─ if k8s == nil: scheduler created but not started (manual trigger blocked)
   │
-  ├─ api.NewRouter(store, k8s, scheduler, cache)  ──► Returns http.Handler (Chi mux)
+  ├─ api.NewRouter(store, k8s, scheduler, cache, auditWriter)  ──► Returns http.Handler (Chi mux)
   │
   └─ http.Server{Addr: ":8080", WriteTimeout: 0}
       └─ WriteTimeout=0 is critical: allows WebSocket and SSE to stream indefinitely
@@ -334,33 +356,46 @@ The router is built with `go-chi/chi/v5`. Chi was chosen over `net/http` ServeMu
 ```
 Every request passes through:
   1. middleware.RequestID        — generates/propagates X-Request-ID header
-  2. authmw.RedactWSToken        — strips ?token= from URL before it reaches the logger
-  3. middleware.Logger           — structured request log (method, path, status, latency)
-  4. middleware.Recoverer        — catches panics, returns 500, logs stack trace
-  5. cors.Handler                — sets CORS headers (see below)
-  6. middleware.MaxBytesReader(1MB) — protects against large body attacks
+  2. middleware.Logger           — structured request log (method, path, status, latency)
+  3. middleware.Recoverer        — catches panics, returns 500, logs stack trace
+  4. cors.Handler                — sets CORS headers (see below)
+  5. middleware.MaxBytesReader(1MB) — protects against large body attacks
+
+Authenticated routes additionally pass through:
+  6. authmw.SessionAuth          — validates session cookie, injects user into context
+  7. authmw.CSRFProtect          — validates CSRF double-submit cookie on mutating requests
+  8. authmw.RequireRole(roles)   — per-route RBAC enforcement (admin/operator/viewer)
 ```
 
 **CORS policy:**
 
 ```go
-// In dev (BASIC_AUTH_USER not set):
+// In dev (ADMIN_USER not set):
 AllowedOrigins: []string{"*"}
 
-// In production (BASIC_AUTH_USER set):
+// In production (ADMIN_USER set):
 // If CORS_ALLOWED_ORIGIN is set, restrict to that origin.
 // Otherwise, deny all cross-origin requests (same-origin only).
 AllowedOrigins: []string{origin}  // or []string{} if CORS_ALLOWED_ORIGIN is unset
 ```
 
-The wildcard in dev allows the Next.js dev server (typically `localhost:3000`) to call the backend without CORS errors. In production, cross-origin requests are restricted to the value of the `CORS_ALLOWED_ORIGIN` environment variable. If that variable is unset, no cross-origin requests are permitted — the application is same-origin only.
+The wildcard in dev allows the Next.js dev server (typically `localhost:3000`) to call the backend without CORS errors. In production, cross-origin requests are restricted to the value of the `CORS_ALLOWED_ORIGIN` environment variable. If that variable is unset, no cross-origin requests are permitted — the application is same-origin only. `AllowCredentials` is always `true` so the session cookie is sent on cross-origin requests during development.
 
 **Route groups:**
 
 ```
 GET  /healthz                           ← unauthenticated, liveness probe
+GET  /metrics                           ← unauthenticated, Prometheus scraping
 
-Group: /  (with BasicAuth middleware)
+Group: /api/auth  (public — no session required)
+  ├─ POST /api/auth/login               ← username/password login (rate limited)
+  ├─ POST /api/auth/logout              ← destroy session
+  ├─ GET  /api/auth/me                  ← current user info (session required)
+  ├─ PUT  /api/auth/password            ← change own password (session required)
+  ├─ GET  /api/auth/oidc/login          ← initiate Keycloak OIDC flow
+  └─ GET  /api/auth/oidc/callback       ← OIDC redirect callback
+
+Group: /  (with SessionAuth + CSRF middleware)
   ├─ GET  /api/docs            → 302 redirect to /api/docs/
   ├─ GET  /api/docs/openapi.yaml → embedded OpenAPI 3.1 spec (application/yaml)
   ├─ /*   /api/docs/           → Swagger UI (swaggest/swgui v5, embedded assets)
@@ -378,15 +413,28 @@ Group: /  (with BasicAuth middleware)
   ├─ /api/overview            GET  ← pre-aggregated dashboard summary (cache-backed)
   ├─ /api/cluster/stream      GET  ← SSE stream of overview updates (10 s cadence)
   ├─ /api/trigger             POST
-  ├─ /api/admin/reset-db      POST
-  └─ /ws/executions/{id}/logs GET (WebSocket upgrade)
+  ├─ /api/admin/reset-db      POST (admin only)
+  ├─ /api/users               GET, POST (admin only)
+  ├─ /api/users/{id}          PUT, DELETE (admin only)
+  ├─ /api/audit-logs          GET (all roles)
+  └─ /ws/executions/{id}/logs GET (WebSocket upgrade, session cookie auth)
 
 SPA: everything else → web.SPAHandler (serves index.html for unknown paths)
 ```
 
-**Why BasicAuth wraps /api/* and /ws/* but not /healthz:**
+**Why /healthz and /metrics are unauthenticated:**
 
-The `/healthz` endpoint must be reachable by the Kubernetes liveness probe. Kubernetes probes do not send Authorization headers, so if BasicAuth wrapped the health check, the pod would repeatedly fail its liveness probe and be restarted.
+The `/healthz` endpoint must be reachable by the Kubernetes liveness probe. Kubernetes probes do not send cookies, so if session auth wrapped the health check, the pod would repeatedly fail its liveness probe and be restarted. `/metrics` must be reachable by in-cluster Prometheus scrapers.
+
+**Role-based access control on routes:**
+
+| Route group | Allowed roles | Notes |
+|---|---|---|
+| `/api/auth/*` | Public | Login, logout, OIDC |
+| `/api/users/*` | admin | User management |
+| `/api/admin/*` | admin | DB reset |
+| `/api/trigger`, `/api/schedules` (POST/PUT/DELETE), `/api/guardrails` (PUT) | admin, operator | Mutating operations |
+| All other `/api/*` | admin, operator, viewer | Read-only access |
 
 ### 4.3 API Handlers
 
@@ -504,7 +552,7 @@ Response shape:
 
 Server-Sent Events endpoint. On connect, sends the current overview immediately. Then subscribes to `ClusterCache` refresh notifications and pushes a new `data:` event on every cache refresh (~10 s). The frontend uses this to update the Overview card in real time without polling.
 
-Authentication: standard BasicAuth via the Authorization header (regular HTTP fetch, not EventSource, so headers work normally).
+Authentication: standard session cookie auth (sent automatically by the browser on the fetch request).
 
 **`getNodePods` (GET /api/cluster/nodes/{name}/pods)**
 
@@ -964,6 +1012,54 @@ type LogLine struct {
 
 The composite index `idx_logline_exec_seq` on `(execution_id, seq)` ensures that fetching logs for an execution in order is a single index scan rather than a full table sort.
 
+**User**
+```go
+type User struct {
+    ID           uint      `gorm:"primaryKey" json:"id"`
+    Username     string    `gorm:"uniqueIndex" json:"username"`
+    PasswordHash string    `json:"-"`                          // bcrypt, never exposed in JSON
+    Role         string    `json:"role"`                       // "admin" | "operator" | "viewer"
+    OIDCSubject  *string   `gorm:"uniqueIndex" json:"-"`      // linked Keycloak subject, nullable
+    CreatedAt    time.Time `json:"createdAt"`
+    UpdatedAt    time.Time `json:"updatedAt"`
+}
+```
+
+Passwords are hashed with bcrypt (cost 12). The `PasswordHash` field is excluded from JSON serialisation via `json:"-"`. The optional `OIDCSubject` field links a local user to a Keycloak identity for account linking.
+
+**Session**
+```go
+type Session struct {
+    ID        string    `gorm:"primaryKey"` // secure random token
+    UserID    uint      `gorm:"index"`
+    User      User      `gorm:"foreignKey:UserID"`
+    CreatedAt time.Time
+    LastSeen  time.Time `gorm:"index"` // updated on each request, used for idle timeout
+    ExpiresAt time.Time `gorm:"index"` // absolute max lifetime
+    IPAddress string
+    UserAgent string
+}
+```
+
+Sessions are stored in PostgreSQL and identified by a cryptographically random token set as an HTTP-only, Secure, SameSite=Lax cookie. `SESSION_IDLE_TIMEOUT` (default 8h) controls how long a session can be idle before expiry. `SESSION_MAX_LIFETIME` (default 24h) is the absolute upper bound regardless of activity.
+
+**AuditLog**
+```go
+type AuditLog struct {
+    ID         uint      `gorm:"primaryKey" json:"id"`
+    UserID     uint      `gorm:"index" json:"userId"`
+    Username   string    `json:"username"`                    // denormalised for display
+    Action     string    `gorm:"index" json:"action"`         // e.g. "schedule.update", "user.create"
+    Resource   string    `json:"resource"`                     // e.g. "schedule:3", "user:5"
+    Before     *string   `json:"before,omitempty"`             // JSON snapshot before change
+    After      *string   `json:"after,omitempty"`              // JSON snapshot after change
+    IPAddress  string    `json:"ipAddress"`
+    CreatedAt  time.Time `gorm:"index" json:"createdAt"`
+}
+```
+
+Audit logs are written asynchronously via a buffered channel writer (`internal/audit/writer.go`) to avoid blocking API handlers. The writer batches inserts for efficiency. `AUDIT_RETENTION_DAYS` (default 90, 0 = keep forever) controls automatic cleanup of old records via a daily background goroutine.
+
 #### Store (`internal/store/store.go`)
 
 ```go
@@ -977,7 +1073,7 @@ func New(dsn string) (*Store, error) {
     sqlDB.SetMaxIdleConns(5)
     sqlDB.SetConnMaxLifetime(5 * time.Minute)
     // Auto-migrate all models
-    db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{})
+    db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{}, &User{}, &Session{}, &AuditLog{})
     return &Store{db: db}, nil
 }
 ```
@@ -1002,7 +1098,7 @@ if err := st.SeedDefaults(); err != nil {
 
 #### Queries (`internal/store/queries.go`)
 
-**SeedDefaults** — a method on `*Store`, runs only if the schedules table is empty. Seeds:
+**SeedDefaults** — a method on `*Store`, runs only if the schedules table is empty. Also seeds the admin user from `ADMIN_USER` / `ADMIN_PASSWORD` env vars if no users exist. Seeds:
 1. "Weekday Sleep" — `scale_down`, `5 19 * * 1-5`, Europe/Budapest, plan mode, disabled
 2. "Weekday Wake" — `scale_up`, `0 7 * * 1-5`, Europe/Budapest, plan mode, disabled
 3. "Weekend Sleep" — `scale_down`, `0 0 * * 6,0`, Europe/Budapest, plan mode, disabled
@@ -1193,6 +1289,19 @@ classDiagram
         +Tx(fn) error
         +DropAllTables() error
         +MigrateSchema() error
+        +CreateUser(u) error
+        +GetUser(id) *User, error
+        +GetUserByUsername(username) *User, error
+        +ListUsers() []User, error
+        +UpdateUser(id, fields) *User, error
+        +DeleteUser(id) error
+        +CreateSession(s) error
+        +GetSession(token) *Session, error
+        +DeleteSession(token) error
+        +CleanExpiredSessions() error
+        +CreateAuditLog(a) error
+        +ListAuditLogs(filter) *AuditLogPage, error
+        +CleanOldAuditLogs(retentionDays) error
     }
 
     class Client {
@@ -1335,25 +1444,28 @@ The `divider` token is computed from the mode: `rgba(255,255,255,0.07)` in dark,
 
 ### 5.3 Auth System
 
-`frontend/src/lib/auth.tsx` implements a React context-based authentication system.
+`frontend/src/lib/auth.tsx` implements a React context-based authentication system using cookie-based sessions.
 
-**Storage:** `sessionStorage` (not `localStorage`). The key is `kube-phoenix-auth`. sessionStorage is scoped to the browser tab and is cleared when the tab is closed. This is intentional: credentials should not persist across browser sessions.
+**Session management:** Authentication state is maintained by the server via HTTP-only cookies. The frontend does not store credentials or tokens in `sessionStorage` or `localStorage`. The `AuthProvider` context holds the current user object (username, role) and loading state.
 
-**Credential format:** `btoa(username + ':' + password)` — standard Base64 encoding of the HTTP Basic Auth `user:pass` string. Stored directly as the value that goes into the `Authorization: Basic <value>` header.
-
-**Dev-mode detection:** On mount, `AuthProvider` fires a probe request to `/api/schedules` with no credentials. If the server returns 200 (because `BASIC_AUTH_USER` is unset), auth is in dev mode. The token is set to the sentinel value `__no_auth__`. The login screen is bypassed entirely.
+**Dev-mode detection:** On mount, `AuthProvider` calls `GET /api/auth/me`. If the server returns 200 with a user object (dev mode auto-authenticates when `ADMIN_USER` is unset), the app renders directly. If 401, the login screen is shown.
 
 **Login flow:**
 1. User enters username and password in `LoginScreen`.
-2. `login(user, pass)` function:
-   a. Computes `token = btoa(user + ':' + pass)`.
-   b. Makes a probe request to `/api/schedules` with `Authorization: Basic <token>`.
-   c. If 200: stores token in sessionStorage, updates context state.
-   d. If 401: throws an error, `LoginScreen` displays it.
+2. `login(user, pass)` function calls `POST /api/auth/login` with `{ username, password }`.
+3. On success: the server sets `kube-phoenix-session` (HTTP-only) and `kube-phoenix-csrf` cookies. The response body contains the user object. `AuthProvider` updates context state.
+4. On failure: the error message is displayed on `LoginScreen`.
 
-**Auth header injection:** `getAuthHeader()` reads the token from sessionStorage at call time (not cached in closure). Returns `{ Authorization: 'Basic __no_auth__' }` when the sentinel `__no_auth__` token is set (dev mode — the server ignores auth entirely). Returns `{ Authorization: 'Basic <token>' }` for real tokens, or `{}` if no token is stored.
+**OIDC login:** A "Login with SSO" button (shown when the server indicates OIDC is configured) navigates to `GET /api/auth/oidc/login`, which redirects to Keycloak. After authentication, the callback sets session cookies and redirects to `/`.
 
-**Logout:** Clears sessionStorage and resets context state to unauthenticated. The login screen re-renders.
+**CSRF token injection:** The `api.ts` fetch wrapper reads the `kube-phoenix-csrf` cookie and includes it as the `X-CSRF-Token` header on all POST, PUT, and DELETE requests. All fetch calls include `credentials: 'include'` to ensure cookies are sent.
+
+**Permission-based UI guards:** The `useAuth()` hook exposes `user.role`. Components check the role to conditionally render:
+- The "Users" sidebar item and `/users` page are only visible to admins.
+- Trigger buttons, schedule create/edit/delete, and guardrails edit are hidden for viewers.
+- The "Audit Log" sidebar item is visible to all authenticated users.
+
+**Logout:** `POST /api/auth/logout` clears server-side session and cookies. Context state resets to unauthenticated.
 
 ### 5.4 API Client Layer
 
@@ -1371,9 +1483,10 @@ In production, `NEXT_PUBLIC_API_URL` is unset, so `BASE = ''`. All API calls go 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(BASE + path, {
         ...init,
+        credentials: 'include',  // always send cookies
         headers: {
             'Content-Type': 'application/json',
-            ...getAuthHeader(),
+            ...getCsrfHeader(init?.method),  // X-CSRF-Token on mutating requests
             ...init?.headers,
         },
     })
@@ -1386,7 +1499,8 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 ```
 
 Every API function is a thin wrapper over `req<T>`. This ensures:
-- All requests include the auth header.
+- All requests include session cookies via `credentials: 'include'`.
+- Mutating requests (POST, PUT, DELETE) include the `X-CSRF-Token` header read from the `kube-phoenix-csrf` cookie.
 - All non-2xx responses throw a consistent `Error` that TanStack Query's `onError` handlers can display.
 
 **`wsLogsUrl(executionId)` — WebSocket URL construction:**
@@ -1395,16 +1509,11 @@ function wsLogsUrl(executionId: number): string {
     const base = (process.env.NEXT_PUBLIC_API_URL ?? window.location.origin)
         .replace(/^http/, 'ws')  // http: → ws:, https: → wss:
 
-    const token = sessionStorage.getItem(STORAGE_KEY)
-    const params = token && token !== '__no_auth__'
-        ? `?token=${encodeURIComponent(token)}`
-        : ''
-
-    return `${base}/ws/executions/${executionId}/logs${params}`
+    return `${base}/ws/executions/${executionId}/logs`
 }
 ```
 
-Browsers cannot set the `Authorization` header on WebSocket connections (this is a browser security restriction, not an application-layer limit). The backend accepts credentials via `?token=<base64(user:pass)>` as an alternative, which is what this function produces.
+WebSocket connections authenticate via the session cookie, which the browser sends automatically on the upgrade request. No query parameter token is needed.
 
 **`resetDatabaseStream()` — async generator:**
 ```ts
@@ -1462,6 +1571,8 @@ layout.tsx (Inter font, HTML skeleton)
 | `/guardrails/` | `GuardrailsPage` | Exclusion list form                          |
 | `/schedules/` | `SchedulesPage` | Schedule cards + create/edit dialog           |
 | `/history/`   | `HistoryPage`   | Execution table + log drawer                  |
+| `/users/`     | `UsersPage`     | User CRUD table (admin only)                  |
+| `/audit/`     | `AuditPage`     | Searchable audit log with diffs               |
 | `/settings/`  | `SettingsPage`  | DB reset panel                                |
 
 **Key components:**
@@ -1604,6 +1715,8 @@ useEffect(() => {
 erDiagram
     schedules ||--o{ executions : "has many"
     executions ||--o{ log_lines : "has many"
+    users ||--o{ sessions : "has many"
+    users ||--o{ audit_logs : "has many"
 
     schedules {
         bigint id PK
@@ -1653,6 +1766,38 @@ erDiagram
         text skip_node_labels "CSV, key=value"
         text skip_node_taints "CSV, key=value:effect"
         timestamptz updated_at
+    }
+
+    users {
+        bigint id PK
+        text username "unique, not null"
+        text password_hash "bcrypt"
+        text role "admin | operator | viewer"
+        text oidc_subject "unique, nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    sessions {
+        text id PK "secure random token"
+        bigint user_id FK "indexed"
+        timestamptz created_at
+        timestamptz last_seen "indexed, idle timeout"
+        timestamptz expires_at "indexed, max lifetime"
+        text ip_address
+        text user_agent
+    }
+
+    audit_logs {
+        bigint id PK
+        bigint user_id FK "indexed"
+        text username "denormalised"
+        text action "indexed"
+        text resource
+        text before "nullable, JSON snapshot"
+        text after "nullable, JSON snapshot"
+        text ip_address
+        timestamptz created_at "indexed"
     }
 ```
 
@@ -1735,38 +1880,120 @@ sequenceDiagram
 1. It supports bidirectional communication (ping/pong).
 2. It works through the same HTTP/1.1 connection without needing `Transfer-Encoding: chunked` special handling in all proxies.
 3. The WebSocket library (`gorilla/websocket`) provides robust framing, masking, and connection management.
-4. Authentication via `?token=` query param is straightforward with WebSocket.
+4. Session cookie authentication works seamlessly on the WebSocket upgrade request.
 
 ---
 
-## 8. Authentication Architecture
+## 8. Authentication & Authorization Architecture
+
+### 8.1 Session-Based Authentication
+
+Authentication uses server-side sessions stored in PostgreSQL, identified by a secure random token delivered as an HTTP-only cookie.
 
 ```mermaid
 flowchart TD
-    Start["Request arrives"] --> AuthSet{"BASIC_AUTH_USER<br/>env var set?"}
+    Start["Request arrives"] --> AuthSet{"ADMIN_USER<br/>env var set?"}
 
     AuthSet -- "No" --> DevMode["Dev mode<br/>skip auth, call next handler"]
 
-    AuthSet -- "Yes" --> IsWS{"WebSocket upgrade?<br/>(Upgrade: websocket)"}
+    AuthSet -- "Yes" --> HasCookie{"Session cookie<br/>present?"}
 
-    IsWS -- "Yes" --> Token["Extract ?token=base64(user:pass)<br/>from query param"]
-    IsWS -- "No" --> Header["Extract Authorization: Basic base64<br/>from header"]
+    HasCookie -- "No" --> Reject401["401 Unauthorized"]
 
-    Token --> HasCreds{"Credentials<br/>extracted?"}
-    Header --> HasCreds
+    HasCookie -- "Yes" --> LookupSession["Look up session in DB"]
 
-    HasCreds -- "No" --> Reject401["401 Unauthorized<br/>WWW-Authenticate: Basic"]
+    LookupSession --> Valid{"Session valid?<br/>(not expired, not idle)"}
 
-    HasCreds -- "Yes" --> Compare["crypto/subtle.ConstantTimeCompare<br/>user AND password"]
+    Valid -- "No" --> DeleteSession["Delete session row"]
+    DeleteSession --> Reject401
 
-    Compare --> Match{"Both match?"}
-    Match -- "Yes" --> Allow["next(handler)"]
-    Match -- "No" --> Reject401Log["401 Unauthorized<br/>+ log warning"]
+    Valid -- "Yes" --> UpdateLastSeen["Update session.LastSeen"]
+    UpdateLastSeen --> InjectUser["Inject User into request context"]
+    InjectUser --> CheckCSRF{"Mutating request?<br/>(POST/PUT/DELETE)"}
+
+    CheckCSRF -- "No" --> Allow["next(handler)"]
+    CheckCSRF -- "Yes" --> CSRFValid{"CSRF token<br/>matches cookie?"}
+
+    CSRFValid -- "Yes" --> Allow
+    CSRFValid -- "No" --> Reject403["403 Forbidden"]
 ```
 
-**Why `crypto/subtle.ConstantTimeCompare`:** Regular string comparison (`==`) in Go short-circuits on the first mismatched byte. This creates a timing oracle: an attacker making thousands of requests can measure response times to discover the correct credentials byte by byte. `ConstantTimeCompare` always takes the same time regardless of where the mismatch occurs, eliminating the timing oracle.
+**Session lifecycle:**
+- **Login:** `POST /api/auth/login` validates credentials (bcrypt compare), creates a Session row, sets the `kube-phoenix-session` HTTP-only cookie (Secure, SameSite=Lax) and a `kube-phoenix-csrf` non-HTTP-only cookie (readable by JS for the double-submit pattern).
+- **Idle timeout:** `SESSION_IDLE_TIMEOUT` (default 8h). If `now() - session.LastSeen > idle timeout`, the session is expired.
+- **Max lifetime:** `SESSION_MAX_LIFETIME` (default 24h). Absolute upper bound regardless of activity.
+- **Logout:** `POST /api/auth/logout` deletes the session row and clears both cookies.
 
-**Frontend authentication flow:**
+**CSRF double-submit cookie protection:** On login, the server sets a random CSRF token in a non-HTTP-only cookie. The frontend reads this cookie and includes it in the `X-CSRF-Token` header on every mutating request (POST, PUT, DELETE). The server validates that the header matches the cookie value. This prevents cross-site request forgery because a third-party site cannot read the cookie value to set the header.
+
+**WebSocket authentication:** WebSocket connections authenticate via the session cookie (sent automatically by the browser on upgrade). The `?token=` query parameter mechanism has been removed.
+
+### 8.2 Login Rate Limiting
+
+Login attempts are throttled to prevent brute-force attacks:
+
+| Limiter | Limit | Window | Key |
+|---|---|---|---|
+| Per-IP | 10 attempts | 15 minutes | Client IP (respects X-Forwarded-For) |
+| Per-username | 5 attempts | 15 minutes | Submitted username |
+
+Rate-limited requests receive `429 Too Many Requests` with a `Retry-After` header. Both limiters use in-memory token bucket counters and are reset on successful login.
+
+### 8.3 RBAC — Permission-Based Role System
+
+Three roles with hierarchical permissions:
+
+| Permission | admin | operator | viewer |
+|---|---|---|---|
+| View dashboard, cluster state, history | Yes | Yes | Yes |
+| View audit logs | Yes | Yes | Yes |
+| Trigger manual executions | Yes | Yes | No |
+| Create/edit/delete schedules | Yes | Yes | No |
+| Edit guardrails | Yes | Yes | No |
+| Manage users | Yes | No | No |
+| Reset database | Yes | No | No |
+
+Roles are enforced at two levels:
+1. **Backend:** `authmw.RequireRole(roles...)` middleware checks the user's role from the request context before the handler runs. Returns `403 Forbidden` if the role is insufficient.
+2. **Frontend:** The `useAuth()` hook exposes the current user's role. Components and sidebar items are conditionally rendered based on permissions — e.g., the Users page and trigger buttons are hidden for viewers.
+
+### 8.4 Keycloak OIDC Integration
+
+Optional Keycloak integration is activated when `OIDC_ISSUER_URL` is set. It implements the Authorization Code flow with PKCE.
+
+```mermaid
+sequenceDiagram
+    participant U as Browser
+    participant F as Frontend
+    participant B as Backend
+    participant K as Keycloak
+
+    U->>F: Click "Login with SSO"
+    F->>B: GET /api/auth/oidc/login
+    B->>B: Generate state + PKCE verifier
+    B-->>U: 302 Redirect to Keycloak authorize endpoint
+
+    U->>K: Authenticate (AD credentials)
+    K-->>U: 302 Redirect to /api/auth/oidc/callback?code=...&state=...
+
+    U->>B: GET /api/auth/oidc/callback?code=...&state=...
+    B->>K: Exchange code for tokens (with PKCE verifier)
+    K-->>B: ID token + access token
+    B->>B: Validate ID token, extract groups claim
+    B->>B: Map AD groups → role (via OIDC_ROLE_ADMIN_GROUPS / OIDC_ROLE_OPERATOR_GROUPS)
+    B->>B: Find or create local User (account linking via oidc_subject)
+    B->>B: Create session
+    B-->>U: Set session cookie, redirect to /
+```
+
+**AD group-to-role mapping:**
+- If the user's groups (from `OIDC_GROUPS_CLAIM`, default `"groups"`) include any group listed in `OIDC_ROLE_ADMIN_GROUPS` → role is `admin`.
+- Else if groups include any in `OIDC_ROLE_OPERATOR_GROUPS` → role is `operator`.
+- Otherwise → role is `viewer`.
+
+**Account linking:** When an OIDC user logs in for the first time, a local User record is created with the OIDC subject stored in `oidc_subject`. On subsequent logins, the existing user is found by `oidc_subject` and their role is updated based on current group memberships.
+
+### 8.5 Frontend Authentication Flow
 
 ```mermaid
 sequenceDiagram
@@ -1775,23 +2002,21 @@ sequenceDiagram
     participant B as Backend (Go)
 
     U->>F: Open app
-    F->>B: probe GET /api/schedules (no auth header)
+    F->>B: GET /api/auth/me (with cookie)
 
-    alt Dev mode (BASIC_AUTH_USER unset)
-        B-->>F: 200 OK
-        F->>F: token = "__no_auth__"
+    alt Dev mode (ADMIN_USER unset)
+        B-->>F: 200 OK (dev user)
         F-->>U: render app directly
-    else Production (auth enabled)
+    else No session / expired
         B-->>F: 401 Unauthorized
         F-->>U: render LoginScreen
 
         U->>F: enter credentials
-        F->>F: token = btoa(user + ":" + pass)
-        F->>B: probe GET /api/schedules<br/>Authorization: Basic {token}
+        F->>B: POST /api/auth/login {username, password}
 
         alt Credentials valid
-            B-->>F: 200 OK
-            F->>F: store token in sessionStorage
+            B-->>F: 200 OK + Set-Cookie (session + CSRF)
+            F->>F: store user in context
             F-->>U: render app
         else Credentials invalid
             B-->>F: 401 Unauthorized
@@ -1800,13 +2025,15 @@ sequenceDiagram
     end
 ```
 
+**Cookie-based auth:** The frontend no longer stores credentials in `sessionStorage`. Authentication state is managed entirely via HTTP-only cookies, which are automatically included in all same-origin requests. The `api.ts` fetch wrapper includes `credentials: 'include'` and reads the CSRF token from the `kube-phoenix-csrf` cookie to set the `X-CSRF-Token` header on mutating requests.
+
 **Security considerations:**
 
-1. **HTTP Basic Auth is not secure over plain HTTP.** In production, the application MUST be deployed behind HTTPS (enforced by the Ingress or ALB). The Helm chart's ingress template includes TLS configuration.
+1. **HTTPS required in production.** Session cookies are set with `Secure=true` by default (`COOKIE_SECURE` env var). The Helm chart's ingress template includes TLS configuration.
 
-2. **sessionStorage vs localStorage:** sessionStorage credentials are cleared when the browser tab closes, preventing credential theft from shared computers. localStorage credentials persist indefinitely, which is inappropriate for admin credentials.
+2. **HTTP-only cookies** prevent XSS attacks from accessing the session token. The CSRF cookie is intentionally non-HTTP-only (must be readable by JS) but is a random value with no authentication power on its own.
 
-3. **Future: Keycloak OIDC.** The `middleware/auth.go` comment explicitly notes: "When Keycloak OIDC is integrated later, replace this middleware with an OIDC handler while keeping the same middleware slot in the router." The design was built with this swap in mind — auth is centralized in one middleware, not scattered across handlers.
+3. **SameSite=Lax** prevents the cookie from being sent on cross-site POST requests, providing an additional layer of CSRF protection alongside the double-submit cookie.
 
 ---
 
@@ -2001,7 +2228,7 @@ helm/kube-phoenix/
     ├── serviceaccount.yaml    # kube-phoenix service account
     ├── clusterrole.yaml       # RBAC rules
     ├── clusterrolebinding.yaml
-    ├── secret.yaml            # DATABASE_URL, BASIC_AUTH_USER, BASIC_AUTH_PASSWORD
+    ├── secret.yaml            # DATABASE_URL, ADMIN_USER, ADMIN_PASSWORD, session/OIDC config
     ├── deployment.yaml        # main workload
     ├── service.yaml           # ClusterIP :80 → :8080
     ├── ingress.yaml           # optional ingress
@@ -2046,16 +2273,29 @@ env:
       secretKeyRef:
         name: {{ secretName }}
         key: DATABASE_URL
-  - name: BASIC_AUTH_USER
+  - name: ADMIN_USER
     valueFrom:
       secretKeyRef:
         name: {{ secretName }}
-        key: BASIC_AUTH_USER
-  - name: BASIC_AUTH_PASSWORD
+        key: ADMIN_USER
+  - name: ADMIN_PASSWORD
     valueFrom:
       secretKeyRef:
         name: {{ secretName }}
-        key: BASIC_AUTH_PASSWORD
+        key: ADMIN_PASSWORD
+  # Session configuration
+  - name: SESSION_IDLE_TIMEOUT     # default 8h
+  - name: SESSION_MAX_LIFETIME     # default 24h
+  - name: COOKIE_SECURE            # default true
+  - name: AUDIT_RETENTION_DAYS     # default 90, 0 = keep forever
+  # Optional: Keycloak OIDC
+  - name: OIDC_ISSUER_URL
+  - name: OIDC_CLIENT_ID
+  - name: OIDC_CLIENT_SECRET
+  - name: OIDC_REDIRECT_URL
+  - name: OIDC_GROUPS_CLAIM        # default "groups"
+  - name: OIDC_ROLE_ADMIN_GROUPS
+  - name: OIDC_ROLE_OPERATOR_GROUPS
 ```
 
 All secrets are injected as environment variables from a Kubernetes Secret. Never committed to git.
@@ -2343,9 +2583,14 @@ Dependabot PRs go through the same CI pipeline as any other PR — secret scan, 
 
 ```bash
 export DATABASE_URL="postgres://kube_phoenix:password@localhost:5432/kube_phoenix?sslmode=disable"
-# Optional: set these to enable auth in dev
-export BASIC_AUTH_USER="admin"
-export BASIC_AUTH_PASSWORD="password"
+# Optional: set these to enable auth in dev (seeds admin user on first run)
+export ADMIN_USER="admin"
+export ADMIN_PASSWORD="password"
+# Optional: session configuration
+export SESSION_IDLE_TIMEOUT="8h"
+export SESSION_MAX_LIFETIME="24h"
+export COOKIE_SECURE="false"          # set to false for local HTTP dev
+export AUDIT_RETENTION_DAYS="90"
 ```
 
 **Frontend environment variables (`frontend/.env.local`):**
@@ -2528,15 +2773,17 @@ go build ./cmd/server/
 
 **Future fix:** Check `store.ListExecutions` for status=running before starting a new execution, returning early if one is already in progress.
 
-### 13.8 HTTP Basic Auth with WebSocket token fallback
+### 13.8 Session-based auth with CSRF protection
 
-**Decision:** HTTP Basic Auth as the sole authentication mechanism, with a `?token=base64(user:pass)` fallback for WebSocket connections.
+**Decision:** Server-side sessions in PostgreSQL with HTTP-only cookies, CSRF double-submit cookie, and optional Keycloak OIDC. Replaces the previous HTTP Basic Auth mechanism.
 
-**Why:** Basic Auth is the simplest possible auth mechanism to implement and understand. It requires no state (no session store, no token management). The `?token=` fallback is required because browsers cannot set the `Authorization` header on WebSocket connections — this is a browser security restriction per the WebSocket specification.
+**Why:** Session-based auth is more secure than Basic Auth (credentials are not sent on every request), supports multi-user management with different roles, and enables proper session lifecycle (idle timeout, max lifetime, server-side revocation). HTTP-only cookies prevent XSS token theft. The CSRF double-submit pattern protects against cross-site request forgery without server-side CSRF token storage.
 
-**Security note:** The token appears in server access logs (as part of the URL query string). This is acceptable because: (a) the connection is HTTPS, so it's not visible in transit; (b) server logs should be access-controlled. For higher security, a short-lived signed token could be issued for WebSocket connections, but this adds significant complexity.
+**Why not JWT:** JWTs cannot be revoked server-side without maintaining a blocklist (which is effectively a session store). Since we already have PostgreSQL, server-side sessions are simpler and more secure. Session revocation is immediate (delete the row).
 
-**Future:** The middleware slot in `router.go` is designed to be replaced with OIDC/Keycloak. The comment in `auth.go` explicitly documents this intent.
+**WebSocket auth:** WebSocket connections authenticate via the session cookie, which browsers send automatically on the upgrade request. This is simpler and more secure than the previous `?token=` query parameter approach, which leaked credentials in access logs and URL bars.
+
+**Keycloak OIDC:** Optional integration using Authorization Code + PKCE. PKCE (Proof Key for Code Exchange) prevents authorization code interception attacks without requiring a client secret in the browser. AD group claims are mapped to local roles, so RBAC is consistent regardless of login method.
 
 ### 13.9 Pub/sub broker in-process (no Redis)
 
@@ -2579,7 +2826,7 @@ kube-phoenix exposes a Prometheus metrics endpoint at `/metrics`. The endpoint r
 |------|------|--------|
 | `GET /metrics` | None | Prometheus text exposition format (OpenMetrics compatible) |
 
-The endpoint is registered outside the `BasicAuth` middleware group alongside `/healthz`, so it is always reachable by in-cluster scrapers without credentials.
+The endpoint is registered outside the session auth middleware group alongside `/healthz`, so it is always reachable by in-cluster scrapers without credentials.
 
 ### 14.2 Metrics reference
 
@@ -2593,6 +2840,12 @@ All metrics use the `kube_phoenix_` namespace prefix.
 | `kube_phoenix_nodes_drained_total` | Counter | — | Nodes drained during scale-down executions (apply mode only). |
 | `kube_phoenix_nodes_deleted_total` | Counter | — | Nodes deleted during scale-down executions (apply mode only). |
 | `kube_phoenix_active_schedules` | Gauge | `schedule_type`, `mode` | Number of enabled schedules, reset and recomputed on every scheduler reload. |
+| `kube_phoenix_login_attempts_total` | Counter | `result` | Login attempts. `result` is `success` or `failed`. |
+| `kube_phoenix_active_sessions` | Gauge | — | Currently active (non-expired) user sessions. |
+| `kube_phoenix_auth_errors_total` | Counter | `reason` | Authentication failures. `reason` is `expired`, `invalid`, or `csrf`. |
+| `kube_phoenix_audit_events_total` | Counter | `action` | Audit log events by action type (e.g. `schedule.update`, `user.create`). |
+| `kube_phoenix_rate_limit_rejections_total` | Counter | `limiter` | Rate limiter rejections. `limiter` is `ip` or `username`. |
+| `kube_phoenix_oidc_logins_total` | Counter | `result` | OIDC login attempts. `result` is `success` or `failed`. |
 
 In addition to these business metrics, the standard `prometheus/client_golang` process and Go runtime collectors are registered automatically:
 - `go_*` — goroutines, GC duration, memory stats
@@ -2610,11 +2863,16 @@ All metrics are declared as package-level variables using `promauto`, which regi
 |----------|-----------------|
 | `scheduler.go` `run()` goroutine (on completion) | `ExecutionsTotal`, `ExecutionDuration`, `WorkloadsScaledTotal`, `NodesDrainedTotal`, `NodesDeletedTotal` |
 | `scheduler.go` `reload()` | `ActiveSchedules` — reset and recount on every cron reload |
+| `api/auth.go` `login()` | `LoginAttemptsTotal`, `ActiveSessions` |
+| `middleware/auth.go` session validation | `AuthErrorsTotal`, `ActiveSessions` |
+| `middleware/ratelimit.go` | `RateLimitRejectionsTotal` |
+| `audit/writer.go` | `AuditEventsTotal` |
+| `api/auth.go` OIDC callback | `OIDCLoginsTotal` |
 
 **Router registration** (`api/router.go`):
 
 ```go
-// Outside the BasicAuth group — no credentials required
+// Outside the session auth group — no credentials required
 r.Method(http.MethodGet, "/metrics", promhttp.Handler())
 ```
 
@@ -2691,9 +2949,15 @@ increase(kube_phoenix_workloads_scaled_total{direction="down"}[7d])
 
 # Currently enabled schedules by type
 kube_phoenix_active_schedules
+
+# Failed login attempts in the last hour
+increase(kube_phoenix_login_attempts_total{result="failed"}[1h])
+
+# Rate limit rejections
+rate(kube_phoenix_rate_limit_rejections_total[5m])
 ```
 
 ---
 
 *End of ARCHITECTURE.md*
-*Document covers: 2 source code languages, 30+ source files, 4 database models, 20+ API routes, 6 frontend pages, 25+ React components, 3-stage Docker build, Helm chart with 10 templates, 3 GitHub Actions workflows.*
+*Document covers: 2 source code languages, 35+ source files, 7 database models, 30+ API routes, 8 frontend pages, 30+ React components, 3-stage Docker build, Helm chart with 10 templates, 3 GitHub Actions workflows.*

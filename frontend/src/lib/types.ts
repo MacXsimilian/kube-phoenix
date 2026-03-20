@@ -154,3 +154,37 @@ export interface PodDetail {
   conditions: PodCondition[]
   events: PodEvent[]
 }
+
+// ─── User management ─────────────────────────────────────────────────────────
+
+export type Role = 'admin' | 'operator' | 'viewer'
+
+export interface User {
+  id: number
+  username: string
+  email?: string
+  role: Role
+  source: 'local' | 'oidc'
+  enabled: boolean
+  createdAt: string
+  lastLoginAt?: string
+  permissions: string[]
+}
+
+export interface AuditLogEntry {
+  id: number
+  userId?: number
+  username: string
+  action: string
+  resourceType?: string
+  resourceId?: number
+  before?: string
+  after?: string
+  ipAddress?: string
+  timestamp: string
+}
+
+export interface AuditLogPage {
+  items: AuditLogEntry[]
+  total: number
+}

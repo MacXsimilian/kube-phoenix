@@ -10,7 +10,7 @@
 #   helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
 #     --namespace kube-phoenix --create-namespace \
 #     -f examples/values-minimal.yaml \
-#     --set secret.basicAuthPassword=<your-password>
+#     --set secret.adminPassword=<your-password>
 #
 # Access the UI:
 #   kubectl port-forward -n kube-phoenix svc/kube-phoenix 8080:80
@@ -27,8 +27,8 @@ postgresql:
     size: 2Gi
 
 secret:
-  basicAuthUser: admin
-  basicAuthPassword: ""  # pass via --set
+  adminUser: admin
+  adminPassword: ""  # pass via --set
 
 resources:
   requests:

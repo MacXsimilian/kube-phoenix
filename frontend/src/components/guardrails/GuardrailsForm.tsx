@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, KeyboardEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import Tooltip from '@mui/material/Tooltip'
 import Grid from '@mui/material/Grid'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -21,6 +22,8 @@ import SaveIcon from '@mui/icons-material/Save'
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded'
 import { getGuardrails, updateGuardrails } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
+import { canEditGuardrails } from '@/lib/rbac'
 
 // ── Unprotected chip input ────────────────────────────────────────────────────
 
@@ -208,6 +211,8 @@ function fromCsv(s: string) { return s.split(',').map((v) => v.trim()).filter(Bo
 // ── Main form ─────────────────────────────────────────────────────────────────
 
 export default function GuardrailsForm() {
+  const { user } = useAuth()
+  const hasEdit = canEditGuardrails(user?.permissions)
   const qc = useQueryClient()
   const { data: g, isLoading, isError: loadError } = useQuery({ queryKey: ['guardrails'], queryFn: getGuardrails })
 
@@ -338,14 +343,18 @@ export default function GuardrailsForm() {
         {/* Save */}
         <Grid size={12}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Button
-              variant="contained"
-              startIcon={save.isPending ? <CircularProgress size={14} /> : <SaveIcon fontSize="small" />}
-              disabled={save.isPending}
-              onClick={() => save.mutate()}
-            >
-              Save Guardrails
-            </Button>
+            <Tooltip title={hasEdit ? '' : 'You do not have permission to edit guardrails'}>
+              <span>
+                <Button
+                  variant="contained"
+                  startIcon={save.isPending ? <CircularProgress size={14} /> : <SaveIcon fontSize="small" />}
+                  disabled={save.isPending || !hasEdit}
+                  onClick={() => save.mutate()}
+                >
+                  Save Guardrails
+                </Button>
+              </span>
+            </Tooltip>
             {saveError && (
               <Alert severity="error" sx={{ py: 0.5 }}>
                 {saveError}

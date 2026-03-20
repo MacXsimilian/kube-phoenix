@@ -72,14 +72,39 @@ externalDatabase:
 #
 # DATABASE_URL is auto-computed from postgresql.* or externalDatabase.* above.
 # Set existingSecret to skip Secret creation and use your own (must contain
-# DATABASE_URL, BASIC_AUTH_USER, BASIC_AUTH_PASSWORD).
+# DATABASE_URL, ADMIN_USER, ADMIN_PASSWORD).
 secret:
   existingSecret: ""
-  basicAuthUser: "admin"
-  # IMPORTANT: change basicAuthPassword before deploying to any non-local environment.
-  # The default value here is a placeholder and provides no real security.
-  # Prefer existingSecret to avoid storing credentials in values files committed to git.
-  basicAuthPassword: "kube-phoenix"
+  # Admin credentials — used to seed the first admin user on startup.
+  # Only needed on first run (or after a database reset).
+  adminUser: "admin"
+  # IMPORTANT: change adminPassword before deploying to any non-local environment.
+  adminPassword: "kube-phoenix"
+
+# ── Session configuration ─────────────────────────────────────────────────────
+session:
+  idleTimeout: "8h"     # sliding window — extended on each request
+  maxLifetime: "24h"    # absolute hard cap — session dies regardless
+  cookieSecure: true    # set false for HTTP-only (dev) environments
+
+# ── Audit log retention ───────────────────────────────────────────────────────
+auditRetentionDays: 90   # auto-delete audit entries older than this (0 = keep forever)
+
+# ── OIDC / Keycloak (optional) ────────────────────────────────────────────────
+#
+# Set oidc.enabled=true and fill in the fields to enable SSO login via Keycloak.
+# Users authenticated via OIDC are auto-provisioned in the database.
+# AD group membership controls role assignment (admin/operator/viewer).
+oidc:
+  enabled: false
+  issuerURL: ""             # e.g. https://keycloak.example.com/realms/your-realm
+  clientID: ""              # e.g. kube-phoenix
+  clientSecret: ""          # client secret (leave empty if using PKCE-only public client)
+  redirectURL: ""           # e.g. https://kube-phoenix.example.com/api/auth/oidc/callback
+  groupsClaim: "groups"     # claim name in the ID token containing AD groups
+  roleAdminGroups: ""       # comma-separated AD group names → admin role
+  roleOperatorGroups: ""    # comma-separated AD group names → operator role
+  # Users not matching any group default to 'viewer'.
 
 # ── Service ───────────────────────────────────────────────────────────────────
 

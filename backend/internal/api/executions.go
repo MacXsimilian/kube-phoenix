@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"time"
 
@@ -24,9 +23,6 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		if os.Getenv("BASIC_AUTH_USER") == "" {
-			return true // dev mode
-		}
 		origin := r.Header.Get("Origin")
 		if origin == "" {
 			return true // same-origin requests have no Origin header

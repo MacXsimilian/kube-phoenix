@@ -18,6 +18,8 @@ func (h *Handler) getGuardrails(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
+	old, _ := h.store.GetGuardrails()
+
 	var body map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, "invalid body", http.StatusBadRequest)
@@ -50,6 +52,7 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("guardrails updated")
+	h.audit(r, "guardrail.update", "guardrail", nil, old, g)
 	jsonOK(w, g)
 }
 
