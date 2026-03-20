@@ -5,16 +5,15 @@ info:
   description: |
     REST API for the kube-phoenix cluster sleep/wake scheduler.
 
-    All `/api/*` and `/ws/*` endpoints require HTTP Basic Auth when
-    `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` are configured on the server.
-    `/healthz` and `/metrics` are always open.
+    All `/api/*` and `/ws/*` endpoints require session-based authentication
+    via HTTP-only cookies. `/healthz` and `/metrics` are always open.
+    `/api/auth/login` and `/api/auth/oidc/*` are unauthenticated.
 
-    WebSocket connections (`/ws/executions/{id}/logs`) authenticate via a
-    `?token=<base64(user:pass)>` query parameter because browsers cannot set
-    `Authorization` headers on WebSocket upgrades.
+    Authenticate by calling `POST /api/auth/login` with username/password.
+    The server sets a `__kp_session` HTTP-only cookie and a `__kp_csrf`
+    cookie. Include the CSRF token as `X-CSRF-Token` header on mutations.
 
-    The SSE endpoint (`/api/cluster/stream`) uses a standard HTTP request
-    with the `Authorization` header.
+    WebSocket connections use cookies automatically on same-origin upgrades.
   version: "1.1.0"
   contact:
     name: kube-phoenix
@@ -32,13 +31,14 @@ servers:
     description: Same-origin (served by the Go binary)
 
 security:
-  - basicAuth: []
+  - cookieAuth: []
 
 components:
   securitySchemes:
-    basicAuth:
-      type: http
-      scheme: basic
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: __kp_session
 
   schemas:
     Schedule:
