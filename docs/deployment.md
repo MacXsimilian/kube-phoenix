@@ -85,6 +85,8 @@ targetGroupBinding:
 | `image.tag` | `""` | Image tag (defaults to Chart.AppVersion) |
 | `image.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `replicaCount` | `1` | Number of app replicas |
+| `revisionHistoryLimit` | `2` | Number of old ReplicaSets to retain |
+| `imagePullSecrets` | `[]` | Image pull secrets (e.g. `[{name: my-registry-secret}]`) |
 | `namespaceOverride` | `""` | Override deploy namespace |
 | `createNamespace` | `true` | Create namespace via chart template |
 
@@ -94,6 +96,7 @@ targetGroupBinding:
 | :---- | :------ | :---------- |
 | `serviceAccount.create` | `true` | Create a ServiceAccount |
 | `serviceAccount.name` | `""` | SA name (defaults to release name) |
+| `serviceAccount.annotations` | `{}` | Annotations added to the ServiceAccount — use for IRSA (`eks.amazonaws.com/role-arn: ...`) or Workload Identity |
 | `rbac.create` | `true` | Create ClusterRole + ClusterRoleBinding |
 
 ### Database
@@ -168,20 +171,29 @@ targetGroupBinding:
 | `resources.requests.memory` | `64Mi` | Memory request |
 | `resources.limits.cpu` | `200m` | CPU limit |
 | `resources.limits.memory` | `256Mi` | Memory limit |
+| `strategy.type` | `RollingUpdate` | Deployment strategy type |
+| `strategy.rollingUpdate.maxSurge` | `1` | Max pods above desired during rollout |
+| `strategy.rollingUpdate.maxUnavailable` | `0` | Max unavailable pods during rollout (0 = zero-downtime) |
 | `podSecurityContext.runAsNonRoot` | `true` | Run as non-root |
 | `podSecurityContext.runAsUser` | `65534` | UID |
 | `containerSecurityContext.allowPrivilegeEscalation` | `false` | Block privilege escalation |
 | `containerSecurityContext.readOnlyRootFilesystem` | `true` | Read-only root FS |
+| `startupProbe.failureThreshold` | `30` | Startup probe failure threshold (30 × 5s = 150s max startup time) |
+| `startupProbe.periodSeconds` | `5` | Startup probe interval |
 | `livenessProbe.initialDelaySeconds` | `15` | Liveness probe delay |
 | `readinessProbe.initialDelaySeconds` | `5` | Readiness probe delay |
 | `terminationGracePeriodSeconds` | `30` | Graceful shutdown timeout |
 | `nodeSelector` | `{}` | Node selector |
 | `tolerations` | `[]` | Tolerations |
 | `affinity` | `{}` | Affinity rules |
+| `topologySpreadConstraints` | `[]` | Topology spread constraints — use to spread replicas across nodes/zones |
+| `priorityClassName` | `""` | Pod priority class (e.g. `system-cluster-critical`) |
 | `podDisruptionBudget.enabled` | `false` | Enable PDB |
 | `podDisruptionBudget.maxUnavailable` | `1` | Max unavailable pods |
 | `podAnnotations` | `{}` | Extra pod annotations |
 | `podLabels` | `{}` | Extra pod labels |
+| `extraEnv` | `[]` | Extra environment variables injected into the app container |
+| `extraEnvFrom` | `[]` | Extra envFrom sources (ConfigMaps or Secrets) injected into the app container |
 
 ### Metrics (Prometheus)
 

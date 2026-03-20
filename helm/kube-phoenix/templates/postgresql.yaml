@@ -110,6 +110,11 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+      {{- if not .Values.postgresql.persistence.enabled }}
+      volumes:
+        - name: data
+          emptyDir: {}
+      {{- end }}
   {{- if .Values.postgresql.persistence.enabled }}
   volumeClaimTemplates:
     - metadata:
@@ -122,9 +127,5 @@ spec:
         resources:
           requests:
             storage: {{ .Values.postgresql.persistence.size }}
-  {{- else }}
-      volumes:
-        - name: data
-          emptyDir: {}
   {{- end }}
 {{- end }}

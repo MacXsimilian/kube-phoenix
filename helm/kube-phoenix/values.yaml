@@ -8,7 +8,17 @@ image:
   tag: ""   # defaults to Chart.AppVersion; override to pin a specific tag
   pullPolicy: IfNotPresent
 
+imagePullSecrets: []   # e.g. [{name: my-registry-secret}]
+
 replicaCount: 1
+revisionHistoryLimit: 2
+
+# Rolling update strategy. maxUnavailable: 0 ensures zero-downtime rollouts.
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
 
 # Namespace to deploy into. If createNamespace is true, the chart creates it.
 namespaceOverride: ""   # defaults to .Release.Namespace
@@ -17,6 +27,7 @@ createNamespace: true
 serviceAccount:
   create: true
   name: ""   # defaults to release-chart name
+  annotations: {}   # e.g. for IRSA: eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/ROLE
 
 # RBAC — ClusterRole + ClusterRoleBinding so the app can manage nodes cluster-wide
 rbac:
@@ -192,11 +203,29 @@ readinessProbe:
   initialDelaySeconds: 5
   periodSeconds: 10
 
+# startupProbe gives the app time to initialize before liveness kicks in.
+# failureThreshold * periodSeconds = max startup time (30 * 5 = 150s).
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  failureThreshold: 30
+  periodSeconds: 5
+
 terminationGracePeriodSeconds: 30
 
 nodeSelector: {}
 tolerations: []
 affinity: {}
+topologySpreadConstraints: []
+  # Uncomment to spread replicas across nodes when replicaCount > 1:
+  # - maxSkew: 1
+  #   topologyKey: kubernetes.io/hostname
+  #   whenUnsatisfiable: DoNotSchedule
+  #   labelSelector:
+  #     matchLabels: {}   # filled in automatically by the template
+
+priorityClassName: ""   # e.g. system-cluster-critical
 
 # ── Network Policy ──────────────────────────────────────────────────────────
 # Restricts ingress to port 8080 and egress to DNS, PostgreSQL, and the
@@ -226,6 +255,19 @@ podLabels: {}
 #   kube-prometheus-stack users. The CRD must exist in the cluster.
 #   Add labels under serviceMonitor.labels to match your Prometheus Operator's
 #   serviceMonitorSelector (e.g. `release: kube-prometheus-stack`).
+
+# Extra environment variables injected into the app container.
+# Useful for LOG_LEVEL, TZ, feature flags, etc.
+extraEnv: []
+  # - name: LOG_LEVEL
+  #   value: debug
+
+# Extra envFrom sources (ConfigMaps or Secrets) injected into the app container.
+extraEnvFrom: []
+  # - configMapRef:
+  #     name: my-config
+  # - secretRef:
+  #     name: my-secret
 
 metrics:
   podAnnotations:
