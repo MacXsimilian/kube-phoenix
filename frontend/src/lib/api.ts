@@ -26,11 +26,16 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
 
   // 401 → session expired or not authenticated.
   if (res.status === 401) {
-    // Dispatch a custom event so AuthProvider can react without coupling.
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('kp-session-expired'))
     }
     throw new Error('Session expired')
+  }
+
+  // 403 → permission denied — surface the backend message clearly.
+  if (res.status === 403) {
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.error || 'You do not have permission to perform this action')
   }
 
   if (!res.ok) {
