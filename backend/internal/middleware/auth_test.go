@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,7 +12,7 @@ func TestCSRFProtect_GETExempt(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/api/schedules", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/schedules", nil)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
@@ -25,7 +26,7 @@ func TestCSRFProtect_POSTWithoutToken(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodPost, "/api/schedules", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/schedules", nil)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
@@ -39,7 +40,7 @@ func TestCSRFProtect_POSTWithMismatch(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodPost, "/api/schedules", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/schedules", nil)
 	req.AddCookie(&http.Cookie{Name: "__kp_csrf", Value: "token-a"})
 	req.Header.Set("X-CSRF-Token", "token-b")
 	rr := httptest.NewRecorder()
@@ -55,7 +56,7 @@ func TestCSRFProtect_POSTWithValidToken(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodPost, "/api/schedules", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/schedules", nil)
 	req.AddCookie(&http.Cookie{Name: "__kp_csrf", Value: "valid-token"})
 	req.Header.Set("X-CSRF-Token", "valid-token")
 	rr := httptest.NewRecorder()
@@ -71,7 +72,7 @@ func TestRequirePermission_NoUser(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
@@ -81,7 +82,7 @@ func TestRequirePermission_NoUser(t *testing.T) {
 }
 
 func TestUserFromContext_Nil(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 	user := UserFromContext(req.Context())
 	if user != nil {
 		t.Error("expected nil user from empty context")
