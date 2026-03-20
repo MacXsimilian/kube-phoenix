@@ -15,6 +15,13 @@ require (
 	k8s.io/client-go v0.35.2
 )
 
+require golang.org/x/crypto v0.49.0
+
+require (
+	github.com/coreos/go-oidc/v3 v3.17.0
+	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
+)
+
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -52,7 +59,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/net v0.51.0 // indirect
-	golang.org/x/oauth2 v0.30.0 // indirect
+	golang.org/x/oauth2 v0.30.0
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/term v0.41.0 // indirect

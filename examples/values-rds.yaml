@@ -8,7 +8,7 @@
 #     --namespace kube-phoenix --create-namespace \
 #     -f examples/values-rds.yaml \
 #     --set externalDatabase.password=<your-db-password> \
-#     --set secret.basicAuthPassword=<your-ui-password>
+#     --set secret.adminPassword=<your-ui-password>
 
 postgresql:
   enabled: false   # disable the in-cluster StatefulSet
@@ -22,8 +22,8 @@ externalDatabase:
   sslmode: require
 
 secret:
-  basicAuthUser: admin
-  basicAuthPassword: ""  # pass via --set or a pre-existing Secret
+  adminUser: admin
+  adminPassword: ""  # pass via --set or a pre-existing Secret
 
 # Optionally reference a pre-existing Secret instead of letting
 # the chart create one:
@@ -31,4 +31,4 @@ secret:
 #   secret:
 #     existingSecret: kube-phoenix-credentials
 #
-# The Secret must contain keys: DATABASE_URL, BASIC_AUTH_USER, BASIC_AUTH_PASSWORD
+# The Secret must contain keys: DATABASE_URL, ADMIN_USER, ADMIN_PASSWORD

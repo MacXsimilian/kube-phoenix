@@ -1,0 +1,196 @@
+package api
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+
+	"github.com/macxsimilian/kube-phoenix/backend/internal/auth"
+	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	"gorm.io/gorm"
+)
+
+// ─── List users ──────────────────────────────────────────────────────────────
+
+func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := h.store.ListUsers()
+	if err != nil {
+		jsonInternalError(w, err, "list users failed")
+		return
+	}
+	jsonOK(w, users)
+}
+
+// ─── Create user ─────────────────────────────────────────────────────────────
+
+func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Username string `json:"username"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if body.Username == "" || body.Password == "" {
+		jsonError(w, "username and password are required", http.StatusBadRequest)
+		return
+	}
+	if len(body.Password) < 8 {
+		jsonError(w, "password must be at least 8 characters", http.StatusBadRequest)
+		return
+	}
+	if body.Role == "" {
+		body.Role = "viewer"
+	}
+	if !auth.ValidRole(body.Role) {
+		jsonError(w, "role must be admin, operator, or viewer", http.StatusBadRequest)
+		return
+	}
+
+	hash, err := store.HashPassword(body.Password)
+	if err != nil {
+		jsonInternalError(w, err, "hash password failed")
+		return
+	}
+
+	user := &store.User{
+		Username:     body.Username,
+		Email:        body.Email,
+		PasswordHash: hash,
+		Role:         body.Role,
+		Source:       "local",
+		Enabled:      true,
+	}
+	if err := h.store.CreateUser(user); err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) || isDuplicateKeyError(err) {
+			jsonError(w, "username already exists", http.StatusConflict)
+			return
+		}
+		jsonInternalError(w, err, "create user failed")
+		return
+	}
+
+	h.audit(r, "user.create", "user", &user.ID, nil, map[string]interface{}{"username": user.Username, "role": user.Role})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(user)
+}
+
+// ─── Update user ─────────────────────────────────────────────────────────────
+
+func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	target, err := h.store.GetUserByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			jsonError(w, "user not found", http.StatusNotFound)
+		} else {
+			jsonInternalError(w, err, "get user failed")
+		}
+		return
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+
+	// OIDC users: role is managed by AD groups, not editable here.
+	if target.Source == "oidc" {
+		delete(body, "role")
+	}
+
+	if role, ok := body["role"].(string); ok {
+		if !auth.ValidRole(role) {
+			jsonError(w, "role must be admin, operator, or viewer", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Prevent admin from demoting themselves.
+	caller := authmw.UserFromContext(r.Context())
+	if caller != nil && caller.ID == id {
+		if role, ok := body["role"].(string); ok && role != caller.Role {
+			jsonError(w, "cannot change your own role", http.StatusBadRequest)
+			return
+		}
+		if enabled, ok := body["enabled"].(bool); ok && !enabled {
+			jsonError(w, "cannot disable your own account", http.StatusBadRequest)
+			return
+		}
+	}
+
+	updated, err := h.store.UpdateUser(id, body)
+	if err != nil {
+		jsonInternalError(w, err, "update user failed")
+		return
+	}
+	h.audit(r, "user.update", "user", &id, target, updated)
+
+	// If the user was disabled, revoke all their sessions.
+	if enabled, ok := body["enabled"].(bool); ok && !enabled {
+		_ = h.store.DeleteUserSessions(id)
+	}
+
+	jsonOK(w, updated)
+}
+
+// ─── Delete user ─────────────────────────────────────────────────────────────
+
+func (h *Handler) deleteUser(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		jsonError(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	caller := authmw.UserFromContext(r.Context())
+	if caller != nil && caller.ID == id {
+		jsonError(w, "cannot delete your own account", http.StatusBadRequest)
+		return
+	}
+
+	target, _ := h.store.GetUserByID(id)
+	if err := h.store.DeleteUser(id); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			jsonError(w, "user not found", http.StatusNotFound)
+		} else {
+			jsonInternalError(w, err, "delete user failed")
+		}
+		return
+	}
+	h.audit(r, "user.delete", "user", &id, target, nil)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// isDuplicateKeyError checks for PostgreSQL unique constraint violations.
+func isDuplicateKeyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return len(msg) > 0 && (contains(msg, "duplicate key") || contains(msg, "UNIQUE constraint"))
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && searchString(s, substr)
+}
+
+func searchString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

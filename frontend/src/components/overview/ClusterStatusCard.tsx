@@ -24,11 +24,12 @@ import Brightness4Icon from '@mui/icons-material/Brightness4'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import Skeleton from '@mui/material/Skeleton'
 import { getOverview, getSchedules, triggerRun, getExecution } from '@/lib/api'
-import { getAuthHeader } from '@/lib/auth'
 import type { Execution, Overview } from '@/lib/types'
 import { timeUntil } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
 import LogViewer from '@/components/history/LogViewer'
+import { useAuth } from '@/lib/auth'
+import { canTriggerSchedules } from '@/lib/rbac'
 
 type TriggerType = 'scale_down' | 'scale_up'
 
@@ -49,7 +50,7 @@ function useClusterStream() {
         try {
           const res = await fetch(
             `${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/cluster/stream`,
-            { signal: controller.signal, headers: { ...getAuthHeader() } },
+            { signal: controller.signal, credentials: 'include' },
           )
           if (!res.ok || !res.body) {
             failCountRef.current += 1
@@ -98,6 +99,8 @@ function useClusterStream() {
 export default function ClusterStatusCard() {
   const qc = useQueryClient()
   const router = useRouter()
+  const { user } = useAuth()
+  const hasTrigger = canTriggerSchedules(user?.permissions)
 
   // Single overview query — fed by SSE in real time, polls as fallback
   const { data: overview, isLoading, isError } = useQuery({
@@ -279,24 +282,26 @@ export default function ClusterStatusCard() {
 
               {/* Action buttons with impact tooltips */}
               <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-                <Tooltip title={`Will scale down ~${running} running workload${running !== 1 ? 's' : ''}`} arrow>
+                <Tooltip title={hasTrigger ? `Will scale down ~${running} running workload${running !== 1 ? 's' : ''}` : 'You do not have permission to trigger schedules'} arrow>
                   <span>
                     <Button
                       variant="outlined"
                       startIcon={<BedtimeIcon fontSize="small" />}
                       onClick={() => { setMode('plan'); setDialog({ open: true, type: 'scale_down' }) }}
+                      disabled={!hasTrigger}
                       sx={{ borderColor: 'divider', color: 'text.secondary' }}
                     >
                       Run Sleep Now
                     </Button>
                   </span>
                 </Tooltip>
-                <Tooltip title={`Will restore ~${sleeping} sleeping workload${sleeping !== 1 ? 's' : ''}`} arrow>
+                <Tooltip title={hasTrigger ? `Will restore ~${sleeping} sleeping workload${sleeping !== 1 ? 's' : ''}` : 'You do not have permission to trigger schedules'} arrow>
                   <span>
                     <Button
                       variant="outlined"
                       startIcon={<WbSunnyIcon fontSize="small" />}
                       onClick={() => { setMode('plan'); setDialog({ open: true, type: 'scale_up' }) }}
+                      disabled={!hasTrigger}
                       sx={{ borderColor: 'divider', color: 'text.secondary' }}
                     >
                       Run Wake Now

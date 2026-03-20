@@ -28,7 +28,8 @@ Requires Helm 3 and a Kubernetes cluster.
 helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
   --namespace kube-phoenix \
   --create-namespace \
-  --set secret.basicAuthPassword=<your-password>
+  --set secret.adminUser=admin \
+  --set secret.adminPassword=<your-password>
 ```
 
 ```bash
@@ -50,7 +51,7 @@ make dev-backend  # http://localhost:8080 (separate terminal)
 make dev-frontend # http://localhost:3000 (separate terminal)
 ```
 
-Authentication is disabled when `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` are unset.
+On first startup the admin user is seeded from `ADMIN_USER` / `ADMIN_PASSWORD` env vars. Authentication is disabled when neither is set (dev mode).
 
 ### Production build
 
@@ -111,7 +112,7 @@ flowchart TB
 
     subgraph Binary["Go 1.26 Binary — port 8080"]
         direction TB
-        Router["Chi Router + BasicAuth middleware"]
+        Router["Chi Router + Session Auth middleware"]
         Handlers["API Handlers"]
         Scheduler["Scheduler<br/>robfig/cron v3"]
         Scaler["Scaler<br/>Scale Down / Scale Up"]
@@ -148,6 +149,9 @@ flowchart TB
 - **Schedules** — multiple sleep and wake schedules with a visual cron builder (day-of-week picker, hour/minute dropdowns, live human-readable preview, and an advanced raw cron toggle for power users), per-schedule timezones, and optional namespace filters for partial scale-down; inline enable/disable toggle and drag-to-reorder
 - **History** — full execution log with live WebSocket streaming; jump-to-error navigation and error/workload count badges
 - **Manual triggers** — run any schedule immediately in plan (dry-run) or apply mode
+- **Users** — multi-user management with three RBAC roles (admin, operator, viewer) and granular permissions; admin-only page for creating, editing, and deleting users
+- **Audit Log** — searchable audit trail with before/after diffs, filterable by user, action, and resource; configurable retention
+- **Authentication** — session-based auth via HTTP-only cookies with CSRF double-submit protection; optional Keycloak OIDC integration (Authorization Code + PKCE, AD group-to-role mapping, account linking); login rate limiting (per-IP and per-username)
 - **Settings** — light/dark/system theme switcher; danger zone with double-confirmation Reset Database
 - **Swagger UI** — interactive API docs at `/api/docs/`; raw OpenAPI 3.1 spec at `/api/docs/openapi.yaml`
 
@@ -170,7 +174,8 @@ The Go backend embeds the Next.js static export via `//go:embed` — one binary,
 
 | Item                        | Status      | Notes                                           |
 | :-------------------------- | :---------- | :---------------------------------------------- |
-| Keycloak / OIDC auth        | Planned     | Replace HTTP Basic Auth; retain WS token flow   |
+| Multi-user management       | Done        | Session auth, RBAC (admin/operator/viewer), audit log |
+| Keycloak / OIDC auth        | Done        | Authorization Code + PKCE, AD group mapping     |
 | Slack / email notifications | Planned     | Alert on scale failures and manual triggers     |
 | Multi-cluster support       | Planned     | Switch between kubeconfig contexts in the UI    |
 | OpenAPI spec                | Done        | Swagger UI served at `/api/docs/`               |
@@ -198,6 +203,11 @@ kube-phoenix exposes a Prometheus metrics endpoint at `/metrics` (no authenticat
 | `kube_phoenix_nodes_drained_total` | Counter | — | Nodes drained during scale-down |
 | `kube_phoenix_nodes_deleted_total` | Counter | — | Nodes deleted during scale-down |
 | `kube_phoenix_active_schedules` | Gauge | `schedule_type`, `mode` | Enabled schedules by type and mode |
+| `kube_phoenix_auth_attempts_total` | Counter | `status`, `method` | Login attempts by outcome and method (local/oidc) |
+| `kube_phoenix_user_actions_total` | Counter | `action`, `user`, `resource_type` | User-initiated mutations (schedule.update, trigger.manual, etc.) |
+| `kube_phoenix_active_sessions` | Gauge | — | Currently active user sessions |
+| `kube_phoenix_rate_limit_hits_total` | Counter | `type` | Rate limiter rejections (per_ip/per_username) |
+| `kube_phoenix_audit_drops_total` | Counter | — | Audit entries dropped due to full buffer |
 
 ---
 

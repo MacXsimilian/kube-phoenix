@@ -44,6 +44,7 @@ func (h *Handler) trigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("manual trigger accepted", "scheduleID", req.ScheduleID, "execID", execID, "mode", req.Mode)
+	h.audit(r, "trigger.manual", "schedule", &req.ScheduleID, nil, map[string]interface{}{"mode": req.Mode, "executionId": execID})
 	w.WriteHeader(http.StatusAccepted)
 	jsonOK(w, triggerResponse{ExecutionID: execID})
 }

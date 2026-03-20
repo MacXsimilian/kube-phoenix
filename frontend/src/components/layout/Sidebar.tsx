@@ -20,14 +20,27 @@ import SecurityOutlinedIcon from '@mui/icons-material/SecurityOutlined'
 import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined'
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined'
 import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined'
+import PeopleOutlinedIcon from '@mui/icons-material/PeopleOutlined'
+import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined'
 import { useAuth } from '@/lib/auth'
+import { canManageUsers, canViewAudit } from '@/lib/rbac'
 
-const NAV = [
+interface NavItem {
+  label: string
+  href: string
+  icon: React.ReactNode
+  /** If set, only show when user has this permission */
+  requirePerm?: (perms?: string[]) => boolean
+}
+
+const NAV: NavItem[] = [
   { label: 'Overview', href: '/overview', icon: <DashboardOutlinedIcon fontSize="small" /> },
   { label: 'Cluster State', href: '/cluster', icon: <HubOutlinedIcon fontSize="small" /> },
   { label: 'Guardrails', href: '/guardrails', icon: <SecurityOutlinedIcon fontSize="small" /> },
   { label: 'Schedules', href: '/schedules', icon: <ScheduleOutlinedIcon fontSize="small" /> },
   { label: 'History', href: '/history', icon: <HistoryOutlinedIcon fontSize="small" /> },
+  { label: 'Users', href: '/users', icon: <PeopleOutlinedIcon fontSize="small" />, requirePerm: canManageUsers },
+  { label: 'Audit Log', href: '/audit', icon: <AssignmentOutlinedIcon fontSize="small" />, requirePerm: canViewAudit },
   { label: 'Settings', href: '/settings', icon: <SettingsOutlinedIcon fontSize="small" /> },
 ]
 
@@ -39,10 +52,14 @@ interface Props {
 
 export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
   const pathname = usePathname()
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
   const [aboutOpen, setAboutOpen] = useState(false)
   const theme = useTheme()
   const primary = theme.palette.primary.main
+
+  const visibleNav = NAV.filter(item =>
+    !item.requirePerm || item.requirePerm(user?.permissions)
+  )
 
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -69,7 +86,7 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
 
       {/* Nav items */}
       <List sx={{ pt: 1 }}>
-        {NAV.map(({ label, href, icon }) => {
+        {visibleNav.map(({ label, href, icon }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
           return (
             <ListItemButton
