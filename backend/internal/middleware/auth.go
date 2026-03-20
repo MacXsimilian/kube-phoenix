@@ -124,7 +124,9 @@ func RequirePermission(perm auth.Permission) func(http.Handler) http.Handler {
 				return
 			}
 			if !auth.HasPermission(user.Role, perm) {
-				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"error":"You do not have permission to perform this action"}`))
 				return
 			}
 			next.ServeHTTP(w, r)
