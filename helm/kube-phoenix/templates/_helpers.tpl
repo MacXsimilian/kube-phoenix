@@ -108,10 +108,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-Validate mutually exclusive values.
+Validate mutually exclusive values and required fields.
 */}}
 {{- define "kube-phoenix.validateValues" -}}
 {{- if and .Values.ingress.enabled .Values.targetGroupBinding.enabled }}
 {{- fail "ingress.enabled and targetGroupBinding.enabled cannot both be true. Use one or the other." }}
+{{- end }}
+{{- if and (not .Values.postgresql.enabled) (not .Values.externalDatabase.url) (not .Values.externalDatabase.host) }}
+{{- fail "When postgresql.enabled=false you must set either externalDatabase.url or externalDatabase.host." }}
 {{- end }}
 {{- end }}
