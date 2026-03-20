@@ -10,6 +10,8 @@ frontend/out
 # Go build artifacts
 backend/bin
 backend/web/static
+backend/coverage.out
+backend/.cache
 
 # Dev files
 docker-compose.yml
