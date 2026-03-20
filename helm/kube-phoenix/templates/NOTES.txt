@@ -1,43 +1,80 @@
-kube-phoenix has been deployed to namespace {{ include "kube-phoenix.namespace" . }}.
+{{- include "kube-phoenix.validateValues" . }}
+
+kube-phoenix {{ .Chart.AppVersion }} has been deployed.
+
+  Release   : {{ .Release.Name }}
+  Namespace : {{ include "kube-phoenix.namespace" . }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {{- if .Values.ingress.enabled }}
 
-Access the UI at:
+  Access the UI at:
   {{- if .Values.ingress.tls }}
-  https://{{ .Values.ingress.host }}
+    https://{{ .Values.ingress.host }}
   {{- else }}
-  http://{{ .Values.ingress.host }}
+    http://{{ .Values.ingress.host }}
   {{- end }}
+
+{{- else if .Values.targetGroupBinding.enabled }}
+
+  The app is registered in your ALB target group.
+  Access it via the ALB hostname or your DNS record.
 
 {{- else }}
 
-Access the UI via port-forward:
+  No Ingress or TargetGroupBinding is enabled.
+  Access the UI via port-forward:
 
-  kubectl port-forward -n {{ include "kube-phoenix.namespace" . }} svc/{{ include "kube-phoenix.fullname" . }} 8080:{{ .Values.service.port }}
-  open http://localhost:8080
+    kubectl port-forward -n {{ include "kube-phoenix.namespace" . }} \
+      svc/{{ include "kube-phoenix.fullname" . }} 8080:{{ .Values.service.port }}
+
+  Then open: http://localhost:8080
 
 {{- end }}
 
-{{- if not .Values.secret.existingSecret }}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Admin credentials (seeded on first startup):
-  User:     {{ .Values.secret.adminUser }}
-  Password: (set via secret.adminPassword)
+{{- if .Values.secret.existingSecret }}
+  Credentials loaded from existing Secret: {{ .Values.secret.existingSecret }}
+{{- else }}
+  Credentials
+    User    : {{ .Values.secret.adminUser }}
+    Password: (see Secret "{{ include "kube-phoenix.fullname" . }}")
 
+  ⚠  If you are using the default password, change it before exposing this service:
+       helm upgrade {{ .Release.Name }} ... --set secret.adminPassword=<new-password>
+     Prefer existingSecret to avoid storing credentials in values files committed to git.
 {{- end }}
 
 {{- if .Values.oidc.enabled }}
 
-OIDC / Keycloak SSO is enabled:
-  Issuer: {{ .Values.oidc.issuerURL }}
-  Client: {{ .Values.oidc.clientID }}
-  Login screen will show "Login with SSO" button.
-  AD group → role mapping:
-    admin:    {{ .Values.oidc.roleAdminGroups | default "(none)" }}
-    operator: {{ .Values.oidc.roleOperatorGroups | default "(none)" }}
-    viewer:   (default for unmatched users)
+  OIDC / Keycloak SSO is enabled:
+    Issuer: {{ .Values.oidc.issuerURL }}
+    Client: {{ .Values.oidc.clientID }}
+    Login screen will show "Login with SSO" button.
+    AD group → role mapping:
+      admin:    {{ .Values.oidc.roleAdminGroups | default "(none)" }}
+      operator: {{ .Values.oidc.roleOperatorGroups | default "(none)" }}
+      viewer:   (default for unmatched users)
 
 {{- end }}
 
-All schedules are seeded DISABLED in PLAN MODE — nothing will scale
-until you explicitly enable a schedule and switch it to apply mode.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Database
+{{- if .Values.postgresql.enabled }}
+    In-cluster PostgreSQL: {{ include "kube-phoenix.postgresqlHost" . }}:5432
+{{- else if .Values.externalDatabase.url }}
+    External database (custom url)
+{{- else }}
+    External database: {{ .Values.externalDatabase.host }}:{{ .Values.externalDatabase.port }}
+{{- end }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  All schedules are seeded DISABLED in PLAN MODE — nothing will scale
+  until you explicitly enable a schedule and switch it to apply mode.
+
+  Logs   : kubectl logs -n {{ include "kube-phoenix.namespace" . }} deploy/{{ include "kube-phoenix.fullname" . }} -f
+  Status : kubectl get all -n {{ include "kube-phoenix.namespace" . }}
