@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Card from '@mui/material/Card'
@@ -24,8 +24,9 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined'
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined'
 import SettingsBrightnessOutlinedIcon from '@mui/icons-material/SettingsBrightnessOutlined'
+import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined'
 import Chip from '@mui/material/Chip'
-import { resetDatabaseStream, changePasswordAPI, type ResetEvent } from '@/lib/api'
+import { resetDatabaseStream, changePasswordAPI, getOIDCConfig, type ResetEvent } from '@/lib/api'
 import { useTheme } from '@mui/material/styles'
 import { useThemeMode } from '@/lib/themeMode'
 import { useAuth } from '@/lib/auth'
@@ -120,6 +121,10 @@ export default function SettingsPage() {
   const { mode, setMode } = useThemeMode()
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const { data: oidcCfg, isLoading: oidcLoading } = useQuery({
+    queryKey: ['oidc-config'],
+    queryFn: getOIDCConfig,
+  })
   const [step1Open, setStep1Open] = useState(false)
   const [pwDialogOpen, setPwDialogOpen] = useState(false)
   const [currentPw, setCurrentPw] = useState('')
@@ -214,6 +219,87 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* OIDC / SSO */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent sx={{ p: 3 }}>
+          <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+            OIDC / SSO
+          </Typography>
+          {oidcLoading ? (
+            <CircularProgress size={20} />
+          ) : (
+            <>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                {oidcCfg?.enabled ? (
+                  <CheckCircleOutlineIcon fontSize="small" color="success" />
+                ) : oidcCfg?.mounted ? (
+                  <WarningAmberOutlinedIcon fontSize="small" color="warning" />
+                ) : (
+                  <ErrorOutlineIcon fontSize="small" sx={{ color: 'text.disabled' }} />
+                )}
+                <Typography variant="body2" fontWeight={600}>
+                  {oidcCfg?.enabled
+                    ? 'Active — provider initialized successfully'
+                    : oidcCfg?.mounted
+                      ? 'Config mounted but provider failed to initialize'
+                      : 'Not configured'}
+                </Typography>
+              </Box>
+
+              {oidcCfg?.mounted && (
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                    gap: 2,
+                  }}
+                >
+                  {[
+                    { label: 'Issuer URL', value: oidcCfg.issuerURL },
+                    { label: 'Client ID', value: oidcCfg.clientID },
+                    { label: 'Redirect URL', value: oidcCfg.redirectURL },
+                    { label: 'Groups claim', value: oidcCfg.groupsClaim },
+                  ].map(({ label, value }) => (
+                    <Box key={label}>
+                      <Typography variant="caption" color="text.secondary">{label}</Typography>
+                      <Typography
+                        variant="body2"
+                        fontFamily="monospace"
+                        sx={{ wordBreak: 'break-all', color: value ? 'text.primary' : 'text.disabled' }}
+                      >
+                        {value || '—'}
+                      </Typography>
+                    </Box>
+                  ))}
+
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Admin groups</Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                      {oidcCfg.roleAdminGroups?.length
+                        ? oidcCfg.roleAdminGroups.map((g) => (
+                            <Chip key={g} label={g} size="small" color="error" variant="outlined" />
+                          ))
+                        : <Typography variant="body2" color="text.disabled">—</Typography>}
+                    </Box>
+                  </Box>
+
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Operator groups</Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                      {oidcCfg.roleOperatorGroups?.length
+                        ? oidcCfg.roleOperatorGroups.map((g) => (
+                            <Chip key={g} label={g} size="small" color="warning" variant="outlined" />
+                          ))
+                        : <Typography variant="body2" color="text.disabled">—</Typography>}
+                    </Box>
+                  </Box>
+                </Box>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Appearance */}
       <Card sx={{ mb: 3 }}>
