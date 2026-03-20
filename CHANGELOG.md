@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.69](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.68...v0.1.69) (2026-03-20)
+
+
+### Features
+
+* add multi-user management with RBAC, audit logging, and Keycloak OIDC ([634bffa](https://github.com/MacXsimilian/kube-phoenix/commit/634bffaae06f31db31274b4b6bfa72c083395050))
+* add multi-user management with RBAC, audit logging, and Keycloak OIDC ([78eee8b](https://github.com/MacXsimilian/kube-phoenix/commit/78eee8b5650fb0495fc96cd130a40d00b6feeaa4))
+* add preventive RBAC UI guards on all mutation buttons ([90aaadb](https://github.com/MacXsimilian/kube-phoenix/commit/90aaadb30be2bc220eeadc78fc81ae22dd809c77))
+
+
+### Bug Fixes
+
+* return clear permission-denied message on 403 ([78e244c](https://github.com/MacXsimilian/kube-phoenix/commit/78e244cfe2dde95e825a791ff25550c9dc7c2102))
+* use NewRequestWithContext in auth tests (noctx lint) ([2b2ba4d](https://github.com/MacXsimilian/kube-phoenix/commit/2b2ba4d1f06ecacfcf1a8b3fe1e0537d69977556))
+
 ## [0.1.68](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.67...v0.1.68) (2026-03-17)
 
 
