@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.72](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.71...v0.1.72) (2026-03-20)
+
+
+### Features
+
+* **build:** add BuildKit cache mounts and Docker CI validation ([8239829](https://github.com/MacXsimilian/kube-phoenix/commit/8239829583c72c4725f3ebc4bbcd4966d58458bb))
+* **build:** add BuildKit cache mounts and Docker CI validation ([96d43f0](https://github.com/MacXsimilian/kube-phoenix/commit/96d43f04bff3e1e7696f810a06c8fe66f371629f))
+
 ## [0.1.71](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.70...v0.1.71) (2026-03-20)
 
 
