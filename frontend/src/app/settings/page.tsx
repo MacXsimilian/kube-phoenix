@@ -24,9 +24,12 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined'
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined'
 import SettingsBrightnessOutlinedIcon from '@mui/icons-material/SettingsBrightnessOutlined'
-import { resetDatabaseStream, type ResetEvent } from '@/lib/api'
+import Chip from '@mui/material/Chip'
+import { resetDatabaseStream, changePasswordAPI, type ResetEvent } from '@/lib/api'
 import { useTheme } from '@mui/material/styles'
 import { useThemeMode } from '@/lib/themeMode'
+import { useAuth } from '@/lib/auth'
+import { canResetDB } from '@/lib/rbac'
 
 const CONFIRM_PHRASE = 'RESET DATABASE'
 
@@ -115,8 +118,15 @@ function ResetProgressDialog({
 
 export default function SettingsPage() {
   const { mode, setMode } = useThemeMode()
+  const { user } = useAuth()
   const queryClient = useQueryClient()
   const [step1Open, setStep1Open] = useState(false)
+  const [pwDialogOpen, setPwDialogOpen] = useState(false)
+  const [currentPw, setCurrentPw] = useState('')
+  const [newPw, setNewPw] = useState('')
+  const [pwError, setPwError] = useState('')
+  const [pwSuccess, setPwSuccess] = useState(false)
+  const [pwLoading, setPwLoading] = useState(false)
   const [step2Open, setStep2Open] = useState(false)
   const [phrase, setPhrase] = useState('')
   const [progressOpen, setProgressOpen] = useState(false)
@@ -173,6 +183,38 @@ export default function SettingsPage() {
         Application configuration and administrative operations.
       </Typography>
 
+      {/* Account */}
+      {user && user.id !== 0 && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent sx={{ p: 3 }}>
+            <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+              Account
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2 }}>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Username</Typography>
+                <Typography variant="body2" fontWeight={600}>{user.username}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Role</Typography>
+                <Typography variant="body2">
+                  <Chip label={user.role} size="small" color={user.role === 'admin' ? 'error' : user.role === 'operator' ? 'warning' : 'default'} />
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Source</Typography>
+                <Typography variant="body2">{user.source === 'oidc' ? 'SSO (OIDC)' : 'Local'}</Typography>
+              </Box>
+            </Box>
+            {user.source === 'local' && (
+              <Button variant="outlined" size="small" onClick={() => { setPwDialogOpen(true); setPwError(''); setPwSuccess(false); setCurrentPw(''); setNewPw('') }}>
+                Change Password
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Appearance */}
       <Card sx={{ mb: 3 }}>
         <CardContent sx={{ p: 3 }}>
@@ -204,8 +246,8 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Danger Zone */}
-      <Card sx={{ border: '1px solid', borderColor: 'error.main', bgcolor: 'rgba(239,68,68,0.04)' }}>
+      {/* Danger Zone — admin only */}
+      {canResetDB(user?.permissions) && <Card sx={{ border: '1px solid', borderColor: 'error.main', bgcolor: 'rgba(239,68,68,0.04)' }}>
         <CardContent sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
             <WarningAmberRoundedIcon sx={{ color: 'error.main' }} />
@@ -240,7 +282,32 @@ export default function SettingsPage() {
             </Button>
           </Box>
         </CardContent>
-      </Card>
+      </Card>}
+
+      {/* Password change dialog */}
+      <Dialog open={pwDialogOpen} onClose={() => setPwDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Change Password</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
+          {pwError && <Alert severity="error">{pwError}</Alert>}
+          {pwSuccess && <Alert severity="success">Password changed successfully.</Alert>}
+          <TextField label="Current password" type="password" fullWidth size="small" value={currentPw} onChange={e => setCurrentPw(e.target.value)} disabled={pwLoading} />
+          <TextField label="New password" type="password" fullWidth size="small" value={newPw} onChange={e => setNewPw(e.target.value)} disabled={pwLoading} helperText="Minimum 8 characters" />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setPwDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" disabled={pwLoading || !currentPw || newPw.length < 8} onClick={async () => {
+            setPwLoading(true); setPwError(''); setPwSuccess(false)
+            try {
+              await changePasswordAPI(currentPw, newPw)
+              setPwSuccess(true); setCurrentPw(''); setNewPw('')
+            } catch (err) {
+              setPwError(err instanceof Error ? err.message : 'Failed')
+            } finally { setPwLoading(false) }
+          }}>
+            {pwLoading ? <CircularProgress size={20} /> : 'Change'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Step 1: Initial warning */}
       <Dialog open={step1Open} onClose={() => setStep1Open(false)} maxWidth="xs" fullWidth>

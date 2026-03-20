@@ -70,16 +70,43 @@ spec:
                 secretKeyRef:
                   name: {{ include "kube-phoenix.secretName" . }}
                   key: DATABASE_URL
-            - name: BASIC_AUTH_USER
+            - name: ADMIN_USER
               valueFrom:
                 secretKeyRef:
                   name: {{ include "kube-phoenix.secretName" . }}
-                  key: BASIC_AUTH_USER
-            - name: BASIC_AUTH_PASSWORD
+                  key: ADMIN_USER
+            - name: ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "kube-phoenix.secretName" . }}
-                  key: BASIC_AUTH_PASSWORD
+                  key: ADMIN_PASSWORD
+            - name: SESSION_IDLE_TIMEOUT
+              value: {{ .Values.session.idleTimeout | quote }}
+            - name: SESSION_MAX_LIFETIME
+              value: {{ .Values.session.maxLifetime | quote }}
+            - name: COOKIE_SECURE
+              value: {{ .Values.session.cookieSecure | quote }}
+            - name: AUDIT_RETENTION_DAYS
+              value: {{ .Values.auditRetentionDays | quote }}
+            {{- if .Values.oidc.enabled }}
+            - name: OIDC_ISSUER_URL
+              value: {{ .Values.oidc.issuerURL | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ .Values.oidc.clientID | quote }}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kube-phoenix.secretName" . }}
+                  key: OIDC_CLIENT_SECRET
+            - name: OIDC_REDIRECT_URL
+              value: {{ .Values.oidc.redirectURL | quote }}
+            - name: OIDC_GROUPS_CLAIM
+              value: {{ .Values.oidc.groupsClaim | quote }}
+            - name: OIDC_ROLE_ADMIN_GROUPS
+              value: {{ .Values.oidc.roleAdminGroups | quote }}
+            - name: OIDC_ROLE_OPERATOR_GROUPS
+              value: {{ .Values.oidc.roleOperatorGroups | quote }}
+            {{- end }}
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:
