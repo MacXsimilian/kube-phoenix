@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.70](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.69...v0.1.70) (2026-03-20)
+
+
+### Features
+
+* **helm:** harden chart with missing production features ([57aa120](https://github.com/MacXsimilian/kube-phoenix/commit/57aa120f31b96b4202e25bf1837b6368969a859d))
+* **helm:** harden chart with missing production features ([67970c6](https://github.com/MacXsimilian/kube-phoenix/commit/67970c6f2890889528333a2e3078b088d5ee0b21))
+
 ## [0.1.69](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.68...v0.1.69) (2026-03-20)
 
 
