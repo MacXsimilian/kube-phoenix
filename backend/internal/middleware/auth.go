@@ -2,86 +2,132 @@ package middleware
 
 import (
 	"context"
-	"crypto/subtle"
-	"encoding/base64"
+	"crypto/rand"
+	"encoding/hex"
 	"log/slog"
 	"net/http"
-	"net/url"
-	"os"
-	"strings"
+	"time"
+
+	"github.com/macxsimilian/kube-phoenix/backend/internal/auth"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
-// wsTokenKey is the context key used to pass the WebSocket auth token between
-// RedactWSToken (which strips it from the URL before the logger sees it) and
-// BasicAuth (which reads it back for credential verification).
-type wsTokenKey struct{}
+// ─── Context keys ────────────────────────────────────────────────────────────
 
-// RedactWSToken must be registered BEFORE the request logger middleware.
-// It moves the ?token= query parameter into the request context and replaces
-// its URL value with "[REDACTED]", so access logs never contain raw credentials.
-func RedactWSToken(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if t := r.URL.Query().Get("token"); t != "" {
-			// Stash real token in context for BasicAuth to consume.
-			ctx := context.WithValue(r.Context(), wsTokenKey{}, t)
-			// Clone the URL so we don't mutate the original, then redact.
-			u2 := *r.URL
-			q := url.Values{}
-			for k, v := range r.URL.Query() {
-				q[k] = v
+type ctxUserKey struct{}
+
+// UserFromContext returns the authenticated user, or nil if unauthenticated.
+func UserFromContext(ctx context.Context) *store.User {
+	u, _ := ctx.Value(ctxUserKey{}).(*store.User)
+	return u
+}
+
+// ─── Session Auth (cookie-based) ─────────────────────────────────────────────
+
+// SessionAuth reads the __kp_session HTTP-only cookie, looks up the session in
+// the database, places the User into the request context, and extends the
+// sliding-window expiry.
+func SessionAuth(st *store.Store, idleTimeout time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cookie, err := r.Cookie("__kp_session")
+			if err != nil || cookie.Value == "" {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
 			}
-			q.Set("token", "[REDACTED]")
-			u2.RawQuery = q.Encode()
-			r2 := r.Clone(ctx)
-			r2.URL = &u2
-			next.ServeHTTP(w, r2)
+
+			sess, err := st.GetSessionByToken(cookie.Value)
+			if err != nil {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+
+			if !sess.User.Enabled {
+				slog.Warn("session-auth: disabled user attempted access", "userID", sess.User.ID, "username", sess.User.Username)
+				http.Error(w, `{"error":"account disabled"}`, http.StatusForbidden)
+				return
+			}
+
+			// Extend sliding window (capped at max_expires_at by the store).
+			if err := st.ExtendSession(cookie.Value, idleTimeout); err != nil {
+				slog.Warn("session-auth: extend session failed", "err", err)
+			}
+
+			ctx := context.WithValue(r.Context(), ctxUserKey{}, &sess.User)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// ─── CSRF protection (double-submit cookie) ──────────────────────────────────
+
+const csrfCookieName = "__kp_csrf"
+const csrfHeaderName = "X-CSRF-Token"
+
+// GenerateCSRFToken returns a random 32-byte hex string for use as a CSRF token.
+func GenerateCSRFToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// SetCSRFCookie sets the JS-readable CSRF cookie on the response.
+func SetCSRFCookie(w http.ResponseWriter, token string, secure bool) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     csrfCookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: false, // JS must be able to read this
+		Secure:   secure,
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+// CSRFProtect validates that mutation requests (POST/PUT/DELETE) include an
+// X-CSRF-Token header matching the __kp_csrf cookie value.
+func CSRFProtect(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Safe methods are exempt.
+		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
 			return
 		}
+
+		cookie, err := r.Cookie(csrfCookieName)
+		if err != nil || cookie.Value == "" {
+			http.Error(w, `{"error":"missing CSRF token"}`, http.StatusForbidden)
+			return
+		}
+
+		header := r.Header.Get(csrfHeaderName)
+		if header == "" || header != cookie.Value {
+			http.Error(w, `{"error":"invalid CSRF token"}`, http.StatusForbidden)
+			return
+		}
+
 		next.ServeHTTP(w, r)
 	})
 }
 
-// BasicAuth returns a middleware that enforces HTTP Basic Auth.
-// Credentials are read from BASIC_AUTH_USER and BASIC_AUTH_PASSWORD env vars.
-// If the env vars are not set, auth is skipped (useful for local dev without a password).
-//
-// When Keycloak OIDC is integrated later, replace this middleware with an OIDC handler
-// while keeping the same middleware slot in the router.
-func BasicAuth(next http.Handler) http.Handler {
-	user := os.Getenv("BASIC_AUTH_USER")
-	pass := os.Getenv("BASIC_AUTH_PASSWORD")
+// ─── Permission check ────────────────────────────────────────────────────────
 
-	// If credentials are not configured, skip auth (local dev mode)
-	if user == "" || pass == "" {
-		slog.Warn("basic-auth: credentials not configured — authentication disabled (dev mode)")
-		return next
-	}
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, p, ok := r.BasicAuth()
-
-		// Browsers cannot set Authorization headers on WebSocket upgrades.
-		// Accept a ?token=<base64(user:pass)> query param as fallback.
-		// The token is read from the request context (placed there by RedactWSToken)
-		// so that the value never appears in raw form in the access log.
-		if !ok && r.Header.Get("Upgrade") == "websocket" {
-			if t, _ := r.Context().Value(wsTokenKey{}).(string); t != "" {
-				decoded, err := base64.StdEncoding.DecodeString(t)
-				if err == nil {
-					if parts := strings.SplitN(string(decoded), ":", 2); len(parts) == 2 {
-						u, p, ok = parts[0], parts[1], true
-					}
-				}
+// RequirePermission returns middleware that checks the authenticated user has
+// the given permission. Must be placed after SessionAuth.
+func RequirePermission(perm auth.Permission) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user := UserFromContext(r.Context())
+			if user == nil {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
 			}
-		}
-
-		if !ok || subtle.ConstantTimeCompare([]byte(u), []byte(user)) != 1 ||
-			subtle.ConstantTimeCompare([]byte(p), []byte(pass)) != 1 {
-			slog.Warn("basic-auth: unauthorized request", "remote_addr", r.RemoteAddr, "method", r.Method, "path", r.URL.Path)
-			w.Header().Set("WWW-Authenticate", `Basic realm="kube-phoenix"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+			if !auth.HasPermission(user.Role, perm) {
+				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

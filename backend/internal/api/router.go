@@ -1,13 +1,17 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/auth"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/docs"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
@@ -19,25 +23,59 @@ import (
 )
 
 type Handler struct {
-	store     *store.Store
-	k8s       *k8s.Client
-	scheduler *scheduler.Scheduler
-	cache     *k8s.ClusterCache
+	store        *store.Store
+	k8s          *k8s.Client
+	scheduler    *scheduler.Scheduler
+	cache        *k8s.ClusterCache
+	ipLimiter    *auth.RateLimiter
+	userLimiter  *auth.RateLimiter
+	idleTimeout  time.Duration
+	maxLifetime  time.Duration
+	auditWriter  *AuditWriter
+	oidcProvider *auth.OIDCProvider
 }
 
-func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Scheduler, cache *k8s.ClusterCache) *chi.Mux {
-	h := &Handler{store: st, k8s: k8sClient, scheduler: sched, cache: cache}
+func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sched *scheduler.Scheduler, cache *k8s.ClusterCache) *chi.Mux {
+	idleTimeout := parseDuration("SESSION_IDLE_TIMEOUT", 8*time.Hour)
+	maxLifetime := parseDuration("SESSION_MAX_LIFETIME", 24*time.Hour)
+
+	aw := NewAuditWriter(st, 1024)
+	go aw.Start(ctx)
+
+	// Initialize OIDC provider if configured.
+	var oidcProv *auth.OIDCProvider
+	if cfg := auth.OIDCConfigFromEnv(); cfg != nil {
+		var err error
+		oidcProv, err = auth.NewOIDCProvider(ctx, *cfg)
+		if err != nil {
+			slog.Error("oidc: provider init failed — OIDC login will be unavailable", "err", err)
+		} else {
+			slog.Info("oidc: provider initialized", "issuer", cfg.IssuerURL, "clientID", cfg.ClientID)
+		}
+	}
+
+	h := &Handler{
+		store:        st,
+		k8s:          k8sClient,
+		scheduler:    sched,
+		cache:        cache,
+		ipLimiter:    auth.NewRateLimiter(10, 15*time.Minute),
+		userLimiter:  auth.NewRateLimiter(5, 15*time.Minute),
+		idleTimeout:  idleTimeout,
+		maxLifetime:  maxLifetime,
+		auditWriter:  aw,
+		oidcProvider: oidcProv,
+	}
 
 	r := chi.NewRouter()
-	r.Use(chiMiddleware.RequestID) // injects X-Request-Id header; correlates log lines
-	r.Use(authmw.RedactWSToken)    // must be before Logger — strips ?token= from URL before it is logged
+	r.Use(chiMiddleware.RequestID)
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
 	r.Use(corsHandler())
 	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB
-			next.ServeHTTP(w, r)
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			req.Body = http.MaxBytesReader(w, req.Body, 1<<20) // 1 MB
+			next.ServeHTTP(w, req)
 		})
 	})
 
@@ -58,13 +96,23 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// All routes below require basic auth
-	r.Group(func(r chi.Router) {
-		r.Use(authmw.BasicAuth)
+	// ── Unauthenticated auth routes ──────────────────────────────────────
+	r.Post("/api/auth/login", h.login)
+	r.Get("/api/auth/oidc/config", h.oidcConfig)
+	r.Get("/api/auth/oidc/login", h.oidcLogin)
+	r.Get("/api/auth/oidc/callback", h.oidcCallback)
 
-		// Swagger UI — served at /api/docs/
-		// Chi's radix tree gives /api/docs/ priority over /api for docs paths,
-		// and the explicit Handle for openapi.yaml takes precedence over the mount.
+	// ── Authenticated routes ─────────────────────────────────────────────
+	r.Group(func(r chi.Router) {
+		r.Use(authmw.SessionAuth(st, idleTimeout))
+		r.Use(authmw.CSRFProtect)
+
+		// Auth endpoints
+		r.Post("/api/auth/logout", h.logout)
+		r.Get("/api/auth/me", h.me)
+		r.Put("/api/auth/password", h.changePassword)
+
+		// Swagger UI
 		r.Get("/api/docs", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/api/docs/", http.StatusFound)
 		})
@@ -72,28 +120,15 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 		r.Mount("/api/docs/", swguiv5.NewHandler("kube-phoenix API", "/api/docs/openapi.yaml", "/api/docs/"))
 
 		r.Route("/api", func(r chi.Router) {
-			// Schedules — full CRUD
+			// ── Read-only routes (all authenticated users) ───────────
 			r.Get("/schedules", h.listSchedules)
-			r.Post("/schedules", h.createSchedule)
-			r.Put("/schedules/reorder", h.reorderSchedules)
 			r.Get("/schedules/{id}", h.getSchedule)
-			r.Put("/schedules/{id}", h.updateSchedule)
-			r.Delete("/schedules/{id}", h.deleteSchedule)
-
-			// Guardrails
 			r.Get("/guardrails", h.getGuardrails)
-			r.Put("/guardrails", h.updateGuardrails)
-
-			// Executions
 			r.Get("/executions", h.listExecutions)
 			r.Get("/executions/{id}", h.getExecution)
 			r.Get("/executions/{id}/logs", h.getExecutionLogs)
-
-			// Overview — pre-aggregated dashboard summary (reads from cache)
 			r.Get("/overview", h.getOverview)
 			r.Get("/cluster/stream", h.streamCluster)
-
-			// Cluster state
 			r.Get("/cluster/workloads", h.getWorkloads)
 			r.Get("/cluster/nodes", h.getNodes)
 			r.Get("/cluster/nodes/{name}/pods", h.getNodePods)
@@ -101,14 +136,46 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 			r.Get("/cluster/pods/{namespace}/{name}/logs", h.getPodLogs)
 			r.Get("/cluster/workloads/{namespace}/{kind}/{name}/pods", h.getWorkloadPods)
 
-			// Manual trigger
-			r.Post("/trigger", h.trigger)
+			// ── Audit logs (all authenticated users) ─────────────────
+			r.Get("/audit-logs", h.listAuditLogs)
 
-			// Admin — danger zone
-			r.Post("/admin/reset-db", h.resetDB)
+			// ── Schedule/guardrail mutations (admin + operator) ──────
+			r.Group(func(r chi.Router) {
+				r.Use(authmw.RequirePermission(auth.PermScheduleEdit))
+				r.Post("/schedules", h.createSchedule)
+				r.Put("/schedules/reorder", h.reorderSchedules)
+				r.Put("/schedules/{id}", h.updateSchedule)
+				r.Delete("/schedules/{id}", h.deleteSchedule)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(authmw.RequirePermission(auth.PermGuardrailEdit))
+				r.Put("/guardrails", h.updateGuardrails)
+			})
+
+			// ── Manual trigger (admin + operator) ────────────────────
+			r.Group(func(r chi.Router) {
+				r.Use(authmw.RequirePermission(auth.PermScheduleTrigger))
+				r.Post("/trigger", h.trigger)
+			})
+
+			// ── User management (admin only) ─────────────────────────
+			r.Group(func(r chi.Router) {
+				r.Use(authmw.RequirePermission(auth.PermUserManage))
+				r.Get("/users", h.listUsers)
+				r.Post("/users", h.createUser)
+				r.Put("/users/{id}", h.updateUser)
+				r.Delete("/users/{id}", h.deleteUser)
+			})
+
+			// ── Admin danger zone ────────────────────────────────────
+			r.Group(func(r chi.Router) {
+				r.Use(authmw.RequirePermission(auth.PermAdminResetDB))
+				r.Post("/admin/reset-db", h.resetDB)
+			})
 		})
 
-		// WebSocket — live log streaming
+		// WebSocket — live log streaming (cookies sent automatically on upgrade)
 		r.Get("/ws/executions/{id}/logs", h.wsExecutionLogs)
 	})
 
@@ -118,25 +185,67 @@ func NewRouter(st *store.Store, k8sClient *k8s.Client, sched *scheduler.Schedule
 	return r
 }
 
-// corsHandler returns a CORS middleware.
-// In production (basic auth enabled) origins are restricted to the value of
-// CORS_ALLOWED_ORIGIN. If that env var is unset, no cross-origin requests are
-// allowed (same-origin only via empty AllowedOrigins).
-// In dev mode (no auth) the wildcard is used for convenience.
-func corsHandler() func(http.Handler) http.Handler {
-	allowedOrigins := []string{"*"}
-	if os.Getenv("BASIC_AUTH_USER") != "" {
-		// Restrict to an explicit origin or deny all cross-origin requests.
-		if origin := os.Getenv("CORS_ALLOWED_ORIGIN"); origin != "" {
-			allowedOrigins = []string{origin}
-		} else {
-			allowedOrigins = []string{}
+// ─── Audit log endpoint (thin handler, store does the work) ──────────────────
+
+func (h *Handler) listAuditLogs(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	filter := store.AuditLogFilter{
+		Username: q.Get("user"),
+		Action:   q.Get("action"),
+	}
+	if v := q.Get("page"); v != "" {
+		filter.Page, _ = strconv.Atoi(v)
+	}
+	if v := q.Get("pageSize"); v != "" {
+		filter.PageSize, _ = strconv.Atoi(v)
+	}
+	if v := q.Get("from"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			filter.From = &t
 		}
+	}
+	if v := q.Get("to"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			filter.To = &t
+		}
+	}
+
+	page, err := h.store.ListAuditLogs(filter)
+	if err != nil {
+		jsonInternalError(w, err, "list audit logs failed")
+		return
+	}
+	jsonOK(w, page)
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+func corsHandler() func(http.Handler) http.Handler {
+	var allowedOrigins []string
+	if origin := os.Getenv("CORS_ALLOWED_ORIGIN"); origin != "" {
+		allowedOrigins = []string{origin}
+	} else {
+		// In production, same-origin requests don't need CORS.
+		// In dev, allow all for convenience.
+		allowedOrigins = []string{"*"}
 	}
 	return cors.Handler(cors.Options{
 		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
-		AllowCredentials: false,
+		AllowedHeaders:   []string{"Accept", "Content-Type", "X-CSRF-Token"},
+		AllowCredentials: true,
 	})
+}
+
+func parseDuration(envKey string, fallback time.Duration) time.Duration {
+	v := os.Getenv(envKey)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		slog.Warn("invalid duration env var, using default", "key", envKey, "value", v, "default", fallback)
+		return fallback
+	}
+	return d
 }

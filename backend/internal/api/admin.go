@@ -28,8 +28,8 @@ func (h *Handler) resetDB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Audit log — record caller identity before any destructive work begins.
 	slog.Warn("admin: reset-db initiated", "remote_addr", r.RemoteAddr)
+	h.audit(r, "admin.reset_db", "", nil, nil, nil)
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {

@@ -74,6 +74,7 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("schedule created", "scheduleID", sc.ID, "name", sc.Name, "type", sc.Type, "cronExpr", sc.CronExpr)
+	h.audit(r, "schedule.create", "schedule", &sc.ID, nil, sc)
 	if err := h.scheduler.Reload(); err != nil {
 		slog.Error("scheduler reload after create failed", "err", err)
 		jsonError(w, "schedule saved but scheduler reload failed", http.StatusInternalServerError)
@@ -112,6 +113,12 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	old, err := h.store.GetSchedule(id)
+	if err != nil {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+
 	var body map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, "invalid body", http.StatusBadRequest)
@@ -147,6 +154,7 @@ func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
 		jsonInternalError(w, err, "update schedule failed")
 		return
 	}
+	h.audit(r, "schedule.update", "schedule", &id, old, sc)
 	if err := h.scheduler.Reload(); err != nil {
 		slog.Error("scheduler reload after update failed", "scheduleID", id, "err", err)
 		jsonError(w, "schedule saved but scheduler reload failed", http.StatusInternalServerError)
@@ -196,6 +204,7 @@ func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid id", http.StatusBadRequest)
 		return
 	}
+	old, _ := h.store.GetSchedule(id)
 	if err := h.store.DeleteSchedule(id); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			jsonError(w, "not found", http.StatusNotFound)
@@ -205,6 +214,7 @@ func (h *Handler) deleteSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("schedule deleted", "scheduleID", id)
+	h.audit(r, "schedule.delete", "schedule", &id, old, nil)
 	if err := h.scheduler.Reload(); err != nil {
 		slog.Error("scheduler reload after delete failed", "scheduleID", id, "err", err)
 		jsonError(w, "schedule deleted but scheduler reload failed", http.StatusInternalServerError)
@@ -235,6 +245,7 @@ func (h *Handler) reorderSchedules(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	h.audit(r, "schedule.reorder", "schedule", nil, nil, body)
 	schedules, err := h.store.ListSchedules()
 	if err != nil {
 		slog.Error("list schedules after reorder failed", "err", err)

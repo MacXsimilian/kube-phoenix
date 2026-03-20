@@ -24,7 +24,6 @@ import Brightness4Icon from '@mui/icons-material/Brightness4'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import Skeleton from '@mui/material/Skeleton'
 import { getOverview, getSchedules, triggerRun, getExecution } from '@/lib/api'
-import { getAuthHeader } from '@/lib/auth'
 import type { Execution, Overview } from '@/lib/types'
 import { timeUntil } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
@@ -49,7 +48,7 @@ function useClusterStream() {
         try {
           const res = await fetch(
             `${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/cluster/stream`,
-            { signal: controller.signal, headers: { ...getAuthHeader() } },
+            { signal: controller.signal, credentials: 'include' },
           )
           if (!res.ok || !res.body) {
             failCountRef.current += 1
