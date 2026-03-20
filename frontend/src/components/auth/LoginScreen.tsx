@@ -8,10 +8,13 @@ import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
+import Divider from '@mui/material/Divider'
 import { useAuth } from '@/lib/auth'
 
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
+
 export default function LoginScreen() {
-  const { login } = useAuth()
+  const { login, oidcEnabled } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -27,12 +30,18 @@ export default function LoginScreen() {
       const msg = err instanceof Error ? err.message : ''
       if (msg === 'Invalid credentials' || msg.includes('401')) {
         setError('Invalid credentials. Please try again.')
+      } else if (msg === 'Too many attempts' || msg.includes('429')) {
+        setError('Too many login attempts. Please wait a few minutes.')
       } else {
         setError('Could not reach the server. Please try again.')
       }
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSSO = () => {
+    window.location.href = `${BASE}/api/auth/oidc/login`
   }
 
   return (
@@ -72,6 +81,21 @@ export default function LoginScreen() {
           </Alert>
         )}
 
+        {/* SSO Button — shown when OIDC is configured */}
+        {oidcEnabled && (
+          <>
+            <Button
+              variant="contained"
+              fullWidth
+              size="large"
+              onClick={handleSSO}
+            >
+              Login with SSO
+            </Button>
+            <Divider sx={{ width: '100%' }}>or sign in with credentials</Divider>
+          </>
+        )}
+
         <Box
           component="form"
           onSubmit={handleSubmit}
@@ -83,7 +107,7 @@ export default function LoginScreen() {
             onChange={(e) => setUsername(e.target.value)}
             fullWidth
             autoComplete="username"
-            autoFocus
+            autoFocus={!oidcEnabled}
             disabled={loading}
           />
           <TextField
@@ -97,7 +121,7 @@ export default function LoginScreen() {
           />
           <Button
             type="submit"
-            variant="contained"
+            variant={oidcEnabled ? 'outlined' : 'contained'}
             fullWidth
             size="large"
             disabled={loading || !username || !password}

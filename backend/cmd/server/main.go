@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/api"
 	k8sclient "github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
@@ -64,8 +66,43 @@ func main() {
 		defer sched.Stop()
 	}
 
+	// ── Background maintenance tickers ────────────────────────────────────
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Session cleanup — every 15 minutes.
+	go runTicker(ctx, 15*time.Minute, "session-cleanup", func() {
+		deleted, err := st.CleanExpiredSessions()
+		if err != nil {
+			slog.Error("session-cleanup failed", "err", err)
+			return
+		}
+		if deleted > 0 {
+			slog.Info("session-cleanup: expired sessions removed", "count", deleted)
+		}
+		// Update active sessions gauge.
+		if count, err := st.CountActiveSessions(); err == nil {
+			metrics.ActiveSessions.Set(float64(count))
+		}
+	})
+
+	// Audit log retention — daily.
+	retentionDays := parseIntEnv("AUDIT_RETENTION_DAYS", 90)
+	if retentionDays > 0 {
+		go runTicker(ctx, 24*time.Hour, "audit-retention", func() {
+			deleted, err := st.CleanOldAuditLogs(time.Duration(retentionDays) * 24 * time.Hour)
+			if err != nil {
+				slog.Error("audit-retention failed", "err", err)
+				return
+			}
+			if deleted > 0 {
+				slog.Info("audit-retention: old entries removed", "count", deleted, "retentionDays", retentionDays)
+			}
+		})
+	}
+
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(st, k8s, sched, cache)
+	router := api.NewRouter(ctx, st, k8s, sched, cache)
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
 		Handler:      router,
@@ -87,11 +124,38 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	slog.Info("shutting down...")
+	cancel() // stop background tickers
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown error", "err", err)
 	}
 	slog.Info("bye")
+}
+
+func runTicker(ctx context.Context, interval time.Duration, name string, fn func()) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			fn()
+		}
+	}
+}
+
+func parseIntEnv(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		slog.Warn("invalid int env var, using default", "key", key, "value", v, "default", fallback)
+		return fallback
+	}
+	return n
 }
