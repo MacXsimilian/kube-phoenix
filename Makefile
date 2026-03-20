@@ -1,5 +1,6 @@
 IMAGE      ?= ghcr.io/macxsimilian/kube-phoenix
 TAG        ?= $(shell git rev-parse --short HEAD)
+PLATFORM   ?= linux/amd64
 HELM_CHART ?= helm/kube-phoenix
 HELM_RELEASE ?= kube-phoenix
 HELM_NAMESPACE ?= kube-phoenix
@@ -55,8 +56,14 @@ lint: ## Run backend linter (requires golangci-lint v2)
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 
-docker-build: frontend ## Build Docker image
-	docker build -t $(IMAGE):$(TAG) -t $(IMAGE):latest .
+docker-build: ## Build Docker image (PLATFORM=linux/amd64 by default)
+	docker buildx build \
+	  --platform $(PLATFORM) \
+	  --build-arg NEXT_PUBLIC_APP_VERSION=$(TAG) \
+	  --load \
+	  -t $(IMAGE):$(TAG) \
+	  -t $(IMAGE):latest \
+	  .
 
 # ── Helm ──────────────────────────────────────────────────────────────────────
 
