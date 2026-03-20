@@ -288,8 +288,19 @@ export const changePasswordAPI = (currentPassword: string, newPassword: string):
 
 // ── OIDC ──────────────────────────────────────────────────────────────────────
 
-export const getOIDCConfig = (): Promise<{ enabled: boolean }> =>
-  req<{ enabled: boolean }>('/api/auth/oidc/config')
+export interface OIDCConfigResponse {
+  enabled: boolean
+  mounted: boolean
+  issuerURL?: string
+  clientID?: string
+  redirectURL?: string
+  groupsClaim?: string
+  roleAdminGroups?: string[]
+  roleOperatorGroups?: string[]
+}
+
+export const getOIDCConfig = (): Promise<OIDCConfigResponse> =>
+  req<OIDCConfigResponse>('/api/auth/oidc/config')
 
 // ── Audit logs ────────────────────────────────────────────────────────────────
 

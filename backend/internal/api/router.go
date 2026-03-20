@@ -33,6 +33,7 @@ type Handler struct {
 	maxLifetime  time.Duration
 	auditWriter  *AuditWriter
 	oidcProvider *auth.OIDCProvider
+	oidcCfg      *auth.OIDCConfig
 }
 
 func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sched *scheduler.Scheduler, cache *k8s.ClusterCache) *chi.Mux {
@@ -44,13 +45,14 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sche
 
 	// Initialize OIDC provider if configured.
 	var oidcProv *auth.OIDCProvider
-	if cfg := auth.OIDCConfigFromEnv(); cfg != nil {
+	oidcCfg := auth.OIDCConfigFromEnv()
+	if oidcCfg != nil {
 		var err error
-		oidcProv, err = auth.NewOIDCProvider(ctx, *cfg)
+		oidcProv, err = auth.NewOIDCProvider(ctx, *oidcCfg)
 		if err != nil {
 			slog.Error("oidc: provider init failed — OIDC login will be unavailable", "err", err)
 		} else {
-			slog.Info("oidc: provider initialized", "issuer", cfg.IssuerURL, "clientID", cfg.ClientID)
+			slog.Info("oidc: provider initialized", "issuer", oidcCfg.IssuerURL, "clientID", oidcCfg.ClientID)
 		}
 	}
 
@@ -65,6 +67,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sche
 		maxLifetime:  maxLifetime,
 		auditWriter:  aw,
 		oidcProvider: oidcProv,
+		oidcCfg:      oidcCfg,
 	}
 
 	r := chi.NewRouter()

@@ -14,11 +14,25 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// oidcConfig returns the OIDC endpoint configuration for the frontend.
+// oidcConfig returns the OIDC configuration status for the frontend.
 func (h *Handler) oidcConfig(w http.ResponseWriter, r *http.Request) {
-	jsonOK(w, map[string]interface{}{
+	resp := map[string]interface{}{
 		"enabled": h.oidcProvider != nil,
-	})
+		"mounted": h.oidcCfg != nil,
+	}
+	if h.oidcCfg != nil {
+		groupsClaim := h.oidcCfg.GroupsClaim
+		if groupsClaim == "" {
+			groupsClaim = "groups"
+		}
+		resp["issuerURL"] = h.oidcCfg.IssuerURL
+		resp["clientID"] = h.oidcCfg.ClientID
+		resp["redirectURL"] = h.oidcCfg.RedirectURL
+		resp["groupsClaim"] = groupsClaim
+		resp["roleAdminGroups"] = h.oidcCfg.AdminGroups
+		resp["roleOperatorGroups"] = h.oidcCfg.OperatorGroups
+	}
+	jsonOK(w, resp)
 }
 
 // oidcLogin redirects the user to the Keycloak authorization endpoint.
