@@ -49,12 +49,18 @@ export default function ScheduleCard({
   onDelete,
   onNotify,
   dragHandleProps,
+  canEdit = true,
+  canTrigger = true,
 }: {
   schedule: Schedule
   onEdit: () => void
   onDelete: () => void
   onNotify?: (msg: string, severity: 'success' | 'error') => void
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>
+  /** When false, edit/delete/toggle buttons are disabled with a tooltip. */
+  canEdit?: boolean
+  /** When false, the Run Now button is disabled with a tooltip. */
+  canTrigger?: boolean
 }) {
   const qc = useQueryClient()
   const router = useRouter()
@@ -158,15 +164,19 @@ export default function ScheduleCard({
       >
         {/* Enable toggle — spinner overlay while pending */}
         <Box sx={{ position: 'relative', display: 'inline-flex', flexShrink: 0, alignItems: 'center' }}>
-          <Switch
-            checked={localEnabled}
-            onChange={() => toggleEnabled.mutate(!localEnabled)}
-            disabled={toggleEnabled.isPending}
-            color="primary"
-            size="small"
-            sx={{ opacity: toggleEnabled.isPending ? 0.35 : 1, transition: 'opacity 0.15s' }}
-            slotProps={{ input: { 'aria-label': localEnabled ? `Disable ${schedule.name}` : `Enable ${schedule.name}` } }}
-          />
+          <Tooltip title={canEdit ? '' : 'You do not have permission to edit schedules'}>
+            <span>
+              <Switch
+                checked={localEnabled}
+                onChange={() => toggleEnabled.mutate(!localEnabled)}
+                disabled={toggleEnabled.isPending || !canEdit}
+                color="primary"
+                size="small"
+                sx={{ opacity: toggleEnabled.isPending ? 0.35 : 1, transition: 'opacity 0.15s' }}
+                slotProps={{ input: { 'aria-label': localEnabled ? `Disable ${schedule.name}` : `Enable ${schedule.name}` } }}
+              />
+            </span>
+          </Tooltip>
           {toggleEnabled.isPending && (
             <CircularProgress
               size={14}
@@ -265,20 +275,26 @@ export default function ScheduleCard({
 
         {/* Actions */}
         <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
-          <Tooltip title="Run Now">
-            <IconButton size="small" onClick={() => setRunDialog(true)} aria-label="Run schedule now">
-              <PlayArrowIcon fontSize="small" />
-            </IconButton>
+          <Tooltip title={canTrigger ? 'Run Now' : 'You do not have permission to trigger schedules'}>
+            <span>
+              <IconButton size="small" onClick={() => setRunDialog(true)} disabled={!canTrigger} aria-label="Run schedule now">
+                <PlayArrowIcon fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
-          <Tooltip title="Edit">
-            <IconButton size="small" onClick={onEdit} aria-label="Edit schedule">
-              <EditOutlinedIcon fontSize="small" />
-            </IconButton>
+          <Tooltip title={canEdit ? 'Edit' : 'You do not have permission to edit schedules'}>
+            <span>
+              <IconButton size="small" onClick={onEdit} disabled={!canEdit} aria-label="Edit schedule">
+                <EditOutlinedIcon fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
-          <Tooltip title="Delete">
-            <IconButton size="small" color="error" onClick={() => setDeleteDialog(true)} aria-label="Delete schedule">
-              <DeleteOutlineIcon fontSize="small" />
-            </IconButton>
+          <Tooltip title={canEdit ? 'Delete' : 'You do not have permission to delete schedules'}>
+            <span>
+              <IconButton size="small" color="error" onClick={() => setDeleteDialog(true)} disabled={!canEdit} aria-label="Delete schedule">
+                <DeleteOutlineIcon fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
         </Box>
 
