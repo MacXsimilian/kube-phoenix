@@ -188,6 +188,38 @@ export default function SettingsPage() {
         Application configuration and administrative operations.
       </Typography>
 
+      {/* Appearance */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column' }}>
+          <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+            Appearance
+          </Typography>
+          <Typography variant="body2" color="text.secondary" mb={2.5}>
+            Choose how kube-phoenix looks. System follows your OS preference.
+          </Typography>
+          <ToggleButtonGroup
+            value={mode}
+            exclusive
+            onChange={(_, v) => v && setMode(v)}
+            aria-label="Theme mode"
+            sx={{ alignSelf: 'center' }}
+          >
+            <ToggleButton value="light" aria-label="Light mode" sx={{ gap: 1, px: 2.5 }}>
+              <LightModeOutlinedIcon fontSize="small" />
+              Light
+            </ToggleButton>
+            <ToggleButton value="system" aria-label="System default" sx={{ gap: 1, px: 2.5 }}>
+              <SettingsBrightnessOutlinedIcon fontSize="small" />
+              System
+            </ToggleButton>
+            <ToggleButton value="dark" aria-label="Dark mode" sx={{ gap: 1, px: 2.5 }}>
+              <DarkModeOutlinedIcon fontSize="small" />
+              Dark
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </CardContent>
+      </Card>
+
       {/* Account */}
       {user && user.id !== 0 && (
         <Card sx={{ mb: 3 }}>
@@ -196,6 +228,12 @@ export default function SettingsPage() {
               Account
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2 }}>
+              {(user.givenName || user.familyName) && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Name</Typography>
+                  <Typography variant="body2" fontWeight={600}>{[user.givenName, user.familyName].filter(Boolean).join(' ')}</Typography>
+                </Box>
+              )}
               <Box>
                 <Typography variant="caption" color="text.secondary">Username</Typography>
                 <Typography variant="body2" fontWeight={600}>{user.username}</Typography>
@@ -219,37 +257,6 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       )}
-
-      {/* Appearance */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <Typography variant="subtitle1" fontWeight={700} gutterBottom>
-            Appearance
-          </Typography>
-          <Typography variant="body2" color="text.secondary" mb={2.5}>
-            Choose how kube-phoenix looks. System follows your OS preference.
-          </Typography>
-          <ToggleButtonGroup
-            value={mode}
-            exclusive
-            onChange={(_, v) => v && setMode(v)}
-            aria-label="Theme mode"
-          >
-            <ToggleButton value="light" aria-label="Light mode" sx={{ gap: 1, px: 2.5 }}>
-              <LightModeOutlinedIcon fontSize="small" />
-              Light
-            </ToggleButton>
-            <ToggleButton value="system" aria-label="System default" sx={{ gap: 1, px: 2.5 }}>
-              <SettingsBrightnessOutlinedIcon fontSize="small" />
-              System
-            </ToggleButton>
-            <ToggleButton value="dark" aria-label="Dark mode" sx={{ gap: 1, px: 2.5 }}>
-              <DarkModeOutlinedIcon fontSize="small" />
-              Dark
-            </ToggleButton>
-          </ToggleButtonGroup>
-        </CardContent>
-      </Card>
 
       {/* OIDC / SSO */}
       <Card sx={{ mb: 3 }}>

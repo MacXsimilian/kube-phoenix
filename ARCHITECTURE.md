@@ -1018,6 +1018,8 @@ The composite index `idx_logline_exec_seq` on `(execution_id, seq)` ensures that
 type User struct {
     ID           uint      `gorm:"primaryKey" json:"id"`
     Username     string    `gorm:"uniqueIndex" json:"username"`
+    GivenName    string    `json:"givenName,omitempty"`        // from OIDC given_name claim
+    FamilyName   string    `json:"familyName,omitempty"`       // from OIDC family_name claim
     PasswordHash string    `json:"-"`                          // bcrypt, never exposed in JSON
     Role         string    `json:"role"`                       // "admin" | "operator" | "viewer"
     OIDCSubject  *string   `gorm:"uniqueIndex" json:"-"`      // linked Keycloak subject, nullable
@@ -1026,7 +1028,7 @@ type User struct {
 }
 ```
 
-Passwords are hashed with bcrypt (cost 12). The `PasswordHash` field is excluded from JSON serialisation via `json:"-"`. The optional `OIDCSubject` field links a local user to a Keycloak identity for account linking.
+Passwords are hashed with bcrypt (cost 12). The `PasswordHash` field is excluded from JSON serialisation via `json:"-"`. The optional `OIDCSubject` field links a local user to a Keycloak identity for account linking. `GivenName` and `FamilyName` are synced from the standard OIDC `given_name` / `family_name` claims on every login.
 
 **Session**
 ```go
@@ -1998,7 +2000,7 @@ sequenceDiagram
 - **Custom CA cert (recommended):** In the Helm chart, set `oidc.caConfigMap` to mount a ConfigMap containing the CA bundle. The chart sets `SSL_CERT_FILE` pointing to the mounted cert, which Go's `crypto/tls` reads natively — no application code involved.
 - **Skip TLS verification (dev only):** Set `OIDC_SKIP_TLS_VERIFY=true`. The backend creates an `http.Client` with `InsecureSkipVerify` and injects it into both the OIDC discovery and OAuth2 token exchange contexts. When enabled, the CA cert mount is not rendered. **Not recommended for production.**
 
-**Account linking:** When an OIDC user logs in for the first time, a local User record is created with the OIDC subject stored in `oidc_subject`. On subsequent logins, the existing user is found by `oidc_subject` and their role is updated based on current group memberships.
+**Account linking:** When an OIDC user logs in for the first time, a local User record is created with the OIDC subject stored in `oidc_subject`. On subsequent logins, the existing user is found by `oidc_subject` and their role, email, given name, and family name are updated from the current ID token claims.
 
 ### 8.5 Frontend Authentication Flow
 

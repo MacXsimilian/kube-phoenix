@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -24,6 +24,8 @@ import MenuItem from '@mui/material/MenuItem'
 import Alert from '@mui/material/Alert'
 import Skeleton from '@mui/material/Skeleton'
 import Tooltip from '@mui/material/Tooltip'
+import InputAdornment from '@mui/material/InputAdornment'
+import SearchIcon from '@mui/icons-material/Search'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined'
 import { useRouter } from 'next/navigation'
@@ -47,6 +49,18 @@ export default function UsersPage() {
     router.replace('/overview')
     return null
   }
+
+  const [search, setSearch] = useState('')
+  const filteredUsers = useMemo(() => {
+    if (!users) return []
+    const q = search.toLowerCase()
+    if (!q) return users
+    return users.filter(u =>
+      u.username.toLowerCase().includes(q) ||
+      (u.givenName?.toLowerCase().includes(q)) ||
+      (u.familyName?.toLowerCase().includes(q))
+    )
+  }, [users, search])
 
   const [createOpen, setCreateOpen] = useState(false)
   const [form, setForm] = useState({ username: '', email: '', password: '', role: 'viewer' })
@@ -88,12 +102,22 @@ export default function UsersPage() {
       {isError && <Alert severity="error" sx={{ mb: 2 }}>Failed to load users. You may not have permission to view this page.</Alert>}
       {mutationError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setMutationError('')}>{mutationError}</Alert>}
 
+      <TextField
+        size="small"
+        placeholder="Search by username or name…"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        sx={{ mb: 2, width: 320 }}
+        slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }}
+      />
+
       <Card>
         <TableContainer>
           <Table size="small">
             <TableHead>
               <TableRow>
                 <TableCell>Username</TableCell>
+                <TableCell>Name</TableCell>
                 <TableCell>Email</TableCell>
                 <TableCell>Role</TableCell>
                 <TableCell>Source</TableCell>
@@ -104,13 +128,14 @@ export default function UsersPage() {
             </TableHead>
             <TableBody>
               {isLoading && Array.from({ length: 3 }).map((_, i) => (
-                <TableRow key={i}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
+                <TableRow key={i}><TableCell colSpan={8}><Skeleton /></TableCell></TableRow>
               ))}
-              {users?.map(u => (
+              {filteredUsers.map(u => (
                 <TableRow key={u.id} sx={{ opacity: u.enabled ? 1 : 0.5 }}>
                   <TableCell>
                     <Typography variant="body2" fontWeight={600}>{u.username}</Typography>
                   </TableCell>
+                  <TableCell>{[u.givenName, u.familyName].filter(Boolean).join(' ') || '—'}</TableCell>
                   <TableCell>{u.email || '—'}</TableCell>
                   <TableCell>
                     {u.source === 'oidc' ? (

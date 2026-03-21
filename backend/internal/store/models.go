@@ -61,6 +61,8 @@ type LogLine struct {
 type User struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`
 	Username     string     `gorm:"uniqueIndex:idx_users_username_source;size:255" json:"username"`
+	GivenName    string     `gorm:"size:255" json:"givenName,omitempty"`
+	FamilyName   string     `gorm:"size:255" json:"familyName,omitempty"`
 	Email        string     `json:"email,omitempty"`
 	PasswordHash string     `gorm:"column:password_hash" json:"-"`
 	Role         string     `gorm:"size:20;default:viewer" json:"role"`     // admin | operator | viewer
