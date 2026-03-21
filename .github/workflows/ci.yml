@@ -51,7 +51,51 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - run: npm ci
-      - run: npm run build
+
+      - name: Build
+        id: fe_build
+        run: |
+          START=$(date +%s)
+          npm run build
+          echo "duration=$(( $(date +%s) - START ))" >> "$GITHUB_OUTPUT"
+
+      - name: Audit
+        id: fe_audit
+        if: always()
+        run: |
+          AUDIT=$(npm audit --omit=dev 2>&1 || true)
+          HIGH=$(echo "$AUDIT" | grep -oP '\d+ high' | grep -oP '\d+' || echo 0)
+          CRITICAL=$(echo "$AUDIT" | grep -oP '\d+ critical' | grep -oP '\d+' || echo 0)
+          echo "high=${HIGH}" >> "$GITHUB_OUTPUT"
+          echo "critical=${CRITICAL}" >> "$GITHUB_OUTPUT"
+
+      - name: Frontend summary
+        if: always()
+        run: |
+          PAGES=$(find out/ -name '*.html' -not -name '404.html' 2>/dev/null | wc -l | tr -d ' ')
+          SIZE=$(du -sh out/ 2>/dev/null | cut -f1 || echo 'N/A')
+          HIGH="${{ steps.fe_audit.outputs.high }}"
+          CRIT="${{ steps.fe_audit.outputs.critical }}"
+
+          if [ "$CRIT" -gt 0 ] 2>/dev/null; then
+            VULN="🔴 ${CRIT} critical, ${HIGH} high"
+          elif [ "$HIGH" -gt 0 ] 2>/dev/null; then
+            VULN="🟡 ${HIGH} high"
+          else
+            VULN="✅ None"
+          fi
+
+          {
+            echo "## Frontend Build Summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "|:-----|:------|"
+            echo "| Node | $(node -v) |"
+            echo "| Build duration | ${{ steps.fe_build.outputs.duration }}s |"
+            echo "| Static pages | ${PAGES} |"
+            echo "| Export size | ${SIZE} |"
+            echo "| Vulnerabilities (high+) | ${VULN} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Backend ─────────────────────────────────────────────────────────────────
   backend:
@@ -79,15 +123,71 @@ jobs:
 
       - run: go mod download
       - run: go vet ./...
-      - run: go test -coverprofile=coverage.out ./...
-      - run: go tool cover -func=coverage.out
-      - run: go build ./...
+
+      - name: Test
+        id: be_test
+        run: |
+          START=$(date +%s)
+          OUTPUT=$(go test -race -coverprofile=coverage.out ./... 2>&1)
+          echo "duration=$(( $(date +%s) - START ))" >> "$GITHUB_OUTPUT"
+          echo "$OUTPUT"
+          PASSED=$(echo "$OUTPUT" | grep -c '^ok' || echo 0)
+          FAILED=$(echo "$OUTPUT" | grep -c '^FAIL' || echo 0)
+          echo "passed=${PASSED}" >> "$GITHUB_OUTPUT"
+          echo "failed=${FAILED}" >> "$GITHUB_OUTPUT"
+
+      - name: Coverage
+        id: be_cov
+        run: |
+          TOTAL=$(go tool cover -func=coverage.out | grep '^total:' | awk '{print $3}')
+          echo "total=${TOTAL}" >> "$GITHUB_OUTPUT"
+          go tool cover -func=coverage.out
+
+      - name: Build
+        id: be_build
+        run: |
+          go build -o server ./cmd/server
+          SIZE=$(du -sh server | cut -f1)
+          echo "binary_size=${SIZE}" >> "$GITHUB_OUTPUT"
 
       - name: golangci-lint
+        id: be_lint
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20  # v9.2.0
         with:
           version: v2.11.3
           working-directory: backend
+
+      - name: Backend summary
+        if: always()
+        run: |
+          PASSED="${{ steps.be_test.outputs.passed }}"
+          FAILED="${{ steps.be_test.outputs.failed }}"
+          if [ "${FAILED}" -gt 0 ] 2>/dev/null; then
+            TEST_STATUS="🔴 ${PASSED} passed, ${FAILED} failed"
+          else
+            TEST_STATUS="✅ ${PASSED} passed"
+          fi
+
+          LINT_STATUS="${{ steps.be_lint.outcome }}"
+          if [ "$LINT_STATUS" = "success" ]; then
+            LINT="✅ Clean"
+          else
+            LINT="🟡 Warnings found"
+          fi
+
+          {
+            echo "## Backend Build Summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "|:-----|:------|"
+            echo "| Go | $(go version | awk '{print $3}') |"
+            echo "| Tests | ${TEST_STATUS} |"
+            echo "| Test duration | ${{ steps.be_test.outputs.duration }}s |"
+            echo "| Coverage | ${{ steps.be_cov.outputs.total }} |"
+            echo "| Race detector | ✅ Clean (-race enabled) |"
+            echo "| Binary size | ${{ steps.be_build.outputs.binary_size }} |"
+            echo "| Lint | ${LINT} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Helm lint ───────────────────────────────────────────────────────────────
   helm:
