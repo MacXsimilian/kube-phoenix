@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -106,6 +107,16 @@ func GenerateState() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// GeneratePKCEVerifier returns a 43-character base64url-encoded random string
+// suitable for use as a PKCE code_verifier (RFC 7636, 43–128 chars).
+func GeneratePKCEVerifier() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 // OIDCConfigFromEnv reads OIDC settings from environment variables.
