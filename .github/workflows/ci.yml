@@ -107,13 +107,12 @@ jobs:
         id: be_test
         run: |
           START=$(date +%s)
-          OUTPUT=$(go test -race -coverprofile=coverage.out ./... 2>&1)
+          go test -race -coverprofile=coverage.out ./... 2>&1 | tee /tmp/test.out
           echo "duration=$(( $(date +%s) - START ))" >> "$GITHUB_OUTPUT"
-          echo "$OUTPUT"
-          PASSED=$(echo "$OUTPUT" | grep -c '^ok' || echo 0)
-          FAILED=$(echo "$OUTPUT" | grep -c '^FAIL' || echo 0)
-          echo "passed=${PASSED}" >> "$GITHUB_OUTPUT"
-          echo "failed=${FAILED}" >> "$GITHUB_OUTPUT"
+          PASSED=$(grep -c '^ok' /tmp/test.out || true)
+          FAILED=$(grep -c '^FAIL' /tmp/test.out || true)
+          echo "passed=${PASSED:-0}" >> "$GITHUB_OUTPUT"
+          echo "failed=${FAILED:-0}" >> "$GITHUB_OUTPUT"
 
       - name: Coverage
         id: be_cov
