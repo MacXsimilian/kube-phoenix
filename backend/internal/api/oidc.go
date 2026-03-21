@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -99,7 +100,11 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.oidcProvider.OAuth2.Exchange(r.Context(), code, oauth2.VerifierOption(stateCookie.Value))
+	exchCtx := r.Context()
+	if h.oidcProvider.HTTPClient != nil {
+		exchCtx = context.WithValue(exchCtx, oauth2.HTTPClient, h.oidcProvider.HTTPClient)
+	}
+	token, err := h.oidcProvider.OAuth2.Exchange(exchCtx, code, oauth2.VerifierOption(stateCookie.Value))
 	if err != nil {
 		slog.Error("oidc: token exchange failed", "err", err)
 		metrics.AuthAttemptsTotal.WithLabelValues("failure", "oidc").Inc()
