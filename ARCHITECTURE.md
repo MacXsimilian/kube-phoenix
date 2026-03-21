@@ -256,6 +256,7 @@ kube-phoenix/
 │       │   ├── queryClient.ts     # TanStack QueryClient singleton
 │       │   ├── cronToText.ts      # 5-field cron → human readable
 │       │   ├── themeMode.tsx      # ThemeModeProvider + useThemeMode (light/dark/system)
+│       │   ├── colors.ts          # useColors() hook — mode-aware semantic color palette
 │       │   ├── constants.ts       # Shared constants
 │       │   ├── formatters.ts      # Display formatting utilities
 │       │   └── useDrawerResize.ts # Responsive drawer width hook
@@ -1422,12 +1423,14 @@ This tight coupling between frontend and backend builds is managed by the Docker
 | primary.dark       | #5B21B6 | #5B21B6 | Pressed states                       |
 | background.default | #0F0F13 | #F5F5F7 | Page background, terminal panes      |
 | background.paper   | #1A1A24 | #FFFFFF | Card, drawer, dialog backgrounds     |
-| success.main       | #22C55E | #22C55E | Success chips, status indicators     |
-| warning.main       | #F59E0B | #F59E0B | Apply mode indicators, wake icons    |
-| error.main         | #EF4444 | #EF4444 | Error chips, delete actions          |
-| info.main          | #3B82F6 | #3B82F6 | Running status chips                 |
+| success.main       | #22C55E | #15803D | Success chips, status indicators     |
+| warning.main       | #F59E0B | #92400E | Apply mode indicators, wake icons    |
+| error.main         | #EF4444 | #B91C1C | Error chips, delete actions          |
+| info.main          | #3B82F6 | #1D4ED8 | Running status chips                 |
 
 The `divider` token is computed from the mode: `rgba(255,255,255,0.07)` in dark, `rgba(0,0,0,0.09)` in light. All component borders use this token — **never hardcoded RGBA**.
+
+**Semantic colors (`frontend/src/lib/colors.ts`):** A centralized `useColors()` hook exposes mode-aware hex values and tinted rgba backgrounds (e.g. `colors.success`, `colors.successBg`). Components use this hook instead of hardcoding hex values, ensuring all status chips, progress bars, and indicators meet WCAG AA contrast (4.5:1+) in both modes. The `statusColors.ts` module similarly exports functions (`statusColors(isDark)`, `podStatusStyle(isDark)`, `nodeStatusMap(isDark)`) that return mode-appropriate chip color maps.
 
 **Log level colors** are also mode-aware. `LogViewer` defines `LEVEL_COLORS_DARK` and `LEVEL_COLORS_LIGHT` and selects the set at render time via `useTheme().palette.mode`. The light set uses darker hues (e.g. `#0369A1` for info, `#15803D` for ok) to maintain readability against a light background.
 
@@ -1573,7 +1576,7 @@ layout.tsx (Inter font, HTML skeleton)
 | `/history/`   | `HistoryPage`   | Execution table + log drawer                  |
 | `/users/`     | `UsersPage`     | User CRUD table (admin only)                  |
 | `/audit/`     | `AuditPage`     | Searchable audit log with diffs               |
-| `/settings/`  | `SettingsPage`  | DB reset panel                                |
+| `/settings/`  | `SettingsPage`  | Appearance, Account, OIDC status, Danger Zone |
 
 **Key components:**
 
@@ -2328,7 +2331,7 @@ The distroless base image has a read-only filesystem. The `/tmp` emptyDir provid
 Controlled by `values.postgresql.enabled`. When enabled, creates:
 1. A Kubernetes `Secret` with PostgreSQL credentials.
 2. A `ClusterIP` Service (port 5432).
-3. A `StatefulSet` with a single PostgreSQL 16 replica and a `PersistentVolumeClaim` for data.
+3. A `StatefulSet` with a single PostgreSQL 17 replica and a `PersistentVolumeClaim` for data.
 
 This is suitable for development and small deployments. Production deployments should use Amazon RDS or similar managed PostgreSQL with automated backups, multi-AZ, and point-in-time recovery.
 
@@ -2391,6 +2394,7 @@ steps:
   - setup-node@v6 (node 24)
   - npm ci
   - npm run build                  (Next.js static export → out/)
+  - Job Summary: node version, build duration, page count, export size
 ```
 
 **Job: backend**
@@ -2402,11 +2406,14 @@ steps:
   - diff ../openapi.yaml internal/docs/openapi.yaml (assert files are identical; fails build on drift)
   - go mod download
   - go vet ./...
-  - go test -coverprofile=coverage.out ./...
+  - go test -race -coverprofile=coverage.out ./...   (race detector enabled)
   - go tool cover -func=coverage.out
-  - go build ./...
-  - golangci-lint-action@v7    (gosec for SAST, errcheck, staticcheck, etc.)
+  - go build -o server ./cmd/server
+  - golangci-lint-action@v9    (gosec for SAST, errcheck, staticcheck, etc.)
+  - Job Summary: go version, test pass/fail, duration, coverage, binary size, lint status
 ```
+
+Both jobs write a markdown table to `$GITHUB_STEP_SUMMARY` so the CI run page shows at-a-glance build metrics alongside the Docker build summary.
 
 > **OpenAPI embed note:** `backend/internal/docs/openapi.yaml` is gitignored — it is a derived
 > file, not a source file. The canonical spec is `openapi.yaml` at the repository root.
@@ -2488,6 +2495,8 @@ steps:
       head: HEAD   (push) or PR head SHA (PR)
       extra_args: --only-verified
 ```
+
+Every job writes a summary table to `$GITHUB_STEP_SUMMARY`: govulncheck (vulnerability count), npm audit (critical/high/moderate breakdown), Trivy image (pass/fail + SARIF link), Trivy filesystem (pass/fail + SARIF link), and TruffleHog (verified secret status).
 
 > **Weekly schedule rationale:** New CVEs are disclosed continuously. The weekly Monday run ensures vulnerabilities introduced by upstream dependencies are caught even when no code changes are made.
 
@@ -2573,7 +2582,7 @@ Dependabot PRs go through the same CI pipeline as any other PR — secret scan, 
 | Docker | Latest | For container builds |
 | kubectl | Latest | For k8s interaction |
 | helm | 4.x | For Helm operations |
-| PostgreSQL | 16+ | Local database |
+| PostgreSQL | 17+ | Local database |
 
 > **Note:** Go is not installed on the project maintainer's machine at the time of writing. Backend changes must be built in CI or via Docker.
 

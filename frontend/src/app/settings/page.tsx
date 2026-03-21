@@ -220,6 +220,37 @@ export default function SettingsPage() {
         </Card>
       )}
 
+      {/* Appearance */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+            Appearance
+          </Typography>
+          <Typography variant="body2" color="text.secondary" mb={2.5}>
+            Choose how kube-phoenix looks. System follows your OS preference.
+          </Typography>
+          <ToggleButtonGroup
+            value={mode}
+            exclusive
+            onChange={(_, v) => v && setMode(v)}
+            aria-label="Theme mode"
+          >
+            <ToggleButton value="light" aria-label="Light mode" sx={{ gap: 1, px: 2.5 }}>
+              <LightModeOutlinedIcon fontSize="small" />
+              Light
+            </ToggleButton>
+            <ToggleButton value="system" aria-label="System default" sx={{ gap: 1, px: 2.5 }}>
+              <SettingsBrightnessOutlinedIcon fontSize="small" />
+              System
+            </ToggleButton>
+            <ToggleButton value="dark" aria-label="Dark mode" sx={{ gap: 1, px: 2.5 }}>
+              <DarkModeOutlinedIcon fontSize="small" />
+              Dark
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </CardContent>
+      </Card>
+
       {/* OIDC / SSO */}
       <Card sx={{ mb: 3 }}>
         <CardContent sx={{ p: 3 }}>
@@ -251,7 +282,7 @@ export default function SettingsPage() {
                 <Box
                   sx={{
                     display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                    gridTemplateColumns: '1fr',
                     gap: 2,
                   }}
                 >
@@ -298,37 +329,6 @@ export default function SettingsPage() {
               )}
             </>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Appearance */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent sx={{ p: 3 }}>
-          <Typography variant="subtitle1" fontWeight={700} gutterBottom>
-            Appearance
-          </Typography>
-          <Typography variant="body2" color="text.secondary" mb={2.5}>
-            Choose how kube-phoenix looks. System follows your OS preference.
-          </Typography>
-          <ToggleButtonGroup
-            value={mode}
-            exclusive
-            onChange={(_, v) => v && setMode(v)}
-            aria-label="Theme mode"
-          >
-            <ToggleButton value="light" aria-label="Light mode" sx={{ gap: 1, px: 2.5 }}>
-              <LightModeOutlinedIcon fontSize="small" />
-              Light
-            </ToggleButton>
-            <ToggleButton value="system" aria-label="System default" sx={{ gap: 1, px: 2.5 }}>
-              <SettingsBrightnessOutlinedIcon fontSize="small" />
-              System
-            </ToggleButton>
-            <ToggleButton value="dark" aria-label="Dark mode" sx={{ gap: 1, px: 2.5 }}>
-              <DarkModeOutlinedIcon fontSize="small" />
-              Dark
-            </ToggleButton>
-          </ToggleButtonGroup>
         </CardContent>
       </Card>
 
