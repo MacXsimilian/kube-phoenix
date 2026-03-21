@@ -1962,7 +1962,7 @@ Roles are enforced at two levels:
 
 ### 8.4 Keycloak OIDC Integration
 
-Optional Keycloak integration is activated when `OIDC_ISSUER_URL` is set. It implements the Authorization Code flow with PKCE.
+Optional Keycloak integration is activated when `OIDC_ISSUER_URL` is set. It implements the Authorization Code flow with PKCE (S256). The Keycloak client must have **Proof Key for Code Exchange Code Challenge Method** set to `S256`.
 
 ```mermaid
 sequenceDiagram
