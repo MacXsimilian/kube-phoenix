@@ -19,6 +19,7 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import { getExecutions } from '@/lib/api'
 import type { Execution } from '@/lib/types'
 import { timeAgo } from '@/lib/formatters'
+import { useColors } from '@/lib/colors'
 import LogViewer from '@/components/history/LogViewer'
 
 function StatusChip({ status }: { status: Execution['status'] }) {
@@ -33,6 +34,7 @@ function StatusChip({ status }: { status: Execution['status'] }) {
 
 export default function ActivityFeed() {
   const router = useRouter()
+  const colors = useColors()
   const [selected, setSelected] = useState<Execution | null>(null)
   const { data, isLoading, isError } = useQuery({
     queryKey: ['executions', 'feed'],
@@ -131,7 +133,7 @@ export default function ActivityFeed() {
                       Started {timeAgo(exec.startedAt)}
                     </Typography>
                     <Box sx={{
-                      width: 7, height: 7, borderRadius: '50%', bgcolor: '#22D3EE', flexShrink: 0,
+                      width: 7, height: 7, borderRadius: '50%', bgcolor: colors.cyan, flexShrink: 0,
                       animation: 'livePulse 1.8s ease-in-out infinite',
                       '@keyframes livePulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.2 } },
                     }} />

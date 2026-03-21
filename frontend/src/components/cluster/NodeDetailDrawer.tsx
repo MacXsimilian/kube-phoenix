@@ -23,7 +23,9 @@ import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodePods } from '@/lib/api'
 import { fmtCpu, fmtMem, podAge, sinceMs } from '@/lib/formatters'
-import { POD_STATUS_STYLE, NODE_STATUS_MAP } from '@/components/cluster/statusColors'
+import { podStatusStyle, nodeStatusMap } from '@/components/cluster/statusColors'
+import { useTheme } from '@mui/material/styles'
+import { useColors } from '@/lib/colors'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { Node, NodePod } from '@/lib/types'
 import PodDetailContent from './PodDetailContent'
@@ -33,13 +35,16 @@ import PodDetailContent from './PodDetailContent'
 function pct(used: number, total: number) {
   return total > 0 ? Math.round((used / total) * 100) : 0
 }
-function pctColor(p: number) {
-  if (p >= 85) return '#F87171'
+function pctColor(p: number, isDark: boolean) {
+  if (p >= 85) return isDark ? '#F87171' : '#B91C1C'
   if (p >= 65) return '#FBBF24'
-  return '#22C55E'
+  return isDark ? '#22C55E' : '#15803D'
 }
-function podStatusStyle(status: string) {
-  return POD_STATUS_STYLE[status] ?? { color: '#94A3B8', bgcolor: 'rgba(148,163,184,0.12)' }
+function getPodStatusStyle(status: string, isDark: boolean) {
+  const styles = podStatusStyle(isDark)
+  const c = isDark ? '#94A3B8' : '#475569'
+  const bg = isDark ? 'rgba(148,163,184,0.12)' : 'rgba(71,85,105,0.10)'
+  return styles[status] ?? { color: c, bgcolor: bg }
 }
 function ownerStyle(kind: string) {
   if (kind === 'Deployment')  return { color: '#7C3AED', bgcolor: 'rgba(124,58,237,0.12)' }
@@ -50,9 +55,9 @@ function ownerStyle(kind: string) {
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
-function MiniBar({ used, total, label }: { used: number; total: number; label: string }) {
+function MiniBar({ used, total, label, isDark }: { used: number; total: number; label: string; isDark: boolean }) {
   const p = pct(used, total)
-  const color = pctColor(p)
+  const color = pctColor(p, isDark)
   return (
     <Tooltip title={label} arrow>
       <Box sx={{ minWidth: 80 }}>
@@ -70,14 +75,14 @@ function MiniBar({ used, total, label }: { used: number; total: number; label: s
   )
 }
 
-function PodRow({ pod, onClick }: { pod: NodePod; onClick?: () => void }) {
-  const ss = podStatusStyle(pod.status)
+function PodRow({ pod, onClick, isDark, colors }: { pod: NodePod; onClick?: () => void; isDark: boolean; colors: ReturnType<typeof import('@/lib/colors').useColors> }) {
+  const ss = getPodStatusStyle(pod.status, isDark)
   const os = pod.ownerKind ? ownerStyle(pod.ownerKind) : null
   const readyColor = pod.readyContainers === pod.totalContainers
-    ? '#22C55E'
+    ? colors.success
     : pod.readyContainers > 0
-    ? '#F59E0B'
-    : '#F87171'
+    ? colors.warning
+    : colors.errorLight
 
   return (
     <TableRow hover onClick={onClick} sx={{ cursor: onClick ? 'pointer' : 'default' }}>
@@ -132,6 +137,8 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
   const [search, setSearch] = useState('')
   const [drawerWidth, handleResizeMouseDown, handleResizeTouchStart] = useDrawerResize(540)
   const [selectedPod, setSelectedPod] = useState<NodePod | null>(null)
+  const isDark = useTheme().palette.mode === 'dark'
+  const colors = useColors()
 
   function handleClose() {
     setSelectedPod(null)
@@ -163,7 +170,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b))
   }, [filtered])
 
-  const sc = node ? NODE_STATUS_MAP[node.status] : null
+  const sc = node ? nodeStatusMap(isDark)[node.status] : null
 
   return (
     <Drawer
@@ -249,7 +256,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                     <Typography variant="caption" color="text.disabled">·</Typography>
                     {sc && <Chip label={sc.label} size="small" sx={{ height: 18, fontSize: 10, bgcolor: sc.bgcolor, color: sc.color }} />}
                     {node.cordoned && (
-                      <Chip label="Cordoned" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(248,113,113,0.15)', color: '#F87171' }} />
+                      <Chip label="Cordoned" size="small" sx={{ height: 18, fontSize: 10, bgcolor: colors.errorBg, color: colors.errorLight }} />
                     )}
                   </Box>
                 )}
@@ -267,11 +274,13 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                   used={node.cpuRequested}
                   total={node.cpuAllocatable}
                   label={`CPU: ${fmtCpu(node.cpuRequested)} / ${fmtCpu(node.cpuAllocatable)} reserved`}
+                  isDark={isDark}
                 />
                 <MiniBar
                   used={node.memRequested}
                   total={node.memAllocatable}
                   label={`MEM: ${fmtMem(node.memRequested)} / ${fmtMem(node.memAllocatable)} reserved`}
+                  isDark={isDark}
                 />
                 <Box>
                   <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', mb: 0.25, fontSize: 11 }}>PODS</Typography>
@@ -358,7 +367,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                         </TableCell>
                       </TableRow>
                       {nsPods.map((pod) => (
-                        <PodRow key={pod.name} pod={pod} onClick={() => setSelectedPod(pod)} />
+                        <PodRow key={pod.name} pod={pod} onClick={() => setSelectedPod(pod)} isDark={isDark} colors={colors} />
                       ))}
                     </React.Fragment>
                   ))}

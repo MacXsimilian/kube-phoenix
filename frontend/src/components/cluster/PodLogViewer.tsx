@@ -25,6 +25,7 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
 import SearchIcon from '@mui/icons-material/Search'
 import { getPodLogs, streamPodLogs } from '@/lib/api'
+import { useColors } from '@/lib/colors'
 import type { PodContainer } from '@/lib/types'
 
 const INITIAL_TAIL = 500
@@ -39,6 +40,7 @@ interface PodLogViewerProps {
 }
 
 export default function PodLogViewer({ namespace, podName, containers, onBack }: PodLogViewerProps) {
+  const colors = useColors()
   const [container, setContainer] = useState(containers[0]?.name ?? '')
   const [search, setSearch] = useState('')
   const [copied, setCopied] = useState(false)
@@ -237,14 +239,14 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
           {isLoading && <CircularProgress size={14} />}
           {mode === 'live' && streaming && !isLoading && (
             <Chip
-              icon={<FiberManualRecordIcon sx={{ fontSize: '10px !important', color: '#22C55E !important' }} />}
+              icon={<FiberManualRecordIcon sx={{ fontSize: '10px !important', color: `${colors.success} !important` }} />}
               label="LIVE"
               size="small"
-              sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(34,197,94,0.12)', color: '#22C55E' }}
+              sx={{ height: 18, fontSize: 10, bgcolor: colors.successBg, color: colors.success }}
             />
           )}
           {mode === 'live' && !streaming && !isLoading && !streamError && (
-            <Chip label="ENDED" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(148,163,184,0.12)', color: '#94A3B8' }} />
+            <Chip label="ENDED" size="small" sx={{ height: 18, fontSize: 10, bgcolor: colors.mutedBg, color: colors.muted }} />
           )}
         </Stack>
 
