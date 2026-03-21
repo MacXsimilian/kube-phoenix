@@ -110,6 +110,8 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]interface{}{
 		"id":          user.ID,
 		"username":    user.Username,
+		"givenName":   user.GivenName,
+		"familyName":  user.FamilyName,
 		"email":       user.Email,
 		"role":        user.Role,
 		"source":      user.Source,
@@ -221,6 +223,8 @@ func userResponse(u *store.User) map[string]interface{} {
 	return map[string]interface{}{
 		"id":          u.ID,
 		"username":    u.Username,
+		"givenName":   u.GivenName,
+		"familyName":  u.FamilyName,
 		"email":       u.Email,
 		"role":        u.Role,
 		"source":      u.Source,

@@ -949,15 +949,15 @@ func New() (*Client, error) {
 ```go
 type Schedule struct {
     ID              uint   `gorm:"primaryKey" json:"id"`
-    Name            string `json:"name"`
-    Type            string `json:"type"`            // "scale_down" | "scale_up"
-    CronExpr        string `json:"cronExpr"`
-    Timezone        string `json:"timezone"`
-    Mode            string `json:"mode"`            // "plan" | "apply"
+    Name            string `gorm:"size:255" json:"name"`
+    Type            string `gorm:"size:20" json:"type"`  // "scale_down" | "scale_up"
+    CronExpr        string `gorm:"size:255" json:"cronExpr"`
+    Timezone        string `gorm:"size:100" json:"timezone"`
+    Mode            string `gorm:"size:10" json:"mode"`  // "plan" | "apply"
     Enabled         bool   `json:"enabled"`
-    NamespaceFilter string `json:"namespaceFilter"` // comma-separated; empty = all namespaces
-    TimeoutMinutes  int    `json:"timeoutMinutes"`  // 0 = use server default (120 min)
-    Position        int    `json:"position"`        // display order within each type group
+    NamespaceFilter string `gorm:"size:4096" json:"namespaceFilter"` // comma-separated; empty = all namespaces
+    TimeoutMinutes  int    `json:"timeoutMinutes"`                   // 0 = use server default (120 min)
+    Position        int    `json:"position"`                         // display order within each type group
 
     CreatedAt time.Time `json:"createdAt"`
     UpdatedAt time.Time `json:"updatedAt"`
@@ -986,8 +986,8 @@ type Execution struct {
     Schedule   Schedule   `gorm:"foreignKey:ScheduleID" json:"schedule"`
     StartedAt  time.Time  `gorm:"index" json:"startedAt"`
     FinishedAt *time.Time `json:"finishedAt"`
-    Status     string     `gorm:"index" json:"status"` // "running" | "success" | "failed"
-    Mode       string     `json:"mode"`                // "plan" | "apply"
+    Status     string     `gorm:"index;size:20" json:"status"` // "running" | "success" | "failed"
+    Mode       string     `gorm:"size:10" json:"mode"`         // "plan" | "apply"
 
     CountScaled    int `json:"countScaled"`
     CountDrained   int `json:"countDrained"`
@@ -1004,10 +1004,11 @@ type Execution struct {
 type LogLine struct {
     ID          uint      `gorm:"primaryKey" json:"id"`
     ExecutionID uint      `gorm:"index:idx_logline_exec_seq" json:"executionId"`
+    Execution   Execution `gorm:"foreignKey:ExecutionID;constraint:OnDelete:CASCADE" json:"-"`
     Seq         int       `gorm:"index:idx_logline_exec_seq" json:"seq"`
-    Level       string    `json:"level"` // "info" | "ok" | "plan" | "error" | "warn"
-    Message     string
-    Timestamp   time.Time
+    Level       string    `gorm:"size:10" json:"level"` // "info" | "ok" | "plan" | "error" | "warn"
+    Message     string    `json:"message"`
+    Timestamp   time.Time `json:"timestamp"`
 }
 ```
 
@@ -1016,50 +1017,59 @@ The composite index `idx_logline_exec_seq` on `(execution_id, seq)` ensures that
 **User**
 ```go
 type User struct {
-    ID           uint      `gorm:"primaryKey" json:"id"`
-    Username     string    `gorm:"uniqueIndex" json:"username"`
-    PasswordHash string    `json:"-"`                          // bcrypt, never exposed in JSON
-    Role         string    `json:"role"`                       // "admin" | "operator" | "viewer"
-    OIDCSubject  *string   `gorm:"uniqueIndex" json:"-"`      // linked Keycloak subject, nullable
-    CreatedAt    time.Time `json:"createdAt"`
-    UpdatedAt    time.Time `json:"updatedAt"`
+    ID           uint       `gorm:"primaryKey" json:"id"`
+    Username     string     `gorm:"uniqueIndex:idx_users_username_source;size:255" json:"username"`
+    GivenName    string     `gorm:"size:255" json:"givenName,omitempty"`
+    FamilyName   string     `gorm:"size:255" json:"familyName,omitempty"`
+    Email        string     `gorm:"size:255" json:"email,omitempty"`
+    PasswordHash string     `gorm:"column:password_hash;size:72" json:"-"`
+    Role         string     `gorm:"size:20;default:viewer" json:"role"`                            // admin | operator | viewer
+    Source       string     `gorm:"uniqueIndex:idx_users_username_source;size:20;default:local" json:"source"` // local | oidc
+    OIDCSubject  *string    `gorm:"column:oidc_subject;uniqueIndex;size:255" json:"-"`
+    Enabled      bool       `gorm:"default:true" json:"enabled"`
+    CreatedAt    time.Time  `json:"createdAt"`
+    UpdatedAt    time.Time  `json:"updatedAt"`
+    LastLoginAt  *time.Time `json:"lastLoginAt,omitempty"`
 }
 ```
 
-Passwords are hashed with bcrypt (cost 12). The `PasswordHash` field is excluded from JSON serialisation via `json:"-"`. The optional `OIDCSubject` field links a local user to a Keycloak identity for account linking.
+Passwords are hashed with bcrypt (cost 12). The `PasswordHash` field (max 72 bytes for bcrypt) is excluded from JSON serialisation via `json:"-"`. The composite unique index `idx_users_username_source` allows the same username for both local and OIDC users. The optional `OIDCSubject` field links a user to a Keycloak identity. `GivenName` and `FamilyName` are synced from the standard OIDC `given_name` / `family_name` claims on every login. `Enabled` allows admins to deactivate accounts without deletion.
 
 **Session**
 ```go
 type Session struct {
-    ID        string    `gorm:"primaryKey"` // secure random token
-    UserID    uint      `gorm:"index"`
-    User      User      `gorm:"foreignKey:UserID"`
-    CreatedAt time.Time
-    LastSeen  time.Time `gorm:"index"` // updated on each request, used for idle timeout
-    ExpiresAt time.Time `gorm:"index"` // absolute max lifetime
-    IPAddress string
-    UserAgent string
+    ID           uint      `gorm:"primaryKey"`
+    Token        string    `gorm:"uniqueIndex;size:64"`
+    UserID       uint      `gorm:"index"`
+    User         User      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+    IPAddress    string    `gorm:"size:45"`
+    UserAgent    string    `gorm:"size:512"`
+    ExpiresAt    time.Time `gorm:"index"` // sliding window — extended on each request, used for idle timeout
+    MaxExpiresAt time.Time // absolute hard cap
+    CreatedAt    time.Time
 }
 ```
 
-Sessions are stored in PostgreSQL and identified by a cryptographically random token set as an HTTP-only, Secure, SameSite=Lax cookie. `SESSION_IDLE_TIMEOUT` (default 8h) controls how long a session can be idle before expiry. `SESSION_MAX_LIFETIME` (default 24h) is the absolute upper bound regardless of activity.
+Sessions are stored in PostgreSQL and identified by a cryptographically random token set as an HTTP-only, Secure, SameSite=Lax cookie. `ExpiresAt` implements a sliding window — extended by `SESSION_IDLE_TIMEOUT` (default 8h) on each request, capped at `MaxExpiresAt` which is set to `SESSION_MAX_LIFETIME` (default 24h) from session creation. The `OnDelete:CASCADE` FK ensures sessions are automatically cleaned up when a user is deleted.
 
 **AuditLog**
 ```go
 type AuditLog struct {
-    ID         uint      `gorm:"primaryKey" json:"id"`
-    UserID     uint      `gorm:"index" json:"userId"`
-    Username   string    `json:"username"`                    // denormalised for display
-    Action     string    `gorm:"index" json:"action"`         // e.g. "schedule.update", "user.create"
-    Resource   string    `json:"resource"`                     // e.g. "schedule:3", "user:5"
-    Before     *string   `json:"before,omitempty"`             // JSON snapshot before change
-    After      *string   `json:"after,omitempty"`              // JSON snapshot after change
-    IPAddress  string    `json:"ipAddress"`
-    CreatedAt  time.Time `gorm:"index" json:"createdAt"`
+    ID           uint      `gorm:"primaryKey" json:"id"`
+    UserID       *uint     `gorm:"index" json:"userId,omitempty"`
+    User         *User     `gorm:"foreignKey:UserID;constraint:OnDelete:SET NULL" json:"-"`
+    Username     string    `gorm:"size:255" json:"username"`     // denormalised for display
+    Action       string    `gorm:"index;size:100" json:"action"` // e.g. "schedule.update", "user.create"
+    ResourceType string    `gorm:"size:50" json:"resourceType,omitempty"`
+    ResourceID   *uint     `json:"resourceId,omitempty"`
+    Before       string    `gorm:"type:jsonb" json:"before,omitempty"`
+    After        string    `gorm:"type:jsonb" json:"after,omitempty"`
+    IPAddress    string    `gorm:"size:45" json:"ipAddress,omitempty"`
+    Timestamp    time.Time `gorm:"index" json:"timestamp"`
 }
 ```
 
-Audit logs are written asynchronously via a buffered channel writer (`internal/audit/writer.go`) to avoid blocking API handlers. The writer batches inserts for efficiency. `AUDIT_RETENTION_DAYS` (default 90, 0 = keep forever) controls automatic cleanup of old records via a daily background goroutine.
+`UserID` is nullable with `OnDelete:SET NULL` — when a user is deleted, the audit entry is preserved with `userId` set to null (the denormalised `username` field retains attribution). Audit logs are written asynchronously via a buffered channel writer (`internal/audit/writer.go`) to avoid blocking API handlers. The writer batches inserts for efficiency. `AUDIT_RETENTION_DAYS` (default 90, 0 = keep forever) controls automatic cleanup of old records via a daily background goroutine.
 
 #### Store (`internal/store/store.go`)
 
@@ -1206,6 +1216,13 @@ classDiagram
         -scheduler *Scheduler
         -cache *ClusterCache
         +NewRouter() *chi.Mux
+        +login()
+        +logout()
+        +me()
+        +changePassword()
+        +oidcConfig()
+        +oidcLogin()
+        +oidcCallback()
         +listSchedules()
         +getSchedule()
         +createSchedule()
@@ -1222,10 +1239,16 @@ classDiagram
         +getNodes()
         +getNodePods()
         +getPodDetail()
+        +getPodLogs()
         +getWorkloadPods()
         +getGuardrails()
         +updateGuardrails()
         +trigger()
+        +listUsers()
+        +createUser()
+        +updateUser()
+        +deleteUser()
+        +listAuditLogs()
         +resetDB()
     }
 
@@ -1291,14 +1314,19 @@ classDiagram
         +DropAllTables() error
         +MigrateSchema() error
         +CreateUser(u) error
-        +GetUser(id) *User, error
+        +GetUserByID(id) *User, error
         +GetUserByUsername(username) *User, error
+        +GetOrCreateOIDCUser(sub, username, email, role, givenName, familyName) *User, error
         +ListUsers() []User, error
         +UpdateUser(id, fields) *User, error
         +DeleteUser(id) error
+        +UpdateLastLogin(id) error
+        +ChangePassword(id, newPassword) error
         +CreateSession(s) error
         +GetSession(token) *Session, error
+        +ExtendSession(token, idleTimeout) error
         +DeleteSession(token) error
+        +DeleteUserSessions(userID) error
         +CleanExpiredSessions() error
         +CreateAuditLog(a) error
         +ListAuditLogs(filter) *AuditLogPage, error
@@ -1717,19 +1745,19 @@ useEffect(() => {
 ```mermaid
 erDiagram
     schedules ||--o{ executions : "has many"
-    executions ||--o{ log_lines : "has many"
-    users ||--o{ sessions : "has many"
-    users ||--o{ audit_logs : "has many"
+    executions ||--o{ log_lines : "has many (CASCADE)"
+    users ||--o{ sessions : "has many (CASCADE)"
+    users ||--o{ audit_logs : "has many (SET NULL)"
 
     schedules {
         bigint id PK
-        text name "not null"
-        text type "scale_down | scale_up"
-        text cron_expr "not null, 5-field"
-        text timezone "default UTC"
-        text mode "plan | apply"
+        varchar(255) name "not null"
+        varchar(20) type "scale_down | scale_up"
+        varchar(255) cron_expr "not null, 5-field"
+        varchar(100) timezone "default UTC"
+        varchar(10) mode "plan | apply"
         boolean enabled "default true"
-        text namespace_filter "CSV, empty = all"
+        varchar(4096) namespace_filter "CSV, empty = all"
         int timeout_minutes "default 120"
         int position "display order"
         timestamptz created_at
@@ -1741,8 +1769,8 @@ erDiagram
         bigint schedule_id FK "indexed"
         timestamptz started_at "indexed"
         timestamptz finished_at "nullable"
-        text status "running | success | failed, indexed"
-        text mode "plan | apply"
+        varchar(20) status "running | success | failed, indexed"
+        varchar(10) mode "plan | apply"
         int count_saved
         int count_scaled
         int count_drained
@@ -1754,9 +1782,9 @@ erDiagram
 
     log_lines {
         bigint id PK
-        bigint execution_id FK "composite index with seq"
+        bigint execution_id FK "composite index with seq, CASCADE"
         int seq "monotonic per execution"
-        text level "info | ok | plan | error | warn"
+        varchar(10) level "info | ok | plan | error | warn"
         text message
         timestamptz timestamp
     }
@@ -1773,34 +1801,42 @@ erDiagram
 
     users {
         bigint id PK
-        text username "unique, not null"
-        text password_hash "bcrypt"
-        text role "admin | operator | viewer"
-        text oidc_subject "unique, nullable"
+        varchar(255) username "unique(username,source)"
+        varchar(255) given_name
+        varchar(255) family_name
+        varchar(255) email
+        varchar(72) password_hash "bcrypt"
+        varchar(20) role "admin | operator | viewer, default viewer"
+        varchar(20) source "local | oidc, default local"
+        varchar(255) oidc_subject "unique, nullable"
+        boolean enabled "default true"
         timestamptz created_at
         timestamptz updated_at
+        timestamptz last_login_at "nullable"
     }
 
     sessions {
-        text id PK "secure random token"
-        bigint user_id FK "indexed"
+        bigint id PK
+        varchar(64) token "unique"
+        bigint user_id FK "indexed, CASCADE"
+        varchar(45) ip_address
+        varchar(512) user_agent
+        timestamptz expires_at "indexed, sliding window"
+        timestamptz max_expires_at "absolute hard cap"
         timestamptz created_at
-        timestamptz last_seen "indexed, idle timeout"
-        timestamptz expires_at "indexed, max lifetime"
-        text ip_address
-        text user_agent
     }
 
     audit_logs {
         bigint id PK
-        bigint user_id FK "indexed"
-        text username "denormalised"
-        text action "indexed"
-        text resource
-        text before "nullable, JSON snapshot"
-        text after "nullable, JSON snapshot"
-        text ip_address
-        timestamptz created_at "indexed"
+        bigint user_id FK "indexed, nullable, SET NULL"
+        varchar(255) username "denormalised"
+        varchar(100) action "indexed"
+        varchar(50) resource_type
+        bigint resource_id "nullable"
+        jsonb before "nullable"
+        jsonb after "nullable"
+        varchar(45) ip_address
+        timestamptz timestamp "indexed"
     }
 ```
 
@@ -1910,8 +1946,8 @@ flowchart TD
     Valid -- "No" --> DeleteSession["Delete session row"]
     DeleteSession --> Reject401
 
-    Valid -- "Yes" --> UpdateLastSeen["Update session.LastSeen"]
-    UpdateLastSeen --> InjectUser["Inject User into request context"]
+    Valid -- "Yes" --> ExtendExpiry["Extend session.ExpiresAt (sliding window)"]
+    ExtendExpiry --> InjectUser["Inject User into request context"]
     InjectUser --> CheckCSRF{"Mutating request?<br/>(POST/PUT/DELETE)"}
 
     CheckCSRF -- "No" --> Allow["next(handler)"]
@@ -1923,7 +1959,7 @@ flowchart TD
 
 **Session lifecycle:**
 - **Login:** `POST /api/auth/login` validates credentials (bcrypt compare), creates a Session row, sets the `kube-phoenix-session` HTTP-only cookie (Secure, SameSite=Lax) and a `kube-phoenix-csrf` non-HTTP-only cookie (readable by JS for the double-submit pattern).
-- **Idle timeout:** `SESSION_IDLE_TIMEOUT` (default 8h). If `now() - session.LastSeen > idle timeout`, the session is expired.
+- **Idle timeout:** `SESSION_IDLE_TIMEOUT` (default 8h). On each authenticated request, `ExpiresAt` is extended by the idle timeout (capped at `MaxExpiresAt`). If the session is not used within the window, it expires.
 - **Max lifetime:** `SESSION_MAX_LIFETIME` (default 24h). Absolute upper bound regardless of activity.
 - **Logout:** `POST /api/auth/logout` deletes the session row and clears both cookies.
 
@@ -1982,9 +2018,9 @@ sequenceDiagram
     U->>B: GET /api/auth/oidc/callback?code=...&state=...
     B->>K: Exchange code for tokens (with PKCE verifier)
     K-->>B: ID token + access token
-    B->>B: Validate ID token, extract groups claim
+    B->>B: Validate ID token, extract claims (sub, email, given_name, family_name, groups)
     B->>B: Map AD groups → role (via OIDC_ROLE_ADMIN_GROUPS / OIDC_ROLE_OPERATOR_GROUPS)
-    B->>B: Find or create local User (account linking via oidc_subject)
+    B->>B: Upsert User by oidc_subject — sync role, email, given name, family name
     B->>B: Create session
     B-->>U: Set session cookie, redirect to /
 ```
@@ -1998,7 +2034,7 @@ sequenceDiagram
 - **Custom CA cert (recommended):** In the Helm chart, set `oidc.caConfigMap` to mount a ConfigMap containing the CA bundle. The chart sets `SSL_CERT_FILE` pointing to the mounted cert, which Go's `crypto/tls` reads natively — no application code involved.
 - **Skip TLS verification (dev only):** Set `OIDC_SKIP_TLS_VERIFY=true`. The backend creates an `http.Client` with `InsecureSkipVerify` and injects it into both the OIDC discovery and OAuth2 token exchange contexts. When enabled, the CA cert mount is not rendered. **Not recommended for production.**
 
-**Account linking:** When an OIDC user logs in for the first time, a local User record is created with the OIDC subject stored in `oidc_subject`. On subsequent logins, the existing user is found by `oidc_subject` and their role is updated based on current group memberships.
+**Account linking:** When an OIDC user logs in for the first time, a local User record is created with the OIDC subject stored in `oidc_subject`. On subsequent logins, the existing user is found by `oidc_subject` and their role, email, given name, and family name are updated from the current ID token claims.
 
 ### 8.5 Frontend Authentication Flow
 
