@@ -19,8 +19,10 @@ import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import TerminalIcon from '@mui/icons-material/Terminal'
+import { useTheme } from '@mui/material/styles'
 import { getPodDetail } from '@/lib/api'
 import { fmtCpu, fmtMem, podAge } from '@/lib/formatters'
+import { useColors } from '@/lib/colors'
 import PodLogViewer from './PodLogViewer'
 import type { PodContainer, PodCondition, PodEvent } from '@/lib/types'
 
@@ -31,10 +33,10 @@ function resourceCell(req: number, limit: number, fmt: (n: number) => string) {
 }
 
 const CONDITION_ORDER = ['Ready', 'ContainersReady', 'Initialized', 'PodScheduled']
-function conditionColor(status: PodCondition['status']) {
-  if (status === 'True') return { color: '#22C55E', bgcolor: 'rgba(34,197,94,0.12)' }
-  if (status === 'False') return { color: '#F87171', bgcolor: 'rgba(248,113,113,0.12)' }
-  return { color: '#94A3B8', bgcolor: 'rgba(148,163,184,0.12)' }
+function conditionColor(status: PodCondition['status'], isDark: boolean) {
+  if (status === 'True')  return { color: isDark ? '#22C55E' : '#15803D', bgcolor: isDark ? 'rgba(34,197,94,0.12)' : 'rgba(21,128,61,0.10)' }
+  if (status === 'False') return { color: isDark ? '#F87171' : '#B91C1C', bgcolor: isDark ? 'rgba(248,113,113,0.12)' : 'rgba(185,28,28,0.10)' }
+  return { color: isDark ? '#94A3B8' : '#475569', bgcolor: isDark ? 'rgba(148,163,184,0.12)' : 'rgba(71,85,105,0.10)' }
 }
 
 // ── sub-components ────────────────────────────────────────────────────────────
@@ -50,7 +52,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-function ContainersSection({ containers }: { containers: PodContainer[] }) {
+function ContainersSection({ containers, isDark, colors }: { containers: PodContainer[]; isDark: boolean; colors: ReturnType<typeof useColors> }) {
   return (
     <Box>
       <SectionLabel>Containers</SectionLabel>
@@ -77,7 +79,7 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
                 </Tooltip>
               </TableCell>
               <TableCell sx={{ py: 0.75 }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c.ready ? '#22C55E' : '#F87171' }} />
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c.ready ? colors.success : colors.errorLight }} />
               </TableCell>
               <TableCell sx={{ py: 0.75, fontFamily: 'monospace', color: c.restartCount > 0 ? '#FBBF24' : 'text.primary' }}>
                 {c.restartCount}
@@ -90,7 +92,7 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
               </TableCell>
               <TableCell sx={{ py: 0.75 }}>
                 {c.lastState ? (
-                  <Chip label={c.lastState} size="small" sx={{ height: 16, fontSize: 10, bgcolor: 'rgba(248,113,113,0.12)', color: '#F87171' }} />
+                  <Chip label={c.lastState} size="small" sx={{ height: 16, fontSize: 10, bgcolor: colors.errorBg, color: colors.errorLight }} />
                 ) : (
                   <Typography color="text.disabled" sx={{ fontSize: 12 }}>—</Typography>
                 )}
@@ -104,7 +106,7 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
   )
 }
 
-function ConditionsSection({ conditions }: { conditions: PodCondition[] }) {
+function ConditionsSection({ conditions, isDark }: { conditions: PodCondition[]; isDark: boolean }) {
   const ordered = [...conditions].sort(
     (a, b) => CONDITION_ORDER.indexOf(a.type) - CONDITION_ORDER.indexOf(b.type)
   )
@@ -113,7 +115,7 @@ function ConditionsSection({ conditions }: { conditions: PodCondition[] }) {
       <SectionLabel>Conditions</SectionLabel>
       <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
         {ordered.map((c) => {
-          const s = conditionColor(c.status)
+          const s = conditionColor(c.status, isDark)
           return (
             <Chip
               key={c.type}
@@ -128,7 +130,7 @@ function ConditionsSection({ conditions }: { conditions: PodCondition[] }) {
   )
 }
 
-function EventsSection({ events }: { events: PodEvent[] }) {
+function EventsSection({ events, isDark, colors }: { events: PodEvent[]; isDark: boolean; colors: ReturnType<typeof useColors> }) {
   if (!events?.length) return null
   return (
     <Box>
@@ -136,20 +138,20 @@ function EventsSection({ events }: { events: PodEvent[] }) {
       <Table size="small" sx={{ '& td': { fontSize: 12 } }}>
         <TableBody>
           {events.map((e, i) => (
-            <TableRow key={i} sx={{ bgcolor: e.type === 'Warning' ? 'rgba(248,113,113,0.05)' : 'transparent' }}>
+            <TableRow key={i} sx={{ bgcolor: e.type === 'Warning' ? (isDark ? 'rgba(248,113,113,0.05)' : 'rgba(185,28,28,0.05)') : 'transparent' }}>
               <TableCell sx={{ py: 0.5, width: 70 }}>
                 <Chip
                   label={e.type}
                   size="small"
                   sx={{
                     height: 16, fontSize: 10,
-                    bgcolor: e.type === 'Warning' ? 'rgba(248,113,113,0.15)' : 'rgba(34,197,94,0.12)',
-                    color: e.type === 'Warning' ? '#F87171' : '#22C55E',
+                    bgcolor: e.type === 'Warning' ? colors.errorBg : colors.successBg,
+                    color: e.type === 'Warning' ? colors.errorLight : colors.success,
                   }}
                 />
               </TableCell>
               <TableCell sx={{ py: 0.5, width: 100, color: 'text.secondary', fontFamily: 'monospace', fontSize: 11 }}>{e.reason}</TableCell>
-              <TableCell sx={{ py: 0.5, color: e.type === 'Warning' ? '#F87171' : 'text.primary' }}>{e.message}</TableCell>
+              <TableCell sx={{ py: 0.5, color: e.type === 'Warning' ? colors.errorLight : 'text.primary' }}>{e.message}</TableCell>
               <TableCell sx={{ py: 0.5, width: 40, textAlign: 'right', color: 'text.disabled', fontSize: 11 }}>×{e.count}</TableCell>
               <TableCell sx={{ py: 0.5, width: 60, textAlign: 'right', color: 'text.disabled', fontSize: 11, whiteSpace: 'nowrap' }}>
                 {podAge(e.lastSeen)}
@@ -194,6 +196,8 @@ function CollapsibleKVSection({ title, entries }: { title: string; entries: [str
 // ── main component ────────────────────────────────────────────────────────────
 
 export default function PodDetailContent({ namespace, podName }: { namespace: string; podName: string }) {
+  const isDark = useTheme().palette.mode === 'dark'
+  const colors = useColors()
   const [view, setView] = useState<'detail' | 'logs'>('detail')
   const [containers, setContainers] = useState<PodContainer[]>([])
 
@@ -247,8 +251,8 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
           size="small"
           sx={{
             height: 20, fontSize: 11,
-            bgcolor: pod.phase === 'Running' ? 'rgba(34,197,94,0.12)' : pod.phase === 'Pending' ? 'rgba(245,158,11,0.12)' : 'rgba(248,113,113,0.12)',
-            color: pod.phase === 'Running' ? '#22C55E' : pod.phase === 'Pending' ? '#F59E0B' : '#F87171',
+            bgcolor: pod.phase === 'Running' ? colors.successBg : pod.phase === 'Pending' ? colors.warningBg : colors.errorBg,
+            color: pod.phase === 'Running' ? colors.success : pod.phase === 'Pending' ? colors.warning : colors.errorLight,
           }}
         />
         {pod.qosClass && (
@@ -288,19 +292,19 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
 
       <Divider />
 
-      <ContainersSection containers={pod.containers ?? []} />
+      <ContainersSection containers={pod.containers ?? []} isDark={isDark} colors={colors} />
 
       {(pod.conditions ?? []).length > 0 && (
         <>
           <Divider />
-          <ConditionsSection conditions={pod.conditions ?? []} />
+          <ConditionsSection conditions={pod.conditions ?? []} isDark={isDark} />
         </>
       )}
 
       {(pod.events ?? []).length > 0 && (
         <>
           <Divider />
-          <EventsSection events={pod.events ?? []} />
+          <EventsSection events={pod.events ?? []} isDark={isDark} colors={colors} />
         </>
       )}
 

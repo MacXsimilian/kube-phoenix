@@ -30,6 +30,7 @@ import { useRouter } from 'next/navigation'
 import LogViewer from '@/components/history/LogViewer'
 import { useAuth } from '@/lib/auth'
 import { canTriggerSchedules } from '@/lib/rbac'
+import { useColors } from '@/lib/colors'
 
 type TriggerType = 'scale_down' | 'scale_up'
 
@@ -101,6 +102,7 @@ export default function ClusterStatusCard() {
   const router = useRouter()
   const { user } = useAuth()
   const hasTrigger = canTriggerSchedules(user?.permissions)
+  const colors = useColors()
 
   // Single overview query — fed by SSE in real time, polls as fallback
   const { data: overview, isLoading, isError } = useQuery({
@@ -165,7 +167,7 @@ export default function ClusterStatusCard() {
   const isPartial = sleeping > 0 && running > 0
   const isSleeping = sleeping > 0 && running === 0
 
-  const statusColor = isSleeping ? '#F59E0B' : isPartial ? '#F97316' : '#22C55E'
+  const statusColor = isSleeping ? colors.warning : isPartial ? colors.orange : colors.success
   const statusLabel = isSleeping ? 'Cluster Sleeping' : isPartial ? 'Partially Sleeping' : 'Cluster Awake'
   const StatusIcon = isSleeping ? BedtimeIcon : isPartial ? Brightness4Icon : WbSunnyIcon
 
@@ -242,7 +244,7 @@ export default function ClusterStatusCard() {
                     border: '1px solid rgba(249,115,22,0.18)',
                   }}
                 >
-                  <Typography variant="caption" sx={{ color: '#F97316', fontWeight: 600, display: 'block', mb: 0.75 }}>
+                  <Typography variant="caption" sx={{ color: colors.orange, fontWeight: 600, display: 'block', mb: 0.75 }}>
                     {sleepingByNs.length} namespace{sleepingByNs.length !== 1 ? 's' : ''} with sleeping workloads
                   </Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
@@ -251,7 +253,7 @@ export default function ClusterStatusCard() {
                         key={namespace}
                         label={`${namespace} · ${count}`}
                         size="small"
-                        sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(249,115,22,0.12)', color: '#F97316', '& .MuiChip-label': { px: 0.75 } }}
+                        sx={{ height: 18, fontSize: 10, bgcolor: colors.orangeBg, color: colors.orange, '& .MuiChip-label': { px: 0.75 } }}
                       />
                     ))}
                   </Box>
