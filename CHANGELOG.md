@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.76](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.75...v0.1.76) (2026-03-21)
+
+
+### Bug Fixes
+
+* **oidc:** separate local and OIDC user accounts ([#170](https://github.com/MacXsimilian/kube-phoenix/issues/170)) ([35d7e0b](https://github.com/MacXsimilian/kube-phoenix/commit/35d7e0b4023dc72bdd1ca2ab24e804bb5fbdf8eb))
+
 ## [0.1.75](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.74...v0.1.75) (2026-03-21)
 
 
