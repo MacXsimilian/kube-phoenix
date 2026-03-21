@@ -46,7 +46,17 @@ Set `ADMIN_USER` and `ADMIN_PASSWORD` to seed the first admin account on startup
 ### Auth methods
 
 - **Local login** — username/password via `POST /api/auth/login`. Passwords are bcrypt-hashed. Rate-limited: 10 attempts per IP / 5 per username per 15-minute window.
-- **Keycloak OIDC** — set `OIDC_ISSUER_URL` to enable SSO. Uses Authorization Code flow with PKCE. AD groups from the ID token are mapped to roles (admin/operator/viewer) via `OIDC_ROLE_ADMIN_GROUPS` / `OIDC_ROLE_OPERATOR_GROUPS`. Unmatched users default to viewer. OIDC users are auto-provisioned on first login.
+- **Keycloak OIDC** — set `OIDC_ISSUER_URL` to enable SSO. Uses Authorization Code flow with PKCE (S256). AD groups from the ID token are mapped to roles (admin/operator/viewer) via `OIDC_ROLE_ADMIN_GROUPS` / `OIDC_ROLE_OPERATOR_GROUPS`. Unmatched users default to viewer. OIDC users are auto-provisioned on first login.
+
+  **Keycloak client setup:**
+  1. Create an **OpenID Connect** client with **Client ID** `kube-phoenix` (or your preferred name).
+  2. Set **Client authentication** to `On` (confidential client).
+  3. Enable **Standard flow** only. Disable Direct access grants, Implicit flow, and Device Authorization Grant.
+  4. Set **Valid redirect URIs** to `https://<your-domain>/api/auth/oidc/callback`.
+  5. Set **Web origins** to `https://<your-domain>`.
+  6. Under the **Advanced** tab, set **Proof Key for Code Exchange Code Challenge Method** to `S256`.
+  7. Copy the **Client secret** from the **Credentials** tab → set as `OIDC_CLIENT_SECRET`.
+  8. To include AD groups in the ID token: create a **Client scope** named `groups`, add a **Group Membership** mapper with **Token Claim Name** = `groups`, **Add to ID token** = `On`, **Full group path** = `Off`. Add this scope to the client as a **Default** scope.
 
   **TLS options for OIDC discovery/token exchange:**
   - **Custom CA certificate (recommended):** set `OIDC_SKIP_TLS_VERIFY` to `false` (default) and mount a CA bundle. In the Helm chart, set `oidc.caConfigMap` to the name of a ConfigMap containing the CA cert and `oidc.caCertKey` to the key name (default `cacert.pem`). This sets `SSL_CERT_FILE` so Go's TLS stack trusts the internal CA.
