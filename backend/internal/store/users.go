@@ -88,18 +88,25 @@ func (s *Store) ChangePassword(id uint, newPassword string) error {
 
 // GetOrCreateOIDCUser upserts a user by OIDC subject. If no match by sub,
 // attempts to link an existing local user by username. Updates role on every login.
-func (s *Store) GetOrCreateOIDCUser(sub, username, email, role string) (*User, error) {
+func (s *Store) GetOrCreateOIDCUser(sub, username, email, role, givenName, familyName string) (*User, error) {
 	var user User
 
 	// Try by oidc_subject first.
 	err := s.db.Where("oidc_subject = ?", sub).First(&user).Error
 	if err == nil {
-		// Existing OIDC user — update role + email.
-		if err := s.db.Model(&user).Updates(map[string]interface{}{"role": role, "email": email}).Error; err != nil {
+		// Existing OIDC user — update role, email, and name.
+		if err := s.db.Model(&user).Updates(map[string]interface{}{
+			"role":        role,
+			"email":       email,
+			"given_name":  givenName,
+			"family_name": familyName,
+		}).Error; err != nil {
 			return nil, fmt.Errorf("update oidc user: %w", err)
 		}
 		user.Role = role
 		user.Email = email
+		user.GivenName = givenName
+		user.FamilyName = familyName
 		return &user, nil
 	}
 
@@ -107,6 +114,8 @@ func (s *Store) GetOrCreateOIDCUser(sub, username, email, role string) (*User, e
 	user = User{
 		Username:    username,
 		Email:       email,
+		GivenName:   givenName,
+		FamilyName:  familyName,
 		Role:        role,
 		Source:      "oidc",
 		OIDCSubject: &sub,

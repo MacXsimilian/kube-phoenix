@@ -163,6 +163,8 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		Sub               string   `json:"sub"`
 		PreferredUsername  string   `json:"preferred_username"`
 		Email             string   `json:"email"`
+		GivenName         string   `json:"given_name"`
+		FamilyName        string   `json:"family_name"`
 		Groups            []string `json:"groups"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
@@ -204,7 +206,7 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Upsert user.
-	user, err := h.store.GetOrCreateOIDCUser(claims.Sub, username, claims.Email, role)
+	user, err := h.store.GetOrCreateOIDCUser(claims.Sub, username, claims.Email, role, claims.GivenName, claims.FamilyName)
 	if err != nil {
 		jsonInternalError(w, err, "oidc user upsert failed")
 		return

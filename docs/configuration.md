@@ -46,7 +46,7 @@ Set `ADMIN_USER` and `ADMIN_PASSWORD` to seed the first admin account on startup
 ### Auth methods
 
 - **Local login** — username/password via `POST /api/auth/login`. Passwords are bcrypt-hashed. Rate-limited: 10 attempts per IP / 5 per username per 15-minute window.
-- **Keycloak OIDC** — set `OIDC_ISSUER_URL` to enable SSO. Uses Authorization Code flow with PKCE (S256). AD groups from the ID token are mapped to roles (admin/operator/viewer) via `OIDC_ROLE_ADMIN_GROUPS` / `OIDC_ROLE_OPERATOR_GROUPS`. Unmatched users default to viewer. OIDC users are auto-provisioned on first login.
+- **Keycloak OIDC** — set `OIDC_ISSUER_URL` to enable SSO. Uses Authorization Code flow with PKCE (S256). AD groups from the ID token are mapped to roles (admin/operator/viewer) via `OIDC_ROLE_ADMIN_GROUPS` / `OIDC_ROLE_OPERATOR_GROUPS`. Unmatched users default to viewer. OIDC users are auto-provisioned on first login. The standard claims `preferred_username`, `email`, `given_name`, and `family_name` are synced to the user profile on every login.
 
   **Keycloak client setup:**
   1. Create an **OpenID Connect** client with **Client ID** `kube-phoenix` (or your preferred name).

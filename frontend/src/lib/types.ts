@@ -162,6 +162,8 @@ export type Role = 'admin' | 'operator' | 'viewer'
 export interface User {
   id: number
   username: string
+  givenName?: string
+  familyName?: string
   email?: string
   role: Role
   source: 'local' | 'oidc'
