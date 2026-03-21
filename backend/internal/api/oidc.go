@@ -49,7 +49,13 @@ func (h *Handler) oidcLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store state in a short-lived HTTP-only cookie.
+	verifier, err := auth.GeneratePKCEVerifier()
+	if err != nil {
+		jsonInternalError(w, err, "generate PKCE verifier failed")
+		return
+	}
+
+	// Store state and PKCE verifier in short-lived HTTP-only cookies.
 	secure := os.Getenv("COOKIE_SECURE") != "false"
 	http.SetCookie(w, &http.Cookie{
 		Name:     "__kp_oidc_state",
@@ -60,8 +66,17 @@ func (h *Handler) oidcLogin(w http.ResponseWriter, r *http.Request) {
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode, // Lax required for cross-site redirect
 	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     "__kp_oidc_verifier",
+		Value:    verifier,
+		Path:     "/api/auth/oidc",
+		MaxAge:   300,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
 
-	url := h.oidcProvider.OAuth2.AuthCodeURL(state, oauth2.S256ChallengeOption(state))
+	url := h.oidcProvider.OAuth2.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
 	http.Redirect(w, r, url, http.StatusFound)
 }
 
@@ -85,9 +100,23 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clear state cookie.
+	// Read PKCE verifier cookie.
+	verifierCookie, err := r.Cookie("__kp_oidc_verifier")
+	if err != nil || verifierCookie.Value == "" {
+		slog.Warn("oidc: missing PKCE verifier cookie")
+		jsonError(w, "invalid OIDC state", http.StatusBadRequest)
+		return
+	}
+
+	// Clear state and verifier cookies.
 	http.SetCookie(w, &http.Cookie{
 		Name:   "__kp_oidc_state",
+		Value:  "",
+		Path:   "/api/auth/oidc",
+		MaxAge: -1,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:   "__kp_oidc_verifier",
 		Value:  "",
 		Path:   "/api/auth/oidc",
 		MaxAge: -1,
@@ -104,7 +133,7 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	if h.oidcProvider.HTTPClient != nil {
 		exchCtx = context.WithValue(exchCtx, oauth2.HTTPClient, h.oidcProvider.HTTPClient)
 	}
-	token, err := h.oidcProvider.OAuth2.Exchange(exchCtx, code, oauth2.VerifierOption(stateCookie.Value))
+	token, err := h.oidcProvider.OAuth2.Exchange(exchCtx, code, oauth2.VerifierOption(verifierCookie.Value))
 	if err != nil {
 		slog.Error("oidc: token exchange failed", "err", err)
 		metrics.AuthAttemptsTotal.WithLabelValues("failure", "oidc").Inc()
