@@ -103,22 +103,6 @@ func (s *Store) GetOrCreateOIDCUser(sub, username, email, role string) (*User, e
 		return &user, nil
 	}
 
-	// Try account linking by username.
-	err = s.db.Where("username = ? AND oidc_subject IS NULL", username).First(&user).Error
-	if err == nil {
-		// Link existing local user to OIDC.
-		if err := s.db.Model(&user).Updates(map[string]interface{}{
-			"oidc_subject": sub, "source": "oidc", "role": role, "email": email,
-		}).Error; err != nil {
-			return nil, fmt.Errorf("link oidc user: %w", err)
-		}
-		user.OIDCSubject = &sub
-		user.Source = "oidc"
-		user.Role = role
-		user.Email = email
-		return &user, nil
-	}
-
 	// Create new OIDC user.
 	user = User{
 		Username:    username,
