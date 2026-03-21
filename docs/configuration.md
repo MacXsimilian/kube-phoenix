@@ -48,6 +48,10 @@ Set `ADMIN_USER` and `ADMIN_PASSWORD` to seed the first admin account on startup
 - **Local login** — username/password via `POST /api/auth/login`. Passwords are bcrypt-hashed. Rate-limited: 10 attempts per IP / 5 per username per 15-minute window.
 - **Keycloak OIDC** — set `OIDC_ISSUER_URL` to enable SSO. Uses Authorization Code flow with PKCE. AD groups from the ID token are mapped to roles (admin/operator/viewer) via `OIDC_ROLE_ADMIN_GROUPS` / `OIDC_ROLE_OPERATOR_GROUPS`. Unmatched users default to viewer. OIDC users are auto-provisioned on first login.
 
+  **TLS options for OIDC discovery/token exchange:**
+  - **Custom CA certificate (recommended):** set `OIDC_SKIP_TLS_VERIFY` to `false` (default) and mount a CA bundle. In the Helm chart, set `oidc.caConfigMap` to the name of a ConfigMap containing the CA cert and `oidc.caCertKey` to the key name (default `cacert.pem`). This sets `SSL_CERT_FILE` so Go's TLS stack trusts the internal CA.
+  - **Skip TLS verification (dev only):** set `OIDC_SKIP_TLS_VERIFY=true` to bypass certificate verification entirely. Useful for dev environments with self-signed certificates. **Not recommended for production.** When enabled, the custom CA cert mount is ignored.
+
 ### Roles
 
 | Role | Permissions |
