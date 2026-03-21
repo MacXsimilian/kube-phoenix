@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.79](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.78...v0.1.79) (2026-03-21)
+
+
+### Features
+
+* **oidc:** user profile sync, DB hardening, API docs overhaul ([#176](https://github.com/MacXsimilian/kube-phoenix/issues/176)) ([86ce483](https://github.com/MacXsimilian/kube-phoenix/commit/86ce48343b3922d53d5b7ec84ca3362430ac0255))
+
+
+### Bug Fixes
+
+* rebuild CHANGELOG.md — remove duplicates from non-squashed merges ([18d3033](https://github.com/MacXsimilian/kube-phoenix/commit/18d3033913d3dfe86d3f962c73df4dc411f8afdc))
+
 ## [0.1.78](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.76...v0.1.78) (2026-03-21)
 
 
