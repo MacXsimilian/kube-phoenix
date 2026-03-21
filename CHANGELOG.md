@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.73](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.72...v0.1.73) (2026-03-21)
+
+
+### Features
+
+* **db:** upgrade PostgreSQL from 16 to 17.7 ([4e827a8](https://github.com/MacXsimilian/kube-phoenix/commit/4e827a8d49091a2416653c4c30e65ed520bca36a))
+* **db:** upgrade PostgreSQL from 16 to 17.7 ([16527ab](https://github.com/MacXsimilian/kube-phoenix/commit/16527ab258e2c52cf499fd1555240f15f1de1eab))
+
+
+### Bug Fixes
+
+* **ci:** fix backend test GITHUB_OUTPUT format error ([e427658](https://github.com/MacXsimilian/kube-phoenix/commit/e427658b439b831f5ad62951ff292ab9c48bff69))
+* **ci:** fix govulncheck GITHUB_OUTPUT format error ([79662f5](https://github.com/MacXsimilian/kube-phoenix/commit/79662f5748434d9e1a98627bcc62de21408c619f))
+* **ui:** WCAG AA light mode colors + settings layout tweaks ([6baa8bf](https://github.com/MacXsimilian/kube-phoenix/commit/6baa8bf9183ae2f6f216f44fe5d97f94a4f42a23))
+
 ## [0.1.72](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.71...v0.1.72) (2026-03-20)
 
 
