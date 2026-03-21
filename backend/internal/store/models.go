@@ -60,11 +60,11 @@ type LogLine struct {
 
 type User struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`
-	Username     string     `gorm:"uniqueIndex;size:255" json:"username"`
+	Username     string     `gorm:"uniqueIndex:idx_users_username_source;size:255" json:"username"`
 	Email        string     `json:"email,omitempty"`
 	PasswordHash string     `gorm:"column:password_hash" json:"-"`
 	Role         string     `gorm:"size:20;default:viewer" json:"role"`     // admin | operator | viewer
-	Source       string     `gorm:"size:20;default:local" json:"source"`    // local | oidc
+	Source       string     `gorm:"uniqueIndex:idx_users_username_source;size:20;default:local" json:"source"` // local | oidc
 	OIDCSubject  *string    `gorm:"uniqueIndex;size:255" json:"-"`          // OIDC sub claim
 	Enabled      bool       `gorm:"default:true" json:"enabled"`
 	CreatedAt    time.Time  `json:"createdAt"`
