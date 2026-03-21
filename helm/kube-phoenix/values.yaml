@@ -115,6 +115,9 @@ oidc:
   groupsClaim: "groups"     # claim name in the ID token containing AD groups
   roleAdminGroups: ""       # comma-separated AD group names → admin role
   roleOperatorGroups: ""    # comma-separated AD group names → operator role
+  skipTLSVerify: false      # skip TLS cert verification for the OIDC provider (dev only, NOT for production)
+  caConfigMap: ""           # name of a ConfigMap containing CA certs to trust (e.g. "ca-cert"); key used: "cacert.pem"
+  caCertKey: "cacert.pem"   # key inside the ConfigMap that holds the CA bundle
   # Users not matching any group default to 'viewer'.
 
 # ── Service ───────────────────────────────────────────────────────────────────

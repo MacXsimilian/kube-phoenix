@@ -115,6 +115,14 @@ spec:
               value: {{ .Values.oidc.roleAdminGroups | quote }}
             - name: OIDC_ROLE_OPERATOR_GROUPS
               value: {{ .Values.oidc.roleOperatorGroups | quote }}
+            {{- if .Values.oidc.skipTLSVerify }}
+            - name: OIDC_SKIP_TLS_VERIFY
+              value: "true"
+            {{- end }}
+            {{- if and .Values.oidc.caConfigMap (not .Values.oidc.skipTLSVerify) }}
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/custom/{{ .Values.oidc.caCertKey | default "cacert.pem" }}
+            {{- end }}
             {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
@@ -138,10 +146,20 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if and .Values.oidc.enabled .Values.oidc.caConfigMap (not .Values.oidc.skipTLSVerify) }}
+            - name: oidc-ca
+              mountPath: /etc/ssl/custom
+              readOnly: true
+            {{- end }}
 
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if and .Values.oidc.enabled .Values.oidc.caConfigMap (not .Values.oidc.skipTLSVerify) }}
+        - name: oidc-ca
+          configMap:
+            name: {{ .Values.oidc.caConfigMap }}
+        {{- end }}
 
       {{- with .Values.nodeSelector }}
       nodeSelector:

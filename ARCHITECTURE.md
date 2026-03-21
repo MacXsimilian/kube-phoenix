@@ -1994,6 +1994,10 @@ sequenceDiagram
 - Else if groups include any in `OIDC_ROLE_OPERATOR_GROUPS` → role is `operator`.
 - Otherwise → role is `viewer`.
 
+**TLS options:** When the OIDC issuer uses an internal/self-signed CA, two options are available:
+- **Custom CA cert (recommended):** In the Helm chart, set `oidc.caConfigMap` to mount a ConfigMap containing the CA bundle. The chart sets `SSL_CERT_FILE` pointing to the mounted cert, which Go's `crypto/tls` reads natively — no application code involved.
+- **Skip TLS verification (dev only):** Set `OIDC_SKIP_TLS_VERIFY=true`. The backend creates an `http.Client` with `InsecureSkipVerify` and injects it into both the OIDC discovery and OAuth2 token exchange contexts. When enabled, the CA cert mount is not rendered. **Not recommended for production.**
+
 **Account linking:** When an OIDC user logs in for the first time, a local User record is created with the OIDC subject stored in `oidc_subject`. On subsequent logins, the existing user is found by `oidc_subject` and their role is updated based on current group memberships.
 
 ### 8.5 Frontend Authentication Flow
@@ -2299,6 +2303,7 @@ env:
   - name: OIDC_GROUPS_CLAIM        # default "groups"
   - name: OIDC_ROLE_ADMIN_GROUPS
   - name: OIDC_ROLE_OPERATOR_GROUPS
+  - name: OIDC_SKIP_TLS_VERIFY     # "true" to skip TLS verify (dev only)
 ```
 
 All secrets are injected as environment variables from a Kubernetes Secret. Never committed to git.
