@@ -59,31 +59,11 @@ jobs:
           npm run build
           echo "duration=$(( $(date +%s) - START ))" >> "$GITHUB_OUTPUT"
 
-      - name: Audit
-        id: fe_audit
-        if: always()
-        run: |
-          AUDIT=$(npm audit --omit=dev 2>&1 || true)
-          HIGH=$(echo "$AUDIT" | grep -oP '\d+ high' | grep -oP '\d+' || echo 0)
-          CRITICAL=$(echo "$AUDIT" | grep -oP '\d+ critical' | grep -oP '\d+' || echo 0)
-          echo "high=${HIGH}" >> "$GITHUB_OUTPUT"
-          echo "critical=${CRITICAL}" >> "$GITHUB_OUTPUT"
-
       - name: Frontend summary
         if: always()
         run: |
           PAGES=$(find out/ -name '*.html' -not -name '404.html' 2>/dev/null | wc -l | tr -d ' ')
           SIZE=$(du -sh out/ 2>/dev/null | cut -f1 || echo 'N/A')
-          HIGH="${{ steps.fe_audit.outputs.high }}"
-          CRIT="${{ steps.fe_audit.outputs.critical }}"
-
-          if [ "$CRIT" -gt 0 ] 2>/dev/null; then
-            VULN="🔴 ${CRIT} critical, ${HIGH} high"
-          elif [ "$HIGH" -gt 0 ] 2>/dev/null; then
-            VULN="🟡 ${HIGH} high"
-          else
-            VULN="✅ None"
-          fi
 
           {
             echo "## Frontend Build Summary"
@@ -94,7 +74,6 @@ jobs:
             echo "| Build duration | ${{ steps.fe_build.outputs.duration }}s |"
             echo "| Static pages | ${PAGES} |"
             echo "| Export size | ${SIZE} |"
-            echo "| Vulnerabilities (high+) | ${VULN} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Backend ─────────────────────────────────────────────────────────────────
