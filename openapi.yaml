@@ -516,6 +516,199 @@ components:
         message:
           type: string
 
+    User:
+      description: A user account (local or OIDC).
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+        givenName:
+          type: string
+          description: First name (synced from OIDC given_name claim).
+        familyName:
+          type: string
+          description: Last name (synced from OIDC family_name claim).
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, operator, viewer]
+        source:
+          type: string
+          enum: [local, oidc]
+          readOnly: true
+        enabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+        lastLoginAt:
+          type: ["string", "null"]
+          format: date-time
+          readOnly: true
+
+    UserCreate:
+      description: Request body for creating a local user.
+      type: object
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+        password:
+          type: string
+          minLength: 8
+        role:
+          type: string
+          enum: [admin, operator, viewer]
+          default: viewer
+      required:
+        - username
+        - password
+
+    MeResponse:
+      description: Current authenticated user with computed permissions.
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        givenName:
+          type: string
+        familyName:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, operator, viewer]
+        source:
+          type: string
+          enum: [local, oidc]
+        enabled:
+          type: boolean
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Computed from role (e.g. schedule.read, user.manage).
+        createdAt:
+          type: string
+          format: date-time
+        lastLoginAt:
+          type: ["string", "null"]
+          format: date-time
+
+    LoginRequest:
+      description: Local login credentials.
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - username
+        - password
+
+    LoginResponse:
+      description: Successful login response.
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+
+    ChangePasswordRequest:
+      description: Password change request (local users only).
+      type: object
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+      required:
+        - currentPassword
+        - newPassword
+
+    OIDCConfigResponse:
+      description: OIDC provider configuration status.
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: True if the OIDC provider initialized successfully.
+        mounted:
+          type: boolean
+          description: True if OIDC env vars are set (may still fail to initialize).
+        issuerURL:
+          type: string
+        clientID:
+          type: string
+        redirectURL:
+          type: string
+        groupsClaim:
+          type: string
+        roleAdminGroups:
+          type: array
+          items:
+            type: string
+        roleOperatorGroups:
+          type: array
+          items:
+            type: string
+
+    AuditLog:
+      description: An audit trail entry recording a user action.
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        userId:
+          type: ["integer", "null"]
+          description: Nullable — preserved after user deletion.
+        username:
+          type: string
+          description: Denormalised for display.
+        action:
+          type: string
+          description: "e.g. schedule.update, user.create, auth.login"
+        resourceType:
+          type: string
+        resourceId:
+          type: ["integer", "null"]
+        before:
+          description: JSON snapshot before the change.
+        after:
+          description: JSON snapshot after the change.
+        ipAddress:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    PaginatedAuditLogs:
+      description: Paginated list of audit log entries.
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLog"
+        total:
+          type: integer
+          description: Total number of matching entries across all pages.
+
     Error:
       description: Standard error response.
       type: object
@@ -1368,6 +1561,358 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/auth/login:
+    post:
+      operationId: login
+      summary: Login (local)
+      description: Authenticate with username and password. Sets session and CSRF cookies on success. Rate limited.
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: Invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many login attempts
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/auth/logout:
+    post:
+      operationId: logout
+      summary: Logout
+      description: Destroys the server-side session and clears cookies.
+      tags: [Auth]
+      responses:
+        "204":
+          description: Session destroyed
+
+  /api/auth/me:
+    get:
+      operationId: me
+      summary: Current user
+      description: Returns the authenticated user's profile and computed permissions.
+      tags: [Auth]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          description: Unauthorized
+
+  /api/auth/password:
+    put:
+      operationId: changePassword
+      summary: Change password
+      description: Change the current user's password. Only available for local (non-OIDC) users.
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "204":
+          description: Password changed
+        "400":
+          description: Invalid input (e.g. password too short)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Current password incorrect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not available for SSO users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/auth/oidc/config:
+    get:
+      operationId: oidcConfig
+      summary: OIDC configuration status
+      description: Returns whether OIDC is configured/enabled and the provider details. No authentication required.
+      security: []
+      tags: [Auth]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OIDCConfigResponse"
+
+  /api/auth/oidc/login:
+    get:
+      operationId: oidcLogin
+      summary: Initiate OIDC login
+      description: Redirects to the Keycloak authorization endpoint with PKCE challenge. Stores state and verifier in a temporary cookie.
+      security: []
+      tags: [Auth]
+      responses:
+        "302":
+          description: Redirect to Keycloak
+        "404":
+          description: OIDC not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/auth/oidc/callback:
+    get:
+      operationId: oidcCallback
+      summary: OIDC callback
+      description: |
+        Keycloak redirects here after authentication. Exchanges the authorization code for tokens,
+        validates the ID token, extracts claims (sub, preferred_username, email, given_name, family_name, groups),
+        maps groups to a role, upserts the user, creates a session, and redirects to `/`.
+      security: []
+      tags: [Auth]
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to / on success
+        "401":
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/users:
+    get:
+      operationId: listUsers
+      summary: List users
+      description: Returns all user accounts. Admin only.
+      tags: [Users]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden (admin only)
+    post:
+      operationId: createUser
+      summary: Create user
+      description: Creates a new local user account. Admin only.
+      tags: [Users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden (admin only)
+        "409":
+          description: Username already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/users/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      operationId: updateUser
+      summary: Update user
+      description: |
+        Partial update — only provided fields are written. Admin only.
+        OIDC users: role is managed by AD groups and cannot be changed here.
+        Cannot change your own role or disable your own account.
+      tags: [Users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  type: string
+                  enum: [admin, operator, viewer]
+                enabled:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden (admin only)
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: deleteUser
+      summary: Delete user
+      description: Deletes a user account. Admin only. Cannot delete your own account.
+      tags: [Users]
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          description: Cannot delete self
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden (admin only)
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/audit-logs:
+    get:
+      operationId: listAuditLogs
+      summary: List audit logs
+      description: Returns a paginated list of audit log entries, ordered by timestamp descending.
+      tags: [Audit]
+      parameters:
+        - name: user
+          in: query
+          schema:
+            type: string
+          description: Filter by username.
+        - name: action
+          in: query
+          schema:
+            type: string
+          description: Filter by action (e.g. schedule.update, user.create).
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Start of time range (RFC3339).
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: End of time range (RFC3339).
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Zero-based page index.
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 50
+          description: Number of items per page.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedAuditLogs"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /ws/executions/{id}/logs:
     get:
       operationId: wsExecutionLogs
@@ -1379,9 +1924,7 @@ paths:
         followed by live lines as they are emitted. When the execution completes the server
         closes the connection.
 
-        **Authentication:** `?token=<base64(user:pass)>` query parameter (browsers cannot
-        set `Authorization` headers on WebSocket upgrades).
-      security: []
+        **Authentication:** Session cookie (`__kp_session`) — sent automatically by the browser on same-origin WebSocket upgrades.
       tags: [Executions]
       parameters:
         - name: id
@@ -1389,12 +1932,6 @@ paths:
           required: true
           schema:
             type: integer
-        - name: token
-          in: query
-          required: false
-          schema:
-            type: string
-          description: base64(user:pass) — required when Basic Auth is enabled on the server.
       responses:
         "101":
           description: Switching Protocols
@@ -1412,6 +1949,8 @@ paths:
 tags:
   - name: Health
     description: Server health and readiness probes.
+  - name: Auth
+    description: Authentication — login, logout, OIDC, password management.
   - name: Schedules
     description: CRUD for sleep/wake cron schedules.
   - name: Executions
@@ -1424,5 +1963,9 @@ tags:
     description: Global guardrail configuration for namespace/node protection.
   - name: Operations
     description: Manual schedule triggers.
+  - name: Users
+    description: User account management (admin only).
+  - name: Audit
+    description: Audit trail of user actions.
   - name: Admin
     description: Administrative operations (danger zone).

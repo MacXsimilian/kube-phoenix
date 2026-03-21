@@ -44,12 +44,6 @@ export default function UsersPage() {
   const qc = useQueryClient()
   const { data: users, isLoading, isError } = useQuery({ queryKey: ['users'], queryFn: getUsers })
 
-  // Permission guard — redirect if user lacks user.manage permission.
-  if (me && !canManageUsers(me.permissions)) {
-    router.replace('/overview')
-    return null
-  }
-
   const [search, setSearch] = useState('')
   const filteredUsers = useMemo(() => {
     if (!users) return []
@@ -86,6 +80,13 @@ export default function UsersPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setDeleteTarget(null); setMutationError('') },
     onError: (err: Error) => { setMutationError(err.message); setDeleteTarget(null) },
   })
+
+  // Permission guard — redirect if user lacks user.manage permission.
+  // Placed after all hooks to comply with React's rules of hooks.
+  if (me && !canManageUsers(me.permissions)) {
+    router.replace('/overview')
+    return null
+  }
 
   return (
     <Box sx={{ maxWidth: 960, mx: 'auto', p: { xs: 2, md: 4 } }}>

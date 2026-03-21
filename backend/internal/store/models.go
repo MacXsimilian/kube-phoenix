@@ -4,15 +4,15 @@ import "time"
 
 type Schedule struct {
 	ID              uint   `gorm:"primaryKey" json:"id"`
-	Name            string `json:"name"`
-	Type            string `json:"type"` // "scale_down" | "scale_up"
-	CronExpr        string `json:"cronExpr"`
-	Timezone        string `json:"timezone"`
-	Mode            string `json:"mode"` // "plan" | "apply"
+	Name            string `gorm:"size:255" json:"name"`
+	Type            string `gorm:"size:20" json:"type"` // "scale_down" | "scale_up"
+	CronExpr        string `gorm:"size:255" json:"cronExpr"`
+	Timezone        string `gorm:"size:100" json:"timezone"`
+	Mode            string `gorm:"size:10" json:"mode"` // "plan" | "apply"
 	Enabled         bool   `json:"enabled"`
-	NamespaceFilter string `json:"namespaceFilter"` // comma-separated; empty = all namespaces
-	TimeoutMinutes  int    `json:"timeoutMinutes"`  // 0 = use server default (120 min)
-	Position        int    `json:"position"`        // display order within each type group
+	NamespaceFilter string `gorm:"size:4096" json:"namespaceFilter"` // comma-separated; empty = all namespaces
+	TimeoutMinutes  int    `json:"timeoutMinutes"`                   // 0 = use server default (120 min)
+	Position        int    `json:"position"`                         // display order within each type group
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -35,8 +35,8 @@ type Execution struct {
 	Schedule   Schedule   `gorm:"foreignKey:ScheduleID" json:"schedule"`
 	StartedAt  time.Time  `gorm:"index" json:"startedAt"`
 	FinishedAt *time.Time `json:"finishedAt"`
-	Status     string     `gorm:"index" json:"status"` // "running" | "success" | "failed"
-	Mode       string     `json:"mode"`                // "plan" | "apply"
+	Status     string     `gorm:"index;size:20" json:"status"` // "running" | "success" | "failed"
+	Mode       string     `gorm:"size:10" json:"mode"`         // "plan" | "apply"
 
 	CountScaled    int `json:"countScaled"`
 	CountDrained   int `json:"countDrained"`
@@ -50,8 +50,9 @@ type Execution struct {
 type LogLine struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	ExecutionID uint      `gorm:"index:idx_logline_exec_seq" json:"executionId"`
+	Execution   Execution `gorm:"foreignKey:ExecutionID;constraint:OnDelete:CASCADE" json:"-"`
 	Seq         int       `gorm:"index:idx_logline_exec_seq" json:"seq"`
-	Level       string    `json:"level"` // "info" | "ok" | "plan" | "error" | "warn"
+	Level       string    `gorm:"size:10" json:"level"` // "info" | "ok" | "plan" | "error" | "warn"
 	Message     string    `json:"message"`
 	Timestamp   time.Time `json:"timestamp"`
 }
@@ -63,8 +64,8 @@ type User struct {
 	Username     string     `gorm:"uniqueIndex:idx_users_username_source;size:255" json:"username"`
 	GivenName    string     `gorm:"size:255" json:"givenName,omitempty"`
 	FamilyName   string     `gorm:"size:255" json:"familyName,omitempty"`
-	Email        string     `json:"email,omitempty"`
-	PasswordHash string     `gorm:"column:password_hash" json:"-"`
+	Email        string     `gorm:"size:255" json:"email,omitempty"`
+	PasswordHash string     `gorm:"column:password_hash;size:72" json:"-"`
 	Role         string     `gorm:"size:20;default:viewer" json:"role"`     // admin | operator | viewer
 	Source       string     `gorm:"uniqueIndex:idx_users_username_source;size:20;default:local" json:"source"` // local | oidc
 	OIDCSubject  *string    `gorm:"column:oidc_subject;uniqueIndex;size:255" json:"-"` // OIDC sub claim
@@ -78,7 +79,7 @@ type Session struct {
 	ID           uint      `gorm:"primaryKey"`
 	Token        string    `gorm:"uniqueIndex;size:64"`
 	UserID       uint      `gorm:"index"`
-	User         User      `gorm:"foreignKey:UserID"`
+	User         User      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	IPAddress    string    `gorm:"size:45"`
 	UserAgent    string    `gorm:"size:512"`
 	ExpiresAt    time.Time `gorm:"index"` // sliding window
@@ -89,7 +90,8 @@ type Session struct {
 type AuditLog struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
 	UserID       *uint     `gorm:"index" json:"userId,omitempty"`
-	Username     string    `json:"username"`
+	User         *User    `gorm:"foreignKey:UserID;constraint:OnDelete:SET NULL" json:"-"`
+	Username     string    `gorm:"size:255" json:"username"`
 	Action       string    `gorm:"index;size:100" json:"action"`
 	ResourceType string    `gorm:"size:50" json:"resourceType,omitempty"`
 	ResourceID   *uint     `json:"resourceId,omitempty"`

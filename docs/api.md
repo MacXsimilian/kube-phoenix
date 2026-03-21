@@ -2,33 +2,77 @@
 
 ## Swagger UI
 
-Interactive API documentation is available at **`/api/docs/`** (Swagger UI v5, embedded — no CDN). The raw OpenAPI 3.1 spec is served at **`/api/docs/openapi.yaml`**. Both are protected by Basic Auth when configured.
+Interactive API documentation is available at **`/api/docs/`** (Swagger UI v5, embedded — no CDN). The raw OpenAPI 3.1 spec is served at **`/api/docs/openapi.yaml`**.
 
 The canonical spec source is [`openapi.yaml`](../openapi.yaml) at the repo root.
 
 ---
 
-All `/api/*` and `/ws/*` endpoints require Basic Auth when configured. `/healthz` is always open.
+## Authentication
 
-WebSocket connections authenticate via `?token=<base64(user:pass)>` — browsers cannot set `Authorization` headers on WebSocket upgrades.
+All `/api/*` and `/ws/*` endpoints require session-based authentication via HTTP-only cookies, except where noted below.
+
+- **Login:** `POST /api/auth/login` with `{"username","password"}`. Sets `__kp_session` (HTTP-only) and `__kp_csrf` cookies.
+- **CSRF:** Include the `__kp_csrf` cookie value as the `X-CSRF-Token` header on all mutating requests (POST/PUT/DELETE).
+- **OIDC:** When configured, `GET /api/auth/oidc/login` redirects to Keycloak. The callback sets session cookies automatically.
+- **WebSocket:** Connections authenticate via the session cookie (sent automatically by the browser on same-origin upgrades).
 
 ## Endpoints
+
+### Public (no auth required)
 
 | Method | Path | Description |
 | :----- | :--- | :---------- |
 | `GET` | `/healthz` | Health check (DB ping) |
-| `GET` | `/metrics` | Prometheus metrics (no auth required) |
-| `GET` | `/api/overview` | Dashboard overview — next run, last execution, cluster stats |
-| `GET` | `/api/schedules` | List all schedules ordered by position (includes `nextRun` per schedule) |
+| `GET` | `/metrics` | Prometheus metrics |
+
+### Auth (unauthenticated)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
+| `POST` | `/api/auth/login` | Username/password login (rate limited) |
+| `GET` | `/api/auth/oidc/config` | OIDC provider configuration status |
+| `GET` | `/api/auth/oidc/login` | Initiate Keycloak OIDC flow (redirects to IdP) |
+| `GET` | `/api/auth/oidc/callback` | OIDC redirect callback (sets session cookies) |
+
+### Auth (session required)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
+| `POST` | `/api/auth/logout` | Destroy session and clear cookies |
+| `GET` | `/api/auth/me` | Current user info + permissions |
+| `PUT` | `/api/auth/password` | Change own password (local users only) |
+
+### Schedules (viewer+)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
+| `GET` | `/api/schedules` | List all schedules ordered by position (includes `nextRun`) |
+| `GET` | `/api/schedules/{id}` | Get schedule |
+
+### Schedules (operator+)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
 | `POST` | `/api/schedules` | Create schedule |
 | `PUT` | `/api/schedules/reorder` | Reorder within a type — body: `{"type":"scale_down","ids":[3,1,2]}` |
-| `GET` | `/api/schedules/{id}` | Get schedule |
 | `PUT` | `/api/schedules/{id}` | Update schedule (`type` is immutable) |
 | `DELETE` | `/api/schedules/{id}` | Delete schedule |
+
+### Executions (viewer+)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
 | `GET` | `/api/executions` | List executions (filters: `schedule_id`, `status`, `page`, `page_size`) |
 | `GET` | `/api/executions/{id}` | Get execution |
 | `GET` | `/api/executions/{id}/logs` | Get all log lines for an execution |
 | `GET` | `/ws/executions/{id}/logs` | WebSocket — live log streaming |
+
+### Cluster (viewer+)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
+| `GET` | `/api/overview` | Dashboard overview — next run, last execution, cluster stats |
 | `GET` | `/api/cluster/stream` | SSE stream — pushed overview updates every ~10 s |
 | `GET` | `/api/cluster/workloads` | List Deployments and StatefulSets |
 | `GET` | `/api/cluster/nodes` | List nodes with protection status |
@@ -36,9 +80,39 @@ WebSocket connections authenticate via `?token=<base64(user:pass)>` — browsers
 | `GET` | `/api/cluster/pods/{namespace}/{name}` | Full pod detail — containers, conditions, events, labels, annotations |
 | `GET` | `/api/cluster/pods/{namespace}/{name}/logs` | Stream container logs (query: `container`, `tailLines`, `follow`, `previous`) |
 | `GET` | `/api/cluster/workloads/{namespace}/{kind}/{name}/pods` | List pods belonging to a Deployment or StatefulSet |
+
+### Guardrails (viewer+ read, operator+ write)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
 | `GET` | `/api/guardrails` | Get guardrails config |
 | `PUT` | `/api/guardrails` | Update guardrails |
+
+### Operations (operator+)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
 | `POST` | `/api/trigger` | Manually trigger a schedule — `{"scheduleId": 1, "mode": "plan"}` |
+
+### Audit logs (viewer+)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
+| `GET` | `/api/audit-logs` | List audit logs (filters: `user`, `action`, `from`, `to`, `page`, `pageSize`) |
+
+### Users (admin only)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
+| `GET` | `/api/users` | List all users |
+| `POST` | `/api/users` | Create local user — `{"username","email","password","role"}` |
+| `PUT` | `/api/users/{id}` | Update user (role, enabled). OIDC users: role is read-only (managed by AD groups). |
+| `DELETE` | `/api/users/{id}` | Delete user (cannot delete self) |
+
+### Admin (admin only)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
 | `POST` | `/api/admin/reset-db` | Reset database — streams NDJSON progress; body: `{"confirm":"RESET DATABASE"}` |
 
 ---
