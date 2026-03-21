@@ -20,6 +20,7 @@
 | `OIDC_GROUPS_CLAIM`   | No       | ID token claim name containing AD groups (default `groups`).                                                                                                                              |
 | `OIDC_ROLE_ADMIN_GROUPS`   | No  | Comma-separated AD group names that map to the `admin` role.                                                                                                                              |
 | `OIDC_ROLE_OPERATOR_GROUPS`| No  | Comma-separated AD group names that map to the `operator` role. Unmatched users default to `viewer`.                                                                                      |
+| `OIDC_SKIP_TLS_VERIFY`    | No  | Set to `true` to skip TLS certificate verification for the OIDC provider (e.g. self-signed certs). **Not recommended for production.**                                                    |
 
 ### CLI flags
 

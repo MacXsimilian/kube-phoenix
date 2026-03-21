@@ -2299,6 +2299,7 @@ env:
   - name: OIDC_GROUPS_CLAIM        # default "groups"
   - name: OIDC_ROLE_ADMIN_GROUPS
   - name: OIDC_ROLE_OPERATOR_GROUPS
+  - name: OIDC_SKIP_TLS_VERIFY     # "true" to skip TLS verify (dev only)
 ```
 
 All secrets are injected as environment variables from a Kubernetes Secret. Never committed to git.

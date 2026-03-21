@@ -3,8 +3,10 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -21,12 +23,14 @@ type OIDCConfig struct {
 	GroupsClaim    string
 	AdminGroups    []string
 	OperatorGroups []string
+	SkipTLSVerify  bool
 }
 
 // OIDCProvider wraps the go-oidc verifier and oauth2 config.
 type OIDCProvider struct {
 	Verifier    *oidc.IDTokenVerifier
 	OAuth2      oauth2.Config
+	HTTPClient  *http.Client // custom client (e.g. skip TLS verify); nil = default
 	GroupsClaim string
 	AdminGroups []string
 	OpGroups    []string
@@ -34,6 +38,16 @@ type OIDCProvider struct {
 
 // NewOIDCProvider creates a provider by performing OIDC discovery against the issuer.
 func NewOIDCProvider(ctx context.Context, cfg OIDCConfig) (*OIDCProvider, error) {
+	var httpClient *http.Client
+	if cfg.SkipTLSVerify {
+		httpClient = &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // user-opted via OIDC_SKIP_TLS_VERIFY
+			},
+		}
+		ctx = oidc.ClientContext(ctx, httpClient)
+	}
+
 	provider, err := oidc.NewProvider(ctx, cfg.IssuerURL)
 	if err != nil {
 		return nil, fmt.Errorf("oidc discovery: %w", err)
@@ -57,6 +71,7 @@ func NewOIDCProvider(ctx context.Context, cfg OIDCConfig) (*OIDCProvider, error)
 	return &OIDCProvider{
 		Verifier:    provider.Verifier(oidcConfig),
 		OAuth2:      oauth2Cfg,
+		HTTPClient:  httpClient,
 		GroupsClaim: groupsClaim,
 		AdminGroups: cfg.AdminGroups,
 		OpGroups:    cfg.OperatorGroups,
@@ -108,6 +123,7 @@ func OIDCConfigFromEnv() *OIDCConfig {
 		GroupsClaim:    os.Getenv("OIDC_GROUPS_CLAIM"),
 		AdminGroups:    splitCSV(os.Getenv("OIDC_ROLE_ADMIN_GROUPS")),
 		OperatorGroups: splitCSV(os.Getenv("OIDC_ROLE_OPERATOR_GROUPS")),
+		SkipTLSVerify:  strings.EqualFold(os.Getenv("OIDC_SKIP_TLS_VERIFY"), "true"),
 	}
 }
 
