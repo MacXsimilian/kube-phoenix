@@ -26,7 +26,9 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodes } from '@/lib/api'
 import type { Node } from '@/lib/types'
 import { fmtCpu, fmtMem, podAge, sinceMs } from '@/lib/formatters'
-import { NODE_STATUS_MAP } from '@/components/cluster/statusColors'
+import { nodeStatusMap } from '@/components/cluster/statusColors'
+import { useTheme } from '@mui/material/styles'
+import { useColors } from '@/lib/colors'
 import NodeDetailDrawer from './NodeDetailDrawer'
 
 type SortCol = 'name' | 'age' | 'instanceType' | 'zone' | 'pods' | 'cpu' | 'mem' | 'status'
@@ -36,15 +38,15 @@ function pct(used: number, total: number): number {
   return total > 0 ? Math.round((used / total) * 100) : 0
 }
 
-function pctColor(p: number): string {
-  if (p >= 85) return '#F87171'
+function pctColor(p: number, isDark: boolean): string {
+  if (p >= 85) return isDark ? '#F87171' : '#B91C1C'
   if (p >= 65) return '#FBBF24'
-  return '#22C55E'
+  return isDark ? '#22C55E' : '#15803D'
 }
 
-function ResourceBar({ used, total, usedLabel, totalLabel }: { used: number; total: number; usedLabel: string; totalLabel: string }) {
+function ResourceBar({ used, total, usedLabel, totalLabel, isDark }: { used: number; total: number; usedLabel: string; totalLabel: string; isDark: boolean }) {
   const p = pct(used, total)
-  const color = pctColor(p)
+  const color = pctColor(p, isDark)
   return (
     <Tooltip title={`${usedLabel} / ${totalLabel} reserved`} arrow>
       <Box sx={{ minWidth: 72 }}>
@@ -57,7 +59,7 @@ function ResourceBar({ used, total, usedLabel, totalLabel }: { used: number; tot
           sx={{
             height: 5,
             borderRadius: 1,
-            bgcolor: 'rgba(255,255,255,0.08)',
+            bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
             '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 1 },
           }}
         />
@@ -116,13 +118,17 @@ function NodeRow({
   groupByZone,
   isSelected,
   onSelect,
+  isDark,
+  colors,
 }: {
   node: Node
   groupByZone: boolean
   isSelected: boolean
   onSelect: (n: Node | null) => void
+  isDark: boolean
+  colors: ReturnType<typeof useColors>
 }) {
-  const sc = NODE_STATUS_MAP[node.status]
+  const sc = nodeStatusMap(isDark)[node.status]
   const statusChip = (
     <Chip label={sc.label} size="small" sx={{ height: 20, fontSize: 11, bgcolor: sc.bgcolor, color: sc.color }} />
   )
@@ -143,6 +149,7 @@ function NodeRow({
           total={node.cpuAllocatable}
           usedLabel={fmtCpu(node.cpuRequested)}
           totalLabel={fmtCpu(node.cpuAllocatable)}
+          isDark={isDark}
         />
       </TableCell>
       <TableCell>
@@ -151,6 +158,7 @@ function NodeRow({
           total={node.memAllocatable}
           usedLabel={fmtMem(node.memRequested)}
           totalLabel={fmtMem(node.memAllocatable)}
+          isDark={isDark}
         />
       </TableCell>
       <TableCell>
@@ -159,7 +167,7 @@ function NodeRow({
             <Tooltip title={node.protectionReason} arrow><span>{statusChip}</span></Tooltip>
           ) : statusChip}
           {node.cordoned && (
-            <Chip label="Cordoned" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(248,113,113,0.15)', color: '#F87171' }} />
+            <Chip label="Cordoned" size="small" sx={{ height: 18, fontSize: 10, bgcolor: colors.errorBg, color: colors.errorLight }} />
           )}
         </Box>
       </TableCell>
@@ -179,6 +187,8 @@ export default function NodesTable() {
   const [sortCol, setSortCol] = useState<SortCol | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
+  const isDark = useTheme().palette.mode === 'dark'
+  const colors = useColors()
 
   function handleSort(col: SortCol) {
     if (sortCol === col) {
@@ -300,15 +310,15 @@ export default function NodesTable() {
                             <Chip
                               label={`CPU ${cpuZonePct}%`}
                               size="small"
-                              sx={{ height: 18, fontSize: 10, bgcolor: `${pctColor(cpuZonePct)}22`, color: pctColor(cpuZonePct) }}
+                              sx={{ height: 18, fontSize: 10, bgcolor: `${pctColor(cpuZonePct, isDark)}22`, color: pctColor(cpuZonePct, isDark) }}
                             />
                             <Chip
                               label={`MEM ${memZonePct}%`}
                               size="small"
-                              sx={{ height: 18, fontSize: 10, bgcolor: `${pctColor(memZonePct)}22`, color: pctColor(memZonePct) }}
+                              sx={{ height: 18, fontSize: 10, bgcolor: `${pctColor(memZonePct, isDark)}22`, color: pctColor(memZonePct, isDark) }}
                             />
                             {stats.cordoned > 0 && (
-                              <Chip label={`${stats.cordoned} cordoned`} size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(248,113,113,0.15)', color: '#F87171' }} />
+                              <Chip label={`${stats.cordoned} cordoned`} size="small" sx={{ height: 18, fontSize: 10, bgcolor: colors.errorBg, color: colors.errorLight }} />
                             )}
                           </Box>
                         </TableCell>
@@ -320,6 +330,8 @@ export default function NodesTable() {
                           groupByZone={groupByZone}
                           isSelected={selectedNode?.name === node.name}
                           onSelect={setSelectedNode}
+                          isDark={isDark}
+                          colors={colors}
                         />
                       ))}
                     </React.Fragment>
@@ -333,6 +345,8 @@ export default function NodesTable() {
                     groupByZone={groupByZone}
                     isSelected={selectedNode?.name === node.name}
                     onSelect={setSelectedNode}
+                    isDark={isDark}
+                    colors={colors}
                   />
                 ))
               )}

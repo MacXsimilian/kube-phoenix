@@ -23,23 +23,28 @@ import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getWorkloadPods } from '@/lib/api'
 import { fmtCpu, fmtMem, podAge, sinceMs } from '@/lib/formatters'
-import { STATUS_COLORS, POD_STATUS_STYLE } from '@/components/cluster/statusColors'
+import { statusColors, podStatusStyle } from '@/components/cluster/statusColors'
+import { useTheme } from '@mui/material/styles'
+import { useColors } from '@/lib/colors'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { NodePod, Workload } from '@/lib/types'
 import PodDetailContent from './PodDetailContent'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function podStatusStyle(status: string) {
-  return POD_STATUS_STYLE[status] ?? { color: '#94A3B8', bgcolor: 'rgba(148,163,184,0.12)' }
+function getPodStatusStyle(status: string, isDark: boolean) {
+  const styles = podStatusStyle(isDark)
+  const c = isDark ? '#94A3B8' : '#475569'
+  const bg = isDark ? 'rgba(148,163,184,0.12)' : 'rgba(71,85,105,0.10)'
+  return styles[status] ?? { color: c, bgcolor: bg }
 }
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
-function ReplicaBar({ ready, current, saved }: { ready: number; current: number; saved: number | null }) {
+function ReplicaBar({ ready, current, saved, isDark, colors }: { ready: number; current: number; saved: number | null; isDark: boolean; colors: ReturnType<typeof import('@/lib/colors').useColors> }) {
   const total = saved ?? current
   const pct = total > 0 ? Math.round((ready / total) * 100) : 0
-  const color = pct >= 100 ? '#22C55E' : pct > 0 ? '#F59E0B' : '#F87171'
+  const color = pct >= 100 ? colors.success : pct > 0 ? colors.warning : colors.errorLight
   return (
     <Box sx={{ minWidth: 120 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
@@ -61,10 +66,10 @@ function ReplicaBar({ ready, current, saved }: { ready: number; current: number;
   )
 }
 
-function PodRow({ pod, onClick }: { pod: NodePod; onClick: () => void }) {
-  const ss = podStatusStyle(pod.status)
+function PodRow({ pod, onClick, isDark, colors }: { pod: NodePod; onClick: () => void; isDark: boolean; colors: ReturnType<typeof import('@/lib/colors').useColors> }) {
+  const ss = getPodStatusStyle(pod.status, isDark)
   const readyColor = pod.readyContainers === pod.totalContainers
-    ? '#22C55E' : pod.readyContainers > 0 ? '#F59E0B' : '#F87171'
+    ? colors.success : pod.readyContainers > 0 ? colors.warning : colors.errorLight
 
   return (
     <TableRow hover onClick={onClick} sx={{ cursor: 'pointer' }}>
@@ -106,6 +111,8 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
   const [drawerWidth, handleResizeMouseDown, handleResizeTouchStart] = useDrawerResize(560)
   const [search, setSearch] = useState('')
   const [selectedPod, setSelectedPod] = useState<NodePod | null>(null)
+  const isDark = useTheme().palette.mode === 'dark'
+  const colors = useColors()
 
   const { data: pods = [], isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['workload-pods', workload?.namespace, workload?.kind, workload?.name],
@@ -121,7 +128,7 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
     [pods, search]
   )
 
-  const sc = workload ? STATUS_COLORS[workload.status] : null
+  const sc = workload ? statusColors(isDark)[workload.status] : null
 
   function handleClose() {
     setSelectedPod(null)
@@ -216,6 +223,8 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
                   ready={workload.readyReplicas}
                   current={workload.currentReplicas}
                   saved={workload.savedReplicas}
+                  isDark={isDark}
+                  colors={colors}
                 />
               </Box>
             )}
@@ -282,7 +291,7 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
                   </TableHead>
                   <TableBody>
                     {filtered.map((pod) => (
-                      <PodRow key={pod.name} pod={pod} onClick={() => setSelectedPod(pod)} />
+                      <PodRow key={pod.name} pod={pod} onClick={() => setSelectedPod(pod)} isDark={isDark} colors={colors} />
                     ))}
                   </TableBody>
                 </Table>

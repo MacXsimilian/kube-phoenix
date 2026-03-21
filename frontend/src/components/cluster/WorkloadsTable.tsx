@@ -26,7 +26,9 @@ import Tooltip from '@mui/material/Tooltip'
 import { getWorkloads, getGuardrails } from '@/lib/api'
 import type { Workload } from '@/lib/types'
 import { sinceMs } from '@/lib/formatters'
-import { STATUS_COLORS } from '@/components/cluster/statusColors'
+import { useTheme } from '@mui/material/styles'
+import { statusColors } from '@/components/cluster/statusColors'
+import { useColors } from '@/lib/colors'
 import WorkloadDetailDrawer from './WorkloadDetailDrawer'
 
 export default function WorkloadsTable() {
@@ -54,6 +56,9 @@ export default function WorkloadsTable() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [affectedOnly, setAffectedOnly] = useState(false)
   const [selectedWorkload, setSelectedWorkload] = useState<Workload | null>(null)
+  const isDark = useTheme().palette.mode === 'dark'
+  const colors = useColors()
+  const SC = statusColors(isDark)
 
   function handleSort(col: typeof sortCol) {
     if (sortCol === col) {
@@ -213,7 +218,7 @@ export default function WorkloadsTable() {
                 </TableRow>
               ) : (
                 sorted.map((w) => {
-                  const sc = STATUS_COLORS[w.status]
+                  const sc = SC[w.status]
                   const unhealthy = w.readyReplicas < w.currentReplicas && w.currentReplicas > 0
                   return (
                     <TableRow key={`${w.namespace}/${w.name}/${w.kind}`} hover onClick={() => setSelectedWorkload(w)} sx={{ cursor: 'pointer' }}>
@@ -230,7 +235,7 @@ export default function WorkloadsTable() {
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                           {unhealthy && (
                             <Tooltip title={`Only ${w.readyReplicas}/${w.currentReplicas} replicas ready`} arrow>
-                              <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: '#F87171', flexShrink: 0 }} />
+                              <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: colors.errorLight, flexShrink: 0 }} />
                             </Tooltip>
                           )}
                           <Typography component="span" sx={{ fontSize: 13, fontFamily: 'monospace' }}>

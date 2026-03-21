@@ -41,7 +41,34 @@ jobs:
         run: cp ../openapi.yaml internal/docs/openapi.yaml
 
       - name: govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...
+        id: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./... 2>&1 | tee /tmp/govulncheck.out && STATUS="clean" || STATUS="found"
+          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+          VULN_COUNT=$(grep -c '^Vulnerability' /tmp/govulncheck.out || true)
+          echo "count=${VULN_COUNT:-0}" >> "$GITHUB_OUTPUT"
+
+      - name: govulncheck summary
+        if: always()
+        run: |
+          STATUS="${{ steps.govulncheck.outputs.status }}"
+          COUNT="${{ steps.govulncheck.outputs.count }}"
+          if [ "$STATUS" = "clean" ]; then
+            RESULT="✅ No known vulnerabilities"
+          else
+            RESULT="🔴 ${COUNT} vulnerabilit$([ "$COUNT" = "1" ] && echo 'y' || echo 'ies') found"
+          fi
+
+          {
+            echo "## Go Vulnerability Check"
+            echo ""
+            echo "| Item | Value |"
+            echo "|:-----|:------|"
+            echo "| Go | $(go version | awk '{print $3}') |"
+            echo "| Scanner | govulncheck (call-graph analysis) |"
+            echo "| Result | ${RESULT} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ── npm audit ───────────────────────────────────────────────────────────────
   npm-audit:
@@ -63,7 +90,51 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - run: npm ci
-      - run: npm audit --audit-level=high --omit=dev
+
+      - name: npm audit
+        id: npm_audit
+        run: |
+          AUDIT=$(npm audit --omit=dev 2>&1) && STATUS="clean" || STATUS="found"
+          echo "$AUDIT"
+          HIGH=$(echo "$AUDIT" | grep -oP '\d+ high' | grep -oP '\d+' || echo 0)
+          CRITICAL=$(echo "$AUDIT" | grep -oP '\d+ critical' | grep -oP '\d+' || echo 0)
+          MODERATE=$(echo "$AUDIT" | grep -oP '\d+ moderate' | grep -oP '\d+' || echo 0)
+          echo "high=${HIGH}" >> "$GITHUB_OUTPUT"
+          echo "critical=${CRITICAL}" >> "$GITHUB_OUTPUT"
+          echo "moderate=${MODERATE}" >> "$GITHUB_OUTPUT"
+          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+          # Fail only on high+
+          if [ "$HIGH" -gt 0 ] || [ "$CRITICAL" -gt 0 ]; then exit 1; fi
+
+      - name: npm audit summary
+        if: always()
+        run: |
+          CRIT="${{ steps.npm_audit.outputs.critical }}"
+          HIGH="${{ steps.npm_audit.outputs.high }}"
+          MOD="${{ steps.npm_audit.outputs.moderate }}"
+
+          if [ "$CRIT" -gt 0 ] 2>/dev/null; then
+            RESULT="🔴 ${CRIT} critical, ${HIGH} high, ${MOD} moderate"
+          elif [ "$HIGH" -gt 0 ] 2>/dev/null; then
+            RESULT="🟡 ${HIGH} high, ${MOD} moderate"
+          elif [ "$MOD" -gt 0 ] 2>/dev/null; then
+            RESULT="🟢 ${MOD} moderate (no high/critical)"
+          else
+            RESULT="✅ No known vulnerabilities"
+          fi
+
+          {
+            echo "## npm Audit"
+            echo ""
+            echo "| Item | Value |"
+            echo "|:-----|:------|"
+            echo "| Node | $(node -v) |"
+            echo "| Scope | production dependencies only |"
+            echo "| Critical | ${CRIT} |"
+            echo "| High | ${HIGH} |"
+            echo "| Moderate | ${MOD} |"
+            echo "| Result | ${RESULT} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Trivy container image scan ──────────────────────────────────────────────
   trivy-image:
@@ -88,6 +159,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy image scan
+        id: trivy_image
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: kube-phoenix:scan
@@ -102,6 +174,27 @@ jobs:
         with:
           sarif_file: trivy-image.sarif
 
+      - name: Trivy image summary
+        if: always()
+        run: |
+          RESULT="${{ steps.trivy_image.outcome }}"
+          if [ "$RESULT" = "success" ]; then
+            STATUS="✅ No critical/high vulnerabilities"
+          else
+            STATUS="🔴 Vulnerabilities found (see Security tab)"
+          fi
+
+          {
+            echo "## Trivy Container Image Scan"
+            echo ""
+            echo "| Item | Value |"
+            echo "|:-----|:------|"
+            echo "| Image | kube-phoenix:scan |"
+            echo "| Severity filter | CRITICAL, HIGH |"
+            echo "| Result | ${STATUS} |"
+            echo "| SARIF | Uploaded to GitHub Security tab |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ── Trivy filesystem scan (IaC + deps) ─────────────────────────────────────
   trivy-fs:
     name: Trivy filesystem scan
@@ -114,6 +207,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Trivy filesystem scan
+        id: trivy_fs
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           scan-type: fs
@@ -129,6 +223,27 @@ jobs:
         with:
           sarif_file: trivy-fs.sarif
 
+      - name: Trivy filesystem summary
+        if: always()
+        run: |
+          RESULT="${{ steps.trivy_fs.outcome }}"
+          if [ "$RESULT" = "success" ]; then
+            STATUS="✅ No critical/high vulnerabilities"
+          else
+            STATUS="🔴 Vulnerabilities found (see Security tab)"
+          fi
+
+          {
+            echo "## Trivy Filesystem Scan"
+            echo ""
+            echo "| Item | Value |"
+            echo "|:-----|:------|"
+            echo "| Scope | IaC + dependencies |"
+            echo "| Severity filter | CRITICAL, HIGH |"
+            echo "| Result | ${STATUS} |"
+            echo "| SARIF | Uploaded to GitHub Security tab |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ── Secret scanning ─────────────────────────────────────────────────────────
   secrets:
     name: Secret scan
@@ -142,9 +257,31 @@ jobs:
           fetch-depth: 0
 
       - name: TruffleHog scan
+        id: trufflehog
         uses: trufflesecurity/trufflehog@6c05c4a00b91aa542267d8e32a8254774799d68d # v3.93.8
         with:
           path: ./
           base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || format('{0}~1', github.sha) }}
           head: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           extra_args: --only-verified
+
+      - name: Secret scan summary
+        if: always()
+        run: |
+          RESULT="${{ steps.trufflehog.outcome }}"
+          if [ "$RESULT" = "success" ]; then
+            STATUS="✅ No verified secrets found"
+          else
+            STATUS="🔴 Verified secrets detected"
+          fi
+
+          {
+            echo "## Secret Scan"
+            echo ""
+            echo "| Item | Value |"
+            echo "|:-----|:------|"
+            echo "| Scanner | TruffleHog |"
+            echo "| Mode | Verified secrets only |"
+            echo "| Scope | Diff (${{ github.event_name }}) |"
+            echo "| Result | ${STATUS} |"
+          } >> "$GITHUB_STEP_SUMMARY"

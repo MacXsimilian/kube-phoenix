@@ -33,6 +33,7 @@ import DnsIcon from '@mui/icons-material/Dns'
 import StorageIcon from '@mui/icons-material/Storage'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import { useTheme } from '@mui/material/styles'
+import { semanticColors, useColors } from '@/lib/colors'
 import { getExecutionLogs, wsLogsUrl } from '@/lib/api'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { Execution, LogLine } from '@/lib/types'
@@ -122,20 +123,27 @@ function parseSummary(lines: LogLine[]): ParsedSummary {
   return { workloads, nodes: Array.from(nodeMap.values()), errors }
 }
 
-const ACTION_CHIP: Record<WorkloadEntry['action'], { label: string; color: string }> = {
-  scaled:   { label: '→ 0',     color: '#7C3AED' },
-  restored: { label: 'restored', color: '#22C55E' },
-  plan:     { label: 'plan',     color: '#3B82F6' },
+function actionChip(isDark: boolean): Record<WorkloadEntry['action'], { label: string; color: string }> {
+  const c = semanticColors(isDark)
+  return {
+    scaled:   { label: '→ 0',     color: c.purple },
+    restored: { label: 'restored', color: c.success },
+    plan:     { label: 'plan',     color: c.info },
+  }
 }
 
-const NODE_CHIP: Record<NodeEntry['action'], { label: string; color: string }> = {
-  drained:   { label: 'drained',   color: '#F59E0B' },
-  deleted:   { label: 'deleted',   color: '#EF4444' },
-  plan:      { label: 'plan',      color: '#3B82F6' },
-  protected: { label: 'protected', color: '#6B7280' },
+function nodeChip(isDark: boolean): Record<NodeEntry['action'], { label: string; color: string }> {
+  const c = semanticColors(isDark)
+  return {
+    drained:   { label: 'drained',   color: c.warning },
+    deleted:   { label: 'deleted',   color: c.error },
+    plan:      { label: 'plan',      color: c.info },
+    protected: { label: 'protected', color: '#6B7280' },
+  }
 }
 
 function ExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: boolean }) {
+  const isDark = useTheme().palette.mode === 'dark'
   const { workloads, nodes, errors } = parseSummary(lines)
 
   if (workloads.length === 0 && nodes.length === 0 && errors.length === 0) return null
@@ -176,7 +184,7 @@ function ExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: b
           <Chip
             label={`${errors.length} err`}
             size="small"
-            sx={{ height: 16, fontSize: 10, bgcolor: 'rgba(248,113,113,0.15)', color: '#F87171', '& .MuiChip-label': { px: 0.75 } }}
+            sx={{ height: 16, fontSize: 10, bgcolor: isDark ? 'rgba(248,113,113,0.15)' : 'rgba(185,28,28,0.10)', color: isDark ? '#F87171' : '#B91C1C', '& .MuiChip-label': { px: 0.75 } }}
           />
         )}
       </AccordionSummary>
@@ -199,7 +207,7 @@ function ExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: b
                 <Table size="small" sx={{ '& td': { border: 0, py: 0.25, px: 0.5 } }}>
                   <TableBody>
                     {items.map((w) => {
-                      const chip = ACTION_CHIP[w.action]
+                      const chip = actionChip(isDark)[w.action]
                       return (
                         <TableRow key={`${w.kind}/${w.name}/${w.action}`}>
                           <TableCell sx={{ width: 90, pr: 1 }}>
@@ -241,7 +249,7 @@ function ExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: b
             <Table size="small" sx={{ '& td': { border: 0, py: 0.25, px: 0.5 } }}>
               <TableBody>
                 {nodes.map((n) => {
-                  const chip = NODE_CHIP[n.action]
+                  const chip = nodeChip(isDark)[n.action]
                   return (
                     <TableRow key={`${n.name}/${n.action}`}>
                       <TableCell sx={{ flex: 1 }}>

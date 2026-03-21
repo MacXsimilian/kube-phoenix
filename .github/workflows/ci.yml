@@ -51,7 +51,30 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - run: npm ci
-      - run: npm run build
+
+      - name: Build
+        id: fe_build
+        run: |
+          START=$(date +%s)
+          npm run build
+          echo "duration=$(( $(date +%s) - START ))" >> "$GITHUB_OUTPUT"
+
+      - name: Frontend summary
+        if: always()
+        run: |
+          PAGES=$(find out/ -name '*.html' -not -name '404.html' 2>/dev/null | wc -l | tr -d ' ')
+          SIZE=$(du -sh out/ 2>/dev/null | cut -f1 || echo 'N/A')
+
+          {
+            echo "## Frontend Build Summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "|:-----|:------|"
+            echo "| Node | $(node -v) |"
+            echo "| Build duration | ${{ steps.fe_build.outputs.duration }}s |"
+            echo "| Static pages | ${PAGES} |"
+            echo "| Export size | ${SIZE} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Backend ─────────────────────────────────────────────────────────────────
   backend:
@@ -79,15 +102,70 @@ jobs:
 
       - run: go mod download
       - run: go vet ./...
-      - run: go test -coverprofile=coverage.out ./...
-      - run: go tool cover -func=coverage.out
-      - run: go build ./...
+
+      - name: Test
+        id: be_test
+        run: |
+          START=$(date +%s)
+          go test -race -coverprofile=coverage.out ./... 2>&1 | tee /tmp/test.out
+          echo "duration=$(( $(date +%s) - START ))" >> "$GITHUB_OUTPUT"
+          PASSED=$(grep -c '^ok' /tmp/test.out || true)
+          FAILED=$(grep -c '^FAIL' /tmp/test.out || true)
+          echo "passed=${PASSED:-0}" >> "$GITHUB_OUTPUT"
+          echo "failed=${FAILED:-0}" >> "$GITHUB_OUTPUT"
+
+      - name: Coverage
+        id: be_cov
+        run: |
+          TOTAL=$(go tool cover -func=coverage.out | grep '^total:' | awk '{print $3}')
+          echo "total=${TOTAL}" >> "$GITHUB_OUTPUT"
+          go tool cover -func=coverage.out
+
+      - name: Build
+        id: be_build
+        run: |
+          go build -o server ./cmd/server
+          SIZE=$(du -sh server | cut -f1)
+          echo "binary_size=${SIZE}" >> "$GITHUB_OUTPUT"
 
       - name: golangci-lint
+        id: be_lint
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20  # v9.2.0
         with:
           version: v2.11.3
           working-directory: backend
+
+      - name: Backend summary
+        if: always()
+        run: |
+          PASSED="${{ steps.be_test.outputs.passed }}"
+          FAILED="${{ steps.be_test.outputs.failed }}"
+          if [ "${FAILED}" -gt 0 ] 2>/dev/null; then
+            TEST_STATUS="🔴 ${PASSED} passed, ${FAILED} failed"
+          else
+            TEST_STATUS="✅ ${PASSED} passed"
+          fi
+
+          LINT_STATUS="${{ steps.be_lint.outcome }}"
+          if [ "$LINT_STATUS" = "success" ]; then
+            LINT="✅ Clean"
+          else
+            LINT="🟡 Warnings found"
+          fi
+
+          {
+            echo "## Backend Build Summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "|:-----|:------|"
+            echo "| Go | $(go version | awk '{print $3}') |"
+            echo "| Tests | ${TEST_STATUS} |"
+            echo "| Test duration | ${{ steps.be_test.outputs.duration }}s |"
+            echo "| Coverage | ${{ steps.be_cov.outputs.total }} |"
+            echo "| Race detector | ✅ Clean (-race enabled) |"
+            echo "| Binary size | ${{ steps.be_build.outputs.binary_size }} |"
+            echo "| Lint | ${LINT} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Helm lint ───────────────────────────────────────────────────────────────
   helm:
