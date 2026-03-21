@@ -256,6 +256,7 @@ kube-phoenix/
 │       │   ├── queryClient.ts     # TanStack QueryClient singleton
 │       │   ├── cronToText.ts      # 5-field cron → human readable
 │       │   ├── themeMode.tsx      # ThemeModeProvider + useThemeMode (light/dark/system)
+│       │   ├── colors.ts          # useColors() hook — mode-aware semantic color palette
 │       │   ├── constants.ts       # Shared constants
 │       │   ├── formatters.ts      # Display formatting utilities
 │       │   └── useDrawerResize.ts # Responsive drawer width hook
@@ -1422,12 +1423,14 @@ This tight coupling between frontend and backend builds is managed by the Docker
 | primary.dark       | #5B21B6 | #5B21B6 | Pressed states                       |
 | background.default | #0F0F13 | #F5F5F7 | Page background, terminal panes      |
 | background.paper   | #1A1A24 | #FFFFFF | Card, drawer, dialog backgrounds     |
-| success.main       | #22C55E | #22C55E | Success chips, status indicators     |
-| warning.main       | #F59E0B | #F59E0B | Apply mode indicators, wake icons    |
-| error.main         | #EF4444 | #EF4444 | Error chips, delete actions          |
-| info.main          | #3B82F6 | #3B82F6 | Running status chips                 |
+| success.main       | #22C55E | #15803D | Success chips, status indicators     |
+| warning.main       | #F59E0B | #92400E | Apply mode indicators, wake icons    |
+| error.main         | #EF4444 | #B91C1C | Error chips, delete actions          |
+| info.main          | #3B82F6 | #1D4ED8 | Running status chips                 |
 
 The `divider` token is computed from the mode: `rgba(255,255,255,0.07)` in dark, `rgba(0,0,0,0.09)` in light. All component borders use this token — **never hardcoded RGBA**.
+
+**Semantic colors (`frontend/src/lib/colors.ts`):** A centralized `useColors()` hook exposes mode-aware hex values and tinted rgba backgrounds (e.g. `colors.success`, `colors.successBg`). Components use this hook instead of hardcoding hex values, ensuring all status chips, progress bars, and indicators meet WCAG AA contrast (4.5:1+) in both modes. The `statusColors.ts` module similarly exports functions (`statusColors(isDark)`, `podStatusStyle(isDark)`, `nodeStatusMap(isDark)`) that return mode-appropriate chip color maps.
 
 **Log level colors** are also mode-aware. `LogViewer` defines `LEVEL_COLORS_DARK` and `LEVEL_COLORS_LIGHT` and selects the set at render time via `useTheme().palette.mode`. The light set uses darker hues (e.g. `#0369A1` for info, `#15803D` for ok) to maintain readability against a light background.
 
@@ -1573,7 +1576,7 @@ layout.tsx (Inter font, HTML skeleton)
 | `/history/`   | `HistoryPage`   | Execution table + log drawer                  |
 | `/users/`     | `UsersPage`     | User CRUD table (admin only)                  |
 | `/audit/`     | `AuditPage`     | Searchable audit log with diffs               |
-| `/settings/`  | `SettingsPage`  | DB reset panel                                |
+| `/settings/`  | `SettingsPage`  | Appearance, Account, OIDC status, Danger Zone |
 
 **Key components:**
 
