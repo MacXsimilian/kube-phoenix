@@ -35,6 +35,13 @@ func New(dsn string) (*Store, error) {
 
 	// Drop legacy unique index on username alone (replaced by composite username+source).
 	db.Exec("DROP INDEX IF EXISTS idx_users_username")
+	// Rename misnamed column from GORM's default naming convention (idempotent).
+	db.Exec(`DO $$ BEGIN
+		IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='o_id_c_subject') THEN
+			ALTER TABLE users RENAME COLUMN o_id_c_subject TO oidc_subject;
+		END IF;
+	END $$`)
+	db.Exec("DROP INDEX IF EXISTS idx_users_o_id_c_subject")
 
 	if err := db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{}, &User{}, &Session{}, &AuditLog{}); err != nil {
 		return nil, err
