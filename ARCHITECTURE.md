@@ -2394,6 +2394,8 @@ steps:
   - setup-node@v6 (node 24)
   - npm ci
   - npm run build                  (Next.js static export → out/)
+  - npm audit --omit=dev           (high/critical vuln check)
+  - Job Summary: node version, build duration, page count, export size, vulnerabilities
 ```
 
 **Job: backend**
@@ -2405,11 +2407,14 @@ steps:
   - diff ../openapi.yaml internal/docs/openapi.yaml (assert files are identical; fails build on drift)
   - go mod download
   - go vet ./...
-  - go test -coverprofile=coverage.out ./...
+  - go test -race -coverprofile=coverage.out ./...   (race detector enabled)
   - go tool cover -func=coverage.out
-  - go build ./...
-  - golangci-lint-action@v7    (gosec for SAST, errcheck, staticcheck, etc.)
+  - go build -o server ./cmd/server
+  - golangci-lint-action@v9    (gosec for SAST, errcheck, staticcheck, etc.)
+  - Job Summary: go version, test pass/fail, duration, coverage, binary size, lint status
 ```
+
+Both jobs write a markdown table to `$GITHUB_STEP_SUMMARY` so the CI run page shows at-a-glance build metrics alongside the Docker build summary.
 
 > **OpenAPI embed note:** `backend/internal/docs/openapi.yaml` is gitignored — it is a derived
 > file, not a source file. The canonical spec is `openapi.yaml` at the repository root.
