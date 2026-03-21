@@ -2394,8 +2394,7 @@ steps:
   - setup-node@v6 (node 24)
   - npm ci
   - npm run build                  (Next.js static export → out/)
-  - npm audit --omit=dev           (high/critical vuln check)
-  - Job Summary: node version, build duration, page count, export size, vulnerabilities
+  - Job Summary: node version, build duration, page count, export size
 ```
 
 **Job: backend**
@@ -2496,6 +2495,8 @@ steps:
       head: HEAD   (push) or PR head SHA (PR)
       extra_args: --only-verified
 ```
+
+Every job writes a summary table to `$GITHUB_STEP_SUMMARY`: govulncheck (vulnerability count), npm audit (critical/high/moderate breakdown), Trivy image (pass/fail + SARIF link), Trivy filesystem (pass/fail + SARIF link), and TruffleHog (verified secret status).
 
 > **Weekly schedule rationale:** New CVEs are disclosed continuously. The weekly Monday run ensures vulnerabilities introduced by upstream dependencies are caught even when no code changes are made.
 
