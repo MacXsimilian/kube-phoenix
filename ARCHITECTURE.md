@@ -2328,7 +2328,7 @@ The distroless base image has a read-only filesystem. The `/tmp` emptyDir provid
 Controlled by `values.postgresql.enabled`. When enabled, creates:
 1. A Kubernetes `Secret` with PostgreSQL credentials.
 2. A `ClusterIP` Service (port 5432).
-3. A `StatefulSet` with a single PostgreSQL 16 replica and a `PersistentVolumeClaim` for data.
+3. A `StatefulSet` with a single PostgreSQL 17 replica and a `PersistentVolumeClaim` for data.
 
 This is suitable for development and small deployments. Production deployments should use Amazon RDS or similar managed PostgreSQL with automated backups, multi-AZ, and point-in-time recovery.
 
@@ -2573,7 +2573,7 @@ Dependabot PRs go through the same CI pipeline as any other PR — secret scan, 
 | Docker | Latest | For container builds |
 | kubectl | Latest | For k8s interaction |
 | helm | 4.x | For Helm operations |
-| PostgreSQL | 16+ | Local database |
+| PostgreSQL | 17+ | Local database |
 
 > **Note:** Go is not installed on the project maintainer's machine at the time of writing. Backend changes must be built in CI or via Docker.
 

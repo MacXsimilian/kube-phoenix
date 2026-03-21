@@ -123,7 +123,7 @@ flowchart TB
     end
 
     K8s[("Kubernetes API")]
-    PG[("PostgreSQL 16")]
+    PG[("PostgreSQL 17")]
 
     Browser -- "REST · SSE" --> Router
     Browser -- "WebSocket · live logs" --> Router
@@ -163,7 +163,7 @@ flowchart TB
 | :-------- | :-------------------------------------------------------- |
 | Backend   | Go 1.26, chi v5.2, GORM v1.31, robfig/cron v3, client-go |
 | Frontend  | Next.js 16, React 19, Material UI v7, TanStack Query v5   |
-| Database  | PostgreSQL 16                                             |
+| Database  | PostgreSQL 17                                             |
 | Packaging | Helm 4, GHCR (OCI), GitHub Actions                        |
 
 The Go backend embeds the Next.js static export via `//go:embed` — one binary, one container, no separate web server.
