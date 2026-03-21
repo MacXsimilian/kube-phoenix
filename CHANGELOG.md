@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.77](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.76...v0.1.77) (2026-03-21)
+
+
+### Bug Fixes
+
+* **oidc:** correct OIDCSubject column name ([#172](https://github.com/MacXsimilian/kube-phoenix/issues/172)) ([44f0313](https://github.com/MacXsimilian/kube-phoenix/commit/44f03131efd2171b0870d9f0d8372dfb67e70799))
+
 ## [0.1.76](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.75...v0.1.76) (2026-03-21)
 
 
