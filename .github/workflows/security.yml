@@ -44,11 +44,10 @@ jobs:
         id: govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          OUTPUT=$(govulncheck ./... 2>&1) && STATUS="clean" || STATUS="found"
-          echo "$OUTPUT"
+          govulncheck ./... 2>&1 | tee /tmp/govulncheck.out && STATUS="clean" || STATUS="found"
           echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
-          VULN_COUNT=$(echo "$OUTPUT" | grep -c '^Vulnerability' || echo 0)
-          echo "count=${VULN_COUNT}" >> "$GITHUB_OUTPUT"
+          VULN_COUNT=$(grep -c '^Vulnerability' /tmp/govulncheck.out || true)
+          echo "count=${VULN_COUNT:-0}" >> "$GITHUB_OUTPUT"
 
       - name: govulncheck summary
         if: always()
