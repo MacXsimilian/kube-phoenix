@@ -33,6 +33,9 @@ func New(dsn string) (*Store, error) {
 	sqlDB.SetMaxIdleConns(5)
 	sqlDB.SetConnMaxLifetime(5 * time.Minute)
 
+	// Drop legacy unique index on username alone (replaced by composite username+source).
+	db.Exec("DROP INDEX IF EXISTS idx_users_username")
+
 	if err := db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{}, &User{}, &Session{}, &AuditLog{}); err != nil {
 		return nil, err
 	}
