@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.75](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.74...v0.1.75) (2026-03-21)
+
+
+### Bug Fixes
+
+* **oidc:** use proper PKCE verifier instead of reusing state ([#167](https://github.com/MacXsimilian/kube-phoenix/issues/167)) ([5da7e9f](https://github.com/MacXsimilian/kube-phoenix/commit/5da7e9f06b32d0ca5c3d9881f92472c545505edd))
+
 ## [0.1.74](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.73...v0.1.74) (2026-03-21)
 
 
