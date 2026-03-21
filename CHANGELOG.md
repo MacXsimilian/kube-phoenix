@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.74](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.73...v0.1.74) (2026-03-21)
+
+
+### Features
+
+* **oidc:** add TLS skip verify and custom CA cert support ([a39ce1a](https://github.com/MacXsimilian/kube-phoenix/commit/a39ce1ab7591f3101d474fe6a43aaae846c094a6))
+* **oidc:** add TLS skip verify and custom CA cert support ([23097a7](https://github.com/MacXsimilian/kube-phoenix/commit/23097a72628f04802ae40b017f31fdd292890433))
+
 ## [0.1.73](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.72...v0.1.73) (2026-03-21)
 
 
