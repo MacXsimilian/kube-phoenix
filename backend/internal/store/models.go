@@ -65,7 +65,7 @@ type User struct {
 	PasswordHash string     `gorm:"column:password_hash" json:"-"`
 	Role         string     `gorm:"size:20;default:viewer" json:"role"`     // admin | operator | viewer
 	Source       string     `gorm:"uniqueIndex:idx_users_username_source;size:20;default:local" json:"source"` // local | oidc
-	OIDCSubject  *string    `gorm:"uniqueIndex;size:255" json:"-"`          // OIDC sub claim
+	OIDCSubject  *string    `gorm:"column:oidc_subject;uniqueIndex;size:255" json:"-"` // OIDC sub claim
 	Enabled      bool       `gorm:"default:true" json:"enabled"`
 	CreatedAt    time.Time  `json:"createdAt"`
 	UpdatedAt    time.Time  `json:"updatedAt"`
