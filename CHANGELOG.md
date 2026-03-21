@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.79](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.78...v0.1.79) (2026-03-21)
+
+
+### Bug Fixes
+
+* rebuild CHANGELOG.md — remove duplicates from non-squashed merges ([18d3033](https://github.com/MacXsimilian/kube-phoenix/commit/18d3033913d3dfe86d3f962c73df4dc411f8afdc))
+
 ## [0.1.78](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.76...v0.1.78) (2026-03-21)
 
 
