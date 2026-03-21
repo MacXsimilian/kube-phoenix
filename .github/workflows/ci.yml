@@ -103,6 +103,13 @@ jobs:
       - run: go mod download
       - run: go vet ./...
 
+      - name: golangci-lint
+        id: be_lint
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20  # v9.2.0
+        with:
+          version: v2.11.3
+          working-directory: backend
+
       - name: Test
         id: be_test
         run: |
@@ -120,20 +127,6 @@ jobs:
           TOTAL=$(go tool cover -func=coverage.out | grep '^total:' | awk '{print $3}')
           echo "total=${TOTAL}" >> "$GITHUB_OUTPUT"
           go tool cover -func=coverage.out
-
-      - name: Build
-        id: be_build
-        run: |
-          go build -o server ./cmd/server
-          SIZE=$(du -sh server | cut -f1)
-          echo "binary_size=${SIZE}" >> "$GITHUB_OUTPUT"
-
-      - name: golangci-lint
-        id: be_lint
-        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20  # v9.2.0
-        with:
-          version: v2.11.3
-          working-directory: backend
 
       - name: Backend summary
         if: always()
@@ -163,7 +156,6 @@ jobs:
             echo "| Test duration | ${{ steps.be_test.outputs.duration }}s |"
             echo "| Coverage | ${{ steps.be_cov.outputs.total }} |"
             echo "| Race detector | ✅ Clean (-race enabled) |"
-            echo "| Binary size | ${{ steps.be_build.outputs.binary_size }} |"
             echo "| Lint | ${LINT} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
