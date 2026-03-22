@@ -150,6 +150,19 @@ func (s *Store) ListExecutions(f ExecutionFilter) (*ExecutionPage, error) {
 	return &ExecutionPage{Items: items, Total: total}, nil
 }
 
+// MarkInterruptedExecutions marks any executions still in "running" state as
+// "interrupted". Called at startup to recover from ungraceful pod terminations.
+func (s *Store) MarkInterruptedExecutions() (int64, error) {
+	now := time.Now()
+	res := s.db.Model(&Execution{}).
+		Where("status = ?", "running").
+		Updates(map[string]interface{}{
+			"status":      "interrupted",
+			"finished_at": now,
+		})
+	return res.RowsAffected, res.Error
+}
+
 func (s *Store) FinishExecution(id uint, status string, counts map[string]int) error {
 	now := time.Now()
 	return s.db.Model(&Execution{}).Where("id = ?", id).Updates(map[string]interface{}{
