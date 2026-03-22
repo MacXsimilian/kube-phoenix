@@ -43,31 +43,6 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication via HTTP
 | `GET` | `/api/auth/me` | Current user info + permissions |
 | `PUT` | `/api/auth/password` | Change own password (local users only) |
 
-### Schedules (viewer+)
-
-| Method | Path | Description |
-| :----- | :--- | :---------- |
-| `GET` | `/api/schedules` | List all schedules ordered by position (includes `nextRun`) |
-| `GET` | `/api/schedules/{id}` | Get schedule |
-
-### Schedules (operator+)
-
-| Method | Path | Description |
-| :----- | :--- | :---------- |
-| `POST` | `/api/schedules` | Create schedule |
-| `PUT` | `/api/schedules/reorder` | Reorder within a type — body: `{"type":"scale_down","ids":[3,1,2]}` |
-| `PUT` | `/api/schedules/{id}` | Update schedule (`type` is immutable) |
-| `DELETE` | `/api/schedules/{id}` | Delete schedule |
-
-### Executions (viewer+)
-
-| Method | Path | Description |
-| :----- | :--- | :---------- |
-| `GET` | `/api/executions` | List executions (filters: `schedule_id`, `status`, `page`, `page_size`) |
-| `GET` | `/api/executions/{id}` | Get execution |
-| `GET` | `/api/executions/{id}/logs` | Get all log lines for an execution |
-| `GET` | `/ws/executions/{id}/logs` | WebSocket — live log streaming |
-
 ### Cluster (viewer+)
 
 | Method | Path | Description |
@@ -128,12 +103,6 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication via HTTP
 | `POST` | `/api/exceptions` | Create exception |
 | `PUT` | `/api/exceptions/{id}` | Update exception (pending only) |
 | `DELETE` | `/api/exceptions/{id}` | Cancel exception (triggers sleep-on-end if active) |
-
-### Operations (operator+)
-
-| Method | Path | Description |
-| :----- | :--- | :---------- |
-| `POST` | `/api/trigger` | Manually trigger a legacy schedule — `{"scheduleId": 1, "mode": "plan"}` |
 
 ### Audit logs (viewer+)
 

@@ -3,7 +3,7 @@ openapi: "3.1.0"
 info:
   title: kube-phoenix API
   description: |
-    REST API for the kube-phoenix cluster sleep/wake scheduler.
+    REST API for the kube-phoenix cluster sleep/wake policy engine.
 
     All `/api/*` and `/ws/*` endpoints require session-based authentication
     via HTTP-only cookies. `/healthz` and `/metrics` are always open.
@@ -41,154 +41,6 @@ components:
       name: __kp_session
 
   schemas:
-    Schedule:
-      description: A cron-based sleep or wake schedule.
-      type: object
-      properties:
-        id:
-          type: integer
-          readOnly: true
-        name:
-          type: string
-          example: "Weekday Sleep"
-        type:
-          type: string
-          enum: [scale_down, scale_up]
-          description: Immutable after creation.
-        cronExpr:
-          type: string
-          example: "5 19 * * 1-5"
-          description: Standard 5-field cron expression.
-        timezone:
-          type: string
-          example: "Europe/Budapest"
-          description: IANA timezone name. Defaults to UTC.
-        mode:
-          type: string
-          enum: [plan, apply]
-          description: plan = dry-run, apply = executes for real.
-        enabled:
-          type: boolean
-        namespaceFilter:
-          type: string
-          example: "payments,staging"
-          description: Comma-separated namespace names to target. Empty = all namespaces.
-        timeoutMinutes:
-          type: integer
-          example: 120
-          description: Maximum execution duration. 0 = server default (120 min).
-        position:
-          type: integer
-          description: Display order within the type group. Managed via the reorder endpoint.
-        nextRun:
-          type: ["string", "null"]
-          format: date-time
-          readOnly: true
-          description: Next scheduled fire time. Null if disabled or schedule is invalid.
-        createdAt:
-          type: string
-          format: date-time
-          readOnly: true
-        updatedAt:
-          type: string
-          format: date-time
-          readOnly: true
-      required:
-        - name
-        - type
-        - cronExpr
-
-    ScheduleCreate:
-      description: Request body for creating a new schedule.
-      type: object
-      properties:
-        name:
-          type: string
-        type:
-          type: string
-          enum: [scale_down, scale_up]
-        cronExpr:
-          type: string
-        timezone:
-          type: string
-          default: UTC
-        mode:
-          type: string
-          enum: [plan, apply]
-          default: plan
-        enabled:
-          type: boolean
-          default: false
-        namespaceFilter:
-          type: string
-          default: ""
-        timeoutMinutes:
-          type: integer
-          default: 0
-      required:
-        - name
-        - type
-        - cronExpr
-
-    ScheduleUpdate:
-      description: Partial update — only provided fields are written. `type` is immutable and ignored.
-      type: object
-      properties:
-        name:
-          type: string
-        cronExpr:
-          type: string
-        timezone:
-          type: string
-        mode:
-          type: string
-          enum: [plan, apply]
-        enabled:
-          type: boolean
-        namespaceFilter:
-          type: string
-        timeoutMinutes:
-          type: integer
-
-    Execution:
-      description: A record of a schedule execution (completed or in-progress).
-      type: object
-      properties:
-        id:
-          type: integer
-          readOnly: true
-        scheduleId:
-          type: integer
-        schedule:
-          $ref: "#/components/schemas/Schedule"
-          readOnly: true
-        startedAt:
-          type: string
-          format: date-time
-        finishedAt:
-          type: ["string", "null"]
-          format: date-time
-        status:
-          type: string
-          enum: [running, success, failed]
-        mode:
-          type: string
-          enum: [plan, apply]
-        countScaled:
-          type: integer
-        countDrained:
-          type: integer
-        countDeleted:
-          type: integer
-        countSkipped:
-          type: integer
-        countErrors:
-          type: integer
-        countSaved:
-          type: integer
-        countProtected:
-          type: integer
-
     LogLine:
       description: A single log entry within an execution.
       type: object
@@ -255,18 +107,6 @@ components:
         skipNodeTaints:
           type: string
 
-    PaginatedExecutions:
-      description: Paginated list of executions.
-      type: object
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/Execution"
-        total:
-          type: integer
-          description: Total number of matching executions across all pages.
-
     OverviewResponse:
       description: Pre-aggregated cluster summary for the dashboard.
       type: object
@@ -292,7 +132,7 @@ components:
                 type: integer
         nextRun:
           type: ["object", "null"]
-          description: The next enabled schedule to fire. Null if no schedules are enabled.
+          description: The next enabled policy event to fire. Null if no policies are enabled.
           properties:
             name:
               type: string
@@ -600,7 +440,7 @@ components:
           type: array
           items:
             type: string
-          description: Computed from role (e.g. schedule.read, user.manage).
+          description: Computed from role (e.g. policy.read, user.manage).
         createdAt:
           type: string
           format: date-time
@@ -682,7 +522,7 @@ components:
           description: Denormalised for display.
         action:
           type: string
-          description: "e.g. schedule.update, user.create, auth.login"
+          description: "e.g. policy.update, user.create, auth.login"
         resourceType:
           type: string
         resourceId:
@@ -718,6 +558,29 @@ components:
 
     # ── Policy model ────────────────────────────────────────────────────────
 
+    SleepWindow:
+      description: A recurring sleep window defined by days of the week and a time range.
+      type: object
+      properties:
+        daysOfWeek:
+          type: array
+          items:
+            type: integer
+          description: Days of the week (0 = Sunday, 1 = Monday, ..., 6 = Saturday).
+          example: [1, 2, 3, 4, 5]
+        startTime:
+          type: string
+          description: Start time in HH:MM format (24-hour).
+          example: "20:00"
+        endTime:
+          type: string
+          description: End time in HH:MM format (24-hour). If before startTime, spans midnight.
+          example: "08:00"
+      required:
+        - daysOfWeek
+        - startTime
+        - endTime
+
     Policy:
       description: A unified sleep/wake policy that declares when workloads should be sleeping vs awake.
       type: object
@@ -737,13 +600,18 @@ components:
         labelSelector:
           type: string
           description: Standard Kubernetes label selector syntax.
+        sleepWindows:
+          type: ["array", "null"]
+          description: Human-friendly sleep windows. When provided, sleepCron and wakeCron are compiled from these.
+          items:
+            $ref: "#/components/schemas/SleepWindow"
         sleepCron:
           type: string
-          description: 5-field cron expression for when workloads should go to sleep.
+          description: 5-field cron expression for when workloads should go to sleep. Compiled from sleepWindows or set directly.
           example: "0 20 * * 1-5"
         wakeCron:
           type: string
-          description: 5-field cron expression for when workloads should wake up.
+          description: 5-field cron expression for when workloads should wake up. Compiled from sleepWindows or set directly.
           example: "0 8 * * 1-5"
         timezone:
           type: string
@@ -795,7 +663,7 @@ components:
         - name
 
     PolicyCreate:
-      description: Request body for creating a policy.
+      description: Request body for creating a policy. Provide either sleepWindows OR sleepCron/wakeCron directly.
       type: object
       properties:
         name:
@@ -806,6 +674,11 @@ components:
           type: string
         labelSelector:
           type: string
+        sleepWindows:
+          type: array
+          description: Human-friendly sleep windows. Mutually exclusive with sleepCron/wakeCron.
+          items:
+            $ref: "#/components/schemas/SleepWindow"
         sleepCron:
           type: string
         wakeCron:
@@ -827,7 +700,7 @@ components:
         - name
 
     PolicyUpdate:
-      description: Partial update for a policy — only provided fields are written.
+      description: Partial update for a policy — only provided fields are written. Provide either sleepWindows OR sleepCron/wakeCron.
       type: object
       properties:
         name:
@@ -838,6 +711,11 @@ components:
           type: string
         labelSelector:
           type: string
+        sleepWindows:
+          type: array
+          description: Human-friendly sleep windows. Mutually exclusive with sleepCron/wakeCron.
+          items:
+            $ref: "#/components/schemas/SleepWindow"
         sleepCron:
           type: string
         wakeCron:
@@ -864,6 +742,10 @@ components:
         direction:
           type: string
           enum: [sleep, wake]
+        mode:
+          type: string
+          enum: [plan, apply]
+          description: plan = dry-run, apply = executes for real.
         trigger:
           type: string
           description: What caused this execution (scheduled, manual_sleep, manual_wake, recovery, etc.)
@@ -877,6 +759,12 @@ components:
           type: string
           enum: [running, success, failed, interrupted]
         countScaled:
+          type: integer
+        countProtected:
+          type: integer
+        countDrained:
+          type: integer
+        countDeleted:
           type: integer
         countSkipped:
           type: integer
@@ -902,8 +790,10 @@ components:
           type: integer
         policyId:
           type: integer
-        executionId:
+        sleepExecutionId:
           type: integer
+        wakeExecutionId:
+          type: ["integer", "null"]
         namespace:
           type: string
         kind:
@@ -913,14 +803,19 @@ components:
           type: string
         replicasBefore:
           type: integer
+        replicasRestored:
+          type: ["integer", "null"]
         wasAlreadyZero:
           type: boolean
-        closedAt:
+        restoredAt:
           type: ["string", "null"]
           format: date-time
-        deletedAtWake:
+        capturedAt:
+          type: string
+          format: date-time
+        wasDeletedAtWake:
           type: boolean
-        externallyScaled:
+        wasExternallyScaled:
           type: boolean
 
     PolicyOverride:
@@ -1027,10 +922,25 @@ components:
           type: string
           enum: [pending, active, completed, cancelled]
           readOnly: true
+        startExecutionId:
+          type: ["integer", "null"]
+          description: Execution ID of the run that activated this exception.
+        endExecutionId:
+          type: ["integer", "null"]
+          description: Execution ID of the run that ended this exception.
+        cancelledAt:
+          type: ["string", "null"]
+          format: date-time
+        cancelReason:
+          type: string
         createdBy:
           type: string
           readOnly: true
         createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
           type: string
           format: date-time
           readOnly: true
@@ -1106,348 +1016,6 @@ paths:
                   error:
                     type: string
                     example: database unavailable
-
-  /api/schedules:
-    get:
-      operationId: listSchedules
-      summary: List schedules
-      description: Returns all schedules ordered by position. Each schedule includes a computed `nextRun` field.
-      tags: [Schedules]
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Schedule"
-        "401":
-          description: Unauthorized
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-    post:
-      operationId: createSchedule
-      summary: Create schedule
-      description: Creates a new schedule. Defaults to disabled, plan mode, UTC timezone.
-      tags: [Schedules]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ScheduleCreate"
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Schedule"
-        "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401":
-          description: Unauthorized
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /api/schedules/reorder:
-    put:
-      operationId: reorderSchedules
-      summary: Reorder schedules
-      description: |
-        Bulk-updates the `position` field for schedules of a given type.
-        Only IDs belonging to the specified type are affected — mismatched IDs are silently ignored.
-        Returns the full updated schedule list with `nextRun` fields.
-      tags: [Schedules]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                type:
-                  type: string
-                  enum: [scale_down, scale_up]
-                ids:
-                  type: array
-                  items:
-                    type: integer
-                  example: [3, 1, 2]
-              required:
-                - type
-                - ids
-      responses:
-        "200":
-          description: Reordered — returns updated schedule list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Schedule"
-        "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401":
-          description: Unauthorized
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /api/schedules/{id}:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-    get:
-      operationId: getSchedule
-      summary: Get schedule
-      description: Returns a single schedule by ID, including the computed `nextRun` field.
-      tags: [Schedules]
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Schedule"
-        "400":
-          description: Invalid schedule ID
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401":
-          description: Unauthorized
-        "404":
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-    put:
-      operationId: updateSchedule
-      summary: Update schedule
-      description: Partial update — only provided fields are written. `type` is immutable and ignored.
-      tags: [Schedules]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ScheduleUpdate"
-      responses:
-        "200":
-          description: Updated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Schedule"
-        "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401":
-          description: Unauthorized
-        "404":
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-    delete:
-      operationId: deleteSchedule
-      summary: Delete schedule
-      description: Deletes a schedule by ID and reloads the scheduler.
-      tags: [Schedules]
-      responses:
-        "204":
-          description: Deleted
-        "400":
-          description: Invalid schedule ID
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401":
-          description: Unauthorized
-        "404":
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /api/executions:
-    get:
-      operationId: listExecutions
-      summary: List executions
-      description: Returns a paginated list of executions, ordered by start time descending.
-      tags: [Executions]
-      parameters:
-        - name: schedule_id
-          in: query
-          schema:
-            type: integer
-          description: Filter by schedule ID.
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [running, success, failed]
-          description: Filter by execution status.
-        - name: page
-          in: query
-          schema:
-            type: integer
-            default: 0
-          description: Zero-based page index.
-        - name: page_size
-          in: query
-          schema:
-            type: integer
-            default: 20
-            maximum: 100
-          description: Number of items per page (max 100).
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PaginatedExecutions"
-        "400":
-          description: Invalid query parameters
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401":
-          description: Unauthorized
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /api/executions/{id}:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-    get:
-      operationId: getExecution
-      summary: Get execution
-      description: Returns a single execution by ID with the associated schedule preloaded.
-      tags: [Executions]
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Execution"
-        "400":
-          description: Invalid execution ID
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401":
-          description: Unauthorized
-        "404":
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /api/executions/{id}/logs:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-    get:
-      operationId: getExecutionLogs
-      summary: Get execution logs
-      description: Returns all log lines for an execution ordered by sequence number. For live streaming during a running execution, use the WebSocket endpoint instead.
-      tags: [Executions]
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/LogLine"
-        "400":
-          description: Invalid execution ID
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401":
-          description: Unauthorized
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
 
   /api/overview:
     get:
@@ -1825,56 +1393,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /api/trigger:
-    post:
-      operationId: triggerSchedule
-      summary: Manually trigger a schedule
-      description: Runs the specified schedule immediately, outside its cron cadence. Returns the new execution ID.
-      tags: [Operations]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                scheduleId:
-                  type: integer
-                mode:
-                  type: string
-                  enum: [plan, apply]
-                  description: Overrides the schedule's configured mode for this run.
-              required:
-                - scheduleId
-                - mode
-      responses:
-        "202":
-          description: Accepted — execution started
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TriggerResponse"
-        "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401":
-          description: Unauthorized
-        "404":
-          description: Schedule not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
   /api/danger/reset-db:
     post:
       operationId: resetDatabase
@@ -1883,7 +1401,7 @@ paths:
         Drops all tables and reseeds defaults. Streams progress as newline-delimited JSON (NDJSON).
         Requires confirmation in the request body.
 
-        **This operation is irreversible. All schedules, executions, and log history will be deleted.**
+        **This operation is irreversible. All policies, executions, and log history will be deleted.**
       tags: [Admin]
       requestBody:
         required: true
@@ -2230,7 +1748,7 @@ paths:
           in: query
           schema:
             type: string
-          description: Filter by action (e.g. schedule.update, user.create).
+          description: Filter by action (e.g. policy.update, user.create).
         - name: from
           in: query
           schema:
@@ -2270,39 +1788,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
-  /ws/executions/{id}/logs:
-    get:
-      operationId: wsExecutionLogs
-      summary: Live log stream (WebSocket)
-      description: |
-        WebSocket upgrade. Streams log lines as JSON objects in real time during an active execution.
-
-        On connect, all previously-emitted log lines for the execution are replayed in order,
-        followed by live lines as they are emitted. When the execution completes the server
-        closes the connection.
-
-        **Authentication:** Session cookie (`__kp_session`) — sent automatically by the browser on same-origin WebSocket upgrades.
-      tags: [Executions]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "101":
-          description: Switching Protocols
-        "400":
-          description: Invalid execution ID
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401":
-          description: Unauthorized
-        "404":
-          description: Execution not found
 
   # ── Policies ─────────────────────────────────────────────────────────────
 
@@ -2727,18 +2212,12 @@ tags:
     description: Server health and readiness probes.
   - name: Auth
     description: Authentication — login, logout, OIDC, password management.
-  - name: Schedules
-    description: CRUD for sleep/wake cron schedules.
-  - name: Executions
-    description: Execution history and log retrieval.
   - name: Overview
     description: Pre-aggregated dashboard summary and SSE stream.
   - name: Cluster
     description: Live cluster state — workloads, nodes, and pods.
   - name: Guardrails
     description: Global guardrail configuration for namespace/node protection.
-  - name: Operations
-    description: Manual schedule triggers.
   - name: Users
     description: User account management (admin only).
   - name: Audit

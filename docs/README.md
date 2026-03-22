@@ -3,7 +3,7 @@
 | Document | Description |
 | :------- | :---------- |
 | [Deployment](deployment.md) | Helm installation, upgrades, and cluster setup |
-| [Configuration](configuration.md) | Environment variables, authentication, and schedule setup |
+| [Configuration](configuration.md) | Environment variables, authentication, and policy setup |
 | [API Reference](api.md) | REST, SSE, and WebSocket endpoint reference |
 | [Troubleshooting](troubleshooting.md) | Common issues and resolution steps |
 

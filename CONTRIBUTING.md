@@ -60,7 +60,7 @@ make dev-frontend
 
 In development, the frontend uses the `NEXT_PUBLIC_API_URL` environment variable to reach the backend API. When unset, it defaults to the same origin (relative `/api/*` paths). Set `NEXT_PUBLIC_API_URL=http://localhost:8080` when running the frontend dev server on a separate port. Authentication is disabled when `ADMIN_USER` / `ADMIN_PASSWORD` are unset.
 
-The backend auto-migrates the database schema and seeds default data (4 schedules + guardrails) on startup. No manual migration step is needed.
+The backend auto-migrates the database schema and seeds default data (guardrails + admin user) on startup. No manual migration step is needed.
 
 **CORS during local development**
 
@@ -98,8 +98,9 @@ kube-phoenix/
 │   └── internal/
 │       ├── api/                    # HTTP handlers + Chi router
 │       ├── docs/                   # Embedded openapi.yaml (copied at build time)
-│       ├── scheduler/              # Cron wrapper + WebSocket log broker
-│       ├── scaler/                 # scale_down / scale_up logic
+│       ├── policy/                 # Sleep window compiler (windows → cron)
+│       ├── scheduler/              # PolicyScheduler, PolicyEngine, WS log broker
+│       ├── scaler/                 # PolicyScaler (DB-backed sleep/wake)
 │       ├── k8s/                    # Kubernetes client + ClusterCache
 │       ├── store/                  # GORM models + queries
 │       └── middleware/             # BasicAuth
