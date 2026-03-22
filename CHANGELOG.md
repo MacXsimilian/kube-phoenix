@@ -2,49 +2,74 @@
 
 ## [0.3.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.2.0...v0.3.0) (2026-03-22)
 
+> **Note:** v0.3.0 was released immediately after v0.2.0 due to a branch merge
+> that replayed the v0.2.0 breaking change commit. The version jump from 0.1.x
+> to 0.3.0 is a consequence of non-squashed merges during the window-based
+> policy migration. There are no additional breaking changes beyond v0.2.0.
 
-### ⚠ BREAKING CHANGES
+### Bug Fixes
 
-* /api/schedules, /api/executions, /api/trigger, and /ws/executions endpoints are removed. Use /api/policies instead.
+* **metrics:** wire up 7 Prometheus metrics that were defined but never recorded (executions, duration, workloads scaled, nodes drained/deleted, active policies)
+* **metrics:** rename label `schedule_type` to `direction` on `ExecutionsTotal` and `ExecutionDuration`
+* **metrics:** rename metric `active_schedules` to `active_policies` with single `mode` label
+* **metrics:** remove unbounded `user` label from `UserActionsTotal` to prevent cardinality explosion
+* **metrics:** update `ActiveSessions` gauge on session create/delete instead of only during 15-minute cleanup
 
-### Features
+### Documentation
 
-* window-based policies, metrics instrumentation, and code quality ([#201](https://github.com/MacXsimilian/kube-phoenix/issues/201)) ([49384a3](https://github.com/MacXsimilian/kube-phoenix/commit/49384a3fa155ef905e5bce5862f0a1786bd93c7b))
+* Remove legacy Schedules section from configuration docs (removed in v0.2.0)
+* Fix role descriptions: "schedules" to "policies"
+* Fix false claim about policy seeding on startup
+* Add Recovery & State Transitions section to configuration docs
+* Fix metric action examples in README (`schedule.update` to `policy.create`)
+
+### Code Quality
+
+* Apply `gofmt -s` formatting to 5 files
+* Reduce cyclomatic complexity for 8 functions by extracting helpers:
+  `IntendedState` (18 to 6), `RunPolicySleep` (29 to 13), `RunPolicyWake` (25 to 12),
+  `updatePolicy` (23 to 13), `validatePolicyUpdates` (20 to 14),
+  `createPolicy` (17 to 13), `reload` (16 to 8), `updateException` (16 to 7)
 
 ## [0.2.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.82...v0.2.0) (2026-03-22)
 
-
 ### ⚠ BREAKING CHANGES
 
-* /api/schedules, /api/executions, /api/trigger, and /ws/executions endpoints are removed. Use /api/policies instead.
+* `/api/schedules`, `/api/executions`, `/api/trigger`, and `/ws/executions` endpoints are removed. Use `/api/policies` instead.
+* The `Schedule`, `Execution`, and `LogLine` models are removed. Policies are now the sole scheduling mechanism.
 
 ### Features
 
-* window-based policies, remove legacy schedules, audit fixes ([#194](https://github.com/MacXsimilian/kube-phoenix/issues/194)) ([c21310e](https://github.com/MacXsimilian/kube-phoenix/commit/c21310ed0c1512eb7bfdb666a3d1b18d44d5a0d3))
+* **Window-based sleep policies:** replace raw cron input with declarative sleep windows ("Mon-Fri 7 PM - 7 AM"); the system compiles to cron internally
+* **WindowPicker component:** day toggles, time dropdowns, and presets (weekday nights, weekends)
+* **MiniTimeline:** 24-hour SVG bar on policy cards showing sleep/wake windows at a glance
+* **WeeklyTimeline:** 7-day visualization on the policy detail page
+* **Window compiler:** `policy/windows.go` backend engine with 16 unit tests
+* **Reverse-compile:** legacy cron-only policies are automatically reverse-compiled to window format on read
+
+### Removed
+
+* `schedules.go`, `executions.go`, `trigger.go`, `scheduler.go` — all legacy schedule handlers
+* `ScheduleCard`, `ScheduleDialog`, `NextRunCard` — replaced by policy-based components
+* `/app/schedules/` page and Schedules sidebar entry
+* Old `Schedule`/`Execution`/`LogLine` database models and seed defaults
+
+### Bug Fixes
+
+* Fix Broker double-close panic with closed-channel tracking
+* Fix `HasApplyPolicyOverlap` to detect universal-target and same-namespace policy conflicts
+* Fix scheduler race condition: transitioning check under mutex
+* Fix override precedence: `force_sleep` always wins over `stay_awake`
+* Fix WindowPicker time-sync mutation bug
+* Add PostgreSQL CHECK constraints for exception and execution status
+* Optimize PolicyScaler snapshot lookup from O(n^2) to O(n)
+* CORS blocks cross-origin in production when `CORS_ALLOWED_ORIGIN` is unset
 
 ## [0.1.82](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.81...v0.1.82) (2026-03-22)
 
-
 ### Features
 
-* **policies:** policy-based sleep/wake model with exceptions and overrides ([#192](https://github.com/MacXsimilian/kube-phoenix/issues/192)) ([e860b36](https://github.com/MacXsimilian/kube-phoenix/commit/e860b36fd071c9044e5b724b45fd25986fc53187))
-
-## [Unreleased]
-
-### Features
-
-* **policy:** unified sleep/wake policy model with DB-backed snapshots, overrides, scheduled exceptions, and startup recovery
-  * `Policy` entity replaces paired `scale_down`/`scale_up` schedules — one object declares `sleepCron`, `wakeCron`, namespace/label targeting, mode, and timeout
-  * `PolicyScheduler` — per-policy robfig/cron entries, startup recovery (IntendedState vs currentState), exception tick loop (every minute)
-  * `PolicyEngine` — pure evaluation: `IntendedState`, `NextFire`, `MostRecentFire` (forward-scan workaround for cron lacking `Prev()`)
-  * `PolicyScaler` — DB-backed `WorkloadSnapshot` rows; double-sleep guard; belt-and-suspenders K8s annotation fallback on wake
-  * Overrides: `stay_awake`, `force_sleep` (windowed) + `skip_sleep`, `skip_wake` (one-shot); precedence: force_sleep > stay_awake > skip > cron
-  * Scheduled Exceptions: future one-time windows with ticket refs, `pending → active → completed` lifecycle, `sleepOnEnd` flag
-  * 22 new API endpoints under `/api/policies`, `/api/policy-executions`, `/api/exceptions`
-  * WebSocket live log streaming at `/ws/policy-executions/{id}/logs`
-  * Frontend: Policies page, policy detail page (overrides, exceptions, execution history), Exceptions page, PolicyCard component with state badge
-
----
+* **policies:** policy-based sleep/wake model with exceptions and overrides ([#192](https://github.com/MacXsimilian/kube-phoenix/issues/192))
 
 ## [0.1.81](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.80...v0.1.81) (2026-03-22)
 
