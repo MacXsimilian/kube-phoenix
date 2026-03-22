@@ -24,6 +24,10 @@ export default class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error }
   }
 
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[kp] Uncaught error:', error, info.componentStack)
+  }
+
   render() {
     if (this.state.hasError) {
       return (
