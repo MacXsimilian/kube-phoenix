@@ -56,7 +56,8 @@ Set `ADMIN_USER` and `ADMIN_PASSWORD` to seed the first admin account on startup
   5. Set **Web origins** to `https://<your-domain>`.
   6. Under the **Advanced** tab, set **Proof Key for Code Exchange Code Challenge Method** to `S256`.
   7. Copy the **Client secret** from the **Credentials** tab → set as `OIDC_CLIENT_SECRET`.
-  8. To include AD groups in the ID token: create a **Client scope** named `groups`, add a **Group Membership** mapper with **Token Claim Name** = `groups`, **Add to ID token** = `On`, **Full group path** = `Off`. Add this scope to the client as a **Default** scope.
+  8. Set **Valid post logout redirect URIs** to `https://<your-domain>/`. This is required for the Sign Out button to fully terminate the Keycloak SSO session and redirect the browser back to the login page.
+  9. To include AD groups in the ID token: create a **Client scope** named `groups`, add a **Group Membership** mapper with **Token Claim Name** = `groups`, **Add to ID token** = `On`, **Full group path** = `Off`. Add this scope to the client as a **Default** scope.
 
   **TLS options for OIDC discovery/token exchange:**
   - **Custom CA certificate (recommended):** set `OIDC_SKIP_TLS_VERIFY` to `false` (default) and mount a CA bundle. In the Helm chart, set `oidc.caConfigMap` to the name of a ConfigMap containing the CA cert and `oidc.caCertKey` to the key name (default `cacert.pem`). This sets `SSL_CERT_FILE` so Go's TLS stack trusts the internal CA.
