@@ -365,8 +365,9 @@ export default function LogViewer({
       ws.onerror = () => {
         setWsError(true)
         ws.close()
+        wsRef.current = null
         reconnectTimerRef.current = setTimeout(() => {
-          if (execution?.status === 'running') openWs()
+          if (execution?.status === 'running' && wsRef.current === null) openWs()
         }, 3000)
       }
     }

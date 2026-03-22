@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, ReactNode } from 'react'
 import type { User } from './types'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
@@ -145,16 +145,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
+  const value = useMemo(() => ({
+    isAuthenticated: !!user,
+    checking,
+    backendError,
+    user,
+    oidcEnabled,
+    login,
+    logout,
+  }), [user, checking, backendError, oidcEnabled, login, logout])
+
   return (
-    <AuthContext.Provider value={{
-      isAuthenticated: !!user,
-      checking,
-      backendError,
-      user,
-      oidcEnabled,
-      login,
-      logout,
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )
