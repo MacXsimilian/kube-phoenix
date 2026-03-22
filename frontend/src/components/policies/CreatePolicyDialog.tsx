@@ -58,10 +58,19 @@ function isValidCron(expr: string): boolean {
   ]
   return parts.every((part, i) => {
     if (part === '*') return true
-    // Handle comma-separated and ranges
+    // Handle comma-separated values
     return part.split(',').every(seg => {
-      const range = seg.split('-')
-      return range.every(v => {
+      // Strip step suffix (e.g. */5, 1-10/2)
+      const [rangePart, stepStr] = seg.split('/')
+      if (stepStr !== undefined) {
+        const step = parseInt(stepStr, 10)
+        if (isNaN(step) || step < 1) return false
+      }
+      if (rangePart === '*') return true
+      // Handle ranges (e.g. 1-5)
+      const bounds = rangePart.split('-')
+      if (bounds.length > 2) return false
+      return bounds.every(v => {
         const n = parseInt(v, 10)
         return !isNaN(n) && n >= ranges[i][0] && n <= ranges[i][1]
       })
