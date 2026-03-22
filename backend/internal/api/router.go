@@ -25,7 +25,6 @@ import (
 type Handler struct {
 	store           *store.Store
 	k8s             *k8s.Client
-	scheduler       *scheduler.Scheduler
 	policyScheduler *scheduler.PolicyScheduler
 	cache           *k8s.ClusterCache
 	ipLimiter       *auth.RateLimiter
@@ -37,7 +36,7 @@ type Handler struct {
 	oidcCfg         *auth.OIDCConfig
 }
 
-func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sched *scheduler.Scheduler, policySched *scheduler.PolicyScheduler, cache *k8s.ClusterCache) *chi.Mux {
+func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, policySched *scheduler.PolicyScheduler, cache *k8s.ClusterCache) *chi.Mux {
 	idleTimeout := parseDuration("SESSION_IDLE_TIMEOUT", 8*time.Hour)
 	maxLifetime := parseDuration("SESSION_MAX_LIFETIME", 24*time.Hour)
 
@@ -63,7 +62,6 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sche
 	h := &Handler{
 		store:           st,
 		k8s:             k8sClient,
-		scheduler:       sched,
 		policyScheduler: policySched,
 		cache:           cache,
 		ipLimiter:       auth.NewRateLimiter(10, 15*time.Minute),
@@ -129,12 +127,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sche
 
 		r.Route("/api", func(r chi.Router) {
 			// ── Read-only routes (all authenticated users) ───────────
-			r.Get("/schedules", h.listSchedules)
-			r.Get("/schedules/{id}", h.getSchedule)
 			r.Get("/guardrails", h.getGuardrails)
-			r.Get("/executions", h.listExecutions)
-			r.Get("/executions/{id}", h.getExecution)
-			r.Get("/executions/{id}/logs", h.getExecutionLogs)
 			r.Get("/overview", h.getOverview)
 			r.Get("/cluster/stream", h.streamCluster)
 			r.Get("/cluster/workloads", h.getWorkloads)
@@ -159,15 +152,6 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sche
 			r.Get("/exceptions", h.listExceptions)
 			r.Get("/exceptions/{id}", h.getException)
 
-			// ── Schedule/guardrail mutations (admin + operator) ──────
-			r.Group(func(r chi.Router) {
-				r.Use(authmw.RequirePermission(auth.PermScheduleEdit))
-				r.Post("/schedules", h.createSchedule)
-				r.Put("/schedules/reorder", h.reorderSchedules)
-				r.Put("/schedules/{id}", h.updateSchedule)
-				r.Delete("/schedules/{id}", h.deleteSchedule)
-			})
-
 			r.Group(func(r chi.Router) {
 				r.Use(authmw.RequirePermission(auth.PermGuardrailEdit))
 				r.Put("/guardrails", h.updateGuardrails)
@@ -189,7 +173,6 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sche
 			// ── Manual trigger (admin + operator) ────────────────────
 			r.Group(func(r chi.Router) {
 				r.Use(authmw.RequirePermission(auth.PermScheduleTrigger))
-				r.Post("/trigger", h.trigger)
 				r.Post("/policies/{id}/sleep", h.triggerPolicySleep)
 				r.Post("/policies/{id}/wake", h.triggerPolicyWake)
 			})
@@ -211,7 +194,6 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sche
 		})
 
 		// WebSocket — live log streaming (cookies sent automatically on upgrade)
-		r.Get("/ws/executions/{id}/logs", h.wsExecutionLogs)
 		r.Get("/ws/policy-executions/{id}/logs", h.wsPolicyExecutionLogs)
 	})
 
@@ -260,9 +242,13 @@ func corsHandler() func(http.Handler) http.Handler {
 	var allowedOrigins []string
 	if origin := os.Getenv("CORS_ALLOWED_ORIGIN"); origin != "" {
 		allowedOrigins = []string{origin}
+	} else if os.Getenv("ADMIN_USER") != "" {
+		// Production mode (ADMIN_USER is set) without an explicit CORS origin:
+		// default to same-origin only (no origins allowed via CORS).
+		slog.Warn("CORS_ALLOWED_ORIGIN is not set while ADMIN_USER is set — CORS will block all cross-origin requests (same-origin only). Set CORS_ALLOWED_ORIGIN if your frontend is served from a different origin.")
+		allowedOrigins = []string{}
 	} else {
-		// In production, same-origin requests don't need CORS.
-		// In dev, allow all for convenience.
+		// Dev mode — allow all origins for convenience.
 		allowedOrigins = []string{"*"}
 	}
 	return cors.Handler(cors.Options{

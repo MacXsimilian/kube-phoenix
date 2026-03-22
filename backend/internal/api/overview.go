@@ -192,24 +192,26 @@ func topSleepingNamespaces(nsSleep map[string]int, limit int) []NsSleepCount {
 }
 
 func (h *Handler) populateNextRun(resp *OverviewResponse) {
-	schedules, err := h.store.ListSchedules()
+	policies, err := h.store.ListPolicies()
 	if err != nil {
 		return
 	}
 	var earliestTime *time.Time
-	for _, s := range schedules {
-		if !s.Enabled {
+	for _, p := range policies {
+		if !p.Enabled {
 			continue
 		}
-		t := h.scheduler.NextRun(s.ID)
-		if t == nil {
-			continue
-		}
-		if earliestTime == nil || t.Before(*earliestTime) {
-			earliestTime = t
-			resp.NextRun = &NextRunInfo{
-				Name:    s.Name,
-				NextRun: t.UTC().Format(time.RFC3339),
+		ns, nw := h.policyScheduler.NextRuns(p.ID)
+		for _, t := range []*time.Time{ns, nw} {
+			if t == nil {
+				continue
+			}
+			if earliestTime == nil || t.Before(*earliestTime) {
+				earliestTime = t
+				resp.NextRun = &NextRunInfo{
+					Name:    p.Name,
+					NextRun: t.UTC().Format(time.RFC3339),
+				}
 			}
 		}
 	}

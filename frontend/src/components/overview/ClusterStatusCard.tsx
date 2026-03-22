@@ -8,13 +8,6 @@ import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
 import Button from '@mui/material/Button'
-import Dialog from '@mui/material/Dialog'
-import DialogTitle from '@mui/material/DialogTitle'
-import DialogContent from '@mui/material/DialogContent'
-import DialogActions from '@mui/material/DialogActions'
-import ToggleButton from '@mui/material/ToggleButton'
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
-import CircularProgress from '@mui/material/CircularProgress'
 import Snackbar from '@mui/material/Snackbar'
 import Alert from '@mui/material/Alert'
 import Tooltip from '@mui/material/Tooltip'
@@ -23,16 +16,13 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import Brightness4Icon from '@mui/icons-material/Brightness4'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import Skeleton from '@mui/material/Skeleton'
-import { getOverview, getSchedules, triggerRun, getExecution } from '@/lib/api'
-import type { Execution, Overview } from '@/lib/types'
+import { getOverview, triggerPolicySleep, triggerPolicyWake, getPolicies } from '@/lib/api'
+import type { Overview } from '@/lib/types'
 import { timeUntil } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
-import LogViewer from '@/components/history/LogViewer'
 import { useAuth } from '@/lib/auth'
 import { canTriggerSchedules } from '@/lib/rbac'
 import { useColors } from '@/lib/colors'
-
-type TriggerType = 'scale_down' | 'scale_up'
 
 // useClusterStream subscribes to the backend SSE stream and pushes received
 // Overview updates directly into the TanStack Query cache, eliminating polling.
@@ -112,10 +102,10 @@ export default function ClusterStatusCard() {
     refetchInterval: 30_000,
   })
 
-  // Schedules only needed for trigger button (find schedule ID by type)
-  const { data: schedules = [] } = useQuery({
-    queryKey: ['schedules'],
-    queryFn: getSchedules,
+  // Policies for trigger button (find first enabled apply-mode policy)
+  const { data: policies = [] } = useQuery({
+    queryKey: ['policies'],
+    queryFn: getPolicies,
     staleTime: 60_000,
     refetchInterval: 60_000,
   })
@@ -123,40 +113,38 @@ export default function ClusterStatusCard() {
   // Subscribe to SSE — updates the overview query cache in real time
   const streamDisconnected = useClusterStream()
 
-  const [dialog, setDialog] = useState<{ open: boolean; type: TriggerType } | null>(null)
-  const [mode, setMode] = useState<'plan' | 'apply'>('plan')
   const [triggerError, setTriggerError] = useState<string | null>(null)
-  const [triggerExecId, setTriggerExecId] = useState<number | null>(null)
-  const [selectedExecution, setSelectedExecution] = useState<Execution | null>(null)
 
-  const { data: triggeredExec } = useQuery({
-    queryKey: ['execution', triggerExecId],
-    queryFn: () => getExecution(triggerExecId!),
-    enabled: triggerExecId !== null,
-  })
+  // Find first enabled policy for quick sleep/wake triggers
+  const firstPolicy = policies.find(p => p.enabled)
 
-  useEffect(() => {
-    if (triggeredExec) {
-      setSelectedExecution(triggeredExec)
-      setTriggerExecId(null)
-    }
-  }, [triggeredExec])
-
-  const trigger = useMutation({
-    mutationFn: ({ type, m }: { type: TriggerType; m: 'plan' | 'apply' }) => {
-      const sc = schedules.find((s) => s.type === type)
-      if (!sc) throw new Error(`No ${type} schedule found`)
-      return triggerRun(sc.id, m)
+  const sleepMut = useMutation({
+    mutationFn: () => {
+      if (!firstPolicy) throw new Error('No enabled policy found')
+      return triggerPolicySleep(firstPolicy.id)
     },
     onSuccess: ({ executionId }) => {
-      setDialog(null)
-      qc.invalidateQueries({ queryKey: ['executions'] })
+      qc.invalidateQueries({ queryKey: ['policies'] })
       qc.invalidateQueries({ queryKey: ['overview'] })
-      setTriggerExecId(executionId)
+      router.push(`/policies/detail/?id=${firstPolicy!.id}&exec=${executionId}`)
     },
     onError: (err: unknown) => {
-      setDialog(null)
-      setTriggerError(err instanceof Error ? err.message : 'Trigger failed')
+      setTriggerError(err instanceof Error ? err.message : 'Sleep trigger failed')
+    },
+  })
+
+  const wakeMut = useMutation({
+    mutationFn: () => {
+      if (!firstPolicy) throw new Error('No enabled policy found')
+      return triggerPolicyWake(firstPolicy.id)
+    },
+    onSuccess: ({ executionId }) => {
+      qc.invalidateQueries({ queryKey: ['policies'] })
+      qc.invalidateQueries({ queryKey: ['overview'] })
+      router.push(`/policies/detail/?id=${firstPolicy!.id}&exec=${executionId}`)
+    },
+    onError: (err: unknown) => {
+      setTriggerError(err instanceof Error ? err.message : 'Wake trigger failed')
     },
   })
 
@@ -282,31 +270,31 @@ export default function ClusterStatusCard() {
                 />
               </Box>
 
-              {/* Action buttons with impact tooltips */}
+              {/* Action buttons */}
               <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-                <Tooltip title={hasTrigger ? `Will scale down ~${running} running workload${running !== 1 ? 's' : ''}` : 'You do not have permission to trigger schedules'} arrow>
+                <Tooltip title={hasTrigger && firstPolicy ? `Sleep via policy "${firstPolicy.name}"` : !hasTrigger ? 'No permission' : 'No enabled policy'} arrow>
                   <span>
                     <Button
                       variant="outlined"
                       startIcon={<BedtimeIcon fontSize="small" />}
-                      onClick={() => { setMode('plan'); setDialog({ open: true, type: 'scale_down' }) }}
-                      disabled={!hasTrigger}
+                      onClick={() => sleepMut.mutate()}
+                      disabled={!hasTrigger || !firstPolicy || sleepMut.isPending}
                       sx={{ borderColor: 'divider', color: 'text.secondary' }}
                     >
-                      Run Sleep Now
+                      Sleep Now
                     </Button>
                   </span>
                 </Tooltip>
-                <Tooltip title={hasTrigger ? `Will restore ~${sleeping} sleeping workload${sleeping !== 1 ? 's' : ''}` : 'You do not have permission to trigger schedules'} arrow>
+                <Tooltip title={hasTrigger && firstPolicy ? `Wake via policy "${firstPolicy.name}"` : !hasTrigger ? 'No permission' : 'No enabled policy'} arrow>
                   <span>
                     <Button
                       variant="outlined"
                       startIcon={<WbSunnyIcon fontSize="small" />}
-                      onClick={() => { setMode('plan'); setDialog({ open: true, type: 'scale_up' }) }}
-                      disabled={!hasTrigger}
+                      onClick={() => wakeMut.mutate()}
+                      disabled={!hasTrigger || !firstPolicy || wakeMut.isPending}
                       sx={{ borderColor: 'divider', color: 'text.secondary' }}
                     >
-                      Run Wake Now
+                      Wake Now
                     </Button>
                   </span>
                 </Tooltip>
@@ -338,57 +326,6 @@ export default function ClusterStatusCard() {
         </CardContent>
       </Card>
 
-      {/* Trigger dialog */}
-      <Dialog
-        open={dialog?.open ?? false}
-        onClose={() => setDialog(null)}
-        slotProps={{ paper: { sx: { bgcolor: 'background.paper', minWidth: 360 } } }}
-      >
-        <DialogTitle fontWeight={700}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {dialog?.type === 'scale_down'
-              ? <BedtimeIcon sx={{ color: 'primary.main', fontSize: 20 }} />
-              : <WbSunnyIcon sx={{ color: 'warning.main', fontSize: 20 }} />}
-            {dialog?.type === 'scale_down' ? 'Run Sleep' : 'Run Wake'}
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" mb={2}>
-            Choose execution mode:
-          </Typography>
-          <ToggleButtonGroup
-            value={mode}
-            exclusive
-            onChange={(_, v) => v && setMode(v)}
-            fullWidth
-            size="small"
-          >
-            <ToggleButton value="plan" sx={{ fontWeight: 600 }}>
-              Plan (dry-run)
-            </ToggleButton>
-            <ToggleButton
-              value="apply"
-              sx={{ fontWeight: 600, '&.Mui-selected': { bgcolor: 'rgba(245,158,11,0.2)', color: 'warning.main' } }}
-            >
-              Apply (live)
-            </ToggleButton>
-          </ToggleButtonGroup>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setDialog(null)} sx={{ color: 'text.secondary' }}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            disabled={trigger.isPending}
-            startIcon={trigger.isPending ? <CircularProgress size={14} /> : undefined}
-            onClick={() => dialog && trigger.mutate({ type: dialog.type, m: mode })}
-          >
-            Run
-          </Button>
-        </DialogActions>
-      </Dialog>
-
       {/* Trigger error snackbar */}
       <Snackbar
         open={triggerError !== null}
@@ -400,8 +337,6 @@ export default function ClusterStatusCard() {
           {triggerError}
         </Alert>
       </Snackbar>
-
-      <LogViewer execution={selectedExecution} onClose={() => setSelectedExecution(null)} />
     </>
   )
 }

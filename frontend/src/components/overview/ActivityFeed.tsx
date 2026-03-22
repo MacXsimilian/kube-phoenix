@@ -16,29 +16,31 @@ import Alert from '@mui/material/Alert'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
-import { getExecutions } from '@/lib/api'
-import type { Execution } from '@/lib/types'
+import { getPolicyExecutions } from '@/lib/api'
+import type { PolicyExecution } from '@/lib/types'
 import { timeAgo } from '@/lib/formatters'
 import { useColors } from '@/lib/colors'
 import LogViewer from '@/components/history/LogViewer'
 
-function StatusChip({ status }: { status: Execution['status'] }) {
-  const map = {
-    running: { label: 'Running', color: 'info' as const },
-    success: { label: 'Success', color: 'success' as const },
-    failed: { label: 'Failed', color: 'error' as const },
+function StatusChip({ status }: { status: PolicyExecution['status'] }) {
+  const map: Record<string, { label: string; color: 'info' | 'success' | 'error' | 'warning' | 'default' }> = {
+    running: { label: 'Running', color: 'info' },
+    success: { label: 'Success', color: 'success' },
+    failed: { label: 'Failed', color: 'error' },
+    interrupted: { label: 'Interrupted', color: 'warning' },
+    skipped: { label: 'Skipped', color: 'default' },
   }
-  const { label, color } = map[status]
+  const { label, color } = map[status] ?? { label: status, color: 'default' as const }
   return <Chip label={label} color={color} size="small" sx={{ height: 20, fontSize: 11 }} />
 }
 
 export default function ActivityFeed() {
   const router = useRouter()
   const colors = useColors()
-  const [selected, setSelected] = useState<Execution | null>(null)
+  const [selected, setSelected] = useState<PolicyExecution | null>(null)
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['executions', 'feed'],
-    queryFn: () => getExecutions({ pageSize: 3 }),
+    queryKey: ['policy-executions', 'feed'],
+    queryFn: () => getPolicyExecutions({ pageSize: 3 }),
     staleTime: 14_000,
     refetchInterval: 15_000,
   })
@@ -86,7 +88,7 @@ export default function ActivityFeed() {
             <ListItemButton
               key={exec.id}
               onClick={() => setSelected(exec)}
-              aria-label={`View logs for ${exec.schedule?.name ?? 'execution'} #${exec.id}`}
+              aria-label={`View logs for execution #${exec.id}`}
               sx={{ borderRadius: 2, px: 1.5, py: 1, mb: 0.5 }}
             >
               <Box
@@ -94,7 +96,7 @@ export default function ActivityFeed() {
                   width: 32,
                   height: 32,
                   borderRadius: 1.5,
-                  bgcolor: exec.schedule?.type === 'scale_down'
+                  bgcolor: exec.direction === 'sleep'
                     ? 'rgba(124,58,237,0.12)'
                     : 'rgba(245,158,11,0.1)',
                   display: 'flex',
@@ -104,7 +106,7 @@ export default function ActivityFeed() {
                   flexShrink: 0,
                 }}
               >
-                {exec.schedule?.type === 'scale_down' ? (
+                {exec.direction === 'sleep' ? (
                   <BedtimeIcon sx={{ fontSize: 16, color: 'primary.main' }} />
                 ) : (
                   <WbSunnyIcon sx={{ fontSize: 16, color: 'warning.main' }} />
@@ -113,7 +115,7 @@ export default function ActivityFeed() {
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="body2" fontWeight={500}>
-                    {exec.schedule?.name ?? 'Unknown'}
+                    {exec.direction === 'sleep' ? 'Sleep' : 'Wake'} #{exec.id}
                   </Typography>
                   <StatusChip status={exec.status} />
                   <Chip
@@ -141,7 +143,7 @@ export default function ActivityFeed() {
                 ) : (
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Typography variant="caption" color="text.secondary">
-                      {exec.schedule?.type === 'scale_up'
+                      {exec.direction === 'wake'
                         ? `Restored ${exec.countScaled}${exec.countErrors > 0 ? ` · Errors ${exec.countErrors}` : ''}`
                         : `Scaled ${exec.countScaled} · Drained ${exec.countDrained}${exec.countErrors > 0 ? ` · Errors ${exec.countErrors}` : ''}`}
                     </Typography>

@@ -147,23 +147,12 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 		_ = conn.Close()
 	}()
 
-	// Send existing log lines (converted to store.LogLine for wire format)
+	// Send existing log lines
 	existing, err := h.store.GetPolicyLogLines(id)
 	if err != nil {
 		slog.Error("ws policy: failed to fetch existing log lines", "execID", id, "err", err)
 	}
-	wireLines := make([]store.LogLine, len(existing))
-	for i, pl := range existing {
-		wireLines[i] = store.LogLine{
-			ID:          pl.ID,
-			ExecutionID: pl.ExecutionID,
-			Seq:         pl.Seq,
-			Level:       pl.Level,
-			Message:     pl.Message,
-			Timestamp:   pl.Timestamp,
-		}
-	}
-	if !wsSendLines(conn, wireLines) {
+	if !wsSendLines(conn, existing) {
 		return
 	}
 

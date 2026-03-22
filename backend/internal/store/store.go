@@ -44,13 +44,25 @@ func New(dsn string) (*Store, error) {
 	db.Exec("DROP INDEX IF EXISTS idx_users_o_id_c_subject")
 
 	if err := db.AutoMigrate(
-		&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{},
+		&Guardrails{},
 		&User{}, &Session{}, &AuditLog{},
 		&Policy{}, &PolicyExecution{}, &PolicyLogLine{},
 		&WorkloadSnapshot{}, &PolicyOverride{}, &ScheduledException{},
 	); err != nil {
 		return nil, err
 	}
+	// Add CHECK constraints for enum-like status fields (idempotent).
+	db.Exec(`DO $$ BEGIN
+		ALTER TABLE scheduled_exceptions ADD CONSTRAINT chk_exception_status
+			CHECK (status IN ('pending','active','completed','cancelled'));
+	EXCEPTION WHEN duplicate_object THEN NULL;
+	END $$`)
+	db.Exec(`DO $$ BEGIN
+		ALTER TABLE policy_executions ADD CONSTRAINT chk_policy_execution_status
+			CHECK (status IN ('running','success','failed','interrupted','skipped'));
+	EXCEPTION WHEN duplicate_object THEN NULL;
+	END $$`)
+
 	slog.Info("store: schema migration complete")
 	return &Store{db: db}, nil
 }
