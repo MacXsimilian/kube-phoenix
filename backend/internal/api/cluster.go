@@ -600,21 +600,7 @@ func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	container := r.URL.Query().Get("container")
-	previous := r.URL.Query().Get("previous") == "true"
-	follow := r.URL.Query().Get("follow") == "true"
-
-	tailLines := int64(500)
-	if v := r.URL.Query().Get("tailLines"); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 && n <= 10000 {
-			tailLines = n
-		}
-	}
-
-	// Cannot follow previous logs
-	if previous {
-		follow = false
-	}
+	container, tailLines, previous, follow := parsePodLogParams(r)
 
 	stream, err := h.k8s.GetPodLogs(r.Context(), namespace, name, container, tailLines, previous, follow)
 	if err != nil {
@@ -655,6 +641,27 @@ func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+// parsePodLogParams extracts and sanitises pod log query parameters.
+func parsePodLogParams(r *http.Request) (container string, tailLines int64, previous, follow bool) {
+	q := r.URL.Query()
+	container = q.Get("container")
+	previous = q.Get("previous") == "true"
+	follow = q.Get("follow") == "true"
+
+	tailLines = 500
+	if v := q.Get("tailLines"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 && n <= 10000 {
+			tailLines = n
+		}
+	}
+
+	// Cannot stream previous (terminated) container logs.
+	if previous {
+		follow = false
+	}
+	return
 }
 
 // ── Workload pods ─────────────────────────────────────────────────────────────
