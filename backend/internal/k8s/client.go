@@ -54,6 +54,16 @@ func (c *Client) ListDeployments(ctx context.Context, namespace string) ([]appsv
 	return list.Items, nil
 }
 
+// ListDeploymentsBySelector lists deployments filtered by a label selector string.
+// An empty labelSelector returns all deployments (same as ListDeployments).
+func (c *Client) ListDeploymentsBySelector(ctx context.Context, namespace, labelSelector string) ([]appsv1.Deployment, error) {
+	list, err := c.cs.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
+	if err != nil {
+		return nil, fmt.Errorf("list deployments by selector in %q: %w", namespace, err)
+	}
+	return list.Items, nil
+}
+
 func (c *Client) ScaleDeployment(ctx context.Context, namespace, name string, replicas int32) error {
 	scale, err := c.cs.AppsV1().Deployments(namespace).GetScale(ctx, name, metav1.GetOptions{})
 	if err != nil {
@@ -102,6 +112,15 @@ func (c *Client) ListStatefulSets(ctx context.Context, namespace string) ([]apps
 	list, err := c.cs.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("list statefulsets in %q: %w", namespace, err)
+	}
+	return list.Items, nil
+}
+
+// ListStatefulSetsBySelector lists statefulsets filtered by a label selector string.
+func (c *Client) ListStatefulSetsBySelector(ctx context.Context, namespace, labelSelector string) ([]appsv1.StatefulSet, error) {
+	list, err := c.cs.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
+	if err != nil {
+		return nil, fmt.Errorf("list statefulsets by selector in %q: %w", namespace, err)
 	}
 	return list.Items, nil
 }

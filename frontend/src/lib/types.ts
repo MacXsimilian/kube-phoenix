@@ -155,6 +155,123 @@ export interface PodDetail {
   events: PodEvent[]
 }
 
+// ─── Policy model ─────────────────────────────────────────────────────────────
+
+export interface Policy {
+  id: number
+  name: string
+  description: string
+  namespaceFilter: string
+  labelSelector: string
+  sleepCron: string
+  wakeCron: string
+  timezone: string
+  mode: 'plan' | 'apply'
+  enabled: boolean
+  timeoutMinutes: number
+  currentState: 'sleeping' | 'awake' | 'unknown' | 'transitioning'
+  stateSince: string | null
+  lastSleepAt: string | null
+  lastWakeAt: string | null
+  createdAt: string
+  updatedAt: string
+  nextSleepAt?: string | null
+  nextWakeAt?: string | null
+}
+
+export interface PolicyInput {
+  name: string
+  description?: string
+  namespaceFilter?: string
+  labelSelector?: string
+  sleepCron?: string
+  wakeCron?: string
+  timezone?: string
+  mode?: 'plan' | 'apply'
+  enabled?: boolean
+  timeoutMinutes?: number
+}
+
+export interface PolicyExecution {
+  id: number
+  policyId: number
+  direction: 'sleep' | 'wake'
+  trigger: string
+  startedAt: string
+  finishedAt: string | null
+  status: 'running' | 'success' | 'failed' | 'interrupted'
+  countScaled: number
+  countSkipped: number
+  countErrors: number
+}
+
+export interface PolicyExecutionPage {
+  items: PolicyExecution[]
+  total: number
+}
+
+export interface WorkloadSnapshot {
+  id: number
+  policyId: number
+  executionId: number
+  namespace: string
+  kind: string
+  name: string
+  replicasBefore: number
+  wasAlreadyZero: boolean
+  closedAt: string | null
+  deletedAtWake: boolean
+  externallyScaled: boolean
+}
+
+export interface PolicyOverride {
+  id: number
+  policyId: number
+  overrideType: 'stay_awake' | 'force_sleep' | 'skip_sleep' | 'skip_wake'
+  startsAt: string | null
+  endsAt: string | null
+  targetCronTime: string | null
+  reason: string
+  createdBy: string
+  createdAt: string
+}
+
+export interface WorkloadTarget {
+  kind: string
+  namespace: string
+  name: string
+}
+
+export interface ScheduledException {
+  id: number
+  policyId: number | null
+  exceptionType: 'stay_awake' | 'force_sleep'
+  startsAt: string
+  endsAt: string
+  ticketRef: string
+  reason: string
+  sleepOnEnd: boolean
+  namespaceFilter: string
+  labelSelector: string
+  status: 'pending' | 'active' | 'completed' | 'cancelled'
+  createdBy: string
+  createdAt: string
+  workloadTargets: WorkloadTarget[]
+}
+
+export interface ScheduledExceptionInput {
+  policyId?: number | null
+  exceptionType: 'stay_awake' | 'force_sleep'
+  startsAt: string
+  endsAt: string
+  ticketRef?: string
+  reason?: string
+  sleepOnEnd?: boolean
+  namespaceFilter?: string
+  labelSelector?: string
+  workloadTargets?: WorkloadTarget[]
+}
+
 // ─── User management ─────────────────────────────────────────────────────────
 
 export type Role = 'admin' | 'operator' | 'viewer'

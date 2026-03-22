@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+
+* **policy:** unified sleep/wake policy model with DB-backed snapshots, overrides, scheduled exceptions, and startup recovery
+  * `Policy` entity replaces paired `scale_down`/`scale_up` schedules — one object declares `sleepCron`, `wakeCron`, namespace/label targeting, mode, and timeout
+  * `PolicyScheduler` — per-policy robfig/cron entries, startup recovery (IntendedState vs currentState), exception tick loop (every minute)
+  * `PolicyEngine` — pure evaluation: `IntendedState`, `NextFire`, `MostRecentFire` (forward-scan workaround for cron lacking `Prev()`)
+  * `PolicyScaler` — DB-backed `WorkloadSnapshot` rows; double-sleep guard; belt-and-suspenders K8s annotation fallback on wake
+  * Overrides: `stay_awake`, `force_sleep` (windowed) + `skip_sleep`, `skip_wake` (one-shot); precedence: force_sleep > stay_awake > skip > cron
+  * Scheduled Exceptions: future one-time windows with ticket refs, `pending → active → completed` lifecycle, `sleepOnEnd` flag
+  * 22 new API endpoints under `/api/policies`, `/api/policy-executions`, `/api/exceptions`
+  * WebSocket live log streaming at `/ws/policy-executions/{id}/logs`
+  * Frontend: Policies page, policy detail page (overrides, exceptions, execution history), Exceptions page, PolicyCard component with state badge
+
+---
+
 ## [0.1.81](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.80...v0.1.81) (2026-03-22)
 
 

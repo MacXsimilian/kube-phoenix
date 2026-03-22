@@ -272,7 +272,11 @@ func (s *Store) Tx(fn func(*gorm.DB) error) error {
 
 // DropAllTables drops all application tables in a single CASCADE statement.
 func (s *Store) DropAllTables() error {
-	if err := s.db.Exec("DROP TABLE IF EXISTS sessions, users, log_lines, executions, guardrails, schedules CASCADE").Error; err != nil {
+	if err := s.db.Exec(`DROP TABLE IF EXISTS
+		workload_snapshots, policy_log_lines, policy_executions,
+		policy_overrides, scheduled_exceptions, policies,
+		sessions, users, log_lines, executions, guardrails, schedules,
+		audit_logs CASCADE`).Error; err != nil {
 		return fmt.Errorf("drop tables: %w", err)
 	}
 	return nil
@@ -280,7 +284,12 @@ func (s *Store) DropAllTables() error {
 
 // MigrateSchema recreates the schema from the current models.
 func (s *Store) MigrateSchema() error {
-	if err := s.db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{}, &User{}, &Session{}, &AuditLog{}); err != nil {
+	if err := s.db.AutoMigrate(
+		&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{},
+		&User{}, &Session{}, &AuditLog{},
+		&Policy{}, &PolicyExecution{}, &PolicyLogLine{},
+		&WorkloadSnapshot{}, &PolicyOverride{}, &ScheduledException{},
+	); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
 	// Backfill positions for existing rows after the column is first added.

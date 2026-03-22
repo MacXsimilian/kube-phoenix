@@ -97,8 +97,11 @@ flowchart TB
                 subgraph Binary["Go Binary — :8080"]
                     Router["Chi Router<br/>+ Session Auth middleware"]
                     Handlers["API Handlers<br/>/api/*  /ws/*"]
-                    Scheduler["Scheduler<br/>(robfig/cron v3)"]
+                    Scheduler["Scheduler<br/>(legacy schedules)"]
                     Scaler["Scaler Runner<br/>scale_down / scale_up"]
+                    PolicyScheduler["PolicyScheduler<br/>(policies + exceptions)"]
+                    PolicyEngine["PolicyEngine<br/>(IntendedState evaluation)"]
+                    PolicyScaler["PolicyScaler<br/>(DB-backed snapshots)"]
                     Store["Store<br/>(GORM)"]
                     SPA["SPA Static<br/>(//go:embed)"]
                     K8sClient["k8s Client<br/>(client-go)"]
@@ -116,9 +119,13 @@ flowchart TB
     Router --> Handlers
     Router --> SPA
     Handlers --> Scheduler
+    Handlers --> PolicyScheduler
     Handlers --> Store
     Scheduler --> Scaler
+    PolicyScheduler --> PolicyEngine
+    PolicyScheduler --> PolicyScaler
     Scaler --> K8sClient
+    PolicyScaler --> K8sClient
     K8sClient --> K8sAPI
     Store --> PG
 ```
@@ -160,10 +167,17 @@ kube-phoenix/
 │   │   │   ├── auth.go           # Login, logout, me, password change, OIDC callbacks
 │   │   │   ├── users.go          # User CRUD (admin only)
 │   │   │   ├── audit.go          # Audit log listing
+│   │   │   ├── policies.go       # Policy CRUD + sleep/wake triggers + overrides/snapshots
+│   │   │   ├── policy_executions.go  # Policy execution list/get/logs/snapshots + WebSocket
+│   │   │   ├── overrides.go      # Policy override create/delete
+│   │   │   ├── exceptions.go     # Scheduled exception CRUD
 │   │   │   └── helpers.go        # jsonOK, jsonError, parseID, splitCSVLocal
 │   │   │
 │   │   ├── scheduler/
-│   │   │   └── scheduler.go      # Cron wrapper + Broker pub/sub + run()
+│   │   │   ├── scheduler.go      # Cron wrapper + Broker pub/sub + run()
+│   │   │   ├── policy_scheduler.go   # PolicyScheduler: per-policy cron, recovery, exception tick
+│   │   │   ├── policy_engine.go      # Pure evaluation: IntendedState, NextFire, MostRecentFire
+│   │   │   └── policy_scaler.go      # DB-backed sleep/wake with WorkloadSnapshot persistence
 │   │   │
 │   │   ├── scaler/
 │   │   │   ├── scaler.go         # Types, helpers, Runner struct
@@ -213,6 +227,10 @@ kube-phoenix/
 │       │   ├── guardrails/page.tsx
 │       │   ├── schedules/page.tsx
 │       │   ├── history/page.tsx
+│       │   ├── policies/
+│       │   │   ├── page.tsx       # Policy list: cards, create/edit/delete, sleep/wake now
+│       │   │   └── [id]/page.tsx  # Policy detail: overrides, exceptions, execution history
+│       │   ├── exceptions/page.tsx # Scheduled exceptions list with status tabs
 │       │   ├── users/page.tsx
 │       │   ├── audit/page.tsx
 │       │   └── settings/page.tsx
@@ -242,6 +260,10 @@ kube-phoenix/
 │       │   │   └── LogViewer.tsx
 │       │   ├── guardrails/
 │       │   │   └── GuardrailsForm.tsx
+│       │   ├── policies/
+│       │   │   ├── PolicyCard.tsx       # State badge, sleep/wake buttons, edit/delete
+│       │   │   ├── CreatePolicyDialog.tsx  # Create/edit form with CronBuilder
+│       │   │   └── ExceptionDialog.tsx  # Create/edit scheduled exception
 │       │   ├── users/
 │       │   │   └── UsersTable.tsx
 │       │   ├── audit/
@@ -323,7 +345,14 @@ main()
   │   └─ if k8s != nil: scheduler.Start()
   │   └─ if k8s == nil: scheduler created but not started (manual trigger blocked)
   │
-  ├─ api.NewRouter(store, k8s, scheduler, cache, auditWriter)  ──► Returns http.Handler (Chi mux)
+  ├─ store.MarkInterruptedPolicyExecutions()  ──► sets status=interrupted for any running→interrupted rows
+  │
+  ├─ scheduler.NewPolicyScheduler(store, k8s)
+  │   └─ if k8s != nil: policySched.Start(ctx)
+  │   └─ if k8s != nil: policySched.RecoverPolicies(ctx)  ──► computes IntendedState(now) for each policy
+  │   └─ if k8s != nil: go runTicker(ctx, 1m, "exception-tick", policySched.TickExceptions)
+  │
+  ├─ api.NewRouter(store, k8s, scheduler, policySched, cache, auditWriter)  ──► Returns http.Handler (Chi mux)
   │
   └─ http.Server{Addr: ":8080", WriteTimeout: 0}
       └─ WriteTimeout=0 is critical: allows WebSocket and SSE to stream indefinitely
@@ -331,7 +360,7 @@ main()
       └─ Graceful shutdown: signal.Notify(SIGINT, SIGTERM) with buffered channel, 30s timeout
 ```
 
-**Why WriteTimeout is zero:** Go's `http.Server` enforces `WriteTimeout` across the entire response, including streaming. Setting it to 0 disables it, which is required for WebSocket connections and the NDJSON admin/reset-db stream. Without this setting, long-running executions (which can take hours) would have their WebSocket connections forcefully closed mid-stream.
+**Why WriteTimeout is zero:** Go's `http.Server` enforces `WriteTimeout` across the entire response, including streaming. Setting it to 0 disables it, which is required for WebSocket connections and the NDJSON danger/reset-db stream. Without this setting, long-running executions (which can take hours) would have their WebSocket connections forcefully closed mid-stream.
 
 **Why k8s = nil is allowed:** The server starts and serves the frontend even if no Kubernetes cluster is reachable. This allows the UI to be accessible for read-only operations (checking history, viewing schedules) even during a cluster incident. Any endpoint that requires the k8s client returns a 503 with a clear error message.
 
@@ -414,11 +443,25 @@ Group: /  (with SessionAuth + CSRF middleware)
   ├─ /api/overview            GET  ← pre-aggregated dashboard summary (cache-backed)
   ├─ /api/cluster/stream      GET  ← SSE stream of overview updates (10 s cadence)
   ├─ /api/trigger             POST
-  ├─ /api/admin/reset-db      POST (admin only)
+  ├─ /api/danger/reset-db      POST (admin only)
   ├─ /api/users               GET, POST (admin only)
   ├─ /api/users/{id}          PUT, DELETE (admin only)
   ├─ /api/audit-logs          GET (all roles)
-  └─ /ws/executions/{id}/logs GET (WebSocket upgrade, session cookie auth)
+  ├─ /api/policies            GET, POST
+  ├─ /api/policies/{id}       GET, PUT, DELETE
+  ├─ /api/policies/{id}/sleep POST (operator+)
+  ├─ /api/policies/{id}/wake  POST (operator+)
+  ├─ /api/policies/{id}/snapshots     GET
+  ├─ /api/policies/{id}/overrides     GET, POST (operator+)
+  ├─ /api/policies/{id}/overrides/{oid} DELETE (operator+)
+  ├─ /api/policy-executions           GET
+  ├─ /api/policy-executions/{id}      GET
+  ├─ /api/policy-executions/{id}/logs GET
+  ├─ /api/policy-executions/{id}/snapshots GET
+  ├─ /api/exceptions          GET, POST (operator+)
+  ├─ /api/exceptions/{id}     GET, PUT (operator+), DELETE (operator+)
+  ├─ /ws/executions/{id}/logs GET (WebSocket upgrade, session cookie auth)
+  └─ /ws/policy-executions/{id}/logs GET (WebSocket upgrade, session cookie auth)
 
 SPA: everything else → web.SPAHandler (serves index.html for unknown paths)
 ```
@@ -435,6 +478,8 @@ The `/healthz` endpoint must be reachable by the Kubernetes liveness probe. Kube
 | `/api/users/*` | admin | User management |
 | `/api/admin/*` | admin | DB reset |
 | `/api/trigger`, `/api/schedules` (POST/PUT/DELETE), `/api/guardrails` (PUT) | admin, operator | Mutating operations |
+| `/api/policies` (POST/PUT/DELETE), `/api/policies/{id}/overrides` (POST/DELETE), `/api/exceptions` (POST/PUT/DELETE) | admin, operator | Policy mutations |
+| `/api/policies/{id}/sleep`, `/api/policies/{id}/wake` | admin, operator | Policy triggers |
 | All other `/api/*` | admin, operator, viewer | Read-only access |
 
 ### 4.3 API Handlers
@@ -619,7 +664,7 @@ with HTTP 202 Accepted. The execution runs asynchronously in a goroutine; the cl
 
 #### Admin (`internal/api/admin.go`)
 
-**`resetDB` (POST /api/admin/reset-db)**
+**`resetDB` (POST /api/danger/reset-db)**
 
 This is a destructive operation used for development and testing. It requires:
 ```json
@@ -1214,6 +1259,7 @@ classDiagram
         -store *Store
         -k8s *Client
         -scheduler *Scheduler
+        -policySched *PolicyScheduler
         -cache *ClusterCache
         +NewRouter() *chi.Mux
         +login()
@@ -1250,6 +1296,61 @@ classDiagram
         +deleteUser()
         +listAuditLogs()
         +resetDB()
+        +listPolicies()
+        +getPolicy()
+        +createPolicy()
+        +updatePolicy()
+        +deletePolicy()
+        +triggerPolicySleep()
+        +triggerPolicyWake()
+        +listPolicyExecutions()
+        +getPolicyExecution()
+        +getPolicyExecutionLogs()
+        +getPolicyExecutionSnapshots()
+        +getPolicySnapshots()
+        +listPolicyOverrides()
+        +createPolicyOverride()
+        +deletePolicyOverride()
+        +listExceptions()
+        +getException()
+        +createException()
+        +updateException()
+        +deleteException()
+        +wsPolicyExecutionLogs()
+    }
+
+    class PolicyScheduler {
+        -store *Store
+        -k8s *Client
+        -mu sync.Mutex
+        -entries map~uint, cron.EntryID~
+        -cron *cron.Cron
+        +PolicyBroker *Broker
+        +Start(ctx)
+        +Stop()
+        +RecoverPolicies(ctx)
+        +TickExceptions(ctx)
+        +RunSleepNow(ctx, policyID, trigger) uint, error
+        +RunWakeNow(ctx, policyID, trigger) uint, error
+        -run(ctx, policyID, direction, trigger) uint, error
+        -schedulePolicy(p Policy)
+        -unschedulePolicy(policyID)
+    }
+
+    class PolicyEngine {
+        +IntendedState(p Policy, overrides, now) string
+        +NextFire(expr, tz, from) *time.Time
+        +MostRecentFire(expr, tz, now) *time.Time
+    }
+
+    class PolicyScaler {
+        -store *Store
+        -k8s *Client
+        +RunSleep(ctx, p Policy, execID, mode, logCh) *Counts, error
+        +RunWake(ctx, p Policy, execID, mode, logCh) *Counts, error
+        -matchWorkloads(ctx, p Policy) []WorkloadTarget, error
+        -saveSnapshot(execID, target, replicasBefore) error
+        -restoreSnapshot(execID, snap) error
     }
 
     class Scheduler {
@@ -1397,11 +1498,19 @@ classDiagram
     Handler --> Store : queries DB
     Handler --> Client : direct k8s calls
     Handler --> Scheduler : trigger, reload
+    Handler --> PolicyScheduler : trigger sleep/wake
     Handler --> ClusterCache : read snapshots
     Handler --> Broker : subscribe WS clients
+    Handler --> PolicyScheduler : subscribe WS (policy logs)
     Scheduler --> Runner : executes scale ops
     Scheduler --> Broker : publishes log lines
     Scheduler --> Store : creates executions
+    PolicyScheduler --> PolicyEngine : evaluate IntendedState
+    PolicyScheduler --> PolicyScaler : executes sleep/wake
+    PolicyScheduler --> Broker : publishes policy log lines
+    PolicyScheduler --> Store : creates policy executions
+    PolicyScaler --> Client : k8s API calls
+    PolicyScaler --> Store : reads/writes snapshots
     Runner --> Client : k8s API calls
     Runner --> Store : reads guardrails
     Runner ..> Counts : returns
@@ -1549,7 +1658,7 @@ WebSocket connections authenticate via the session cookie, which the browser sen
 **`resetDatabaseStream()` — async generator:**
 ```ts
 async function* resetDatabaseStream(): AsyncGenerator<{step: string, status: string, message?: string}> {
-    const res = await fetch(BASE + '/api/admin/reset-db', {
+    const res = await fetch(BASE + '/api/danger/reset-db', {
         method: 'POST',
         body: JSON.stringify({ confirm: 'RESET DATABASE' }),
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -1748,6 +1857,12 @@ erDiagram
     executions ||--o{ log_lines : "has many (CASCADE)"
     users ||--o{ sessions : "has many (CASCADE)"
     users ||--o{ audit_logs : "has many (SET NULL)"
+    policies ||--o{ policy_executions : "has many"
+    policies ||--o{ workload_snapshots : "has many"
+    policies ||--o{ policy_overrides : "has many"
+    policies ||--o{ scheduled_exceptions : "optional FK"
+    policy_executions ||--o{ policy_log_lines : "has many (CASCADE)"
+    policy_executions ||--o{ workload_snapshots : "sleep/wake ref"
 
     schedules {
         bigint id PK
@@ -1837,6 +1952,103 @@ erDiagram
         jsonb after "nullable"
         varchar(45) ip_address
         timestamptz timestamp "indexed"
+    }
+
+    policies {
+        bigint id PK
+        varchar(255) name "not null"
+        varchar(1024) description
+        varchar(255) sleep_cron "5-field; empty = no auto-sleep"
+        varchar(255) wake_cron "5-field; empty = no auto-wake"
+        varchar(100) timezone "default UTC"
+        varchar(10) mode "plan | apply"
+        boolean enabled "default true"
+        int timeout_minutes "default 30"
+        varchar(4096) namespace_filter "CSV; empty = all"
+        varchar(4096) label_selector "k8s selector syntax"
+        varchar(20) current_state "sleeping|awake|unknown|transitioning"
+        timestamptz state_since "nullable"
+        timestamptz last_sleep_at "nullable"
+        timestamptz last_wake_at "nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    policy_executions {
+        bigint id PK
+        bigint policy_id FK "indexed"
+        varchar(10) direction "sleep | wake, indexed"
+        varchar(30) trigger "scheduled|manual_sleep|manual_wake|recovery|..."
+        timestamptz started_at "indexed"
+        timestamptz finished_at "nullable"
+        varchar(20) status "running|success|failed|interrupted|skipped, indexed"
+        varchar(10) mode "plan | apply"
+        int count_scaled
+        int count_skipped
+        int count_errors
+        int count_protected
+        int count_drained
+        int count_deleted
+    }
+
+    policy_log_lines {
+        bigint id PK
+        bigint execution_id FK "composite index with seq, CASCADE"
+        int seq "monotonic per execution"
+        varchar(10) level "info | ok | plan | error | warn"
+        text message
+        timestamptz timestamp
+    }
+
+    workload_snapshots {
+        bigint id PK
+        bigint policy_id FK "indexed"
+        bigint sleep_execution_id FK "indexed"
+        bigint wake_execution_id FK "indexed, nullable"
+        varchar(50) kind "Deployment | StatefulSet"
+        varchar(63) namespace "indexed"
+        varchar(253) name
+        int replicas_before
+        int replicas_restored "nullable"
+        timestamptz restored_at "nullable"
+        boolean was_already_zero
+        boolean was_deleted_at_wake
+        boolean was_externally_scaled
+        timestamptz captured_at "indexed"
+    }
+
+    policy_overrides {
+        bigint id PK
+        bigint policy_id FK "indexed"
+        varchar(30) override_type "stay_awake|force_sleep|skip_sleep|skip_wake"
+        timestamptz starts_at "nullable (skip types)"
+        timestamptz ends_at "nullable (skip types)"
+        timestamptz target_cron_time "nullable (windowed types)"
+        varchar(1024) reason
+        varchar(255) created_by
+        timestamptz created_at
+    }
+
+    scheduled_exceptions {
+        bigint id PK
+        bigint policy_id FK "indexed, nullable"
+        varchar(20) exception_type "stay_awake | force_sleep"
+        timestamptz starts_at "indexed"
+        timestamptz ends_at
+        varchar(255) ticket_ref "JIRA-123, GH-456, etc."
+        varchar(1024) reason
+        boolean sleep_on_end "default true"
+        varchar(4096) namespace_filter
+        varchar(4096) label_selector
+        jsonb workload_targets "JSON array"
+        varchar(20) status "pending|active|completed|cancelled"
+        bigint start_execution_id "nullable"
+        bigint end_execution_id "nullable"
+        timestamptz cancelled_at "nullable"
+        varchar(1024) cancel_reason
+        varchar(255) created_by
+        timestamptz created_at
+        timestamptz updated_at
     }
 ```
 

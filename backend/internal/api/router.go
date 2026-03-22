@@ -23,20 +23,21 @@ import (
 )
 
 type Handler struct {
-	store        *store.Store
-	k8s          *k8s.Client
-	scheduler    *scheduler.Scheduler
-	cache        *k8s.ClusterCache
-	ipLimiter    *auth.RateLimiter
-	userLimiter  *auth.RateLimiter
-	idleTimeout  time.Duration
-	maxLifetime  time.Duration
-	auditWriter  *AuditWriter
-	oidcProvider *auth.OIDCProvider
-	oidcCfg      *auth.OIDCConfig
+	store           *store.Store
+	k8s             *k8s.Client
+	scheduler       *scheduler.Scheduler
+	policyScheduler *scheduler.PolicyScheduler
+	cache           *k8s.ClusterCache
+	ipLimiter       *auth.RateLimiter
+	userLimiter     *auth.RateLimiter
+	idleTimeout     time.Duration
+	maxLifetime     time.Duration
+	auditWriter     *AuditWriter
+	oidcProvider    *auth.OIDCProvider
+	oidcCfg         *auth.OIDCConfig
 }
 
-func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sched *scheduler.Scheduler, cache *k8s.ClusterCache) *chi.Mux {
+func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sched *scheduler.Scheduler, policySched *scheduler.PolicyScheduler, cache *k8s.ClusterCache) *chi.Mux {
 	idleTimeout := parseDuration("SESSION_IDLE_TIMEOUT", 8*time.Hour)
 	maxLifetime := parseDuration("SESSION_MAX_LIFETIME", 24*time.Hour)
 
@@ -60,17 +61,18 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sche
 	}
 
 	h := &Handler{
-		store:        st,
-		k8s:          k8sClient,
-		scheduler:    sched,
-		cache:        cache,
-		ipLimiter:    auth.NewRateLimiter(10, 15*time.Minute),
-		userLimiter:  auth.NewRateLimiter(5, 15*time.Minute),
-		idleTimeout:  idleTimeout,
-		maxLifetime:  maxLifetime,
-		auditWriter:  aw,
-		oidcProvider: oidcProv,
-		oidcCfg:      oidcCfg,
+		store:           st,
+		k8s:             k8sClient,
+		scheduler:       sched,
+		policyScheduler: policySched,
+		cache:           cache,
+		ipLimiter:       auth.NewRateLimiter(10, 15*time.Minute),
+		userLimiter:     auth.NewRateLimiter(5, 15*time.Minute),
+		idleTimeout:     idleTimeout,
+		maxLifetime:     maxLifetime,
+		auditWriter:     aw,
+		oidcProvider:    oidcProv,
+		oidcCfg:         oidcCfg,
 	}
 
 	r := chi.NewRouter()
@@ -145,6 +147,18 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sche
 			// ── Audit logs (all authenticated users) ─────────────────
 			r.Get("/audit-logs", h.listAuditLogs)
 
+			// ── Policy read routes (all authenticated users) ──────────
+			r.Get("/policies", h.listPolicies)
+			r.Get("/policies/{id}", h.getPolicy)
+			r.Get("/policies/{id}/snapshots", h.getPolicySnapshots)
+			r.Get("/policies/{id}/overrides", h.listPolicyOverrides)
+			r.Get("/policy-executions", h.listPolicyExecutions)
+			r.Get("/policy-executions/{id}", h.getPolicyExecution)
+			r.Get("/policy-executions/{id}/logs", h.getPolicyExecutionLogs)
+			r.Get("/policy-executions/{id}/snapshots", h.getPolicyExecutionSnapshots)
+			r.Get("/exceptions", h.listExceptions)
+			r.Get("/exceptions/{id}", h.getException)
+
 			// ── Schedule/guardrail mutations (admin + operator) ──────
 			r.Group(func(r chi.Router) {
 				r.Use(authmw.RequirePermission(auth.PermScheduleEdit))
@@ -159,10 +173,25 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sche
 				r.Put("/guardrails", h.updateGuardrails)
 			})
 
+			// ── Policy mutations (admin + operator) ───────────────────
+			r.Group(func(r chi.Router) {
+				r.Use(authmw.RequirePermission(auth.PermScheduleEdit))
+				r.Post("/policies", h.createPolicy)
+				r.Put("/policies/{id}", h.updatePolicy)
+				r.Delete("/policies/{id}", h.deletePolicy)
+				r.Post("/policies/{id}/overrides", h.createPolicyOverride)
+				r.Delete("/policies/{id}/overrides/{overrideId}", h.deletePolicyOverride)
+				r.Post("/exceptions", h.createException)
+				r.Put("/exceptions/{id}", h.updateException)
+				r.Delete("/exceptions/{id}", h.deleteException)
+			})
+
 			// ── Manual trigger (admin + operator) ────────────────────
 			r.Group(func(r chi.Router) {
 				r.Use(authmw.RequirePermission(auth.PermScheduleTrigger))
 				r.Post("/trigger", h.trigger)
+				r.Post("/policies/{id}/sleep", h.triggerPolicySleep)
+				r.Post("/policies/{id}/wake", h.triggerPolicyWake)
 			})
 
 			// ── User management (admin only) ─────────────────────────
@@ -177,12 +206,13 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sche
 			// ── Admin danger zone ────────────────────────────────────
 			r.Group(func(r chi.Router) {
 				r.Use(authmw.RequirePermission(auth.PermAdminResetDB))
-				r.Post("/admin/reset-db", h.resetDB)
+				r.Post("/danger/reset-db", h.resetDB)
 			})
 		})
 
 		// WebSocket — live log streaming (cookies sent automatically on upgrade)
 		r.Get("/ws/executions/{id}/logs", h.wsExecutionLogs)
+		r.Get("/ws/policy-executions/{id}/logs", h.wsPolicyExecutionLogs)
 	})
 
 	// Embedded Next.js static export — SPA fallback for all other routes

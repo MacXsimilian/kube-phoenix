@@ -1,4 +1,4 @@
-import type { Schedule, ScheduleInput, Guardrails, Execution, LogLine, Workload, Node, NodePod, ExecutionPage, PodDetail, Overview, User, AuditLogPage } from './types'
+import type { Schedule, ScheduleInput, Guardrails, Execution, LogLine, Workload, Node, NodePod, ExecutionPage, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecution, PolicyExecutionPage, WorkloadSnapshot, PolicyOverride, ScheduledException, ScheduledExceptionInput } from './types'
 import { getCSRFToken } from './auth'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
@@ -234,7 +234,7 @@ export const triggerRun = (
 export type ResetEvent = { type: 'step' | 'done' | 'error'; message: string }
 
 export async function* resetDatabaseStream(): AsyncGenerator<ResetEvent> {
-  const res = await fetch(`${BASE}/api/admin/reset-db`, {
+  const res = await fetch(`${BASE}/api/danger/reset-db`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken() },
@@ -322,6 +322,100 @@ export const getAuditLogs = (params?: {
   return req<AuditLogPage>(`/api/audit-logs?${q}`)
 }
 
+// ── Policies ──────────────────────────────────────────────────────────────────
+
+export const getPolicies = (): Promise<Policy[]> =>
+  req<Policy[]>('/api/policies')
+
+export const getPolicy = (id: number): Promise<Policy> =>
+  req<Policy>(`/api/policies/${id}`)
+
+export const createPolicy = (data: PolicyInput): Promise<Policy> =>
+  req<Policy>('/api/policies', { method: 'POST', body: JSON.stringify(data) })
+
+export const updatePolicy = (id: number, data: Partial<PolicyInput>): Promise<Policy> =>
+  req<Policy>(`/api/policies/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+
+export const deletePolicy = (id: number): Promise<void> =>
+  req<void>(`/api/policies/${id}`, { method: 'DELETE' })
+
+export const triggerPolicySleep = (id: number): Promise<{ executionId: number }> =>
+  req<{ executionId: number }>(`/api/policies/${id}/sleep`, { method: 'POST' })
+
+export const triggerPolicyWake = (id: number): Promise<{ executionId: number }> =>
+  req<{ executionId: number }>(`/api/policies/${id}/wake`, { method: 'POST' })
+
+// ── Policy executions ─────────────────────────────────────────────────────────
+
+export const getPolicyExecutions = (params?: {
+  policyId?: number
+  status?: string
+  page?: number
+  pageSize?: number
+}): Promise<PolicyExecutionPage> => {
+  const q = new URLSearchParams()
+  if (params?.policyId) q.set('policy_id', String(params.policyId))
+  if (params?.status) q.set('status', params.status)
+  if (params?.page !== undefined) q.set('page', String(params.page))
+  if (params?.pageSize) q.set('page_size', String(params.pageSize))
+  return req<PolicyExecutionPage>(`/api/policy-executions?${q}`)
+}
+
+export const getPolicyExecution = (id: number): Promise<PolicyExecution> =>
+  req<PolicyExecution>(`/api/policy-executions/${id}`)
+
+export const getPolicyExecutionLogs = (id: number): Promise<LogLine[]> =>
+  req<LogLine[]>(`/api/policy-executions/${id}/logs`)
+
+export const getPolicyExecutionSnapshots = (id: number): Promise<WorkloadSnapshot[]> =>
+  req<WorkloadSnapshot[]>(`/api/policy-executions/${id}/snapshots`)
+
+export const getPolicySnapshots = (policyId: number, open?: boolean): Promise<WorkloadSnapshot[]> => {
+  const q = open ? '?open=true' : ''
+  return req<WorkloadSnapshot[]>(`/api/policies/${policyId}/snapshots${q}`)
+}
+
+// ── Policy overrides ──────────────────────────────────────────────────────────
+
+export const getPolicyOverrides = (policyId: number): Promise<PolicyOverride[]> =>
+  req<PolicyOverride[]>(`/api/policies/${policyId}/overrides`)
+
+export const createPolicyOverride = (
+  policyId: number,
+  data: Omit<PolicyOverride, 'id' | 'policyId' | 'createdBy' | 'createdAt'>
+): Promise<PolicyOverride> =>
+  req<PolicyOverride>(`/api/policies/${policyId}/overrides`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+
+export const deletePolicyOverride = (policyId: number, overrideId: number): Promise<void> =>
+  req<void>(`/api/policies/${policyId}/overrides/${overrideId}`, { method: 'DELETE' })
+
+// ── Scheduled exceptions ──────────────────────────────────────────────────────
+
+export const getExceptions = (params?: {
+  policyId?: number
+  status?: string
+}): Promise<ScheduledException[]> => {
+  const q = new URLSearchParams()
+  if (params?.policyId) q.set('policy_id', String(params.policyId))
+  if (params?.status) q.set('status', params.status)
+  return req<ScheduledException[]>(`/api/exceptions?${q}`)
+}
+
+export const getException = (id: number): Promise<ScheduledException> =>
+  req<ScheduledException>(`/api/exceptions/${id}`)
+
+export const createException = (data: ScheduledExceptionInput): Promise<ScheduledException> =>
+  req<ScheduledException>('/api/exceptions', { method: 'POST', body: JSON.stringify(data) })
+
+export const updateException = (id: number, data: Partial<ScheduledExceptionInput>): Promise<ScheduledException> =>
+  req<ScheduledException>(`/api/exceptions/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+
+export const deleteException = (id: number): Promise<void> =>
+  req<void>(`/api/exceptions/${id}`, { method: 'DELETE' })
+
 // ── WebSocket URL helper ──────────────────────────────────────────────────────
 
 export const wsLogsUrl = (executionId: number): string => {
@@ -332,4 +426,12 @@ export const wsLogsUrl = (executionId: number): string => {
 
   // Cookies are sent automatically on same-origin WebSocket upgrades — no token param needed.
   return `${base}/ws/executions/${executionId}/logs`
+}
+
+export const wsPolicyLogsUrl = (executionId: number): string => {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ''
+  const base = apiUrl
+    ? apiUrl.replace(/^http/, 'ws')
+    : `${typeof window !== 'undefined' ? window.location.origin.replace(/^http/, 'ws') : ''}`
+  return `${base}/ws/policy-executions/${executionId}/logs`
 }

@@ -1,0 +1,125 @@
+'use client'
+
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import Typography from '@mui/material/Typography'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import CircularProgress from '@mui/material/CircularProgress'
+import Alert from '@mui/material/Alert'
+import Snackbar from '@mui/material/Snackbar'
+import AddIcon from '@mui/icons-material/Add'
+import { getPolicies } from '@/lib/api'
+import type { Policy } from '@/lib/types'
+import PolicyCard from '@/components/policies/PolicyCard'
+import CreatePolicyDialog from '@/components/policies/CreatePolicyDialog'
+import { useAuth } from '@/lib/auth'
+import { canEditSchedules, canTriggerSchedules } from '@/lib/rbac'
+
+export default function PoliciesPage() {
+  const { user } = useAuth()
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editing, setEditing] = useState<Policy | undefined>()
+  const [snack, setSnack] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null)
+
+  const { data: policies, isLoading, error } = useQuery({
+    queryKey: ['policies'],
+    queryFn: getPolicies,
+    refetchInterval: 30_000,
+  })
+
+  function handleEdit(p: Policy) {
+    setEditing(p)
+    setDialogOpen(true)
+  }
+
+  function handleCreate() {
+    setEditing(undefined)
+    setDialogOpen(true)
+  }
+
+  function handleClose() {
+    setDialogOpen(false)
+    setEditing(undefined)
+  }
+
+  const canEdit = canEditSchedules(user?.permissions)
+  const canTrigger = canTriggerSchedules(user?.permissions)
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+        <Typography variant="h5" fontWeight={700}>Policies</Typography>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={handleCreate}
+          disabled={!canEdit}
+        >
+          New Policy
+        </Button>
+      </Box>
+
+      {isLoading && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress />
+        </Box>
+      )}
+
+      {error && (
+        <Alert severity="error">{error instanceof Error ? error.message : 'Failed to load policies'}</Alert>
+      )}
+
+      {policies && policies.length === 0 && (
+        <Box
+          sx={{
+            border: '1px dashed',
+            borderColor: 'divider',
+            borderRadius: 2,
+            p: 4,
+            textAlign: 'center',
+          }}
+        >
+          <Typography variant="body2" color="text.secondary">
+            No policies yet. Create one to define when workloads sleep and wake.
+          </Typography>
+        </Box>
+      )}
+
+      {policies && policies.length > 0 && (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          {policies.map(p => (
+            <PolicyCard
+              key={p.id}
+              policy={p}
+              onEdit={() => handleEdit(p)}
+              onNotify={(msg, severity) => setSnack({ msg, severity })}
+              canEdit={canEdit}
+              canTrigger={canTrigger}
+            />
+          ))}
+        </Box>
+      )}
+
+      <CreatePolicyDialog
+        open={dialogOpen}
+        onClose={handleClose}
+        existing={editing}
+        onNotify={(msg, severity) => setSnack({ msg, severity })}
+      />
+
+      <Snackbar
+        open={!!snack}
+        autoHideDuration={4000}
+        onClose={() => setSnack(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {snack ? (
+          <Alert severity={snack.severity} onClose={() => setSnack(null)} sx={{ width: '100%' }}>
+            {snack.msg}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
+    </Box>
+  )
+}

@@ -16,7 +16,7 @@
 
 **Schedule your Kubernetes cluster to sleep at night and wake in the morning. Stop paying for idle nodes.**
 
-kube-phoenix is a self-hosted web application for managing cluster sleep/wake schedules. It replaces ad-hoc bash CronJobs with a proper operator: a Go backend with a full-featured UI, cron scheduling, live log streaming, guardrails to protect critical workloads, and a Helm chart for one-command deployment.
+kube-phoenix is a self-hosted web application for managing cluster sleep/wake policies. It replaces ad-hoc bash CronJobs with a proper operator: a Go backend with a full-featured UI, policy-based scheduling, live log streaming, guardrails to protect critical workloads, and a Helm chart for one-command deployment.
 
 ---
 
@@ -37,7 +37,7 @@ kubectl port-forward -n kube-phoenix svc/kube-phoenix 8080:80
 # Open http://localhost:8080
 ```
 
-All schedules are seeded **disabled** in **plan mode** — nothing will scale until you explicitly enable a schedule and switch it to `apply` mode.
+All schedules are seeded **disabled** in **plan mode** — nothing will scale until you explicitly enable a schedule and switch it to `apply` mode. The same applies to Policies.
 
 → Full deployment guide (external DB, Ingress, AWS ALB, Helm values): [docs/deployment.md](docs/deployment.md)
 
@@ -72,14 +72,38 @@ make docker-build
 
 ## How it works
 
-kube-phoenix runs two operations — **scale down** and **scale up** — on a cron schedule. Both support **plan mode** (dry-run, logs only) and **apply mode** (executes for real). Start in plan mode until you are confident in your configuration.
+kube-phoenix supports two scheduling paradigms:
 
-### Scale down
+### Policies (recommended)
+
+A **Policy** is a unified entity that declares _when_ workloads sleep and _when_ they wake — both in one place, with a single `sleepCron` and `wakeCron` expression.
+
+```
+Policy: "Weekdays"
+  sleepCron: "0 20 * * 1-5"   ← Mon–Fri 20:00 → scale all matching workloads to 0
+  wakeCron:  "0 8 * * 1-5"    ← Mon–Fri 08:00 → restore saved replica counts
+  namespaceFilter: "staging,dev"
+  labelSelector:  "team=backend"
+  mode: apply
+```
+
+Policies also support:
+
+- **Overrides** — one-time windows that take precedence over the schedule (`stay_awake`, `force_sleep`) or skip a single cron tick (`skip_sleep`, `skip_wake`)
+- **Scheduled Exceptions** — future windows with ticket references (e.g. "keep staging up this weekend for a release") with a pending → active → completed lifecycle
+- **Startup recovery** — on pod restart, the intended state at `now` is computed and any mismatch triggers an automatic recovery execution
+- **DB-backed replica storage** — replica counts are stored in `WorkloadSnapshot` rows (not just K8s annotations), so restores are reliable even if annotations were overwritten
+
+### Legacy Schedules
+
+The original `scale_down` / `scale_up` schedule model is still supported for backwards compatibility. Each schedule runs one operation on a cron expression.
+
+### Scale down (both models)
 
 ```
 For each matching Deployment / StatefulSet
   │
-  ├─► Annotate with previous-replicas=<current>
+  ├─► Save replica count (WorkloadSnapshot in DB + previous-replicas annotation)
   ├─► Scale replicas to 0
   │
   └─► For each node (respecting guardrails)
@@ -88,14 +112,14 @@ For each matching Deployment / StatefulSet
         └─► Delete node
 ```
 
-### Scale up
+### Scale up (both models)
 
 ```
 For each matching Deployment / StatefulSet
   │
-  ├─► Read previous-replicas annotation
+  ├─► Read saved replica count (DB snapshot preferred, annotation as fallback)
   ├─► Restore replica count
-  └─► Remove annotation
+  └─► Close snapshot record
 
 For each node
   └─► Uncordon   (Karpenter / Cluster Autoscaler provisions
@@ -114,10 +138,14 @@ flowchart TB
         direction TB
         Router["Chi Router + Session Auth middleware"]
         Handlers["API Handlers"]
-        Scheduler["Scheduler<br/>robfig/cron v3"]
+        Scheduler["Scheduler<br/>(legacy schedules)"]
+        PolicyScheduler["PolicyScheduler<br/>(policies + exceptions)"]
+        PolicyEngine["PolicyEngine<br/>(IntendedState evaluation)"]
         Scaler["Scaler<br/>Scale Down / Scale Up"]
+        PolicyScaler["PolicyScaler<br/>(DB-backed snapshots)"]
         Cache["Cluster Cache<br/>10 s background refresh"]
         Broker["WS Log Broker<br/>pub/sub fan-out"]
+        PolicyBroker["Policy WS Broker<br/>pub/sub fan-out"]
         GORM["GORM"]
         SPA["Embedded SPA<br/>Next.js static files"]
     end
@@ -130,10 +158,15 @@ flowchart TB
     Router --> Handlers
     Router --> SPA
     Handlers --> Scheduler
+    Handlers --> PolicyScheduler
     Handlers --> Cache
     Handlers --> GORM
     Scheduler --> Scaler
     Scheduler --> Broker
+    PolicyScheduler --> PolicyScaler
+    PolicyScheduler --> PolicyEngine
+    PolicyScheduler --> PolicyBroker
+    PolicyScaler --> K8s
     Scaler --> K8s
     Cache --> K8s
     GORM --> PG
@@ -146,9 +179,11 @@ flowchart TB
 - **Overview** — cluster health at a glance: current scale state, live indicator, partial-sleep namespace breakdown, schedule next-run countdown, and live activity feed with inline log drawer
 - **Cluster State** — live view of all Deployments, StatefulSets, and nodes with resizable drill-down drawers; pod detail includes live CPU/memory usage, annotations, node instance type, Kubernetes events, and a streaming container log viewer with search navigation
 - **Guardrails** — protect namespaces, node labels, and taints from ever being touched by the scaler
-- **Schedules** — multiple sleep and wake schedules with a visual cron builder (day-of-week picker, hour/minute dropdowns, live human-readable preview, and an advanced raw cron toggle for power users), per-schedule timezones, and optional namespace filters for partial scale-down; inline enable/disable toggle and drag-to-reorder
-- **History** — full execution log with live WebSocket streaming; jump-to-error navigation and error/workload count badges
-- **Manual triggers** — run any schedule immediately in plan (dry-run) or apply mode
+- **Policies** — unified sleep/wake policies: one entity declares both when workloads sleep and when they wake, with namespace and label selector targeting, plan/apply mode, one-time overrides (stay_awake, force_sleep, skip_sleep, skip_wake), DB-backed replica snapshots, and startup recovery
+- **Scheduled Exceptions** — future one-time windows with ticket references (JIRA/GitHub), a pending→active→completed lifecycle, and optional "sleep on end" to restore workloads automatically when the window closes
+- **Schedules** — legacy model: multiple sleep and wake schedules with a visual cron builder (day-of-week picker, hour/minute dropdowns, live human-readable preview, and an advanced raw cron toggle for power users), per-schedule timezones, and optional namespace filters; inline enable/disable toggle and drag-to-reorder
+- **History** — full execution log for both schedules and policies, with live WebSocket streaming; jump-to-error navigation and workload count badges
+- **Manual triggers** — run any schedule or policy immediately; policies support separate Sleep Now / Wake Now buttons
 - **Users** — multi-user management with three RBAC roles (admin, operator, viewer) and granular permissions; admin-only page for creating, editing, and deleting users
 - **Audit Log** — searchable audit trail with before/after diffs, filterable by user, action, and resource; configurable retention
 - **Authentication** — session-based auth via HTTP-only cookies with CSRF double-submit protection; optional Keycloak OIDC integration (Authorization Code + PKCE, AD group-to-role mapping, account linking); login rate limiting (per-IP and per-username)
@@ -176,6 +211,8 @@ The Go backend embeds the Next.js static export via `//go:embed` — one binary,
 | :-------------------------- | :---------- | :---------------------------------------------- |
 | Multi-user management       | Done        | Session auth, RBAC (admin/operator/viewer), audit log |
 | Keycloak / OIDC auth        | Done        | Authorization Code + PKCE, AD group mapping     |
+| Policy model                | Done        | Unified sleep/wake policies with overrides, exceptions, DB snapshots, recovery |
+| Scheduled Exceptions        | Done        | Future one-time windows with ticket refs and sleep-on-end |
 | Slack / email notifications | Planned     | Alert on scale failures and manual triggers     |
 | Multi-cluster support       | Planned     | Switch between kubeconfig contexts in the UI    |
 | OpenAPI spec                | Done        | Swagger UI served at `/api/docs/`               |

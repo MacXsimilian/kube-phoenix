@@ -46,6 +46,11 @@ func main() {
 	} else if n > 0 {
 		slog.Warn("startup: marked executions as interrupted (pod was restarted mid-run)", "count", n)
 	}
+	if n, err := st.MarkInterruptedPolicyExecutions(); err != nil {
+		slog.Error("startup: failed to mark interrupted policy executions", "err", err)
+	} else if n > 0 {
+		slog.Warn("startup: marked policy executions as interrupted", "count", n)
+	}
 
 	// ── Kubernetes client ─────────────────────────────────────────────────
 	k8s, err := k8sclient.New()
@@ -61,25 +66,41 @@ func main() {
 		cache.Start(context.Background())
 	}
 
+	// ── Background maintenance tickers ────────────────────────────────────
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// ── Scheduler ─────────────────────────────────────────────────────────
 	sched := scheduler.New(st, k8s)
 	if k8s != nil {
-		if err := sched.Start(context.Background()); err != nil {
+		if err := sched.Start(ctx); err != nil {
 			slog.Error("scheduler failed to start", "err", err)
 			os.Exit(1)
 		}
 		defer sched.Stop()
 	}
 
-	// ── Background maintenance tickers ────────────────────────────────────
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// ── Policy scheduler ──────────────────────────────────────────────────
+	policySched := scheduler.NewPolicyScheduler(st, k8s)
+	if k8s != nil {
+		if err := policySched.Start(ctx); err != nil {
+			slog.Error("policy scheduler failed to start", "err", err)
+			os.Exit(1)
+		}
+		defer policySched.Stop()
+		if err := policySched.RecoverPolicies(ctx); err != nil {
+			slog.Error("policy recovery failed", "err", err)
+		}
+		go runTicker(ctx, time.Minute, "exception-tick", func() {
+			policySched.TickExceptions(ctx)
+		})
+	}
 
 	retentionDays := parseIntEnv("AUDIT_RETENTION_DAYS", 90)
 	startMaintenanceTickers(ctx, st, retentionDays)
 
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(ctx, st, k8s, sched, cache)
+	router := api.NewRouter(ctx, st, k8s, sched, policySched, cache)
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
 		Handler:      router,

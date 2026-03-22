@@ -716,6 +716,364 @@ components:
         error:
           type: string
 
+    # ── Policy model ────────────────────────────────────────────────────────
+
+    Policy:
+      description: A unified sleep/wake policy that declares when workloads should be sleeping vs awake.
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 1024
+        namespaceFilter:
+          type: string
+          description: Comma-separated namespace names. Empty = all namespaces.
+        labelSelector:
+          type: string
+          description: Standard Kubernetes label selector syntax.
+        sleepCron:
+          type: string
+          description: 5-field cron expression for when workloads should go to sleep.
+          example: "0 20 * * 1-5"
+        wakeCron:
+          type: string
+          description: 5-field cron expression for when workloads should wake up.
+          example: "0 8 * * 1-5"
+        timezone:
+          type: string
+          default: UTC
+          example: Europe/Budapest
+        mode:
+          type: string
+          enum: [plan, apply]
+          description: plan = dry-run, apply = executes for real.
+        enabled:
+          type: boolean
+        timeoutMinutes:
+          type: integer
+          minimum: 0
+          maximum: 1440
+        currentState:
+          type: string
+          enum: [sleeping, awake, unknown, transitioning]
+          readOnly: true
+        stateSince:
+          type: ["string", "null"]
+          format: date-time
+          readOnly: true
+        lastSleepAt:
+          type: ["string", "null"]
+          format: date-time
+          readOnly: true
+        lastWakeAt:
+          type: ["string", "null"]
+          format: date-time
+          readOnly: true
+        nextSleepAt:
+          type: ["string", "null"]
+          format: date-time
+          readOnly: true
+        nextWakeAt:
+          type: ["string", "null"]
+          format: date-time
+          readOnly: true
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+        - name
+
+    PolicyCreate:
+      description: Request body for creating a policy.
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        namespaceFilter:
+          type: string
+        labelSelector:
+          type: string
+        sleepCron:
+          type: string
+        wakeCron:
+          type: string
+        timezone:
+          type: string
+          default: UTC
+        mode:
+          type: string
+          enum: [plan, apply]
+          default: plan
+        enabled:
+          type: boolean
+          default: true
+        timeoutMinutes:
+          type: integer
+          default: 30
+      required:
+        - name
+
+    PolicyUpdate:
+      description: Partial update for a policy — only provided fields are written.
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        namespaceFilter:
+          type: string
+        labelSelector:
+          type: string
+        sleepCron:
+          type: string
+        wakeCron:
+          type: string
+        timezone:
+          type: string
+        mode:
+          type: string
+          enum: [plan, apply]
+        enabled:
+          type: boolean
+        timeoutMinutes:
+          type: integer
+
+    PolicyExecution:
+      description: A record of a policy execution (sleep or wake run).
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        policyId:
+          type: integer
+        direction:
+          type: string
+          enum: [sleep, wake]
+        trigger:
+          type: string
+          description: What caused this execution (scheduled, manual_sleep, manual_wake, recovery, etc.)
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: ["string", "null"]
+          format: date-time
+        status:
+          type: string
+          enum: [running, success, failed, interrupted]
+        countScaled:
+          type: integer
+        countSkipped:
+          type: integer
+        countErrors:
+          type: integer
+
+    PaginatedPolicyExecutions:
+      description: Paginated list of policy executions.
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicyExecution"
+        total:
+          type: integer
+
+    WorkloadSnapshot:
+      description: A record of a workload's replica count at the time it was scaled down.
+      type: object
+      properties:
+        id:
+          type: integer
+        policyId:
+          type: integer
+        executionId:
+          type: integer
+        namespace:
+          type: string
+        kind:
+          type: string
+          enum: [Deployment, StatefulSet]
+        name:
+          type: string
+        replicasBefore:
+          type: integer
+        wasAlreadyZero:
+          type: boolean
+        closedAt:
+          type: ["string", "null"]
+          format: date-time
+        deletedAtWake:
+          type: boolean
+        externallyScaled:
+          type: boolean
+
+    PolicyOverride:
+      description: A one-time override that takes precedence over the normal sleep/wake schedule.
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        policyId:
+          type: integer
+        overrideType:
+          type: string
+          enum: [stay_awake, force_sleep, skip_sleep, skip_wake]
+        startsAt:
+          type: ["string", "null"]
+          format: date-time
+          description: Required for windowed overrides (stay_awake, force_sleep).
+        endsAt:
+          type: ["string", "null"]
+          format: date-time
+          description: Required for windowed overrides.
+        targetCronTime:
+          type: ["string", "null"]
+          format: date-time
+          description: Required for skip overrides (skip_sleep, skip_wake). The specific cron tick to skip.
+        reason:
+          type: string
+        createdBy:
+          type: string
+          readOnly: true
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+
+    PolicyOverrideCreate:
+      description: Request body for creating a policy override.
+      type: object
+      properties:
+        overrideType:
+          type: string
+          enum: [stay_awake, force_sleep, skip_sleep, skip_wake]
+        startsAt:
+          type: ["string", "null"]
+          format: date-time
+        endsAt:
+          type: ["string", "null"]
+          format: date-time
+        targetCronTime:
+          type: ["string", "null"]
+          format: date-time
+        reason:
+          type: string
+      required:
+        - overrideType
+
+    WorkloadTarget:
+      description: A specific workload targeted by a scheduled exception.
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [Deployment, StatefulSet]
+        namespace:
+          type: string
+        name:
+          type: string
+
+    ScheduledException:
+      description: A one-time exception window that overrides normal scheduling (e.g. keep workloads running over a release weekend).
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        policyId:
+          type: ["integer", "null"]
+          description: The policy this exception applies to. Null = applies globally.
+        exceptionType:
+          type: string
+          enum: [stay_awake, force_sleep]
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        ticketRef:
+          type: string
+          description: External ticket reference (e.g. JIRA-1234, GH#567).
+        reason:
+          type: string
+        sleepOnEnd:
+          type: boolean
+          default: true
+          description: When the window ends, immediately sleep the targeted workloads.
+        namespaceFilter:
+          type: string
+          description: Comma-separated namespace filter. Empty = policy default.
+        labelSelector:
+          type: string
+        status:
+          type: string
+          enum: [pending, active, completed, cancelled]
+          readOnly: true
+        createdBy:
+          type: string
+          readOnly: true
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        workloadTargets:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkloadTarget"
+
+    ScheduledExceptionCreate:
+      description: Request body for creating a scheduled exception.
+      type: object
+      properties:
+        policyId:
+          type: ["integer", "null"]
+        exceptionType:
+          type: string
+          enum: [stay_awake, force_sleep]
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        ticketRef:
+          type: string
+        reason:
+          type: string
+        sleepOnEnd:
+          type: boolean
+          default: true
+        namespaceFilter:
+          type: string
+        labelSelector:
+          type: string
+        workloadTargets:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkloadTarget"
+      required:
+        - exceptionType
+        - startsAt
+        - endsAt
+
 paths:
   /healthz:
     get:
@@ -1517,7 +1875,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /api/admin/reset-db:
+  /api/danger/reset-db:
     post:
       operationId: resetDatabase
       summary: Reset database
@@ -1946,6 +2304,424 @@ paths:
         "404":
           description: Execution not found
 
+  # ── Policies ─────────────────────────────────────────────────────────────
+
+  /api/policies:
+    get:
+      summary: List all policies
+      tags: [Policies]
+      responses:
+        "200":
+          description: Array of policies with computed next-run times.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Policy"
+        "401":
+          description: Unauthorized
+    post:
+      summary: Create a policy
+      tags: [Policies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyCreate"
+      responses:
+        "201":
+          description: Policy created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        "400":
+          description: Validation error
+        "409":
+          description: Overlap conflict with existing apply-mode policy
+
+  /api/policies/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get a policy by ID
+      tags: [Policies]
+      responses:
+        "200":
+          description: Policy details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        "404":
+          description: Not found
+    put:
+      summary: Update a policy (partial)
+      tags: [Policies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyUpdate"
+      responses:
+        "200":
+          description: Updated policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        "400":
+          description: Validation error
+        "409":
+          description: Overlap conflict
+    delete:
+      summary: Delete a policy
+      tags: [Policies]
+      responses:
+        "204":
+          description: Deleted.
+        "404":
+          description: Not found
+
+  /api/policies/{id}/sleep:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      summary: Manually trigger a sleep run for the policy
+      tags: [Policies]
+      responses:
+        "200":
+          description: Execution started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriggerResponse"
+        "404":
+          description: Not found
+        "409":
+          description: Already executing
+
+  /api/policies/{id}/wake:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      summary: Manually trigger a wake run for the policy
+      tags: [Policies]
+      responses:
+        "200":
+          description: Execution started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriggerResponse"
+        "404":
+          description: Not found
+        "409":
+          description: Already executing
+
+  /api/policies/{id}/snapshots:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: open
+        in: query
+        schema:
+          type: boolean
+        description: If true, return only currently open (un-restored) snapshots.
+    get:
+      summary: Get workload snapshots for a policy
+      tags: [Policies]
+      responses:
+        "200":
+          description: Array of workload snapshots.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkloadSnapshot"
+
+  /api/policies/{id}/overrides:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: List overrides for a policy
+      tags: [Policies]
+      responses:
+        "200":
+          description: Array of overrides.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PolicyOverride"
+    post:
+      summary: Create an override for a policy
+      tags: [Policies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyOverrideCreate"
+      responses:
+        "201":
+          description: Override created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyOverride"
+        "400":
+          description: Validation error
+
+  /api/policies/{id}/overrides/{overrideId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: overrideId
+        in: path
+        required: true
+        schema:
+          type: integer
+    delete:
+      summary: Delete a policy override
+      tags: [Policies]
+      responses:
+        "204":
+          description: Deleted.
+        "404":
+          description: Not found
+
+  # ── Policy executions ─────────────────────────────────────────────────────
+
+  /api/policy-executions:
+    get:
+      summary: List policy executions
+      tags: [Policies]
+      parameters:
+        - name: policy_id
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        "200":
+          description: Paginated policy executions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedPolicyExecutions"
+
+  /api/policy-executions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get a policy execution by ID
+      tags: [Policies]
+      responses:
+        "200":
+          description: Policy execution details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyExecution"
+        "404":
+          description: Not found
+
+  /api/policy-executions/{id}/logs:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get log lines for a policy execution
+      tags: [Policies]
+      responses:
+        "200":
+          description: Array of log lines.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LogLine"
+
+  /api/policy-executions/{id}/snapshots:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get workload snapshots for a policy execution
+      tags: [Policies]
+      responses:
+        "200":
+          description: Array of snapshots.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkloadSnapshot"
+
+  /ws/policy-executions/{id}/logs:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Stream policy execution logs via WebSocket
+      tags: [Policies]
+      description: |
+        Upgrades to a WebSocket connection. Sends buffered log lines immediately,
+        then streams new lines in real-time until the execution completes.
+      responses:
+        "101":
+          description: WebSocket upgrade accepted.
+
+  # ── Scheduled exceptions ──────────────────────────────────────────────────
+
+  /api/exceptions:
+    get:
+      summary: List scheduled exceptions
+      tags: [Exceptions]
+      parameters:
+        - name: policy_id
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, active, completed, cancelled]
+      responses:
+        "200":
+          description: Array of scheduled exceptions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduledException"
+    post:
+      summary: Create a scheduled exception
+      tags: [Exceptions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledExceptionCreate"
+      responses:
+        "201":
+          description: Exception created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledException"
+        "400":
+          description: Validation error
+
+  /api/exceptions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get a scheduled exception by ID
+      tags: [Exceptions]
+      responses:
+        "200":
+          description: Exception details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledException"
+        "404":
+          description: Not found
+    put:
+      summary: Update a pending exception (partial)
+      tags: [Exceptions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledExceptionCreate"
+      responses:
+        "200":
+          description: Updated exception.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledException"
+        "409":
+          description: Only pending exceptions can be edited
+    delete:
+      summary: Cancel a scheduled exception
+      tags: [Exceptions]
+      description: |
+        Cancels a pending or active exception. If active and sleepOnEnd is true,
+        immediately triggers a sleep run on the associated policy.
+      responses:
+        "204":
+          description: Cancelled.
+        "404":
+          description: Not found
+
 tags:
   - name: Health
     description: Server health and readiness probes.
@@ -1969,3 +2745,7 @@ tags:
     description: Audit trail of user actions.
   - name: Admin
     description: Administrative operations (danger zone).
+  - name: Policies
+    description: Policy-based sleep/wake management — CRUD, manual triggers, overrides, snapshots, and execution history.
+  - name: Exceptions
+    description: One-time scheduled exception windows that override normal policy scheduling.
