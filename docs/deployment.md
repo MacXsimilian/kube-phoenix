@@ -18,7 +18,7 @@ kubectl port-forward -n kube-phoenix svc/kube-phoenix 8080:80
 # Open http://localhost:8080
 ```
 
-All schedules are seeded **disabled** in **plan mode** — nothing will scale until you explicitly enable a schedule and switch it to `apply` mode.
+Policies start empty — nothing will scale until you create and enable policies via the UI. New policies default to **plan mode** — switch to `apply` mode when you are confident the guardrails and namespace filters are correct.
 
 ## External database
 

@@ -64,7 +64,7 @@ type AuditLog struct {
 
 // WorkloadTarget identifies a specific Kubernetes workload.
 type WorkloadTarget struct {
-	Kind      string `json:"kind"`      // "Deployment" | "StatefulSet"
+	Kind      string `json:"kind"` // "Deployment" | "StatefulSet"
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
 }
@@ -85,7 +85,7 @@ type Policy struct {
 	WakeCron     string `gorm:"size:255" json:"wakeCron"`  // 5-field; compiled from windows or set directly
 	Timezone     string `gorm:"size:100" json:"timezone"`
 
-	Mode           string `gorm:"size:10" json:"mode"`           // "plan" | "apply"
+	Mode           string `gorm:"size:10" json:"mode"` // "plan" | "apply"
 	Enabled        bool   `json:"enabled"`
 	TimeoutMinutes int    `json:"timeoutMinutes"` // 0 = server default (120 min)
 
@@ -103,12 +103,12 @@ type Policy struct {
 
 // PolicyExecution records a single sleep or wake run driven by a Policy.
 type PolicyExecution struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	PolicyID  uint      `gorm:"index" json:"policyId"`
-	Policy    Policy    `gorm:"foreignKey:PolicyID" json:"policy"`
-	Direction string    `gorm:"size:10;index" json:"direction"` // "sleep" | "wake"
-	Trigger   string    `gorm:"size:30" json:"trigger"`         // scheduled|manual_sleep|manual_wake|recovery|skip_applied|override_start|override_end|exception_start|exception_end
-	StartedAt time.Time `gorm:"index" json:"startedAt"`
+	ID         uint       `gorm:"primaryKey" json:"id"`
+	PolicyID   uint       `gorm:"index" json:"policyId"`
+	Policy     Policy     `gorm:"foreignKey:PolicyID" json:"policy"`
+	Direction  string     `gorm:"size:10;index" json:"direction"` // "sleep" | "wake"
+	Trigger    string     `gorm:"size:30" json:"trigger"`         // scheduled|manual_sleep|manual_wake|recovery|skip_applied|override_start|override_end|exception_start|exception_end
+	StartedAt  time.Time  `gorm:"index" json:"startedAt"`
 	FinishedAt *time.Time `json:"finishedAt"`
 	Status     string     `gorm:"index;size:20" json:"status"` // running|success|failed|interrupted|skipped
 	Mode       string     `gorm:"size:10" json:"mode"`         // "plan" | "apply"
@@ -136,16 +136,16 @@ type PolicyLogLine struct {
 // The wake execution reads from these rows instead of K8s annotations (which
 // are also written as a belt-and-suspenders fallback).
 type WorkloadSnapshot struct {
-	ID               uint      `gorm:"primaryKey" json:"id"`
-	PolicyID         uint      `gorm:"index" json:"policyId"`
-	SleepExecutionID uint      `gorm:"index" json:"sleepExecutionId"`
+	ID               uint `gorm:"primaryKey" json:"id"`
+	PolicyID         uint `gorm:"index" json:"policyId"`
+	SleepExecutionID uint `gorm:"index" json:"sleepExecutionId"`
 	// WakeExecutionID is null while the workload is still sleeping.
-	WakeExecutionID  *uint     `gorm:"index" json:"wakeExecutionId"`
-	Kind             string    `gorm:"size:50" json:"kind"`
-	Namespace        string    `gorm:"size:63;index" json:"namespace"`
-	Name             string    `gorm:"size:253" json:"name"`
-	ReplicasBefore   int32     `json:"replicasBefore"`
-	ReplicasRestored *int32    `json:"replicasRestored"` // nil until woken
+	WakeExecutionID  *uint      `gorm:"index" json:"wakeExecutionId"`
+	Kind             string     `gorm:"size:50" json:"kind"`
+	Namespace        string     `gorm:"size:63;index" json:"namespace"`
+	Name             string     `gorm:"size:253" json:"name"`
+	ReplicasBefore   int32      `json:"replicasBefore"`
+	ReplicasRestored *int32     `json:"replicasRestored"` // nil until woken
 	RestoredAt       *time.Time `json:"restoredAt"`
 
 	// Edge case flags
@@ -175,7 +175,7 @@ type PolicyOverride struct {
 // executes automatically later.
 type ScheduledException struct {
 	ID            uint      `gorm:"primaryKey" json:"id"`
-	PolicyID      *uint     `gorm:"index" json:"policyId"` // optional — can be freestanding
+	PolicyID      *uint     `gorm:"index" json:"policyId"`        // optional — can be freestanding
 	ExceptionType string    `gorm:"size:20" json:"exceptionType"` // "stay_awake" | "force_sleep"
 	StartsAt      time.Time `gorm:"index" json:"startsAt"`
 	EndsAt        time.Time `json:"endsAt"`
@@ -191,11 +191,11 @@ type ScheduledException struct {
 	WorkloadTargets string `gorm:"type:jsonb;default:'[]'" json:"-"`
 
 	// Lifecycle
-	Status                  string     `gorm:"size:20;default:pending" json:"status"` // pending|active|completed|cancelled
-	StartExecutionID        *uint      `json:"startExecutionId"`
-	EndExecutionID          *uint      `json:"endExecutionId"`
-	CancelledAt             *time.Time `json:"cancelledAt"`
-	CancelReason            string     `gorm:"size:1024" json:"cancelReason"`
+	Status           string     `gorm:"size:20;default:pending" json:"status"` // pending|active|completed|cancelled
+	StartExecutionID *uint      `json:"startExecutionId"`
+	EndExecutionID   *uint      `json:"endExecutionId"`
+	CancelledAt      *time.Time `json:"cancelledAt"`
+	CancelReason     string     `gorm:"size:1024" json:"cancelReason"`
 
 	CreatedBy string    `gorm:"size:255" json:"createdBy"`
 	CreatedAt time.Time `json:"createdAt"`

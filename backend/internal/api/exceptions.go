@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"gorm.io/gorm"
 )
 
@@ -144,37 +144,7 @@ func (h *Handler) updateException(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updates := map[string]interface{}{}
-	if body.ExceptionType != "" {
-		updates["exception_type"] = body.ExceptionType
-	}
-	if !body.StartsAt.IsZero() {
-		updates["starts_at"] = body.StartsAt
-	}
-	if !body.EndsAt.IsZero() {
-		updates["ends_at"] = body.EndsAt
-	}
-	if body.TicketRef != "" {
-		updates["ticket_ref"] = body.TicketRef
-	}
-	if body.Reason != "" {
-		updates["reason"] = body.Reason
-	}
-	if body.SleepOnEndSet {
-		updates["sleep_on_end"] = body.SleepOnEnd
-	}
-	if body.NamespaceFilter != "" {
-		updates["namespace_filter"] = body.NamespaceFilter
-	}
-	if body.LabelSelector != "" {
-		updates["label_selector"] = body.LabelSelector
-	}
-	if len(body.WorkloadTargets) > 0 {
-		b, err := json.Marshal(body.WorkloadTargets)
-		if err == nil {
-			updates["workload_targets"] = string(b)
-		}
-	}
+	updates := buildExceptionUpdates(body)
 
 	updated, err := h.store.UpdateScheduledException(id, updates)
 	if err != nil {
@@ -251,6 +221,42 @@ func (e *exceptionInput) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// buildExceptionUpdates converts non-zero input fields to a DB update map.
+func buildExceptionUpdates(body exceptionInput) map[string]interface{} {
+	updates := map[string]interface{}{}
+	if body.ExceptionType != "" {
+		updates["exception_type"] = body.ExceptionType
+	}
+	if !body.StartsAt.IsZero() {
+		updates["starts_at"] = body.StartsAt
+	}
+	if !body.EndsAt.IsZero() {
+		updates["ends_at"] = body.EndsAt
+	}
+	if body.TicketRef != "" {
+		updates["ticket_ref"] = body.TicketRef
+	}
+	if body.Reason != "" {
+		updates["reason"] = body.Reason
+	}
+	if body.SleepOnEndSet {
+		updates["sleep_on_end"] = body.SleepOnEnd
+	}
+	if body.NamespaceFilter != "" {
+		updates["namespace_filter"] = body.NamespaceFilter
+	}
+	if body.LabelSelector != "" {
+		updates["label_selector"] = body.LabelSelector
+	}
+	if len(body.WorkloadTargets) > 0 {
+		b, err := json.Marshal(body.WorkloadTargets)
+		if err == nil {
+			updates["workload_targets"] = string(b)
+		}
+	}
+	return updates
+}
+
 func validateExceptionInput(b exceptionInput) string {
 	if b.ExceptionType != "stay_awake" && b.ExceptionType != "force_sleep" {
 		return "exceptionType must be stay_awake or force_sleep"
@@ -295,7 +301,7 @@ func parseUintBase(s string, base, bits int, dst *uint64) (int, error) {
 		if c < '0' || c > '9' {
 			return 0, &numError{s}
 		}
-		d := uint64(c-'0') //#nosec G115 -- c is '0'..'9', subtraction cannot overflow
+		d := uint64(c - '0')   //#nosec G115 -- c is '0'..'9', subtraction cannot overflow
 		n = n*uint64(base) + d //#nosec G115 -- base is always 10 in callers
 	}
 	*dst = n

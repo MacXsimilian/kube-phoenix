@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scaler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"github.com/robfig/cron/v3"
@@ -20,12 +21,12 @@ type PolicyBroker = Broker
 // Each policy registers two cron entries (sleep + wake). It also runs
 // a recovery pass on startup to catch any missed transitions.
 type PolicyScheduler struct {
-	store   *store.Store
-	runner  *scaler.PolicyRunner
-	Broker  *PolicyBroker
+	store  *store.Store
+	runner *scaler.PolicyRunner
+	Broker *PolicyBroker
 
-	mu      sync.Mutex
-	cron    *cron.Cron
+	mu   sync.Mutex
+	cron *cron.Cron
 	// entryIDs maps policyID → [sleepEntryID, wakeEntryID]. A zero ID means
 	// the policy has no cron registered in that direction.
 	entryIDs map[uint][2]cron.EntryID
@@ -242,10 +243,13 @@ func (ps *PolicyScheduler) reload() error {
 	}
 	ps.entryIDs = map[uint][2]cron.EntryID{}
 
+	modeCounts := map[string]float64{}
+
 	for _, p := range policies {
 		if !p.Enabled {
 			continue
 		}
+		modeCounts[p.Mode]++
 		p := p // capture
 
 		if _, err := time.LoadLocation(p.Timezone); err != nil {
@@ -254,66 +258,57 @@ func (ps *PolicyScheduler) reload() error {
 			continue
 		}
 
-		var ids [2]cron.EntryID
-
-		// Register sleep cron
-		if p.SleepCron != "" {
-			expr := "CRON_TZ=" + p.Timezone + " " + p.SleepCron
-			eid, err := ps.cron.AddFunc(expr, func() {
-				now := time.Now()
-				overrides, _ := ps.store.ListActiveOverrides(p.ID, now)
-				// Check for skip_sleep override
-				if skip := HasSkipOverride(overrides, "sleep", now); skip != nil {
-					slog.Info("policy scheduler: sleep skipped by override",
-						"policyID", p.ID, "overrideID", skip.ID)
-					_ = ps.store.DeletePolicyOverride(skip.ID)
-					return
-				}
-				if _, err := ps.run(context.Background(), p, "sleep", "scheduled"); err != nil {
-					slog.Error("policy scheduler: scheduled sleep failed",
-						"policyID", p.ID, "err", err)
-				}
-			})
-			if err != nil {
-				slog.Error("policy scheduler: failed to register sleep cron",
-					"policyID", p.ID, "cronExpr", p.SleepCron, "err", err)
-			} else {
-				ids[0] = eid
-			}
-		}
-
-		// Register wake cron
-		if p.WakeCron != "" {
-			expr := "CRON_TZ=" + p.Timezone + " " + p.WakeCron
-			eid, err := ps.cron.AddFunc(expr, func() {
-				now := time.Now()
-				overrides, _ := ps.store.ListActiveOverrides(p.ID, now)
-				if skip := HasSkipOverride(overrides, "wake", now); skip != nil {
-					slog.Info("policy scheduler: wake skipped by override",
-						"policyID", p.ID, "overrideID", skip.ID)
-					_ = ps.store.DeletePolicyOverride(skip.ID)
-					return
-				}
-				if _, err := ps.run(context.Background(), p, "wake", "scheduled"); err != nil {
-					slog.Error("policy scheduler: scheduled wake failed",
-						"policyID", p.ID, "err", err)
-				}
-			})
-			if err != nil {
-				slog.Error("policy scheduler: failed to register wake cron",
-					"policyID", p.ID, "cronExpr", p.WakeCron, "err", err)
-			} else {
-				ids[1] = eid
-			}
-		}
-
+		ids := ps.registerPolicyCrons(p)
 		ps.entryIDs[p.ID] = ids
 		slog.Info("policy scheduler: registered policy",
 			"policyID", p.ID, "name", p.Name,
 			"sleepCron", p.SleepCron, "wakeCron", p.WakeCron)
 	}
 
+	// Update the active policies gauge.
+	metrics.ActivePolicies.Reset()
+	for mode, count := range modeCounts {
+		metrics.ActivePolicies.WithLabelValues(mode).Set(count)
+	}
+
 	return nil
+}
+
+// registerPolicyCrons adds sleep and wake cron entries for a single policy.
+func (ps *PolicyScheduler) registerPolicyCrons(p store.Policy) [2]cron.EntryID {
+	var ids [2]cron.EntryID
+	if p.SleepCron != "" {
+		ids[0] = ps.addCronEntry(p, "sleep", p.SleepCron)
+	}
+	if p.WakeCron != "" {
+		ids[1] = ps.addCronEntry(p, "wake", p.WakeCron)
+	}
+	return ids
+}
+
+// addCronEntry registers a single cron entry for a policy direction, returning the entry ID (0 on failure).
+func (ps *PolicyScheduler) addCronEntry(p store.Policy, direction, cronExpr string) cron.EntryID {
+	expr := "CRON_TZ=" + p.Timezone + " " + cronExpr
+	eid, err := ps.cron.AddFunc(expr, func() {
+		now := time.Now()
+		overrides, _ := ps.store.ListActiveOverrides(p.ID, now)
+		if skip := HasSkipOverride(overrides, direction, now); skip != nil {
+			slog.Info("policy scheduler: "+direction+" skipped by override",
+				"policyID", p.ID, "overrideID", skip.ID)
+			_ = ps.store.DeletePolicyOverride(skip.ID)
+			return
+		}
+		if _, err := ps.run(context.Background(), p, direction, "scheduled"); err != nil {
+			slog.Error("policy scheduler: scheduled "+direction+" failed",
+				"policyID", p.ID, "err", err)
+		}
+	})
+	if err != nil {
+		slog.Error("policy scheduler: failed to register "+direction+" cron",
+			"policyID", p.ID, "cronExpr", cronExpr, "err", err)
+		return 0
+	}
+	return eid
 }
 
 func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, trigger string) (uint, error) {
@@ -414,6 +409,16 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		}
 		if err := ps.store.FinishPolicyExecution(execID, status, countMap); err != nil {
 			slog.Error("policy scheduler: finish execution error", "execID", execID, "err", err)
+		}
+
+		// Record Prometheus metrics
+		duration := time.Since(exec.StartedAt).Seconds()
+		metrics.ExecutionsTotal.WithLabelValues(status, p.Mode, direction).Inc()
+		metrics.ExecutionDuration.WithLabelValues(p.Mode, direction, status).Observe(duration)
+		if counts != nil {
+			metrics.WorkloadsScaledTotal.WithLabelValues(direction).Add(float64(counts.Scaled))
+			metrics.NodesDrainedTotal.Add(float64(counts.Drained))
+			metrics.NodesDeletedTotal.Add(float64(counts.Deleted))
 		}
 
 		// Update policy's cached state

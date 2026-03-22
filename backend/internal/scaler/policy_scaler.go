@@ -25,6 +25,67 @@ func NewPolicyRunner(k8sClient *k8s.Client, st *store.Store) *PolicyRunner {
 	}
 }
 
+// sleepWorkloadParams holds all context needed to process a single workload during sleep.
+type sleepWorkloadParams struct {
+	ctx     context.Context
+	policy  store.Policy
+	execID  uint
+	logCh   chan<- LogLine
+	snapped map[string]bool
+}
+
+// sleepWorkload processes a single workload (Deployment or StatefulSet) during a policy sleep.
+// Returns: scaled (bool), error occurred (bool).
+func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, kind, namespace, name string, replicas int32, annotate func() error, scale func() error) (scaled bool, errored bool) {
+	wl := formatWorkload(kind, namespace, name)
+
+	if p.snapped[kind+"/"+namespace+"/"+name] {
+		emit(p.logCh, "info", fmt.Sprintf("Snapshot already exists for %s (skipping double-sleep)", wl))
+		return false, false
+	}
+
+	snap := &store.WorkloadSnapshot{
+		PolicyID:         p.policy.ID,
+		SleepExecutionID: p.execID,
+		Kind:             kind,
+		Namespace:        namespace,
+		Name:             name,
+		ReplicasBefore:   replicas,
+		WasAlreadyZero:   replicas == 0,
+		CapturedAt:       time.Now(),
+	}
+
+	if replicas == 0 {
+		emit(p.logCh, "info", fmt.Sprintf("Already at 0 replicas: %s (snapshotted, not scaled)", wl))
+		if isApply(p.policy.Mode) {
+			_ = r.store.CreateWorkloadSnapshot(snap)
+		}
+		return false, false
+	}
+
+	if !isApply(p.policy.Mode) {
+		emit(p.logCh, "plan", fmt.Sprintf("Would sleep %s → 0 (currently %d replicas)", wl, replicas))
+		return true, false
+	}
+
+	if err := r.store.CreateWorkloadSnapshot(snap); err != nil {
+		emit(p.logCh, "error", fmt.Sprintf("Failed to save snapshot for %s: %s", wl, err))
+		return false, true
+	}
+	if err := annotate(); err != nil {
+		emit(p.logCh, "warn", fmt.Sprintf("Could not write annotation for %s: %s", wl, err))
+	}
+	if err := scale(); err != nil {
+		emit(p.logCh, "error", fmt.Sprintf("Failed to scale %s: %s", wl, err))
+		if delErr := r.store.DeleteWorkloadSnapshot(snap.ID); delErr != nil {
+			emit(p.logCh, "warn", fmt.Sprintf("Could not remove snapshot for %s: %s", wl, delErr))
+		}
+		return false, true
+	}
+	emit(p.logCh, "ok", fmt.Sprintf("Slept %s (was %d replicas)", wl, replicas))
+	return true, false
+}
+
 // RunPolicySleep scales matching workloads to 0 and writes WorkloadSnapshot
 // rows to the DB. It also writes the existing k8s annotation as a fallback.
 //
@@ -46,16 +107,16 @@ func (r *PolicyRunner) RunPolicySleep(
 
 	emit(logCh, "info", fmt.Sprintf("Policy sleep — namespace filter: %q  label selector: %q", policy.NamespaceFilter, policy.LabelSelector))
 
-	// Pre-fetch open snapshots once to avoid O(n²) lookups in the per-workload loop.
 	openSnaps, _ := r.store.GetOpenSnapshots(policy.ID)
 	snappedSet := make(map[string]bool, len(openSnaps))
 	for _, s := range openSnaps {
 		snappedSet[s.Kind+"/"+s.Namespace+"/"+s.Name] = true
 	}
 
+	swp := sleepWorkloadParams{ctx: ctx, policy: policy, execID: execID, logCh: logCh, snapped: snappedSet}
+
 	// ── Deployments ────────────────────────────────────────────────────────
 	emit(logCh, "info", "Fetching Deployments...")
-	var deployments []interface{ GetNamespace() string }
 	deps, err := r.base.k8s.ListDeploymentsBySelector(ctx, "", policy.LabelSelector)
 	if err != nil {
 		emit(logCh, "error", "Failed to list deployments: "+err.Error())
@@ -71,61 +132,20 @@ func (r *PolicyRunner) RunPolicySleep(
 			if d.Spec.Replicas != nil {
 				replicas = *d.Spec.Replicas
 			}
-			_ = deployments // suppress unused
-
-			wl := formatWorkload("Deployment", d.Namespace, d.Name)
-
-			// Double-sleep guard: skip if an open snapshot already exists.
-			if snappedSet["Deployment/"+d.Namespace+"/"+d.Name] {
-				emit(logCh, "info", fmt.Sprintf("Snapshot already exists for %s (skipping double-sleep)", wl))
+			scaled, errored := r.sleepWorkload(swp, "Deployment", d.Namespace, d.Name, replicas,
+				func() error {
+					return r.base.k8s.AnnotateDeployment(ctx, d.Namespace, d.Name, annotationKey, fmt.Sprintf("%d", replicas))
+				},
+				func() error { return r.base.k8s.ScaleDeployment(ctx, d.Namespace, d.Name, 0) },
+			)
+			switch {
+			case errored:
+				counts.Errors++
+			case scaled:
+				counts.Scaled++
+			default:
 				counts.Skipped++
-				continue
 			}
-
-			snap := &store.WorkloadSnapshot{
-				PolicyID:         policy.ID,
-				SleepExecutionID: execID,
-				Kind:             "Deployment",
-				Namespace:        d.Namespace,
-				Name:             d.Name,
-				ReplicasBefore:   replicas,
-				WasAlreadyZero:   replicas == 0,
-				CapturedAt:       time.Now(),
-			}
-
-			if replicas == 0 {
-				emit(logCh, "info", fmt.Sprintf("Already at 0 replicas: %s (snapshotted, not scaled)", wl))
-				if isApply(policy.Mode) {
-					_ = r.store.CreateWorkloadSnapshot(snap)
-				}
-				counts.Skipped++
-				continue
-			}
-
-			if isApply(policy.Mode) {
-				if err := r.store.CreateWorkloadSnapshot(snap); err != nil {
-					emit(logCh, "error", fmt.Sprintf("Failed to save snapshot for %s: %s", wl, err))
-					counts.Errors++
-					continue
-				}
-				// Belt-and-suspenders: also write k8s annotation
-				if err := r.base.k8s.AnnotateDeployment(ctx, d.Namespace, d.Name, annotationKey, fmt.Sprintf("%d", replicas)); err != nil {
-					emit(logCh, "warn", fmt.Sprintf("Could not write annotation for %s: %s", wl, err))
-				}
-				if err := r.base.k8s.ScaleDeployment(ctx, d.Namespace, d.Name, 0); err != nil {
-					emit(logCh, "error", fmt.Sprintf("Failed to scale %s: %s", wl, err))
-					// Remove snapshot since scale failed
-					if delErr := r.store.DeleteWorkloadSnapshot(snap.ID); delErr != nil {
-						emit(logCh, "warn", fmt.Sprintf("Could not remove snapshot for %s: %s", wl, delErr))
-					}
-					counts.Errors++
-					continue
-				}
-				emit(logCh, "ok", fmt.Sprintf("Slept %s (was %d replicas)", wl, replicas))
-			} else {
-				emit(logCh, "plan", fmt.Sprintf("Would sleep %s → 0 (currently %d replicas)", wl, replicas))
-			}
-			counts.Scaled++
 		}
 	}
 
@@ -146,57 +166,20 @@ func (r *PolicyRunner) RunPolicySleep(
 			if ss.Spec.Replicas != nil {
 				replicas = *ss.Spec.Replicas
 			}
-			wl := formatWorkload("StatefulSet", ss.Namespace, ss.Name)
-
-			// Double-sleep guard: skip if an open snapshot already exists.
-			if snappedSet["StatefulSet/"+ss.Namespace+"/"+ss.Name] {
-				emit(logCh, "info", fmt.Sprintf("Snapshot already exists for %s (skipping double-sleep)", wl))
+			scaled, errored := r.sleepWorkload(swp, "StatefulSet", ss.Namespace, ss.Name, replicas,
+				func() error {
+					return r.base.k8s.AnnotateStatefulSet(ctx, ss.Namespace, ss.Name, annotationKey, fmt.Sprintf("%d", replicas))
+				},
+				func() error { return r.base.k8s.ScaleStatefulSet(ctx, ss.Namespace, ss.Name, 0) },
+			)
+			switch {
+			case errored:
+				counts.Errors++
+			case scaled:
+				counts.Scaled++
+			default:
 				counts.Skipped++
-				continue
 			}
-
-			snap := &store.WorkloadSnapshot{
-				PolicyID:         policy.ID,
-				SleepExecutionID: execID,
-				Kind:             "StatefulSet",
-				Namespace:        ss.Namespace,
-				Name:             ss.Name,
-				ReplicasBefore:   replicas,
-				WasAlreadyZero:   replicas == 0,
-				CapturedAt:       time.Now(),
-			}
-
-			if replicas == 0 {
-				emit(logCh, "info", fmt.Sprintf("Already at 0 replicas: %s (snapshotted, not scaled)", wl))
-				if isApply(policy.Mode) {
-					_ = r.store.CreateWorkloadSnapshot(snap)
-				}
-				counts.Skipped++
-				continue
-			}
-
-			if isApply(policy.Mode) {
-				if err := r.store.CreateWorkloadSnapshot(snap); err != nil {
-					emit(logCh, "error", fmt.Sprintf("Failed to save snapshot for %s: %s", wl, err))
-					counts.Errors++
-					continue
-				}
-				if err := r.base.k8s.AnnotateStatefulSet(ctx, ss.Namespace, ss.Name, annotationKey, fmt.Sprintf("%d", replicas)); err != nil {
-					emit(logCh, "warn", fmt.Sprintf("Could not write annotation for %s: %s", wl, err))
-				}
-				if err := r.base.k8s.ScaleStatefulSet(ctx, ss.Namespace, ss.Name, 0); err != nil {
-					emit(logCh, "error", fmt.Sprintf("Failed to scale %s: %s", wl, err))
-					if delErr := r.store.DeleteWorkloadSnapshot(snap.ID); delErr != nil {
-						emit(logCh, "warn", fmt.Sprintf("Could not remove snapshot for %s: %s", wl, delErr))
-					}
-					counts.Errors++
-					continue
-				}
-				emit(logCh, "ok", fmt.Sprintf("Slept %s (was %d replicas)", wl, replicas))
-			} else {
-				emit(logCh, "plan", fmt.Sprintf("Would sleep %s → 0 (currently %d replicas)", wl, replicas))
-			}
-			counts.Scaled++
 		}
 	}
 
@@ -206,6 +189,56 @@ func (r *PolicyRunner) RunPolicySleep(
 	emit(logCh, "info", fmt.Sprintf("Sleep complete — scaled %d workloads, %d skipped, %d errors",
 		counts.Scaled, counts.Skipped, counts.Errors))
 	return counts, nil
+}
+
+// lookupWorkload checks if a workload still exists in the cluster and returns its current replicas.
+func (r *PolicyRunner) lookupWorkload(ctx context.Context, kind, namespace, name string) (exists bool, currentReplicas int32) {
+	switch kind {
+	case "Deployment":
+		deps, err := r.base.k8s.ListDeploymentsBySelector(ctx, namespace, "")
+		if err != nil {
+			return false, 0
+		}
+		for _, d := range deps {
+			if d.Name == name {
+				if d.Spec.Replicas != nil {
+					return true, *d.Spec.Replicas
+				}
+				return true, 0
+			}
+		}
+	case "StatefulSet":
+		ssets, err := r.base.k8s.ListStatefulSetsBySelector(ctx, namespace, "")
+		if err != nil {
+			return false, 0
+		}
+		for _, ss := range ssets {
+			if ss.Name == name {
+				if ss.Spec.Replicas != nil {
+					return true, *ss.Spec.Replicas
+				}
+				return true, 0
+			}
+		}
+	}
+	return false, 0
+}
+
+// restoreWorkload scales a workload back to its target replicas and removes the annotation.
+func (r *PolicyRunner) restoreWorkload(ctx context.Context, kind, namespace, name string, target int32) error {
+	switch kind {
+	case "Deployment":
+		if err := r.base.k8s.ScaleDeployment(ctx, namespace, name, target); err != nil {
+			return err
+		}
+		_ = r.base.k8s.RemoveDeploymentAnnotation(ctx, namespace, name, annotationKey)
+	case "StatefulSet":
+		if err := r.base.k8s.ScaleStatefulSet(ctx, namespace, name, target); err != nil {
+			return err
+		}
+		_ = r.base.k8s.RemoveStatefulSetAnnotation(ctx, namespace, name, annotationKey)
+	}
+	return nil
 }
 
 // RunPolicyWake restores workloads from DB snapshots.
@@ -240,39 +273,7 @@ func (r *PolicyRunner) RunPolicyWake(
 			continue
 		}
 
-		// Check workload still exists and get current replicas
-		var currentReplicas int32
-		var exists bool
-
-		switch snap.Kind {
-		case "Deployment":
-			deps, listErr := r.base.k8s.ListDeploymentsBySelector(ctx, snap.Namespace, "")
-			if listErr == nil {
-				for _, d := range deps {
-					if d.Name == snap.Name {
-						exists = true
-						if d.Spec.Replicas != nil {
-							currentReplicas = *d.Spec.Replicas
-						}
-						break
-					}
-				}
-			}
-		case "StatefulSet":
-			ssets, listErr := r.base.k8s.ListStatefulSetsBySelector(ctx, snap.Namespace, "")
-			if listErr == nil {
-				for _, ss := range ssets {
-					if ss.Name == snap.Name {
-						exists = true
-						if ss.Spec.Replicas != nil {
-							currentReplicas = *ss.Spec.Replicas
-						}
-						break
-					}
-				}
-			}
-		}
-
+		exists, currentReplicas := r.lookupWorkload(ctx, snap.Kind, snap.Namespace, snap.Name)
 		if !exists {
 			emit(logCh, "warn", fmt.Sprintf("Workload %s no longer exists — skipping restore", wl))
 			if isApply(policy.Mode) {
@@ -282,7 +283,6 @@ func (r *PolicyRunner) RunPolicyWake(
 			continue
 		}
 
-		// Detect external scaling (someone changed replicas while sleeping)
 		if currentReplicas != 0 {
 			emit(logCh, "warn", fmt.Sprintf(
 				"Workload %s was externally scaled to %d while sleeping — restoring to %d anyway",
@@ -294,30 +294,19 @@ func (r *PolicyRunner) RunPolicyWake(
 		}
 
 		target := snap.ReplicasBefore
-		if isApply(policy.Mode) {
-			var scaleErr error
-			switch snap.Kind {
-			case "Deployment":
-				scaleErr = r.base.k8s.ScaleDeployment(ctx, snap.Namespace, snap.Name, target)
-				if scaleErr == nil {
-					_ = r.base.k8s.RemoveDeploymentAnnotation(ctx, snap.Namespace, snap.Name, annotationKey)
-				}
-			case "StatefulSet":
-				scaleErr = r.base.k8s.ScaleStatefulSet(ctx, snap.Namespace, snap.Name, target)
-				if scaleErr == nil {
-					_ = r.base.k8s.RemoveStatefulSetAnnotation(ctx, snap.Namespace, snap.Name, annotationKey)
-				}
-			}
-			if scaleErr != nil {
-				emit(logCh, "error", fmt.Sprintf("Failed to restore %s: %s", wl, scaleErr))
-				counts.Errors++
-				continue
-			}
-			_ = r.store.CloseSnapshot(snap.ID, execID, target)
-			emit(logCh, "ok", fmt.Sprintf("Restored %s → %d replicas", wl, target))
-		} else {
+		if !isApply(policy.Mode) {
 			emit(logCh, "plan", fmt.Sprintf("Would restore %s → %d replicas", wl, target))
+			counts.Scaled++
+			continue
 		}
+
+		if err := r.restoreWorkload(ctx, snap.Kind, snap.Namespace, snap.Name, target); err != nil {
+			emit(logCh, "error", fmt.Sprintf("Failed to restore %s: %s", wl, err))
+			counts.Errors++
+			continue
+		}
+		_ = r.store.CloseSnapshot(snap.ID, execID, target)
+		emit(logCh, "ok", fmt.Sprintf("Restored %s → %d replicas", wl, target))
 		counts.Scaled++
 	}
 
