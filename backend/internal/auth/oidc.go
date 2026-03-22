@@ -29,12 +29,13 @@ type OIDCConfig struct {
 
 // OIDCProvider wraps the go-oidc verifier and oauth2 config.
 type OIDCProvider struct {
-	Verifier    *oidc.IDTokenVerifier
-	OAuth2      oauth2.Config
-	HTTPClient  *http.Client // custom client (e.g. skip TLS verify); nil = default
-	GroupsClaim string
-	AdminGroups []string
-	OpGroups    []string
+	Verifier       *oidc.IDTokenVerifier
+	OAuth2         oauth2.Config
+	HTTPClient     *http.Client // custom client (e.g. skip TLS verify); nil = default
+	GroupsClaim    string
+	AdminGroups    []string
+	OpGroups       []string
+	EndSessionURL  string // end_session_endpoint from OIDC discovery
 }
 
 // NewOIDCProvider creates a provider by performing OIDC discovery against the issuer.
@@ -69,13 +70,20 @@ func NewOIDCProvider(ctx context.Context, cfg OIDCConfig) (*OIDCProvider, error)
 		groupsClaim = "groups"
 	}
 
+	// Extract end_session_endpoint from OIDC discovery metadata.
+	var rawClaims struct {
+		EndSessionEndpoint string `json:"end_session_endpoint"`
+	}
+	_ = provider.Claims(&rawClaims)
+
 	return &OIDCProvider{
-		Verifier:    provider.Verifier(oidcConfig),
-		OAuth2:      oauth2Cfg,
-		HTTPClient:  httpClient,
-		GroupsClaim: groupsClaim,
-		AdminGroups: cfg.AdminGroups,
-		OpGroups:    cfg.OperatorGroups,
+		Verifier:      provider.Verifier(oidcConfig),
+		OAuth2:        oauth2Cfg,
+		HTTPClient:    httpClient,
+		GroupsClaim:   groupsClaim,
+		AdminGroups:   cfg.AdminGroups,
+		OpGroups:      cfg.OperatorGroups,
+		EndSessionURL: rawClaims.EndSessionEndpoint,
 	}, nil
 }
 

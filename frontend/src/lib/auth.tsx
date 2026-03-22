@@ -127,11 +127,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await fetch(`${BASE}/api/auth/logout`, {
+      const res = await fetch(`${BASE}/api/auth/logout`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'X-CSRF-Token': getCSRFToken() },
       })
+      // OIDC users: backend returns the Keycloak end_session URL.
+      // Navigate the browser there so Keycloak terminates the SSO session.
+      if (res.ok && res.status === 200) {
+        const data = await res.json()
+        if (data.oidcLogoutUrl) {
+          window.location.href = data.oidcLogoutUrl
+          return
+        }
+      }
     } catch { /* ignore */ }
     setUser(null)
   }, [])
