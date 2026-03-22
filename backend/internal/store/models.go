@@ -66,9 +66,9 @@ type User struct {
 	FamilyName   string     `gorm:"size:255" json:"familyName,omitempty"`
 	Email        string     `gorm:"size:255" json:"email,omitempty"`
 	PasswordHash string     `gorm:"column:password_hash;size:72" json:"-"`
-	Role         string     `gorm:"size:20;default:viewer" json:"role"`     // admin | operator | viewer
+	Role         string     `gorm:"size:20;default:viewer" json:"role"`                                        // admin | operator | viewer
 	Source       string     `gorm:"uniqueIndex:idx_users_username_source;size:20;default:local" json:"source"` // local | oidc
-	OIDCSubject  *string    `gorm:"column:oidc_subject;uniqueIndex;size:255" json:"-"` // OIDC sub claim
+	OIDCSubject  *string    `gorm:"column:oidc_subject;uniqueIndex;size:255" json:"-"`                         // OIDC sub claim
 	Enabled      bool       `gorm:"default:true" json:"enabled"`
 	CreatedAt    time.Time  `json:"createdAt"`
 	UpdatedAt    time.Time  `json:"updatedAt"`
@@ -90,7 +90,7 @@ type Session struct {
 type AuditLog struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
 	UserID       *uint     `gorm:"index" json:"userId,omitempty"`
-	User         *User    `gorm:"foreignKey:UserID;constraint:OnDelete:SET NULL" json:"-"`
+	User         *User     `gorm:"foreignKey:UserID;constraint:OnDelete:SET NULL" json:"-"`
 	Username     string    `gorm:"size:255" json:"username"`
 	Action       string    `gorm:"index;size:100" json:"action"`
 	ResourceType string    `gorm:"size:50" json:"resourceType,omitempty"`
