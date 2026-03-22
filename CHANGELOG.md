@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.81](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.80...v0.1.81) (2026-03-22)
+
+
+### Performance Improvements
+
+* **frontend:** performance and code quality audit fixes ([8b34ccc](https://github.com/MacXsimilian/kube-phoenix/commit/8b34ccc354f84431743c268c6af4a9a4bebfe767))
+
 ## [0.1.80](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.79...v0.1.80) (2026-03-22)
 
 
