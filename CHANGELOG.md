@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.82...v0.2.0) (2026-03-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* /api/schedules, /api/executions, /api/trigger, and /ws/executions endpoints are removed. Use /api/policies instead.
+
+### Features
+
+* window-based policies, remove legacy schedules, audit fixes ([#194](https://github.com/MacXsimilian/kube-phoenix/issues/194)) ([c21310e](https://github.com/MacXsimilian/kube-phoenix/commit/c21310ed0c1512eb7bfdb666a3d1b18d44d5a0d3))
+
 ## [0.1.82](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.81...v0.1.82) (2026-03-22)
 
 
