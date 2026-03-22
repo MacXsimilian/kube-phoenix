@@ -192,6 +192,9 @@ export default function ExceptionDialog({
             required
           />
         </Box>
+        <Typography variant="caption" color="text.disabled" sx={{ mt: 0.5 }}>
+          Times are in your browser's local timezone
+        </Typography>
 
         <TextField
           label="Ticket Reference"
