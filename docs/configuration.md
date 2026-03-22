@@ -67,9 +67,9 @@ Set `ADMIN_USER` and `ADMIN_PASSWORD` to seed the first admin account on startup
 
 | Role | Permissions |
 |---|---|
-| **admin** | Full access: manage users, edit schedules/guardrails, trigger, reset DB, view audit |
-| **operator** | Edit schedules/guardrails, trigger executions, view audit |
-| **viewer** | Read-only: view overview, schedules, and history |
+| **admin** | Full access: manage users, edit policies/guardrails, trigger, reset DB, view audit |
+| **operator** | Edit policies/guardrails, trigger executions, view audit |
+| **viewer** | Read-only: view overview, policies, and history |
 
 ### Security
 
@@ -92,7 +92,7 @@ A **Policy** is the recommended way to configure sleep/wake scheduling. Unlike t
 | **Timezone** | IANA timezone — e.g. `Europe/Budapest`. Defaults to `UTC`. |
 | **Mode** | `plan` — dry-run, logs only; `apply` — executes for real |
 | **Enabled** | Whether the policy fires on its cron schedule. Manual triggers always work regardless. |
-| **Namespace Filter** | Comma-separated namespace names. Leave empty to target all namespaces. Same validation rules as schedules. |
+| **Namespace Filter** | Comma-separated namespace names. Leave empty to target all namespaces. Each name must be a valid Kubernetes DNS label: lowercase alphanumeric and hyphens only, must start and end with alphanumeric, max 63 characters. |
 | **Label Selector** | Standard Kubernetes label selector syntax (e.g. `app=api,tier!=db`). Evaluated via `k8s.io/apimachinery/pkg/labels`. |
 | **Timeout Minutes** | Max execution duration in minutes (0–1440). Defaults to 30. |
 
@@ -141,37 +141,15 @@ The exception tick loop runs every minute and transitions exceptions between sta
 
 ---
 
-## Schedules
+## Recovery & state transitions
 
-Each legacy schedule defines when the scaler fires, how it fires, and which namespaces it targets.
+On startup, kube-phoenix evaluates each policy's cron schedule and override stack to compute the **intended state** at the current time. If this differs from the policy's `currentState`, a recovery execution is queued automatically.
 
-### Schedule fields
+- A fresh policy (or one with no cron expressions) starts with `currentState: unknown` and stays there until a manual trigger or a cron tick fires.
+- If recovery cannot determine the intended state (no `sleepCron` or `wakeCron` configured, or no past fire times), the state remains `unknown`. Use **Sleep Now** or **Wake Now** to set a known state.
+- Verify guardrails and namespace filters before switching a policy from `plan` to `apply` mode — recovery runs respect the current mode.
 
-| Field                | Description                                                                         |
-| :------------------- | :---------------------------------------------------------------------------------- |
-| **Name**             | Human-readable label                                                                |
-| **Type**             | `scale_down` (sleep) or `scale_up` (wake) — immutable after creation               |
-| **Cron expression**  | Standard 5-field cron (`minute hour dom month dow`)                                 |
-| **Timezone**         | IANA timezone — e.g. `Europe/Budapest`. Defaults to `UTC`.                          |
-| **Mode**             | `plan` — logs what would happen, no changes; `apply` — executes for real           |
-| **Namespace filter** | Comma-separated namespace names to target. Leave empty to target all namespaces. Each name must be a valid Kubernetes DNS label: lowercase alphanumeric and hyphens only, must start and end with alphanumeric, max 63 characters. |
-| **Enabled**          | Whether the schedule is active. Disabled schedules are skipped by the cron engine.  |
-| **Position**         | Display order within each type group. Set automatically; updated via drag-and-drop. |
-
-The toggle switch on each schedule card persists the change immediately — no need to open the edit dialog. The switch shows an optimistic update while the request is in flight and reverts automatically on failure.
-
-Cards within each section (Sleep / Wake) can be reordered by dragging the handle on the right edge. The new order is persisted to the database and shared across all users — dragging in one section never affects the other.
-
-### Default schedules
-
-Four schedules are seeded on first startup, all in **plan mode** and **disabled**. Enable and switch to `apply` when you are confident the guardrails and namespace filters are correct. All default schedules use the `Europe/Budapest` timezone — adjust to your own timezone after installation.
-
-| Name          | Cron            | Type         | When (Europe/Budapest) |
-| :------------ | :-------------- | :----------- | :--------------------- |
-| Weekday Sleep | `5 19 * * 1-5`  | `scale_down` | Mon–Fri 19:05          |
-| Weekday Wake  | `0 7 * * 1-5`   | `scale_up`   | Mon–Fri 07:00          |
-| Weekend Sleep | `0 0 * * 6,0`   | `scale_down` | Sat–Sun 00:00          |
-| Weekend Wake  | `0 7 * * 1`     | `scale_up`   | Mon 07:00              |
+See [Troubleshooting](troubleshooting.md#a-policy-shows-unknown-currentstate-after-startup) for more detail on `unknown` states.
 
 ---
 

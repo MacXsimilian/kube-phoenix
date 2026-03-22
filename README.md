@@ -205,7 +205,7 @@ The Go backend embeds the Next.js static export via `//go:embed` — one binary,
 | Multi-cluster support       | Planned     | Switch between kubeconfig contexts in the UI    |
 | OpenAPI spec                | Done        | Swagger UI served at `/api/docs/`               |
 | GitLab CI pipeline          | Planned     | Mirror of the GitHub Actions workflow           |
-| Emergency wake button       | Planned     | One-click full cluster wake bypassing schedule  |
+| Emergency wake button       | Planned     | One-click full cluster wake bypassing policy schedule |
 
 ---
 
@@ -229,7 +229,7 @@ kube-phoenix exposes a Prometheus metrics endpoint at `/metrics` (no authenticat
 | `kube_phoenix_nodes_deleted_total` | Counter | — | Nodes deleted during sleep |
 | `kube_phoenix_active_policies` | Gauge | `mode` | Enabled policies by mode |
 | `kube_phoenix_auth_attempts_total` | Counter | `status`, `method` | Login attempts by outcome and method (local/oidc) |
-| `kube_phoenix_user_actions_total` | Counter | `action`, `user`, `resource_type` | User-initiated mutations (schedule.update, trigger.manual, etc.) |
+| `kube_phoenix_user_actions_total` | Counter | `action`, `resource_type` | User-initiated mutations (policy.create, policy.update, policy.delete, etc.) |
 | `kube_phoenix_active_sessions` | Gauge | — | Currently active user sessions |
 | `kube_phoenix_rate_limit_hits_total` | Counter | `type` | Rate limiter rejections (per_ip/per_username) |
 | `kube_phoenix_audit_drops_total` | Counter | — | Audit entries dropped due to full buffer |
