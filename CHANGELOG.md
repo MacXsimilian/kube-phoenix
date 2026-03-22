@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.80](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.79...v0.1.80) (2026-03-22)
+
+
+### Features
+
+* **oidc:** RP-initiated logout to terminate Keycloak session ([#180](https://github.com/MacXsimilian/kube-phoenix/issues/180)) ([97d8e0b](https://github.com/MacXsimilian/kube-phoenix/commit/97d8e0b2aa81be2bed6b9322f3fa62d93866463b))
+
+
+### Bug Fixes
+
+* startup recovery, namespace validation, OIDC TLS warning ([#181](https://github.com/MacXsimilian/kube-phoenix/issues/181)) ([fc7d3dc](https://github.com/MacXsimilian/kube-phoenix/commit/fc7d3dce4018059559fbf3ea33423f0c907ebeaf))
+
 ## [0.1.79](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.78...v0.1.79) (2026-03-21)
 
 
