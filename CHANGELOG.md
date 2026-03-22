@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.82](https://github.com/MacXsimilian/kube-phoenix/compare/v0.1.81...v0.1.82) (2026-03-22)
+
+
+### Features
+
+* **policies:** policy-based sleep/wake model with exceptions and overrides ([#192](https://github.com/MacXsimilian/kube-phoenix/issues/192)) ([e860b36](https://github.com/MacXsimilian/kube-phoenix/commit/e860b36fd071c9044e5b724b45fd25986fc53187))
+
 ## [Unreleased]
 
 ### Features
