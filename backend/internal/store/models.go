@@ -5,22 +5,6 @@ import (
 	"time"
 )
 
-type Schedule struct {
-	ID              uint   `gorm:"primaryKey" json:"id"`
-	Name            string `gorm:"size:255" json:"name"`
-	Type            string `gorm:"size:20" json:"type"` // "scale_down" | "scale_up"
-	CronExpr        string `gorm:"size:255" json:"cronExpr"`
-	Timezone        string `gorm:"size:100" json:"timezone"`
-	Mode            string `gorm:"size:10" json:"mode"` // "plan" | "apply"
-	Enabled         bool   `json:"enabled"`
-	NamespaceFilter string `gorm:"size:4096" json:"namespaceFilter"` // comma-separated; empty = all namespaces
-	TimeoutMinutes  int    `json:"timeoutMinutes"`                   // 0 = use server default (120 min)
-	Position        int    `json:"position"`                         // display order within each type group
-
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
-}
-
 type Guardrails struct {
 	ID               uint   `gorm:"primaryKey" json:"id"`
 	SystemNamespaces string `json:"systemNamespaces"` // comma-separated — protected system defaults, requires confirmation to remove
@@ -30,34 +14,6 @@ type Guardrails struct {
 	SkipNodeTaints   string `json:"skipNodeTaints"`   // comma-separated key=value:effect
 
 	UpdatedAt time.Time `json:"updatedAt"`
-}
-
-type Execution struct {
-	ID         uint       `gorm:"primaryKey" json:"id"`
-	ScheduleID uint       `gorm:"index" json:"scheduleId"`
-	Schedule   Schedule   `gorm:"foreignKey:ScheduleID" json:"schedule"`
-	StartedAt  time.Time  `gorm:"index" json:"startedAt"`
-	FinishedAt *time.Time `json:"finishedAt"`
-	Status     string     `gorm:"index;size:20" json:"status"` // "running" | "success" | "failed" | "interrupted"
-	Mode       string     `gorm:"size:10" json:"mode"`         // "plan" | "apply"
-
-	CountScaled    int `json:"countScaled"`
-	CountDrained   int `json:"countDrained"`
-	CountDeleted   int `json:"countDeleted"`
-	CountSkipped   int `json:"countSkipped"`
-	CountErrors    int `json:"countErrors"`
-	CountSaved     int `json:"countSaved"`
-	CountProtected int `json:"countProtected"`
-}
-
-type LogLine struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	ExecutionID uint      `gorm:"index:idx_logline_exec_seq" json:"executionId"`
-	Execution   Execution `gorm:"foreignKey:ExecutionID;constraint:OnDelete:CASCADE" json:"-"`
-	Seq         int       `gorm:"index:idx_logline_exec_seq" json:"seq"`
-	Level       string    `gorm:"size:10" json:"level"` // "info" | "ok" | "plan" | "error" | "warn"
-	Message     string    `json:"message"`
-	Timestamp   time.Time `json:"timestamp"`
 }
 
 // ─── User management ─────────────────────────────────────────────────────────
@@ -123,10 +79,11 @@ type Policy struct {
 	NamespaceFilter string `gorm:"size:4096" json:"namespaceFilter"` // comma-separated; empty = all
 	LabelSelector   string `gorm:"size:4096" json:"labelSelector"`   // full k8s label selector syntax
 
-	// Schedule — both are optional so a policy can have only one direction.
-	SleepCron string `gorm:"size:255" json:"sleepCron"` // 5-field; empty = no auto-sleep
-	WakeCron  string `gorm:"size:255" json:"wakeCron"`  // 5-field; empty = no auto-wake
-	Timezone  string `gorm:"size:100" json:"timezone"`
+	// Schedule — windows are the primary input; crons are compiled from them.
+	SleepWindows string `gorm:"type:text" json:"-"`        // JSON array of SleepWindow; empty for legacy cron-only policies
+	SleepCron    string `gorm:"size:255" json:"sleepCron"` // 5-field; compiled from windows or set directly
+	WakeCron     string `gorm:"size:255" json:"wakeCron"`  // 5-field; compiled from windows or set directly
+	Timezone     string `gorm:"size:100" json:"timezone"`
 
 	Mode           string `gorm:"size:10" json:"mode"`           // "plan" | "apply"
 	Enabled        bool   `json:"enabled"`

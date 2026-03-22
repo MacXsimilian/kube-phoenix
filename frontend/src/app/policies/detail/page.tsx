@@ -32,9 +32,14 @@ import {
   deletePolicyOverride,
   createPolicyOverride,
 } from '@/lib/api'
+import Stack from '@mui/material/Stack'
+import TextField from '@mui/material/TextField'
+import MenuItem from '@mui/material/MenuItem'
 import type { Policy, PolicyOverride, ScheduledException } from '@/lib/types'
 import CreatePolicyDialog from '@/components/policies/CreatePolicyDialog'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
+import WeeklyTimeline from '@/components/policies/WeeklyTimeline'
+import { windowsToText } from '@/lib/windowUtils'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules } from '@/lib/rbac'
 
@@ -130,6 +135,7 @@ export default function PolicyDetailPage() {
     },
     onSuccess: () => {
       refetchOverrides()
+      qc.invalidateQueries({ queryKey: ['exceptions', policyId] })
       setAddOverrideOpen(false)
       setSnack({ msg: 'Override created', severity: 'success' })
     },
@@ -183,35 +189,67 @@ export default function PolicyDetailPage() {
 
       {/* Schedule info */}
       <Paper sx={{ p: 2, mb: 2.5 }}>
-        <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {policy.sleepCron && (
-            <Box>
-              <Typography variant="caption" color="text.disabled">Sleep</Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <BedtimeIcon sx={{ fontSize: 14, color: '#a5b4fc' }} />
-                <Typography variant="body2" fontFamily="monospace">{policy.sleepCron}</Typography>
-                {policy.nextSleepAt && (
-                  <Typography variant="caption" color="text.disabled">next: {fmtDt(policy.nextSleepAt)}</Typography>
-                )}
-              </Box>
+        {/* Windows or cron display */}
+        {policy.sleepWindows && policy.sleepWindows.length > 0 ? (
+          <Box sx={{ mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <BedtimeIcon sx={{ fontSize: 16, color: '#a5b4fc' }} />
+              <Typography variant="body1" fontWeight={600}>
+                {windowsToText(policy.sleepWindows)}
+              </Typography>
+              <Typography variant="caption" color="text.disabled">
+                ({policy.timezone || 'UTC'})
+              </Typography>
             </Box>
-          )}
-          {policy.wakeCron && (
-            <Box>
-              <Typography variant="caption" color="text.disabled">Wake</Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <WbSunnyIcon sx={{ fontSize: 14, color: '#fcd34d' }} />
-                <Typography variant="body2" fontFamily="monospace">{policy.wakeCron}</Typography>
-                {policy.nextWakeAt && (
-                  <Typography variant="caption" color="text.disabled">next: {fmtDt(policy.nextWakeAt)}</Typography>
-                )}
-              </Box>
-            </Box>
-          )}
-          <Box>
-            <Typography variant="caption" color="text.disabled">Timezone</Typography>
-            <Typography variant="body2">{policy.timezone || 'UTC'}</Typography>
+            <WeeklyTimeline
+              windows={policy.sleepWindows}
+              overrides={overrides}
+              exceptions={exceptions}
+            />
           </Box>
+        ) : (
+          <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap', mb: 1 }}>
+            {policy.sleepCron && (
+              <Box>
+                <Typography variant="caption" color="text.disabled">Sleep</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <BedtimeIcon sx={{ fontSize: 14, color: '#a5b4fc' }} />
+                  <Typography variant="body2" fontFamily="monospace">{policy.sleepCron}</Typography>
+                </Box>
+              </Box>
+            )}
+            {policy.wakeCron && (
+              <Box>
+                <Typography variant="caption" color="text.disabled">Wake</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <WbSunnyIcon sx={{ fontSize: 14, color: '#fcd34d' }} />
+                  <Typography variant="body2" fontFamily="monospace">{policy.wakeCron}</Typography>
+                </Box>
+              </Box>
+            )}
+          </Box>
+        )}
+
+        {/* Metadata row */}
+        <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {policy.nextSleepAt && (
+            <Box>
+              <Typography variant="caption" color="text.disabled">Next sleep</Typography>
+              <Typography variant="body2">{fmtDt(policy.nextSleepAt)}</Typography>
+            </Box>
+          )}
+          {policy.nextWakeAt && (
+            <Box>
+              <Typography variant="caption" color="text.disabled">Next wake</Typography>
+              <Typography variant="body2">{fmtDt(policy.nextWakeAt)}</Typography>
+            </Box>
+          )}
+          {!(policy.sleepWindows && policy.sleepWindows.length > 0) && (
+            <Box>
+              <Typography variant="caption" color="text.disabled">Timezone</Typography>
+              <Typography variant="body2">{policy.timezone || 'UTC'}</Typography>
+            </Box>
+          )}
           {policy.namespaceFilter && (
             <Box>
               <Typography variant="caption" color="text.disabled">Namespaces</Typography>
@@ -282,49 +320,60 @@ export default function PolicyDetailPage() {
       {/* Add override form */}
       {addOverrideOpen && (
         <Paper sx={{ p: 2, mb: 2, border: '1px solid', borderColor: 'divider' }}>
-          <Typography variant="subtitle2" fontWeight={600} mb={1}>New Override</Typography>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            <select
+          <Typography variant="subtitle2" fontWeight={600} mb={1.5}>New Override</Typography>
+          <Stack direction="row" spacing={1.5} flexWrap="wrap" alignItems="flex-start" useFlexGap>
+            <TextField
+              select
+              size="small"
+              label="Type"
               value={overrideForm.type}
               onChange={e => setOverrideForm(f => ({ ...f, type: e.target.value }))}
-              style={{ padding: '6px 8px', borderRadius: 4, background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155' }}
+              sx={{ minWidth: 180 }}
             >
-              <option value="stay_awake">Stay Awake (windowed)</option>
-              <option value="force_sleep">Force Sleep (windowed)</option>
-              <option value="skip_sleep">Skip Next Sleep</option>
-              <option value="skip_wake">Skip Next Wake</option>
-            </select>
+              <MenuItem value="stay_awake">Stay Awake (windowed)</MenuItem>
+              <MenuItem value="force_sleep">Force Sleep (windowed)</MenuItem>
+              <MenuItem value="skip_sleep">Skip Next Sleep</MenuItem>
+              <MenuItem value="skip_wake">Skip Next Wake</MenuItem>
+            </TextField>
             {isWindowed ? (
               <>
-                <input
+                <TextField
                   type="datetime-local"
+                  size="small"
+                  label="Starts At"
                   value={overrideForm.startsAt}
                   onChange={e => setOverrideForm(f => ({ ...f, startsAt: e.target.value }))}
-                  placeholder="Starts At"
-                  style={{ padding: '6px 8px', borderRadius: 4, background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155' }}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  sx={{ minWidth: 200 }}
                 />
-                <input
+                <TextField
                   type="datetime-local"
+                  size="small"
+                  label="Ends At"
                   value={overrideForm.endsAt}
                   onChange={e => setOverrideForm(f => ({ ...f, endsAt: e.target.value }))}
-                  placeholder="Ends At"
-                  style={{ padding: '6px 8px', borderRadius: 4, background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155' }}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  sx={{ minWidth: 200 }}
                 />
               </>
             ) : (
-              <input
+              <TextField
                 type="datetime-local"
+                size="small"
+                label="Target Cron Time"
                 value={overrideForm.targetCronTime}
                 onChange={e => setOverrideForm(f => ({ ...f, targetCronTime: e.target.value }))}
-                placeholder="Target Cron Time"
-                style={{ padding: '6px 8px', borderRadius: 4, background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155' }}
+                slotProps={{ inputLabel: { shrink: true } }}
+                sx={{ minWidth: 200 }}
               />
             )}
-            <input
+            <TextField
+              size="small"
+              label="Reason"
+              placeholder="Optional"
               value={overrideForm.reason}
               onChange={e => setOverrideForm(f => ({ ...f, reason: e.target.value }))}
-              placeholder="Reason (optional)"
-              style={{ padding: '6px 8px', borderRadius: 4, background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', flex: 1, minWidth: 160 }}
+              sx={{ flex: 1, minWidth: 160 }}
             />
             <Button size="small" variant="contained" onClick={() => createOverrideMut.mutate()} disabled={createOverrideMut.isPending}>
               Save
@@ -332,7 +381,7 @@ export default function PolicyDetailPage() {
             <Button size="small" onClick={() => setAddOverrideOpen(false)} sx={{ color: 'text.secondary' }}>
               Cancel
             </Button>
-          </Box>
+          </Stack>
         </Paper>
       )}
 
@@ -358,6 +407,7 @@ export default function PolicyDetailPage() {
                 <TableCell>Ticket</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Sleep on End</TableCell>
+                <TableCell>Details</TableCell>
                 <TableCell />
               </TableRow>
             </TableHead>
@@ -369,6 +419,14 @@ export default function PolicyDetailPage() {
                   <TableCell>{ex.ticketRef || '—'}</TableCell>
                   <TableCell><StatusChip status={ex.status} /></TableCell>
                   <TableCell>{ex.sleepOnEnd ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>
+                    {ex.status === 'cancelled' && ex.cancelReason && (
+                      <Typography variant="caption" color="text.secondary">{ex.cancelReason}</Typography>
+                    )}
+                    {ex.startExecutionId && (
+                      <Typography variant="caption" color="text.disabled">exec #{ex.startExecutionId}</Typography>
+                    )}
+                  </TableCell>
                   <TableCell>
                     {canEdit && ex.status === 'pending' && (
                       <IconButton size="small" onClick={() => { setEditingException(ex); setExceptionOpen(true) }}>
@@ -399,6 +457,7 @@ export default function PolicyDetailPage() {
                 <TableCell>ID</TableCell>
                 <TableCell>Direction</TableCell>
                 <TableCell>Trigger</TableCell>
+                <TableCell>Mode</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Scaled</TableCell>
                 <TableCell>Started</TableCell>
@@ -410,6 +469,12 @@ export default function PolicyDetailPage() {
                 const duration = ex.finishedAt
                   ? `${Math.round((new Date(ex.finishedAt).getTime() - new Date(ex.startedAt).getTime()) / 1000)}s`
                   : '—'
+                const counts = [
+                  ex.countScaled > 0 && `${ex.countScaled} scaled`,
+                  ex.countDrained > 0 && `${ex.countDrained} drained`,
+                  ex.countProtected > 0 && `${ex.countProtected} protected`,
+                  ex.countErrors > 0 && `${ex.countErrors} errors`,
+                ].filter(Boolean).join(', ') || '0'
                 return (
                   <TableRow key={ex.id} hover sx={{ cursor: 'pointer' }} onClick={() => router.push(`/policies/detail/?id=${policyId}&exec=${ex.id}`)}>
                     <TableCell>#{ex.id}</TableCell>
@@ -422,8 +487,19 @@ export default function PolicyDetailPage() {
                       </Box>
                     </TableCell>
                     <TableCell>{ex.trigger}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={ex.mode?.toUpperCase() ?? '—'}
+                        size="small"
+                        sx={{
+                          height: 18, fontSize: 10,
+                          bgcolor: ex.mode === 'apply' ? 'rgba(245,158,11,0.18)' : 'rgba(59,130,246,0.18)',
+                          color: ex.mode === 'apply' ? 'warning.main' : 'info.main',
+                        }}
+                      />
+                    </TableCell>
                     <TableCell><StatusChip status={ex.status} /></TableCell>
-                    <TableCell>{ex.countScaled}</TableCell>
+                    <TableCell>{counts}</TableCell>
                     <TableCell>{fmtDt(ex.startedAt)}</TableCell>
                     <TableCell>{duration}</TableCell>
                   </TableRow>

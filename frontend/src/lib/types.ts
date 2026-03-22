@@ -1,27 +1,3 @@
-export interface Schedule {
-  id: number
-  name: string
-  type: 'scale_down' | 'scale_up'
-  cronExpr: string
-  timezone: string
-  mode: 'plan' | 'apply'
-  enabled: boolean
-  namespaceFilter: string  // comma-separated; empty = all namespaces
-  position: number         // display order within each type group
-  updatedAt: string
-  nextRun?: string  // ISO timestamp from cron engine; absent when schedule is disabled
-}
-
-export interface ScheduleInput {
-  name: string
-  type: 'scale_down' | 'scale_up'
-  cronExpr: string
-  timezone: string
-  mode: 'plan' | 'apply'
-  enabled: boolean
-  namespaceFilter: string
-}
-
 export interface Guardrails {
   id: number
   systemNamespaces: string  // protected system defaults — requires confirmation to remove
@@ -30,30 +6,6 @@ export interface Guardrails {
   skipNodeLabels: string
   skipNodeTaints: string
   updatedAt: string
-}
-
-export interface Execution {
-  id: number
-  scheduleId: number
-  schedule: Schedule
-  startedAt: string
-  finishedAt: string | null
-  status: 'running' | 'success' | 'failed'
-  mode: 'plan' | 'apply'
-  countScaled: number
-  countDrained: number
-  countDeleted: number
-  countSkipped: number
-  countErrors: number
-}
-
-export interface LogLine {
-  id: number
-  executionId: number
-  seq: number
-  level: 'info' | 'ok' | 'plan' | 'error' | 'warn'
-  message: string
-  timestamp: string
 }
 
 export interface Workload {
@@ -94,11 +46,6 @@ export interface NodePod {
   cpuUsage: number
   memUsage: number
   startedAt: string
-}
-
-export interface ExecutionPage {
-  items: Execution[]
-  total: number
 }
 
 export interface PodContainer {
@@ -157,12 +104,19 @@ export interface PodDetail {
 
 // ─── Policy model ─────────────────────────────────────────────────────────────
 
+export interface SleepWindow {
+  daysOfWeek: number[] // 0=Sun, 1=Mon, ..., 6=Sat
+  startTime: string    // "HH:MM" 24h
+  endTime: string      // "HH:MM" 24h
+}
+
 export interface Policy {
   id: number
   name: string
   description: string
   namespaceFilter: string
   labelSelector: string
+  sleepWindows: SleepWindow[] | null
   sleepCron: string
   wakeCron: string
   timezone: string
@@ -184,6 +138,7 @@ export interface PolicyInput {
   description?: string
   namespaceFilter?: string
   labelSelector?: string
+  sleepWindows?: SleepWindow[]
   sleepCron?: string
   wakeCron?: string
   timezone?: string
@@ -199,10 +154,14 @@ export interface PolicyExecution {
   trigger: string
   startedAt: string
   finishedAt: string | null
-  status: 'running' | 'success' | 'failed' | 'interrupted'
+  status: 'running' | 'success' | 'failed' | 'interrupted' | 'skipped'
+  mode: 'plan' | 'apply'
   countScaled: number
   countSkipped: number
   countErrors: number
+  countProtected: number
+  countDrained: number
+  countDeleted: number
 }
 
 export interface PolicyExecutionPage {
@@ -210,18 +169,30 @@ export interface PolicyExecutionPage {
   total: number
 }
 
+export interface LogLine {
+  id: number
+  executionId: number
+  seq: number
+  level: 'info' | 'ok' | 'plan' | 'error' | 'warn'
+  message: string
+  timestamp: string
+}
+
 export interface WorkloadSnapshot {
   id: number
   policyId: number
-  executionId: number
+  sleepExecutionId: number
+  wakeExecutionId: number | null
   namespace: string
   kind: string
   name: string
   replicasBefore: number
+  replicasRestored: number | null
+  restoredAt: string | null
   wasAlreadyZero: boolean
-  closedAt: string | null
-  deletedAtWake: boolean
-  externallyScaled: boolean
+  wasDeletedAtWake: boolean
+  wasExternallyScaled: boolean
+  capturedAt: string
 }
 
 export interface PolicyOverride {
@@ -254,8 +225,13 @@ export interface ScheduledException {
   namespaceFilter: string
   labelSelector: string
   status: 'pending' | 'active' | 'completed' | 'cancelled'
+  startExecutionId: number | null
+  endExecutionId: number | null
+  cancelledAt: string | null
+  cancelReason: string
   createdBy: string
   createdAt: string
+  updatedAt: string
   workloadTargets: WorkloadTarget[]
 }
 
