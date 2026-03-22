@@ -35,7 +35,7 @@ type Execution struct {
 	Schedule   Schedule   `gorm:"foreignKey:ScheduleID" json:"schedule"`
 	StartedAt  time.Time  `gorm:"index" json:"startedAt"`
 	FinishedAt *time.Time `json:"finishedAt"`
-	Status     string     `gorm:"index;size:20" json:"status"` // "running" | "success" | "failed"
+	Status     string     `gorm:"index;size:20" json:"status"` // "running" | "success" | "failed" | "interrupted"
 	Mode       string     `gorm:"size:10" json:"mode"`         // "plan" | "apply"
 
 	CountScaled    int `json:"countScaled"`

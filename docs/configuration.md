@@ -90,7 +90,7 @@ Each schedule defines when the scaler fires, how it fires, and which namespaces 
 | **Cron expression**  | Standard 5-field cron (`minute hour dom month dow`)                                 |
 | **Timezone**         | IANA timezone — e.g. `Europe/Budapest`. Defaults to `UTC`.                          |
 | **Mode**             | `plan` — logs what would happen, no changes; `apply` — executes for real           |
-| **Namespace filter** | Comma-separated namespace names to target. Leave empty to target all namespaces.    |
+| **Namespace filter** | Comma-separated namespace names to target. Leave empty to target all namespaces. Each name must be a valid Kubernetes DNS label: lowercase alphanumeric and hyphens only, must start and end with alphanumeric, max 63 characters. |
 | **Enabled**          | Whether the schedule is active. Disabled schedules are skipped by the cron engine.  |
 | **Position**         | Display order within each type group. Set automatically; updated via drag-and-drop. |
 

@@ -41,6 +41,11 @@ func main() {
 		slog.Error("seed failed", "err", err)
 		os.Exit(1)
 	}
+	if n, err := st.MarkInterruptedExecutions(); err != nil {
+		slog.Error("startup: failed to mark interrupted executions", "err", err)
+	} else if n > 0 {
+		slog.Warn("startup: marked executions as interrupted (pod was restarted mid-run)", "count", n)
+	}
 
 	// ── Kubernetes client ─────────────────────────────────────────────────
 	k8s, err := k8sclient.New()
