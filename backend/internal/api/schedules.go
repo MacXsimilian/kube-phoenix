@@ -6,12 +6,17 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
 )
+
+// reNamespace matches valid Kubernetes namespace names (RFC 1123 DNS label).
+var reNamespace = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 
 type scheduleResponse struct {
 	store.Schedule
@@ -59,7 +64,7 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "name, type and cronExpr are required", http.StatusBadRequest)
 		return
 	}
-	if msg := validateScheduleFields(sc.Name, sc.CronExpr, sc.Type, sc.TimeoutMinutes); msg != "" {
+	if msg := validateScheduleFields(sc.Name, sc.CronExpr, sc.Type, sc.TimeoutMinutes, sc.NamespaceFilter); msg != "" {
 		jsonError(w, msg, http.StatusBadRequest)
 		return
 	}
@@ -87,9 +92,9 @@ func (h *Handler) createSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// validateScheduleFields validates name, cronExpr, type, and timeoutMinutes.
+// validateScheduleFields validates name, cronExpr, type, timeoutMinutes, and namespaceFilter.
 // Returns an error message or "" if valid.
-func validateScheduleFields(name, cronExpr, scheduleType string, timeoutMinutes int) string {
+func validateScheduleFields(name, cronExpr, scheduleType string, timeoutMinutes int, namespaceFilter string) string {
 	if len(name) > 255 {
 		return "name must be 255 characters or fewer"
 	}
@@ -102,6 +107,30 @@ func validateScheduleFields(name, cronExpr, scheduleType string, timeoutMinutes 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	if _, err := parser.Parse(cronExpr); err != nil {
 		return "invalid cron expression"
+	}
+	if msg := validateNamespaceFilter(namespaceFilter); msg != "" {
+		return msg
+	}
+	return ""
+}
+
+// validateNamespaceFilter checks each entry in a comma-separated namespace list
+// against Kubernetes naming rules (RFC 1123 DNS label, max 63 chars).
+func validateNamespaceFilter(filter string) string {
+	if filter == "" {
+		return ""
+	}
+	for _, ns := range strings.Split(filter, ",") {
+		ns = strings.TrimSpace(ns)
+		if ns == "" {
+			continue
+		}
+		if len(ns) > 63 {
+			return fmt.Sprintf("namespace %q exceeds the 63-character limit", ns)
+		}
+		if !reNamespace.MatchString(ns) {
+			return fmt.Sprintf("%q is not a valid namespace name (lowercase alphanumeric and hyphens only, must start and end with alphanumeric)", ns)
+		}
 	}
 	return ""
 }
@@ -193,6 +222,11 @@ func validateScheduleUpdate(updates map[string]interface{}) string {
 			if int(f) < 0 || int(f) > 1440 {
 				return "timeoutMinutes must be between 0 and 1440"
 			}
+		}
+	}
+	if v, ok := updates["namespace_filter"]; ok {
+		if msg := validateNamespaceFilter(fmt.Sprintf("%v", v)); msg != "" {
+			return msg
 		}
 	}
 	return ""
