@@ -85,7 +85,9 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("__kp_session")
 	if err == nil && cookie.Value != "" {
-		_ = h.store.DeleteSession(cookie.Value)
+		if delErr := h.store.DeleteSession(cookie.Value); delErr == nil {
+			metrics.ActiveSessions.Dec()
+		}
 	}
 
 	h.audit(r, "auth.logout", "", nil, nil, nil)
@@ -209,6 +211,7 @@ func (h *Handler) createSessionCookies(w http.ResponseWriter, r *http.Request, u
 	if err := h.store.CreateSession(sess); err != nil {
 		return err
 	}
+	metrics.ActiveSessions.Inc()
 
 	secure := os.Getenv("COOKIE_SECURE") != "false" // secure by default
 	http.SetCookie(w, &http.Cookie{

@@ -8,43 +8,43 @@ import (
 )
 
 var (
-	// ExecutionsTotal counts every completed schedule execution by outcome.
+	// ExecutionsTotal counts every completed policy execution by outcome.
 	ExecutionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "kube_phoenix_executions_total",
-		Help: "Total number of schedule executions, partitioned by status, mode, and schedule type.",
-	}, []string{"status", "mode", "schedule_type"})
+		Help: "Total number of policy executions, partitioned by status, mode, and direction.",
+	}, []string{"status", "mode", "direction"})
 
 	// ExecutionDuration observes the wall-clock duration of each execution.
 	ExecutionDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "kube_phoenix_execution_duration_seconds",
-		Help:    "Duration of schedule executions in seconds.",
+		Help:    "Duration of policy executions in seconds.",
 		Buckets: []float64{5, 15, 30, 60, 120, 300, 600, 1800},
-	}, []string{"mode", "schedule_type", "status"})
+	}, []string{"mode", "direction", "status"})
 
 	// WorkloadsScaledTotal counts workloads (Deployments + StatefulSets) affected.
 	WorkloadsScaledTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "kube_phoenix_workloads_scaled_total",
-		Help: "Total number of workloads scaled, partitioned by direction (down or up).",
+		Help: "Total number of workloads scaled, partitioned by direction (sleep or wake).",
 	}, []string{"direction"})
 
-	// NodesDrainedTotal counts nodes drained across all scale-down executions.
+	// NodesDrainedTotal counts nodes drained across all sleep executions.
 	NodesDrainedTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "kube_phoenix_nodes_drained_total",
-		Help: "Total number of nodes drained during scale-down operations.",
+		Help: "Total number of nodes drained during sleep operations.",
 	})
 
-	// NodesDeletedTotal counts nodes deleted across all scale-down executions.
+	// NodesDeletedTotal counts nodes deleted across all sleep executions.
 	NodesDeletedTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "kube_phoenix_nodes_deleted_total",
-		Help: "Total number of nodes deleted during scale-down operations.",
+		Help: "Total number of nodes deleted during sleep operations.",
 	})
 
-	// ActiveSchedules tracks how many schedules are enabled, by type and mode.
+	// ActivePolicies tracks how many policies are enabled, by mode.
 	// Updated every time the scheduler reloads its cron entries.
-	ActiveSchedules = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "kube_phoenix_active_schedules",
-		Help: "Number of enabled schedules, partitioned by schedule_type and mode.",
-	}, []string{"schedule_type", "mode"})
+	ActivePolicies = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "kube_phoenix_active_policies",
+		Help: "Number of enabled policies, partitioned by mode.",
+	}, []string{"mode"})
 
 	// ─── User management metrics ─────────────────────────────────────────
 
@@ -57,8 +57,8 @@ var (
 	// UserActionsTotal counts user-initiated mutations.
 	UserActionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "kube_phoenix_user_actions_total",
-		Help: "Total user actions, partitioned by action, user, and resource_type.",
-	}, []string{"action", "user", "resource_type"})
+		Help: "Total user actions, partitioned by action and resource_type.",
+	}, []string{"action", "resource_type"})
 
 	// ActiveSessions is a gauge of currently valid sessions.
 	ActiveSessions = promauto.NewGauge(prometheus.GaugeOpts{

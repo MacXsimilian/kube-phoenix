@@ -93,5 +93,5 @@ func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID
 		slog.Warn("audit-writer: buffer full, entry dropped", "action", action, "user", username)
 	}
 
-	metrics.UserActionsTotal.WithLabelValues(action, username, resourceType).Inc()
+	metrics.UserActionsTotal.WithLabelValues(action, resourceType).Inc()
 }
