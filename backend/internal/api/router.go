@@ -47,6 +47,9 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sche
 	var oidcProv *auth.OIDCProvider
 	oidcCfg := auth.OIDCConfigFromEnv()
 	if oidcCfg != nil {
+		if oidcCfg.SkipTLSVerify {
+			slog.Warn("oidc: TLS verification is DISABLED (OIDC_SKIP_TLS_VERIFY=true) — this must not be used in production")
+		}
 		var err error
 		oidcProv, err = auth.NewOIDCProvider(ctx, *oidcCfg)
 		if err != nil {
