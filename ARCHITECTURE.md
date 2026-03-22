@@ -15,7 +15,7 @@
    - 4.1 [Entry Point — cmd/server/main.go](#41-entry-point--cmdservermainmaingo)
    - 4.2 [HTTP Router & Middleware Stack](#42-http-router--middleware-stack)
    - 4.3 [API Handlers](#43-api-handlers)
-   - 4.4 [Scheduler](#44-scheduler)
+   - 4.4 [PolicyScheduler & Broker](#44-policyscheduler--broker)
    - 4.5 [Scaler](#45-scaler)
    - 4.6 [Kubernetes Client Wrapper](#46-kubernetes-client-wrapper)
    - 4.7 [Store / Database Layer](#47-store--database-layer)
@@ -44,13 +44,13 @@
 
 ## 1. Project Overview
 
-kube-phoenix is a web application that manages Kubernetes cluster **sleep/wake schedules**. Its purpose is to reduce cloud spend during off-hours by scaling workloads to zero replicas and draining nodes (which then get removed), then restoring them on schedule. It replaces a legacy `cronjob.yaml` bash script with a properly observable, configurable system.
+kube-phoenix is a web application that manages Kubernetes cluster **sleep/wake policies**. Its purpose is to reduce cloud spend during off-hours by scaling workloads to zero replicas and draining nodes (which then get removed), then restoring them on schedule. It replaces a legacy `cronjob.yaml` bash script with a properly observable, configurable system.
 
 ### Core capabilities
 
 | Capability               | Description                                                               |
 | :----------------------- | :------------------------------------------------------------------------ |
-| Schedule management      | CRUD for named cron schedules typed `scale_down` or `scale_up`            |
+| Policy management        | CRUD for named sleep/wake policies with sleep windows or raw cron         |
 | Guardrails               | Configurable exclusion lists for namespaces, node labels, and node taints |
 | Dry-run (plan) mode      | Every scale operation can be simulated before applying                    |
 | Live log streaming       | WebSocket-based log fan-out during an active execution                    |
@@ -72,7 +72,7 @@ kube-phoenix is a web application that manages Kubernetes cluster **sleep/wake s
 | Backend language        | Go 1.26                                                  |
 | HTTP router             | go-chi/chi v5.2                                          |
 | Database                | PostgreSQL via GORM v1.31 (gorm.io/driver/postgres v1.6) |
-| Scheduler               | robfig/cron v3 (5-field cron expressions)                |
+| Policy scheduler        | robfig/cron v3 (5-field cron expressions)                |
 | WebSocket               | gorilla/websocket                                        |
 | Kubernetes SDK          | k8s.io/client-go                                         |
 | Frontend framework      | Next.js 16 (static export)                               |
@@ -97,11 +97,10 @@ flowchart TB
                 subgraph Binary["Go Binary — :8080"]
                     Router["Chi Router<br/>+ Session Auth middleware"]
                     Handlers["API Handlers<br/>/api/*  /ws/*"]
-                    Scheduler["Scheduler<br/>(legacy schedules)"]
-                    Scaler["Scaler Runner<br/>scale_down / scale_up"]
                     PolicyScheduler["PolicyScheduler<br/>(policies + exceptions)"]
                     PolicyEngine["PolicyEngine<br/>(IntendedState evaluation)"]
                     PolicyScaler["PolicyScaler<br/>(DB-backed snapshots)"]
+                    Broker["Broker<br/>(WebSocket pub/sub)"]
                     Store["Store<br/>(GORM)"]
                     SPA["SPA Static<br/>(//go:embed)"]
                     K8sClient["k8s Client<br/>(client-go)"]
@@ -118,13 +117,11 @@ flowchart TB
     ALB -- "HTTP :80" --> Router
     Router --> Handlers
     Router --> SPA
-    Handlers --> Scheduler
     Handlers --> PolicyScheduler
     Handlers --> Store
-    Scheduler --> Scaler
     PolicyScheduler --> PolicyEngine
     PolicyScheduler --> PolicyScaler
-    Scaler --> K8sClient
+    PolicyScheduler --> Broker
     PolicyScaler --> K8sClient
     K8sClient --> K8sAPI
     Store --> PG
@@ -134,9 +131,9 @@ flowchart TB
 
 1. Browser loads the Next.js SPA from `GET /` (served by the Go binary from its embedded filesystem).
 2. SPA calls `GET /api/*` endpoints (JSON over HTTP) for data.
-3. For live log streaming, SPA opens `ws[s]://host/ws/executions/:id/logs`.
+3. For live log streaming, SPA opens `ws[s]://host/ws/policy-executions/:id/logs`.
 4. The Go binary calls the Kubernetes API Server directly using the pod's ServiceAccount token (in-cluster config).
-5. The cron scheduler fires scale-down or scale-up jobs on schedule; results are persisted to PostgreSQL and streamed to subscribers.
+5. The PolicyScheduler fires sleep or wake jobs on cron schedule (compiled from sleep windows); results are persisted to PostgreSQL and streamed to subscribers.
 
 ---
 
@@ -158,11 +155,8 @@ kube-phoenix/
 │   ├── internal/
 │   │   ├── api/
 │   │   │   ├── router.go         # Chi router construction + middleware
-│   │   │   ├── schedules.go      # CRUD for Schedule resources
-│   │   │   ├── executions.go     # Execution list/get/logs + WebSocket
 │   │   │   ├── cluster.go        # Cluster state (workloads, nodes, pods)
 │   │   │   ├── guardrails.go     # Guardrails get/update
-│   │   │   ├── trigger.go        # Manual run trigger
 │   │   │   ├── admin.go          # DB reset (streamed NDJSON)
 │   │   │   ├── auth.go           # Login, logout, me, password change, OIDC callbacks
 │   │   │   ├── users.go          # User CRUD (admin only)
@@ -171,18 +165,17 @@ kube-phoenix/
 │   │   │   ├── policy_executions.go  # Policy execution list/get/logs/snapshots + WebSocket
 │   │   │   ├── overrides.go      # Policy override create/delete
 │   │   │   ├── exceptions.go     # Scheduled exception CRUD
+│   │   │   ├── ws.go             # Extracted WebSocket helpers
 │   │   │   └── helpers.go        # jsonOK, jsonError, parseID, splitCSVLocal
 │   │   │
 │   │   ├── scheduler/
-│   │   │   ├── scheduler.go      # Cron wrapper + Broker pub/sub + run()
+│   │   │   ├── broker.go             # Extracted Broker type (pub/sub for WebSocket log fan-out)
 │   │   │   ├── policy_scheduler.go   # PolicyScheduler: per-policy cron, recovery, exception tick
 │   │   │   ├── policy_engine.go      # Pure evaluation: IntendedState, NextFire, MostRecentFire
 │   │   │   └── policy_scaler.go      # DB-backed sleep/wake with WorkloadSnapshot persistence
 │   │   │
-│   │   ├── scaler/
-│   │   │   ├── scaler.go         # Types, helpers, Runner struct
-│   │   │   ├── scale_down.go     # RunScaleDown implementation
-│   │   │   └── scale_up.go       # RunScaleUp implementation
+│   │   ├── policy/
+│   │   │   └── windows.go        # SleepWindow-to-cron compiler
 │   │   │
 │   │   ├── k8s/
 │   │   │   ├── client.go         # Typed k8s API wrapper
@@ -225,7 +218,6 @@ kube-phoenix/
 │       │   ├── overview/page.tsx
 │       │   ├── cluster/page.tsx
 │       │   ├── guardrails/page.tsx
-│       │   ├── schedules/page.tsx
 │       │   ├── history/page.tsx
 │       │   ├── policies/
 │       │   │   ├── page.tsx       # Policy list: cards, create/edit/delete, sleep/wake now
@@ -244,10 +236,6 @@ kube-phoenix/
 │       │   │   ├── ClusterStatusCard.tsx
 │       │   │   ├── NextRunCard.tsx
 │       │   │   └── ActivityFeed.tsx
-│       │   ├── schedules/
-│       │   │   ├── ScheduleCard.tsx
-│       │   │   ├── ScheduleDialog.tsx
-│       │   │   └── CronBuilder.tsx    # visual cron builder (day/time picker + advanced raw cron toggle)
 │       │   ├── cluster/
 │       │   │   ├── WorkloadsTable.tsx
 │       │   │   ├── NodesTable.tsx
@@ -262,7 +250,10 @@ kube-phoenix/
 │       │   │   └── GuardrailsForm.tsx
 │       │   ├── policies/
 │       │   │   ├── PolicyCard.tsx       # State badge, sleep/wake buttons, edit/delete
-│       │   │   ├── CreatePolicyDialog.tsx  # Create/edit form with CronBuilder
+│       │   │   ├── CreatePolicyDialog.tsx  # Create/edit form with WindowPicker
+│       │   │   ├── WindowPicker.tsx     # Day/time picker for SleepWindow objects
+│       │   │   ├── MiniTimeline.tsx     # 24h SVG bar showing sleep/wake periods
+│       │   │   ├── WeeklyTimeline.tsx   # 7-day SVG timeline visualisation
 │       │   │   └── ExceptionDialog.tsx  # Create/edit scheduled exception
 │       │   ├── users/
 │       │   │   └── UsersTable.tsx
@@ -277,6 +268,7 @@ kube-phoenix/
 │       │   ├── types.ts           # TypeScript interfaces
 │       │   ├── queryClient.ts     # TanStack QueryClient singleton
 │       │   ├── cronToText.ts      # 5-field cron → human readable
+│       │   ├── windowUtils.ts    # SleepWindow formatting helpers
 │       │   ├── themeMode.tsx      # ThemeModeProvider + useThemeMode (light/dark/system)
 │       │   ├── colors.ts          # useColors() hook — mode-aware semantic color palette
 │       │   ├── constants.ts       # Shared constants
@@ -320,7 +312,7 @@ kube-phoenix/
 
 The backend is a single Go binary that serves three roles simultaneously:
 - **HTTP API server** for the frontend SPA
-- **Cron scheduler** that fires scale-down and scale-up operations
+- **Policy scheduler** that fires sleep and wake operations based on policy sleep windows
 - **Static file server** for the embedded Next.js SPA
 
 ### 4.1 Entry Point — cmd/server/main.go
@@ -341,10 +333,6 @@ main()
   ├─ k8s.New()                   ──► Tries InClusterConfig → kubeconfig fallback
   │   └─ if error: slog.Warn, k8s = nil (k8s operations disabled but server runs)
   │
-  ├─ scheduler.New(store, k8s)
-  │   └─ if k8s != nil: scheduler.Start()
-  │   └─ if k8s == nil: scheduler created but not started (manual trigger blocked)
-  │
   ├─ store.MarkInterruptedPolicyExecutions()  ──► sets status=interrupted for any running→interrupted rows
   │
   ├─ scheduler.NewPolicyScheduler(store, k8s)
@@ -352,7 +340,7 @@ main()
   │   └─ if k8s != nil: policySched.RecoverPolicies(ctx)  ──► computes IntendedState(now) for each policy
   │   └─ if k8s != nil: go runTicker(ctx, 1m, "exception-tick", policySched.TickExceptions)
   │
-  ├─ api.NewRouter(store, k8s, scheduler, policySched, cache, auditWriter)  ──► Returns http.Handler (Chi mux)
+  ├─ api.NewRouter(ctx, store, k8s, policySched, cache)  ──► Returns http.Handler (Chi mux)
   │
   └─ http.Server{Addr: ":8080", WriteTimeout: 0}
       └─ WriteTimeout=0 is critical: allows WebSocket and SSE to stream indefinitely
@@ -362,7 +350,7 @@ main()
 
 **Why WriteTimeout is zero:** Go's `http.Server` enforces `WriteTimeout` across the entire response, including streaming. Setting it to 0 disables it, which is required for WebSocket connections and the NDJSON danger/reset-db stream. Without this setting, long-running executions (which can take hours) would have their WebSocket connections forcefully closed mid-stream.
 
-**Why k8s = nil is allowed:** The server starts and serves the frontend even if no Kubernetes cluster is reachable. This allows the UI to be accessible for read-only operations (checking history, viewing schedules) even during a cluster incident. Any endpoint that requires the k8s client returns a 503 with a clear error message.
+**Why k8s = nil is allowed:** The server starts and serves the frontend even if no Kubernetes cluster is reachable. This allows the UI to be accessible for read-only operations (checking history, viewing policies) even during a cluster incident. Any endpoint that requires the k8s client returns a 503 with a clear error message.
 
 **Structured logging:** The binary uses Go's `log/slog` with the default JSON handler. All log lines include `time`, `level`, `msg`, and context-specific key-value pairs. This is intentional — structured logs integrate directly with log aggregation systems (Loki, CloudWatch, Datadog) without additional parsing.
 
@@ -371,7 +359,7 @@ main()
 2. `signal.Notify` delivers the signal to a buffered channel; `main` unblocks.
 3. `server.Shutdown(ctx)` is called with a 30-second deadline.
 4. In-flight HTTP requests are allowed to complete.
-5. The scheduler's `Stop()` method halts the cron dispatcher (ongoing scale operations run to completion in their goroutines — they are not force-killed).
+5. The PolicyScheduler's `Stop()` method halts the cron dispatcher (ongoing scale operations run to completion in their goroutines — they are not force-killed).
 6. The database connection pool is closed.
 
 ### 4.2 HTTP Router & Middleware Stack
@@ -429,12 +417,7 @@ Group: /  (with SessionAuth + CSRF middleware)
   ├─ GET  /api/docs            → 302 redirect to /api/docs/
   ├─ GET  /api/docs/openapi.yaml → embedded OpenAPI 3.1 spec (application/yaml)
   ├─ /*   /api/docs/           → Swagger UI (swaggest/swgui v5, embedded assets)
-  ├─ /api/schedules           GET, POST
-  ├─ /api/schedules/{id}      GET, PUT, DELETE
   ├─ /api/guardrails          GET, PUT
-  ├─ /api/executions          GET
-  ├─ /api/executions/{id}     GET
-  ├─ /api/executions/{id}/logs GET
   ├─ /api/cluster/workloads   GET
   ├─ /api/cluster/nodes       GET
   ├─ /api/cluster/nodes/{name}/pods GET
@@ -442,7 +425,6 @@ Group: /  (with SessionAuth + CSRF middleware)
   ├─ /api/cluster/workloads/{ns}/{kind}/{name}/pods GET
   ├─ /api/overview            GET  ← pre-aggregated dashboard summary (cache-backed)
   ├─ /api/cluster/stream      GET  ← SSE stream of overview updates (10 s cadence)
-  ├─ /api/trigger             POST
   ├─ /api/danger/reset-db      POST (admin only)
   ├─ /api/users               GET, POST (admin only)
   ├─ /api/users/{id}          PUT, DELETE (admin only)
@@ -460,7 +442,6 @@ Group: /  (with SessionAuth + CSRF middleware)
   ├─ /api/policy-executions/{id}/snapshots GET
   ├─ /api/exceptions          GET, POST (operator+)
   ├─ /api/exceptions/{id}     GET, PUT (operator+), DELETE (operator+)
-  ├─ /ws/executions/{id}/logs GET (WebSocket upgrade, session cookie auth)
   └─ /ws/policy-executions/{id}/logs GET (WebSocket upgrade, session cookie auth)
 
 SPA: everything else → web.SPAHandler (serves index.html for unknown paths)
@@ -477,77 +458,12 @@ The `/healthz` endpoint must be reachable by the Kubernetes liveness probe. Kube
 | `/api/auth/*` | Public | Login, logout, OIDC |
 | `/api/users/*` | admin | User management |
 | `/api/admin/*` | admin | DB reset |
-| `/api/trigger`, `/api/schedules` (POST/PUT/DELETE), `/api/guardrails` (PUT) | admin, operator | Mutating operations |
+| `/api/guardrails` (PUT) | admin, operator | Guardrails mutations |
 | `/api/policies` (POST/PUT/DELETE), `/api/policies/{id}/overrides` (POST/DELETE), `/api/exceptions` (POST/PUT/DELETE) | admin, operator | Policy mutations |
 | `/api/policies/{id}/sleep`, `/api/policies/{id}/wake` | admin, operator | Policy triggers |
 | All other `/api/*` | admin, operator, viewer | Read-only access |
 
 ### 4.3 API Handlers
-
-#### Schedules (`internal/api/schedules.go`)
-
-**`listSchedules` (GET /api/schedules)**
-
-Fetches all Schedule rows from PostgreSQL ordered by `position asc, id asc`, then for each schedule queries `scheduler.NextRun(id)` to get the next cron fire time. The NextRun is appended to the response JSON as a virtual field. This is a deliberate join-at-application-layer pattern rather than storing NextRun in the database, because it is always derived from the cron expression and cannot become stale.
-
-**`reorderSchedules` (PUT /api/schedules/reorder)**
-
-Accepts `{"type": "scale_down"|"scale_up", "ids": [...]}` and bulk-updates the `position` column for each ID within a single transaction. Only IDs matching the specified type are affected — the `WHERE id = ? AND type = ?` clause silently ignores any mismatched IDs, so it is not possible to cross-contaminate the sleep and wake orderings. Returns the full updated schedule list. The route is registered before `/{id}` in the router so chi does not interpret `"reorder"` as a numeric ID.
-
-**`createSchedule` (POST /api/schedules)**
-
-Validation steps:
-1. `name` must be non-empty
-2. `type` must be `scale_down` or `scale_up`
-3. `cronExpr` is parsed with `robfig/cron/v3`'s `NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)` — a 5-field parser. Any invalid cron expression returns 400.
-4. Defaults applied: `timezone = "UTC"`, `mode = "plan"` (safe: new schedules are dry-run by default).
-5. Row inserted, then `scheduler.Reload()` is called to pick up the new schedule.
-6. Returns 201 Created.
-
-**`updateSchedule` (PUT /api/schedules/{id})**
-
-Uses a `map[string]interface{}` partial-update pattern to only write provided fields. The `type` field is explicitly excluded from the allowed update map — you cannot change a `scale_down` schedule to `scale_up` after creation. This is a safety constraint: changing the type of a schedule would be semantically equivalent to deleting it and creating a new one, which is less confusing. After update, `scheduler.Reload()` is called.
-
-> **GORM zero-value note:** GORM's `Updates(map)` silently skips map values that equal the Go zero value for their type — including `bool(false)`. This means sending `{"enabled": false}` alone would not persist the change. The store layer works around this by collecting the map keys and passing them to `Select(keys)` before `Updates(map)`, which forces GORM to write every specified column regardless of value.
-
-**`deleteSchedule` (DELETE /api/schedules/{id})**
-
-Hard deletes the row. Executions that reference the schedule will show `ScheduleID` with no preloaded `Schedule` (FK nullable in the execution query). After delete, `scheduler.Reload()` removes the cron entry.
-
-#### Executions (`internal/api/executions.go`)
-
-**`listExecutions` (GET /api/executions)**
-
-Query parameters:
-- `schedule_id` (uint): filter by schedule
-- `status` (string): `running`, `success`, or `failed`
-- `page` (int, default 1)
-- `page_size` (int, default 20, max 100)
-
-Returns a paginated JSON object:
-
-```json
-{
-  "items": [...],
-  "total": 142,
-  "page": 1,
-  "pageSize": 20
-}
-```
-
-Items are ordered by `started_at DESC` (newest first).
-
-**`getExecution` (GET /api/executions/{id})**
-
-Returns a single execution with its associated Schedule preloaded (via GORM `Preload("Schedule")`).
-
-**`getExecutionLogs` (GET /api/executions/{id}/logs)**
-
-Returns all log lines for a completed execution ordered by `seq ASC`. This is used by the History page's log drawer for completed executions. For running executions, the frontend uses the WebSocket endpoint instead.
-
-**`wsExecutionLogs` (GET /ws/executions/{id}/logs)**
-
-This is the most complex handler. Its race-condition-free design is detailed in Section 7 (WebSocket Architecture).
 
 #### Cluster (`internal/api/cluster.go`)
 
@@ -579,7 +495,7 @@ Algorithm:
 
 **`getOverview` (GET /api/overview)**
 
-Returns a pre-aggregated dashboard summary in one round-trip, replacing the three separate calls (`/cluster/workloads`, `/cluster/nodes`, `/api/schedules`) that the Overview page previously issued. Reads entirely from the `ClusterCache` snapshot and the in-memory scheduler — no K8s or DB I/O on the hot path (only a fast `store.ListSchedules()` for `nextRun`).
+Returns a pre-aggregated dashboard summary in one round-trip. Reads entirely from the `ClusterCache` snapshot and the in-memory PolicyScheduler — no K8s or DB I/O on the hot path.
 
 Response shape:
 ```json
@@ -589,7 +505,7 @@ Response shape:
   "sleepingCount": 0,
   "nodeCount": 7,
   "sleepingByNs": [{ "namespace": "payments", "count": 3 }],
-  "nextRun": { "name": "Weekday Sleep", "nextRun": "2026-03-16T19:05:00Z" },
+  "nextRun": { "name": "Production Sleep", "nextRun": "2026-03-22T19:05:00Z" },
   "cacheAgeMs": 3241
 }
 ```
@@ -642,26 +558,6 @@ Accepts a JSON body and applies a field whitelist:
 
 All fields are stored as comma-separated strings in the database. The whitelist prevents callers from updating the `id` or `updated_at` fields directly.
 
-#### Trigger (`internal/api/trigger.go`)
-
-**`trigger` (POST /api/trigger)**
-
-Body:
-```json
-{
-  "scheduleId": 3,
-  "mode": "plan"
-}
-```
-
-Validates `mode` is `"plan"` or `"apply"`, then calls `scheduler.RunNow(scheduleId, mode)`. Returns:
-```json
-{
-  "executionId": 42
-}
-```
-with HTTP 202 Accepted. The execution runs asynchronously in a goroutine; the client can poll or subscribe to WebSocket to observe progress.
-
 #### Admin (`internal/api/admin.go`)
 
 **`resetDB` (POST /api/danger/reset-db)**
@@ -672,11 +568,11 @@ This is a destructive operation used for development and testing. It requires:
 ```
 
 The response is a **streaming NDJSON** (one JSON object per line, flushed immediately). Progress steps:
-1. Stop scheduler
-2. Drop all tables (Schedule, Guardrails, Execution, LogLine)
+1. Stop PolicyScheduler
+2. Drop all tables (Guardrails, Policy, PolicyExecution, PolicyLogLine, WorkloadSnapshot, etc.)
 3. Run AutoMigrate to recreate schema
-4. Seed default data
-5. Restart scheduler
+4. Seed default data (guardrails + admin user)
+5. Restart PolicyScheduler
 
 Each step emits a `{"step": "...", "status": "ok"}` or `{"step": "...", "status": "error", "message": "..."}` line. The header `X-Accel-Buffering: no` disables nginx's response buffering so the client receives lines in real time.
 
@@ -689,87 +585,40 @@ The frontend uses an async generator (`resetDatabaseStream()`) to iterate over t
 - `parseID(r, param)` — extracts Chi URL param as uint, returns error if not a positive integer
 - `splitCSVLocal(s)` — splits comma-separated string into `map[string]bool` for O(1) lookup
 
-### 4.4 Scheduler
+### 4.4 PolicyScheduler & Broker
 
-The scheduler lives in `internal/scheduler/scheduler.go` and is the heart of the automation. It has two major responsibilities:
+The policy scheduler lives in `internal/scheduler/policy_scheduler.go` and is the heart of the automation. The Broker lives in `internal/scheduler/broker.go`.
 
-1. **Cron management** — wrapping robfig/cron v3 to add, remove, and reload cron entries dynamically.
-2. **Pub/sub log broker** — fan-out of log lines from scale operations to all connected WebSocket clients.
+#### PolicyScheduler
 
-#### Scheduler struct
+The PolicyScheduler manages per-policy cron entries derived from each policy's sleep/wake cron expressions. These cron expressions are either set directly (advanced mode) or compiled from SleepWindow objects via `internal/policy/windows.go`.
 
-```go
-type Scheduler struct {
-    store   *store.Store
-    runner  *scaler.Runner
-    Broker  *Broker              // exported — used by API handlers for WebSocket subscriptions
+**Sleep windows:** Users define sleep periods as `SleepWindow` objects with `daysOfWeek` (e.g. `[1,2,3,4,5]`), `startTime` (e.g. `"19:00"`), and `endTime` (e.g. `"07:00"`). The window compiler converts these to a pair of 5-field cron expressions: one for the sleep transition and one for the wake transition. The API accepts both windows (preferred) and raw cron expressions (advanced mode).
 
-    mu      sync.Mutex
-    cron    *cron.Cron
-    entryID map[uint]cron.EntryID // scheduleID → cron entryID
-}
-```
+**Key methods:**
 
-**`Start()`** — calls `cron.Start()`. The underlying cron library runs entries in goroutines.
+- **`Start(ctx)`** — loads all enabled policies, registers cron entries for each, starts the cron dispatcher.
+- **`Stop()`** — halts the cron dispatcher; ongoing operations run to completion.
+- **`RecoverPolicies(ctx)`** — called at startup. Computes `IntendedState(now)` for each enabled policy and reconciles if the cluster state diverges (e.g. pod was restarted mid-sleep).
+- **`TickExceptions(ctx)`** — called every 60s by a background ticker. Checks for scheduled exceptions that have started or ended and triggers the appropriate sleep/wake transition.
+- **`RunSleepNow(ctx, policyID, trigger)`** / **`RunWakeNow(ctx, policyID, trigger)`** — manual triggers. Creates a PolicyExecution and launches the operation in a goroutine.
+- **`schedulePolicy(p)`** — registers sleep and wake cron entries for a policy (uses `CRON_TZ=` prefix for timezone).
+- **`unschedulePolicy(policyID)`** — removes cron entries when a policy is disabled or deleted.
 
-**`Stop()`** — calls `cron.Stop()`, which returns a context that is done when all running jobs finish. The scheduler waits for this context before returning, ensuring no goroutines are orphaned.
-
-**`Reload()`** — the critical hot-reload method. Acquires the mutex, removes all existing cron entries, queries the database for all enabled schedules, and adds each back with a fresh cron entry. This is called after every create/update/delete of a schedule. The CRON_TZ prefix is used for timezone support:
-
-```
-CRON_TZ=America/New_York 0 18 * * 1-5
-```
-
-robfig/cron v3 parses the `CRON_TZ=` prefix and sets the location on the entry's schedule, so the cron fires at the correct local time regardless of the server's system timezone.
-
-**`NextRun(scheduleID uint) *time.Time`** — looks up the entry ID from the map, asks the cron library for the entry, and returns `entry.Next`. Returns nil if the schedule is not loaded (disabled or not found).
-
-**`RunNow(scheduleID uint, mode string) (uint, error)`** — creates an Execution row and launches `run()` in a goroutine. Returns the execution ID immediately. This is what the trigger endpoint calls.
-
-**`run(ctx context.Context, scheduleID uint, scheduleType, mode, namespaceFilter string, timeoutMinutes int) (uint, error)`** — the actual execution goroutine. Creates the Execution record internally and returns the execution ID:
-
-```
-run()
-  │
-  ├─ Create logCh (chan scaler.LogLine, buffered 512)
-  │
-  ├─ goroutine: drain logCh → AppendLogLine (DB) + broker.Publish
-  │   └─ WaitGroup to ensure all lines written before FinishExecution
-  │
-  ├─ Create runner (scaler.Runner{k8s, store})
-  │
-  ├─ ctx with timeout (schedule.TimeoutMinutes * time.Minute, default 120min)
-  │
-  ├─ if scheduleType == "scale_down":
-  │     counts, err = runner.RunScaleDown(ctx, mode, namespaceFilter, logCh)
-  │   else:
-  │     counts, err = runner.RunScaleUp(ctx, mode, namespaceFilter, logCh)
-  │
-  ├─ close(logCh)  ← signals drain goroutine to finish
-  ├─ wg.Wait()    ← waits for all log lines to be written to DB
-  │
-  ├─ broker.Close(executionID)  ← signals all WebSocket subscribers that stream is done
-  │
-  └─ store.FinishExecution(executionID, counts, err)
-      └─ sets Status = "success" or "failed"
-      └─ sets FinishedAt = now()
-      └─ sets CountSaved, CountScaled, CountDrained, CountDeleted, CountSkipped, CountProtected, CountErrors
-```
-
-#### Broker struct
+#### Broker (`internal/scheduler/broker.go`)
 
 ```go
 type Broker struct {
     mu   sync.RWMutex
-    subs map[uint][]chan store.LogLine
+    subs map[uint][]chan store.PolicyLogLine
 }
 ```
 
-**`Subscribe(executionID uint) chan store.LogLine`** — creates a buffered channel of capacity 256, appends it to the subscriber list for that execution ID, returns the channel. The 256-capacity buffer means a slow WebSocket client can absorb bursts without blocking the scaler goroutine.
+**`Subscribe(executionID uint) chan store.PolicyLogLine`** — creates a buffered channel of capacity 256, appends it to the subscriber list for that execution ID, returns the channel. The 256-capacity buffer means a slow WebSocket client can absorb bursts without blocking the scaler goroutine.
 
-**`Unsubscribe(executionID uint, ch chan store.LogLine)`** — removes the channel from the subscriber list and closes it. Includes a guard against double-close panics.
+**`Unsubscribe(executionID uint, ch chan store.PolicyLogLine)`** — removes the channel from the subscriber list and closes it. Includes a guard against double-close panics.
 
-**`Publish(executionID uint, line store.LogLine)`** — fan-out under lock:
+**`Publish(executionID uint, line store.PolicyLogLine)`** — fan-out under lock:
 ```go
 for _, ch := range subs[executionID] {
     select {
@@ -781,7 +630,7 @@ for _, ch := range subs[executionID] {
 ```
 The `select/default` ensures the scaler goroutine is never blocked by a slow subscriber. Lines dropped are logged at Warn level.
 
-**`Close(executionID uint)`** — closes all subscriber channels for an execution. This causes the `range ch` loop in `wsExecutionLogs` to return, which causes the WebSocket handler to close the connection cleanly.
+**`Close(executionID uint)`** — closes all subscriber channels for an execution. This causes the `range ch` loop in the WebSocket handler to return, closing the connection cleanly.
 
 ### 4.5 Scaler
 
@@ -825,7 +674,7 @@ type Runner struct {
 - `plan(ch, msg)` — emit with level "plan" (blue in UI, dry-run indicator)
 - `errLog(ch, msg)` — emit with level "error"
 
-**`namespaceAllowed(schedule, ns)`** — if `schedule.NamespaceFilter` is empty, all namespaces are allowed. Otherwise only the listed namespaces are processed. This is the per-schedule namespace scope.
+**`namespaceAllowed(policy, ns)`** — if `policy.NamespaceFilter` is empty, all namespaces are allowed. Otherwise only the listed namespaces are processed. This is the per-policy namespace scope.
 
 **`isApply(mode)`** — returns `mode == "apply"`. All mutating operations are gated on this check.
 
@@ -841,7 +690,7 @@ RunScaleDown(ctx, mode, namespaceFilter, logCh) → (*Counts, error)
   ├─ List all Deployments
   │   └─ for each deployment:
   │       ├─ if namespace in skipNS → skip (emit plan/info)
-  │       ├─ if !namespaceAllowed(schedule, ns) → skip
+  │       ├─ if !namespaceAllowed(policy, ns) → skip
   │       ├─ if annotation "previous-replicas" already exists → skip (already sleeping)
   │       ├─ if isApply:
   │       │   ├─ AnnotateDeployment(name, ns, annotationKey, strconv.Itoa(replicas))
@@ -901,7 +750,7 @@ RunScaleUp(ctx, mode, namespaceFilter, logCh) → (*Counts, error)
   ├─ List all Deployments
   │   └─ for each deployment:
   │       ├─ if namespace in skipNS → skip
-  │       ├─ if !namespaceAllowed(schedule, ns) → skip
+  │       ├─ if !namespaceAllowed(policy, ns) → skip
   │       ├─ if annotation "previous-replicas" NOT present → skip (not sleeping)
   │       ├─ savedReplicas = strconv.Atoi(annotation value)
   │       ├─ if isApply:
@@ -937,7 +786,7 @@ RunScaleUp(ctx, mode, namespaceFilter, logCh) → (*Counts, error)
 ```go
 cache = k8sclient.NewClusterCache(k8s)
 cache.Start(context.Background())  // async — first refresh fires immediately in background
-router = api.NewRouter(st, k8s, sched, cache)
+router = api.NewRouter(ctx, st, k8s, policySched, cache)
 ```
 
 **Pub/sub (used by SSE stream):**
@@ -990,25 +839,6 @@ func New() (*Client, error) {
 
 #### Models (`internal/store/models.go`)
 
-**Schedule**
-```go
-type Schedule struct {
-    ID              uint   `gorm:"primaryKey" json:"id"`
-    Name            string `gorm:"size:255" json:"name"`
-    Type            string `gorm:"size:20" json:"type"`  // "scale_down" | "scale_up"
-    CronExpr        string `gorm:"size:255" json:"cronExpr"`
-    Timezone        string `gorm:"size:100" json:"timezone"`
-    Mode            string `gorm:"size:10" json:"mode"`  // "plan" | "apply"
-    Enabled         bool   `json:"enabled"`
-    NamespaceFilter string `gorm:"size:4096" json:"namespaceFilter"` // comma-separated; empty = all namespaces
-    TimeoutMinutes  int    `json:"timeoutMinutes"`                   // 0 = use server default (120 min)
-    Position        int    `json:"position"`                         // display order within each type group
-
-    CreatedAt time.Time `json:"createdAt"`
-    UpdatedAt time.Time `json:"updatedAt"`
-}
-```
-
 **Guardrails**
 ```go
 type Guardrails struct {
@@ -1022,42 +852,6 @@ type Guardrails struct {
     UpdatedAt time.Time `json:"updatedAt"`
 }
 ```
-
-**Execution**
-```go
-type Execution struct {
-    ID         uint       `gorm:"primaryKey" json:"id"`
-    ScheduleID uint       `gorm:"index" json:"scheduleId"`
-    Schedule   Schedule   `gorm:"foreignKey:ScheduleID" json:"schedule"`
-    StartedAt  time.Time  `gorm:"index" json:"startedAt"`
-    FinishedAt *time.Time `json:"finishedAt"`
-    Status     string     `gorm:"index;size:20" json:"status"` // "running" | "success" | "failed"
-    Mode       string     `gorm:"size:10" json:"mode"`         // "plan" | "apply"
-
-    CountScaled    int `json:"countScaled"`
-    CountDrained   int `json:"countDrained"`
-    CountDeleted   int `json:"countDeleted"`
-    CountSkipped   int `json:"countSkipped"`
-    CountErrors    int `json:"countErrors"`
-    CountSaved     int `json:"countSaved"`
-    CountProtected int `json:"countProtected"`
-}
-```
-
-**LogLine**
-```go
-type LogLine struct {
-    ID          uint      `gorm:"primaryKey" json:"id"`
-    ExecutionID uint      `gorm:"index:idx_logline_exec_seq" json:"executionId"`
-    Execution   Execution `gorm:"foreignKey:ExecutionID;constraint:OnDelete:CASCADE" json:"-"`
-    Seq         int       `gorm:"index:idx_logline_exec_seq" json:"seq"`
-    Level       string    `gorm:"size:10" json:"level"` // "info" | "ok" | "plan" | "error" | "warn"
-    Message     string    `json:"message"`
-    Timestamp   time.Time `json:"timestamp"`
-}
-```
-
-The composite index `idx_logline_exec_seq` on `(execution_id, seq)` ensures that fetching logs for an execution in order is a single index scan rather than a full table sort.
 
 **User**
 ```go
@@ -1104,7 +898,7 @@ type AuditLog struct {
     UserID       *uint     `gorm:"index" json:"userId,omitempty"`
     User         *User     `gorm:"foreignKey:UserID;constraint:OnDelete:SET NULL" json:"-"`
     Username     string    `gorm:"size:255" json:"username"`     // denormalised for display
-    Action       string    `gorm:"index;size:100" json:"action"` // e.g. "schedule.update", "user.create"
+    Action       string    `gorm:"index;size:100" json:"action"` // e.g. "policy.update", "user.create"
     ResourceType string    `gorm:"size:50" json:"resourceType,omitempty"`
     ResourceID   *uint     `json:"resourceId,omitempty"`
     Before       string    `gorm:"type:jsonb" json:"before,omitempty"`
@@ -1129,7 +923,9 @@ func New(dsn string) (*Store, error) {
     sqlDB.SetMaxIdleConns(5)
     sqlDB.SetConnMaxLifetime(5 * time.Minute)
     // Auto-migrate all models
-    db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{}, &User{}, &Session{}, &AuditLog{})
+    db.AutoMigrate(&Guardrails{}, &User{}, &Session{}, &AuditLog{}, &WorkloadTarget{},
+        &Policy{}, &PolicyExecution{}, &PolicyLogLine{}, &WorkloadSnapshot{},
+        &PolicyOverride{}, &ScheduledException{})
     return &Store{db: db}, nil
 }
 ```
@@ -1154,36 +950,26 @@ if err := st.SeedDefaults(); err != nil {
 
 #### Queries (`internal/store/queries.go`)
 
-**SeedDefaults** — a method on `*Store`, runs only if the schedules table is empty. Also seeds the admin user from `ADMIN_USER` / `ADMIN_PASSWORD` env vars if no users exist. Seeds:
-1. "Weekday Sleep" — `scale_down`, `5 19 * * 1-5`, Europe/Budapest, plan mode, disabled
-2. "Weekday Wake" — `scale_up`, `0 7 * * 1-5`, Europe/Budapest, plan mode, disabled
-3. "Weekend Sleep" — `scale_down`, `0 0 * * 6,0`, Europe/Budapest, plan mode, disabled
-4. "Weekend Wake" — `scale_up`, `0 7 * * 1`, Europe/Budapest, plan mode, disabled
-
-And one Guardrails row with production-ready defaults:
+**SeedDefaults** — a method on `*Store`. Seeds the admin user from `ADMIN_USER` / `ADMIN_PASSWORD` env vars if no users exist. Seeds one Guardrails row (if not present) with production-ready defaults:
 - `SystemNamespaces`: `kube-system,kube-public,kube-node-lease,kube-phoenix`
 - `SkipNamespaces`: `default,karpenter,vault,velero,istio-gateway,istio-system,kyverno,kyverno-notation-aws,victoriametrics,monitoring,gitlab`
 - `SkipNsNode`: `victoriametrics,karpenter`
 - `SkipNodeLabels`: `karpenter.k8s.aws/ec2nodeclass=default`
 - `SkipNodeTaints`: `karpenter-eks-base=true:NoSchedule`
 
-**`UpdateSchedule(id, fields map[string]interface{}) error`** — does a partial update via GORM. The field whitelist is enforced in the API handler before calling this function, not here. To avoid GORM silently skipping zero-value booleans (e.g. `enabled=false`), the function collects the map keys and calls `Select(keys).Updates(map)` — the `Select` clause forces GORM to write every specified column regardless of value.
-
-**`AppendLogLine(line *LogLine) error`** — the `seq` field is a monotonically increasing integer per execution, managed by the caller (scheduler). It is not auto-incremented by the database to avoid a round-trip to determine the next sequence number. The scheduler tracks `seq` as a local variable incremented atomically.
-
 ### 4.8 WebSocket Log Broker
 
-This section covers the pub/sub broker in detail. The broker solves the problem of delivering log lines from a scale operation to zero or more WebSocket clients that may connect at any time — including after the operation has started.
+This section covers the pub/sub broker in detail. The broker (extracted to `internal/scheduler/broker.go`) solves the problem of delivering log lines from a policy scale operation to zero or more WebSocket clients that may connect at any time — including after the operation has started.
 
 **The late-subscriber problem:** If a client connects 10 seconds into an execution, it needs to see all log lines from the beginning, not just new ones. The solution has two parts:
-1. All log lines are persisted to the database immediately via `AppendLogLine`.
-2. On WebSocket connect, `wsExecutionLogs` sends all existing lines from the DB before subscribing to the broker.
+1. All log lines are persisted to the database immediately via `AppendPolicyLogLine`.
+2. On WebSocket connect, the handler sends all existing lines from the DB before subscribing to the broker.
 
 **The race condition:** Between step 1 (send existing lines) and step 2 (subscribe), new lines may be published to the broker and missed. The fix:
 
 ```go
 // Step 1: Send existing lines
-existingLines := store.GetLogLines(executionID)
+existingLines := store.GetPolicyLogLines(executionID)
 for _, line := range existingLines {
     sendOverWebSocket(line)
 }
@@ -1194,11 +980,11 @@ ch := broker.Subscribe(executionID)
 // Step 3: Re-check status AFTER subscribing
 // If status is now "success" or "failed", close the channel from the DB side
 // because broker.Close() was already called before we subscribed
-currentExecution := store.GetExecution(executionID)
+currentExecution := store.GetPolicyExecution(executionID)
 if currentExecution.Status != "running" {
     broker.Unsubscribe(executionID, ch)
     // Send any lines written between step 1 and step 2
-    newLines := store.GetLogLines(executionID)[len(existingLines):]
+    newLines := store.GetPolicyLogLines(executionID)[len(existingLines):]
     for _, line := range newLines {
         sendOverWebSocket(line)
     }
@@ -1258,8 +1044,7 @@ classDiagram
     class Handler {
         -store *Store
         -k8s *Client
-        -scheduler *Scheduler
-        -policySched *PolicyScheduler
+        -policyScheduler *PolicyScheduler
         -cache *ClusterCache
         +NewRouter() *chi.Mux
         +login()
@@ -1269,16 +1054,6 @@ classDiagram
         +oidcConfig()
         +oidcLogin()
         +oidcCallback()
-        +listSchedules()
-        +getSchedule()
-        +createSchedule()
-        +updateSchedule()
-        +deleteSchedule()
-        +reorderSchedules()
-        +listExecutions()
-        +getExecution()
-        +getExecutionLogs()
-        +wsExecutionLogs()
         +getOverview()
         +streamCluster()
         +getWorkloads()
@@ -1289,7 +1064,6 @@ classDiagram
         +getWorkloadPods()
         +getGuardrails()
         +updateGuardrails()
-        +trigger()
         +listUsers()
         +createUser()
         +updateUser()
@@ -1353,40 +1127,13 @@ classDiagram
         -restoreSnapshot(execID, snap) error
     }
 
-    class Scheduler {
-        -store *Store
-        -runner *Runner
-        -cron *cron.Cron
-        -entryID map~uint, EntryID~
-        -mu sync.Mutex
-        +Broker *Broker
-        +Start(ctx) error
-        +Stop()
-        +Reload() error
-        +Restart(ctx) error
-        +RunNow(scheduleID, mode) uint, error
-        +NextRun(scheduleID) *time.Time
-        -run(ctx, scheduleID, type, mode, nsFilter, timeout) uint, error
-    }
-
     class Broker {
         -mu sync.RWMutex
-        -subs map~uint, []chan LogLine~
-        +Subscribe(execID) chan LogLine
+        -subs map~uint, []chan PolicyLogLine~
+        +Subscribe(execID) chan PolicyLogLine
         +Unsubscribe(execID, ch)
         +Publish(execID, line)
         +Close(execID)
-    }
-
-    class Runner {
-        -k8s *Client
-        -store *Store
-        +RunScaleDown(ctx, mode, nsFilter, logCh) *Counts, error
-        +RunScaleUp(ctx, mode, nsFilter, logCh) *Counts, error
-        -info(ch, msg)
-        -ok(ch, msg)
-        -plan(ch, msg)
-        -errLog(ch, msg)
     }
 
     class Store {
@@ -1394,22 +1141,8 @@ classDiagram
         +New(dsn) *Store, error
         +DB() *gorm.DB
         +Ping() error
-        +ListSchedules() []Schedule, error
-        +GetSchedule(id) *Schedule, error
-        +CreateSchedule(s) error
-        +UpdateSchedule(id, fields) *Schedule, error
-        +DeleteSchedule(id) error
-        +ReorderSchedules(type, ids) error
         +GetGuardrails() *Guardrails, error
         +UpdateGuardrails(fields) *Guardrails, error
-        +CreateExecution(e) error
-        +UpdateExecution(id, fields) error
-        +GetExecution(id) *Execution, error
-        +ListExecutions(filter) *ExecutionPage, error
-        +FinishExecution(id, status, counts) error
-        +AppendLogLine(line) error
-        +GetLogLines(execID) []LogLine, error
-        +CountLogLines(execID) int64, error
         +SeedDefaults() error
         +Tx(fn) error
         +DropAllTables() error
@@ -1497,23 +1230,15 @@ classDiagram
 
     Handler --> Store : queries DB
     Handler --> Client : direct k8s calls
-    Handler --> Scheduler : trigger, reload
     Handler --> PolicyScheduler : trigger sleep/wake
     Handler --> ClusterCache : read snapshots
     Handler --> Broker : subscribe WS clients
-    Handler --> PolicyScheduler : subscribe WS (policy logs)
-    Scheduler --> Runner : executes scale ops
-    Scheduler --> Broker : publishes log lines
-    Scheduler --> Store : creates executions
     PolicyScheduler --> PolicyEngine : evaluate IntendedState
     PolicyScheduler --> PolicyScaler : executes sleep/wake
     PolicyScheduler --> Broker : publishes policy log lines
     PolicyScheduler --> Store : creates policy executions
     PolicyScaler --> Client : k8s API calls
     PolicyScaler --> Store : reads/writes snapshots
-    Runner --> Client : k8s API calls
-    Runner --> Store : reads guardrails
-    Runner ..> Counts : returns
     ClusterCache --> Client : refreshes every 10s
     ClusterCache --> CachedSnapshot : holds current state
 ```
@@ -1602,7 +1327,7 @@ The `divider` token is computed from the mode: `rgba(255,255,255,0.07)` in dark,
 
 **Permission-based UI guards:** The `useAuth()` hook exposes `user.role`. Components check the role to conditionally render:
 - The "Users" sidebar item and `/users` page are only visible to admins.
-- Trigger buttons, schedule create/edit/delete, and guardrails edit are hidden for viewers.
+- Sleep/wake trigger buttons, policy create/edit/delete, and guardrails edit are hidden for viewers.
 - The "Audit Log" sidebar item is visible to all authenticated users.
 
 **Logout:** `POST /api/auth/logout` clears server-side session and cookies. Context state resets to unauthenticated.
@@ -1643,13 +1368,13 @@ Every API function is a thin wrapper over `req<T>`. This ensures:
 - Mutating requests (POST, PUT, DELETE) include the `X-CSRF-Token` header read from the `kube-phoenix-csrf` cookie.
 - All non-2xx responses throw a consistent `Error` that TanStack Query's `onError` handlers can display.
 
-**`wsLogsUrl(executionId)` — WebSocket URL construction:**
+**`wsPolicyLogsUrl(executionId)` — WebSocket URL construction:**
 ```ts
-function wsLogsUrl(executionId: number): string {
+function wsPolicyLogsUrl(executionId: number): string {
     const base = (process.env.NEXT_PUBLIC_API_URL ?? window.location.origin)
         .replace(/^http/, 'ws')  // http: → ws:, https: → wss:
 
-    return `${base}/ws/executions/${executionId}/logs`
+    return `${base}/ws/policy-executions/${executionId}/logs`
 }
 ```
 
@@ -1705,27 +1430,29 @@ layout.tsx (Inter font, HTML skeleton)
 
 | Route         | Page Component  | Purpose                                       |
 | :------------ | :-------------- | :-------------------------------------------- |
-| `/`           | `page.tsx`      | Redirect to `/overview/`                      |
-| `/overview/`  | `OverviewPage`  | Dashboard with status cards and activity feed |
-| `/cluster/`   | `ClusterPage`   | Workloads table + Nodes table with drawers    |
-| `/guardrails/` | `GuardrailsPage` | Exclusion list form                          |
-| `/schedules/` | `SchedulesPage` | Schedule cards + create/edit dialog           |
-| `/history/`   | `HistoryPage`   | Execution table + log drawer                  |
-| `/users/`     | `UsersPage`     | User CRUD table (admin only)                  |
-| `/audit/`     | `AuditPage`     | Searchable audit log with diffs               |
-| `/settings/`  | `SettingsPage`  | Appearance, Account, OIDC status, Danger Zone |
+| `/`             | `page.tsx`      | Redirect to `/overview/`                        |
+| `/overview/`    | `OverviewPage`  | Dashboard with status cards and activity feed   |
+| `/cluster/`     | `ClusterPage`   | Workloads table + Nodes table with drawers      |
+| `/guardrails/`  | `GuardrailsPage` | Exclusion list form                            |
+| `/policies/`    | `PoliciesPage`  | Policy cards + create/edit dialog (sleep windows) |
+| `/policies/:id` | `PolicyDetailPage` | Policy detail: overrides, exceptions, history |
+| `/exceptions/`  | `ExceptionsPage` | Scheduled exception list with status tabs      |
+| `/history/`     | `HistoryPage`   | Policy execution table + log drawer             |
+| `/users/`       | `UsersPage`     | User CRUD table (admin only)                    |
+| `/audit/`       | `AuditPage`     | Searchable audit log with diffs                 |
+| `/settings/`    | `SettingsPage`  | Appearance, Account, OIDC status, Danger Zone   |
 
 **Key components:**
 
 **`AppShell`** — responsible for the two-column layout (sidebar + content). Renders a `<AppBar>` for mobile with a hamburger menu button. Uses MUI `Drawer` in two configurations: permanent (desktop, `md+`) and temporary (mobile, slides in over content). The sidebar width is defined as a constant (240px) and passed as a prop.
 
-**`Sidebar`** — navigation list with active state detection using `usePathname()`. Active items receive a primary-tinted background computed via MUI's `alpha(primary.main, 0.10)` — mode-aware and responsive to the actual primary color — and the primary color for text and icon. The logout button is pushed to the bottom using a flex spacer.
+**`Sidebar`** — navigation list with active state detection using `usePathname()`. Items: Overview, Cluster State, Guardrails, Policies, Exceptions, History, Users, Audit Log, Settings. Active items receive a primary-tinted background computed via MUI's `alpha(primary.main, 0.10)` — mode-aware and responsive to the actual primary color — and the primary color for text and icon. The logout button is pushed to the bottom using a flex spacer.
 
 **`ClusterStatusCard`** — polls `getWorkloads()` every 30 seconds. Shows aggregate counts: total workloads, sleeping workloads, partial (waking). Uses a MUI `LinearProgress` to show the sleeping percentage.
 
-**`NextRunCard`** — polls `getSchedules()` every 30 seconds. Sorts schedules by `nextRun` and renders each with a two-line next-run display:
-- **Absolute time** (dimmed caption): locale-aware label derived from the schedule's own timezone — `today at 07:00`, `tomorrow at 07:00`, `Mon at 07:00`, or `Mar 15 at 07:00` depending on how far out the run is.
-- **Relative countdown** (bold, color-coded): `in Xm`, `in Xh Ym`, `in Xd Yh`. Color shifts from schedule-type tint (>6 h) → `warning.main` (1–6 h) → `error.light` (<1 h). A pulsing red dot appears alongside the countdown when under one hour.
+**`NextRunCard`** — polls policy data every 30 seconds. Sorts policies by next sleep/wake fire time and renders each with a two-line next-run display:
+- **Absolute time** (dimmed caption): locale-aware label derived from the policy's own timezone — `today at 07:00`, `tomorrow at 07:00`, `Mon at 07:00`, or `Mar 15 at 07:00` depending on how far out the run is.
+- **Relative countdown** (bold, color-coded): `in Xm`, `in Xh Ym`, `in Xd Yh`. Color shifts from policy-type tint (>6 h) → `warning.main` (1–6 h) → `error.light` (<1 h). A pulsing red dot appears alongside the countdown when under one hour.
 
 **`ActivityFeed`** — polls `getExecutions({ pageSize: 5 })` every 15 seconds. Shows the 5 most recent executions. Clicking a running execution opens `LogViewer` inline (WebSocket). Clicking a completed execution navigates to `/history?exec=<id>`.
 
@@ -1753,11 +1480,11 @@ Lifecycle: user opens logs → `fetch()` with `AbortController` → Go handler o
 
 Features: container selector (multi-container pods), search with match counter and up/down navigation (Enter/Shift+Enter keyboard support), current-match highlight with left accent border, copy-to-clipboard, download as `.log`, auto-scroll toggle (auto-disables when user scrolls up), and a "Load older logs" button at the top. When a container has a `lastState` (e.g. OOMKilled), a contextual banner offers "View previous logs" which fetches a one-shot snapshot of the terminated container's output.
 
-**`ScheduleCard`** — displays a single schedule with type icon (moon/sun), cron expression rendered by `cronToText()`, mode badge, and an enabled toggle. The toggle uses an optimistic update — it flips immediately in local state via `useState`, fires `PUT /api/schedules/:id` with `{ enabled: <new value> }`, and reverts on error. Has edit and delete actions. The run button opens a mode selection dialog before calling the trigger API.
+**`PolicyCard`** — displays a single policy with state badge (awake/sleeping/unknown), sleep/wake action buttons, mode badge, and an enabled toggle. The toggle uses an optimistic update — it flips immediately in local state, fires `PUT /api/policies/:id` with `{ enabled: <new value> }`, and reverts on error. Has edit and delete actions.
 
-**`ScheduleDialog`** — form for creating or editing a schedule. Fields: name, type (toggle), cron timing (via `CronBuilder`), timezone, namespace filter, mode (toggle), enabled (switch). Validates cron via `isValidCron()` before enabling the save button.
+**`CreatePolicyDialog`** — form for creating or editing a policy. The primary input is the `WindowPicker` for defining sleep windows. An "Advanced raw cron" toggle swaps the picker for raw 5-field cron text fields. Also includes: name, description, timezone, namespace filter, label selector, mode, timeout, and enabled switch.
 
-**`CronBuilder`** — replaces the plain cron text input with a point-and-click builder. Visual mode shows a day-of-week chip row (Mon–Sun) and hour/minute dropdowns, with a live human-readable preview powered by `cronToText()`. An "Advanced raw cron" toggle in the header row swaps the picker for a raw 5-field text field (pre-seeded from the current visual state) and hides the preview. On open, existing cron expressions are parsed back into visual state if representable (fixed minute from the allowed set, `*` for dom and month); otherwise the dialog opens in advanced mode. Emits the cron string upward via `onChange` on every change.
+**`WindowPicker`** — the day/time picker for `SleepWindow` objects. Each window defines `daysOfWeek` (chip row: Mon–Sun), `startTime`, and `endTime`. Multiple windows can be stacked. The picker shows a live `MiniTimeline` (24h SVG bar) and `WeeklyTimeline` (7-day SVG) preview of the resulting sleep/wake periods. Windows are compiled to cron expressions by the backend (`internal/policy/windows.go`).
 
 **`GuardrailsForm`** — four `ChipInput` fields (Skip Namespaces, Critical Namespaces, Skip Node Labels, Skip Node Taints). The `ChipInput` component renders chips for each value with delete buttons, and an inline text input for adding new values. Pressing Enter or Tab, or blurring the input, adds the current value as a chip. Backspace on empty input removes the last chip.
 
@@ -1789,10 +1516,10 @@ const queryClient = new QueryClient({
 | Query key                    | staleTime | refetchInterval | Reason                                                               |
 | :--------------------------- | :-------- | :-------------- | :------------------------------------------------------------------- |
 | `['overview']`               | 25s       | 30s (fallback)  | Primary dashboard card — fed by SSE stream, polling is fallback only |
-| `['executions', 'feed']`     | 14s       | 15s             | Activity feed needs to be timely                                     |
-| `['schedules']`              | 60s       | 60s             | Schedules rarely change; used only by trigger buttons on Overview    |
+| `['policy-executions', 'feed']` | 14s    | 15s             | Activity feed needs to be timely                                     |
+| `['policies']`               | 60s       | 60s             | Policies rarely change; used by trigger buttons on Overview          |
 | `['guardrails']`             | —         | —               | Only refetch on mutation                                             |
-| `['executions', id, 'logs']` | —         | —               | Uses WebSocket instead                                               |
+| `['policy-executions', id, 'logs']` | —  | —               | Uses WebSocket instead                                               |
 
 The `['overview']` query is primarily kept fresh by the SSE stream (`/api/cluster/stream`) via `queryClient.setQueryData`. The `refetchInterval: 30_000` acts as a reconnect fallback if the SSE connection drops. With `staleTime: 25_000`, navigating away from and back to the Overview page renders the cached data instantly without a loading skeleton.
 
@@ -1800,7 +1527,7 @@ The `['overview']` query is primarily kept fresh by the SSE stream (`/api/cluste
 
 Opens a persistent `fetch` connection to `/api/cluster/stream`. On each `data:` line received, parses the JSON and calls `queryClient.setQueryData(['overview'], data)`, which triggers a React re-render with the latest cluster state. Reconnects automatically after errors with a 3 s backoff (5 s if the response itself was not OK).
 
-**Mutation invalidation:** After every mutation (create/update/delete schedule, save guardrails), the mutation's `onSuccess` callback calls `queryClient.invalidateQueries` with the relevant query key. This triggers an immediate re-fetch and keeps the UI in sync.
+**Mutation invalidation:** After every mutation (create/update/delete policy, save guardrails), the mutation's `onSuccess` callback calls `queryClient.invalidateQueries` with the relevant query key. This triggers an immediate re-fetch and keeps the UI in sync.
 
 ### 5.7 WebSocket Integration in the Frontend
 
@@ -1810,7 +1537,7 @@ Opens a persistent `fetch` connection to `/api/cluster/stream`. On each `data:` 
 useEffect(() => {
     if (!execution || execution.status !== 'running') return
 
-    const url = wsLogsUrl(execution.id)
+    const url = wsPolicyLogsUrl(execution.id)
     const ws = new WebSocket(url)
 
     ws.onmessage = (event) => {
@@ -1853,8 +1580,6 @@ useEffect(() => {
 
 ```mermaid
 erDiagram
-    schedules ||--o{ executions : "has many"
-    executions ||--o{ log_lines : "has many (CASCADE)"
     users ||--o{ sessions : "has many (CASCADE)"
     users ||--o{ audit_logs : "has many (SET NULL)"
     policies ||--o{ policy_executions : "has many"
@@ -1863,46 +1588,6 @@ erDiagram
     policies ||--o{ scheduled_exceptions : "optional FK"
     policy_executions ||--o{ policy_log_lines : "has many (CASCADE)"
     policy_executions ||--o{ workload_snapshots : "sleep/wake ref"
-
-    schedules {
-        bigint id PK
-        varchar(255) name "not null"
-        varchar(20) type "scale_down | scale_up"
-        varchar(255) cron_expr "not null, 5-field"
-        varchar(100) timezone "default UTC"
-        varchar(10) mode "plan | apply"
-        boolean enabled "default true"
-        varchar(4096) namespace_filter "CSV, empty = all"
-        int timeout_minutes "default 120"
-        int position "display order"
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    executions {
-        bigint id PK
-        bigint schedule_id FK "indexed"
-        timestamptz started_at "indexed"
-        timestamptz finished_at "nullable"
-        varchar(20) status "running | success | failed, indexed"
-        varchar(10) mode "plan | apply"
-        int count_saved
-        int count_scaled
-        int count_drained
-        int count_deleted
-        int count_skipped
-        int count_protected
-        int count_errors
-    }
-
-    log_lines {
-        bigint id PK
-        bigint execution_id FK "composite index with seq, CASCADE"
-        int seq "monotonic per execution"
-        varchar(10) level "info | ok | plan | error | warn"
-        text message
-        timestamptz timestamp
-    }
 
     guardrails {
         bigint id PK "singleton, always 1"
@@ -1958,8 +1643,9 @@ erDiagram
         bigint id PK
         varchar(255) name "not null"
         varchar(1024) description
-        varchar(255) sleep_cron "5-field; empty = no auto-sleep"
-        varchar(255) wake_cron "5-field; empty = no auto-wake"
+        jsonb sleep_windows "SleepWindow array; compiled to crons"
+        varchar(255) sleep_cron "5-field; compiled from windows or raw"
+        varchar(255) wake_cron "5-field; compiled from windows or raw"
         varchar(100) timezone "default UTC"
         varchar(10) mode "plan | apply"
         boolean enabled "default true"
@@ -2074,14 +1760,14 @@ sequenceDiagram
     participant H as Go HTTP Handler
     participant DB as PostgreSQL
     participant Br as Broker
-    participant S as Scaler
+    participant S as PolicyScaler
 
-    B->>H: GET /ws/executions/42/logs
+    B->>H: GET /ws/policy-executions/42/logs
     H->>H: Upgrade to WebSocket
 
     rect rgba(100, 100, 100, 0.1)
         Note over H,DB: Step 1 — Replay existing logs
-        H->>DB: GetLogLines(42)
+        H->>DB: GetPolicyLogLines(42)
         DB-->>H: existing lines
         H-->>B: send existing lines
     end
@@ -2094,9 +1780,9 @@ sequenceDiagram
 
     rect rgba(100, 100, 100, 0.1)
         Note over H,DB: Step 3 — Race condition check
-        H->>DB: GetExecution(42).Status
+        H->>DB: GetPolicyExecution(42).Status
         alt status != running
-            H->>DB: GetLogLines(42) — fetch gap lines
+            H->>DB: GetPolicyLogLines(42) — fetch gap lines
             H-->>B: send any missed lines
             H-->>B: WebSocket close (1000)
         end
@@ -2198,8 +1884,9 @@ Three roles with hierarchical permissions:
 |---|---|---|---|
 | View dashboard, cluster state, history | Yes | Yes | Yes |
 | View audit logs | Yes | Yes | Yes |
-| Trigger manual executions | Yes | Yes | No |
-| Create/edit/delete schedules | Yes | Yes | No |
+| Trigger manual sleep/wake | Yes | Yes | No |
+| Create/edit/delete policies | Yes | Yes | No |
+| Create/edit/delete exceptions | Yes | Yes | No |
 | Edit guardrails | Yes | Yes | No |
 | Manage users | Yes | No | No |
 | Reset database | Yes | No | No |
@@ -2294,99 +1981,80 @@ sequenceDiagram
 
 ## 9. Scale-Down / Scale-Up Flows
 
-### Scale-Down Sequence
+### Sleep Sequence (Policy-Based)
 
 ```
-Trigger (cron or manual)
+Trigger (cron from sleep window, manual, or exception)
          │
          ▼
-scheduler.run(scheduleID, executionID, "scale_down", mode)
+policyScheduler.run(ctx, policyID, "sleep", trigger)
          │
-         ├─ Create Execution record (status=running)
+         ├─ Create PolicyExecution record (status=running, direction=sleep)
          │
          ▼
-scaler.RunScaleDown(ctx, mode, namespaceFilter, logCh)
+policyScaler.RunSleep(ctx, policy, execID, mode, logCh)
          │
-         ├─ Phase 1: Workloads
-         │    ├─ List all Deployments
-         │    │    for each:
+         ├─ Phase 1: Match workloads
+         │    ├─ matchWorkloads(policy) → filter by namespaceFilter + labelSelector
+         │    │    for each matched workload:
          │    │      skip if: namespace in guardrails.SkipNamespaces
-         │    │      skip if: namespace not in schedule.NamespaceFilter (if set)
-         │    │      skip if: annotation "previous-replicas" already exists
-         │    │      plan mode: log intent, counts.Skipped++
+         │    │      skip if: already at 0 replicas
+         │    │      plan mode: log intent
          │    │      apply mode:
-         │    │        1. Annotate: previous-replicas = current replicas count
+         │    │        1. saveSnapshot(execID, target, replicasBefore) → DB
          │    │        2. Scale to 0
          │    │        3. counts.Scaled++
          │    │
-         │    └─ Same for StatefulSets
-         │
-         ├─ Phase 2: Node Drain
-         │    ├─ List all Nodes
-         │    ├─ List all Pods (all namespaces)
-         │    ├─ Build criticalNodes: node → bool (has pod in SkipNsNode)
-         │    ├─ Build podCountPerNode: node → int (non-DaemonSet pods)
-         │    │
-         │    for each node:
-         │      protected? (label match OR taint match OR critical namespace)
-         │        YES → skip, counts.Skipped++
-         │        NO  →
-         │          drainTimeout = (podCount * 15 + 60) seconds
-         │          plan mode: log intent
-         │          apply mode:
-         │            1. CordonNode (set Unschedulable=true)
-         │            2. DrainNode (evict all non-DaemonSet pods, wait, fallback delete)
-         │            3. DeleteNode (remove node object from API server)
-         │            4. counts.Drained++
+         │    └─ Handles both Deployments and StatefulSets
          │
          └─ Return Counts
                   │
                   ▼
-         scheduler: close logCh, wait for drain goroutine
+         policyScheduler: close logCh, wait for drain goroutine
                   │
                   ▼
          broker.Close(executionID) → WebSocket subscribers see end of stream
                   │
                   ▼
-         store.FinishExecution(executionID, counts, err)
+         store.FinishPolicyExecution(executionID, counts, err)
               status = "success" or "failed"
               finished_at = now()
+              policy.current_state = "sleeping"
 ```
 
-### Scale-Up Sequence
+### Wake Sequence (Policy-Based)
 
 ```
-Trigger (cron or manual)
+Trigger (cron from sleep window end, manual, or exception end)
          │
          ▼
-scheduler.run(scheduleID, executionID, "scale_up", mode)
+policyScheduler.run(ctx, policyID, "wake", trigger)
          │
-         ├─ Create Execution record (status=running)
+         ├─ Create PolicyExecution record (status=running, direction=wake)
          │
          ▼
-scaler.RunScaleUp(ctx, mode, namespaceFilter, logCh)
+policyScaler.RunWake(ctx, policy, execID, mode, logCh)
          │
-         ├─ Phase 1: Workloads (ONLY — no node operations)
-         │    ├─ List all Deployments
-         │    │    for each:
-         │    │      skip if: namespace in guardrails.SkipNamespaces
-         │    │      skip if: namespace not in schedule.NamespaceFilter (if set)
-         │    │      skip if: annotation "previous-replicas" NOT present
+         ├─ Phase 1: Restore from snapshots (ONLY — no node operations)
+         │    ├─ Load WorkloadSnapshots for this policy's most recent sleep
+         │    │    for each snapshot:
+         │    │      skip if: workload was already zero (was_already_zero)
+         │    │      skip if: workload was deleted since sleep
          │    │      plan mode: log intent
          │    │      apply mode:
-         │    │        1. Read savedReplicas from annotation
-         │    │        2. Scale deployment to savedReplicas
-         │    │        3. Remove annotation (cleanup)
-         │    │        4. counts.Scaled++
+         │    │        1. restoreSnapshot(snap) → scale to replicas_before
+         │    │        2. Update snapshot: replicas_restored, restored_at
+         │    │        3. counts.Scaled++
          │    │
-         │    └─ Same for StatefulSets
+         │    └─ Handles both Deployments and StatefulSets
          │
          └─ Return Counts
                   │
                   ▼
-         After scale-up, pods become Pending (no nodes yet)
+         After wake, pods become Pending (no nodes yet)
          Karpenter detects unschedulable pods → provisions new nodes
          New nodes join cluster → pods scheduled → Running
+         policy.current_state = "awake"
 ```
 
 ### Plan vs Apply Mode
@@ -2397,26 +2065,27 @@ Every mutating operation is guarded by `isApply(mode)`. When `mode == "plan"`:
 - Counts are still incremented (so the UI shows "would scale 12 deployments").
 - The execution is recorded in the database with `mode = "plan"`.
 
-This provides a safe preview before committing to a live scale operation. All schedules default to `mode = "plan"` at creation. An administrator must explicitly change to `mode = "apply"` to enable live operations.
+This provides a safe preview before committing to a live scale operation. All policies default to `mode = "plan"` at creation. An administrator must explicitly change to `mode = "apply"` to enable live operations.
 
-### Execution Lifecycle
+### Policy Execution Lifecycle
 
 ```mermaid
 stateDiagram-v2
-    [*] --> running : scheduler.run() or RunNow()
+    [*] --> running : PolicyScheduler.run() or RunSleepNow/RunWakeNow()
 
-    running --> success : scaler completes without error
-    running --> failed : scaler returns error or timeout
+    running --> success : PolicyScaler completes without error
+    running --> failed : PolicyScaler returns error or timeout
+    running --> interrupted : server restart during execution
+    running --> skipped : idempotent check (already in target state)
 
     success --> [*]
     failed --> [*]
+    interrupted --> [*]
+    skipped --> [*]
 
     state running {
         [*] --> Scaling
-        Scaling --> Draining : workloads done (scale_down only)
-        Draining --> Deleting : nodes drained
-        Scaling --> [*] : scale_up (no node ops)
-        Deleting --> [*]
+        Scaling --> [*] : workloads processed
     }
 
     note right of running
@@ -2427,10 +2096,11 @@ stateDiagram-v2
     note right of success
         FinishedAt set, logCh closed
         Broker.Close() → WS clients disconnect
+        policy.current_state updated
     end note
 ```
 
-### Schedule State
+### Policy State
 
 ```mermaid
 stateDiagram-v2
@@ -2440,7 +2110,7 @@ stateDiagram-v2
     state "Enabled (plan)" as plan
     state "Enabled (apply)" as apply
 
-    [*] --> dis : seeded on first startup
+    [*] --> dis : created by user
 
     dis --> plan : toggle enabled ON
     dis --> apply : toggle enabled ON + set mode apply
@@ -2458,12 +2128,12 @@ stateDiagram-v2
 
     note right of apply
         Cron fires → live execution
-        Scales workloads, drains nodes
+        Scales workloads to 0 (sleep) or restores snapshots (wake)
     end note
 
     note right of dis
-        Cron entry removed
-        Schedule skipped
+        Cron entries removed
+        Policy skipped
     end note
 ```
 
@@ -2915,7 +2585,7 @@ export KUBECONFIG=~/.kube/config
 kind create cluster
 ```
 
-Without a kubeconfig, the backend starts with `k8s = nil` (warning logged). All endpoints that don't require k8s (schedules, guardrails, history) continue to work.
+Without a kubeconfig, the backend starts with `k8s = nil` (warning logged). All endpoints that don't require k8s (policies, guardrails, history) continue to work.
 
 ### Helm development
 
@@ -2963,9 +2633,9 @@ go build ./cmd/server/
 2. Add it to the `AutoMigrate` call in `internal/store/store.go`.
 3. Add CRUD functions to `internal/store/queries.go`.
 
-**Changing the cron schedule logic:**
-1. Modify `internal/scaler/scale_down.go` or `scale_up.go`.
-2. Update the seed data in `internal/store/queries.go` if default schedules change.
+**Changing the sleep/wake logic:**
+1. Modify `internal/scheduler/policy_scaler.go` for sleep/wake execution changes.
+2. Modify `internal/policy/windows.go` for sleep window-to-cron compilation changes.
 
 **Changing the theme:**
 1. Edit `frontend/src/theme/theme.ts`. The `createAppTheme(mode)` function receives `'light' | 'dark'` and must return correct palette values for both modes.
@@ -3027,13 +2697,13 @@ go build ./cmd/server/
 
 ### 13.7 Blocking cron (no concurrent runs)
 
-**Decision:** robfig/cron v3 does not prevent concurrent execution by default. The scheduler does not implement a distributed lock.
+**Decision:** robfig/cron v3 does not prevent concurrent execution by default. The PolicyScheduler does not implement a distributed lock.
 
-**Current behavior:** If a scale operation is running when the cron fires again (e.g., a 2-hour execution that overlaps with the next day's schedule), a second execution will start. This is a known gap.
+**Current behavior:** If a scale operation is running when the cron fires again (e.g., a long execution that overlaps with the next day's policy trigger), a second execution will start. This is a known gap.
 
-**Why accepted:** The default schedule cadence (once daily) and the 2-hour timeout make overlap extremely unlikely in practice. A distributed lock (Redis, PostgreSQL advisory lock) adds significant complexity for a rare edge case.
+**Why accepted:** The default policy cadence (once daily) and the 30-minute timeout make overlap extremely unlikely in practice. A distributed lock (Redis, PostgreSQL advisory lock) adds significant complexity for a rare edge case.
 
-**Future fix:** Check `store.ListExecutions` for status=running before starting a new execution, returning early if one is already in progress.
+**Future fix:** Check `store.ListPolicyExecutions` for status=running before starting a new execution, returning early if one is already in progress.
 
 ### 13.8 Session-based auth with CSRF protection
 
@@ -3055,13 +2725,13 @@ go build ./cmd/server/
 
 **Trade-off:** If the application is ever scaled to multiple replicas, the broker would not work across replicas (a client connected to replica A would not receive log lines from a scale operation running on replica B). At that point, a Redis pub/sub or NATS replacement would be needed.
 
-### 13.10 Plan mode as default for all schedules
+### 13.10 Plan mode as default for all policies
 
-**Decision:** All schedules default to `mode: "plan"` at creation, including seeds.
+**Decision:** All policies default to `mode: "plan"` at creation.
 
-**Why:** The scaler has real consequences — zeroing out all production deployments is a serious operation. Making plan mode the default means a newly created or freshly installed schedule cannot accidentally perform live operations. An administrator must consciously change to `mode: "apply"`.
+**Why:** The scaler has real consequences — zeroing out all production deployments is a serious operation. Making plan mode the default means a newly created policy cannot accidentally perform live operations. An administrator must consciously change to `mode: "apply"`.
 
-**User experience:** The plan mode shows exactly what would happen (which workloads would be scaled, which nodes would be drained) without any risk. This allows teams to validate their schedule and guardrails configuration before enabling live mode.
+**User experience:** The plan mode shows exactly what would happen (which workloads would be scaled) without any risk. This allows teams to validate their policy and guardrails configuration before enabling live mode.
 
 ### 13.11 Distroless base image
 
@@ -3096,16 +2766,16 @@ All metrics use the `kube_phoenix_` namespace prefix.
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `kube_phoenix_executions_total` | Counter | `status`, `mode`, `schedule_type` | Total completed executions. `status` is `success` or `failed`. `mode` is `plan` or `apply`. `schedule_type` is `scale_down` or `scale_up`. |
-| `kube_phoenix_execution_duration_seconds` | Histogram | `mode`, `schedule_type`, `status` | Wall-clock duration of each execution in seconds. Buckets: 5, 15, 30, 60, 120, 300, 600, 1800. |
-| `kube_phoenix_workloads_scaled_total` | Counter | `direction` | Workloads (Deployments + StatefulSets) scaled. `direction` is `down` or `up`. |
-| `kube_phoenix_nodes_drained_total` | Counter | — | Nodes drained during scale-down executions (apply mode only). |
-| `kube_phoenix_nodes_deleted_total` | Counter | — | Nodes deleted during scale-down executions (apply mode only). |
-| `kube_phoenix_active_schedules` | Gauge | `schedule_type`, `mode` | Number of enabled schedules, reset and recomputed on every scheduler reload. |
+| `kube_phoenix_executions_total` | Counter | `status`, `mode`, `direction` | Total completed policy executions. `status` is `success` or `failed`. `mode` is `plan` or `apply`. `direction` is `sleep` or `wake`. |
+| `kube_phoenix_execution_duration_seconds` | Histogram | `mode`, `direction`, `status` | Wall-clock duration of each execution in seconds. Buckets: 5, 15, 30, 60, 120, 300, 600, 1800. |
+| `kube_phoenix_workloads_scaled_total` | Counter | `direction` | Workloads (Deployments + StatefulSets) scaled. `direction` is `sleep` or `wake`. |
+| `kube_phoenix_nodes_drained_total` | Counter | — | Nodes drained during sleep executions (apply mode only). |
+| `kube_phoenix_nodes_deleted_total` | Counter | — | Nodes deleted during sleep executions (apply mode only). |
+| `kube_phoenix_active_policies` | Gauge | `mode` | Number of enabled policies, reset and recomputed on every PolicyScheduler reload. |
 | `kube_phoenix_login_attempts_total` | Counter | `result` | Login attempts. `result` is `success` or `failed`. |
 | `kube_phoenix_active_sessions` | Gauge | — | Currently active (non-expired) user sessions. |
 | `kube_phoenix_auth_errors_total` | Counter | `reason` | Authentication failures. `reason` is `expired`, `invalid`, or `csrf`. |
-| `kube_phoenix_audit_events_total` | Counter | `action` | Audit log events by action type (e.g. `schedule.update`, `user.create`). |
+| `kube_phoenix_audit_events_total` | Counter | `action` | Audit log events by action type (e.g. `policy.update`, `user.create`). |
 | `kube_phoenix_rate_limit_rejections_total` | Counter | `limiter` | Rate limiter rejections. `limiter` is `ip` or `username`. |
 | `kube_phoenix_oidc_logins_total` | Counter | `result` | OIDC login attempts. `result` is `success` or `failed`. |
 
@@ -3123,8 +2793,8 @@ All metrics are declared as package-level variables using `promauto`, which regi
 
 | Location | What is recorded |
 |----------|-----------------|
-| `scheduler.go` `run()` goroutine (on completion) | `ExecutionsTotal`, `ExecutionDuration`, `WorkloadsScaledTotal`, `NodesDrainedTotal`, `NodesDeletedTotal` |
-| `scheduler.go` `reload()` | `ActiveSchedules` — reset and recount on every cron reload |
+| `policy_scheduler.go` `run()` goroutine (on completion) | `ExecutionsTotal`, `ExecutionDuration`, `WorkloadsScaledTotal`, `NodesDrainedTotal`, `NodesDeletedTotal` |
+| `policy_scheduler.go` `schedulePolicy()` | `ActivePolicies` — reset and recount on every cron reload |
 | `api/auth.go` `login()` | `LoginAttemptsTotal`, `ActiveSessions` |
 | `middleware/auth.go` session validation | `AuthErrorsTotal`, `ActiveSessions` |
 | `middleware/ratelimit.go` | `RateLimitRejectionsTotal` |
@@ -3206,11 +2876,11 @@ rate(kube_phoenix_executions_total[1h])
 # P95 execution duration
 histogram_quantile(0.95, rate(kube_phoenix_execution_duration_seconds_bucket[1h]))
 
-# Total workloads scaled down this week
-increase(kube_phoenix_workloads_scaled_total{direction="down"}[7d])
+# Total workloads put to sleep this week
+increase(kube_phoenix_workloads_scaled_total{direction="sleep"}[7d])
 
-# Currently enabled schedules by type
-kube_phoenix_active_schedules
+# Currently enabled policies
+kube_phoenix_active_policies
 
 # Failed login attempts in the last hour
 increase(kube_phoenix_login_attempts_total{result="failed"}[1h])
@@ -3222,4 +2892,4 @@ rate(kube_phoenix_rate_limit_rejections_total[5m])
 ---
 
 *End of ARCHITECTURE.md*
-*Document covers: 2 source code languages, 35+ source files, 7 database models, 30+ API routes, 8 frontend pages, 30+ React components, 3-stage Docker build, Helm chart with 10 templates, 3 GitHub Actions workflows.*
+*Document covers: 2 source code languages, 35+ source files, 10 database models, 25+ API routes, 9 frontend pages, 30+ React components, 3-stage Docker build, Helm chart with 10 templates, 3 GitHub Actions workflows.*

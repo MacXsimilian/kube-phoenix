@@ -34,9 +34,9 @@ import StorageIcon from '@mui/icons-material/Storage'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import { useTheme } from '@mui/material/styles'
 import { semanticColors, useColors } from '@/lib/colors'
-import { getExecutionLogs, wsLogsUrl } from '@/lib/api'
+import { getPolicyExecutionLogs, wsPolicyLogsUrl } from '@/lib/api'
 import { useDrawerResize } from '@/lib/useDrawerResize'
-import type { Execution, LogLine } from '@/lib/types'
+import type { PolicyExecution, LogLine } from '@/lib/types'
 
 const LEVEL_COLORS_DARK: Record<LogLine['level'], string> = {
   info: '#22D3EE',
@@ -142,7 +142,7 @@ function nodeChip(isDark: boolean): Record<NodeEntry['action'], { label: string;
   }
 }
 
-function ExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: boolean }) {
+function PolicyExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: boolean }) {
   const isDark = useTheme().palette.mode === 'dark'
   const { workloads, nodes, errors } = parseSummary(lines)
 
@@ -316,7 +316,7 @@ export default function LogViewer({
   execution,
   onClose,
 }: {
-  execution: Execution | null
+  execution: PolicyExecution | null
   onClose: () => void
 }) {
   const qc = useQueryClient()
@@ -334,7 +334,7 @@ export default function LogViewer({
 
   const { data: historicLines = [], isError: logsError } = useQuery({
     queryKey: ['logs', execution?.id],
-    queryFn: () => getExecutionLogs(execution!.id),
+    queryFn: () => getPolicyExecutionLogs(execution!.id),
     enabled: !!execution && !isRunning,
   })
 
@@ -351,7 +351,7 @@ export default function LogViewer({
     setWsError(false)
 
     function openWs() {
-      const ws = new WebSocket(wsLogsUrl(execution!.id))
+      const ws = new WebSocket(wsPolicyLogsUrl(execution!.id))
       wsRef.current = ws
 
       ws.onmessage = (e) => {
@@ -446,13 +446,13 @@ export default function LogViewer({
             <Box sx={{ p: 2.5, display: 'flex', alignItems: 'flex-start', gap: 1 }}>
               <Box sx={{ flex: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  {execution.schedule?.type === 'scale_down' ? (
+                  {execution.direction === 'sleep' ? (
                     <BedtimeIcon sx={{ color: 'primary.main', fontSize: 18 }} />
                   ) : (
                     <WbSunnyIcon sx={{ color: 'warning.main', fontSize: 18 }} />
                   )}
                   <Typography variant="subtitle1" fontWeight={700}>
-                    {execution.schedule?.name ?? 'Execution'} #{execution.id}
+                    {execution.direction === 'sleep' ? 'Sleep' : 'Wake'} #{execution.id}
                   </Typography>
                   {isRunning && <CircularProgress size={14} />}
                 </Box>
@@ -466,7 +466,7 @@ export default function LogViewer({
                       color: execution.mode === 'apply' ? 'warning.main' : 'info.main',
                     }}
                   />
-                  {execution.schedule?.type === 'scale_up' ? (
+                  {execution.direction === 'wake' ? (
                     <Chip
                       icon={<ArrowUpwardIcon sx={{ fontSize: '12px !important' }} />}
                       label={`${execution.countScaled} restored`}
@@ -523,7 +523,7 @@ export default function LogViewer({
 
             <Divider />
 
-            <ExecutionSummary lines={lines} isRunning={isRunning} />
+            <PolicyExecutionSummary lines={lines} isRunning={isRunning} />
 
             {/* Log area */}
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>

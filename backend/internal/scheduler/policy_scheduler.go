@@ -13,9 +13,7 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// PolicyBroker is a separate Broker instance for policy executions.
-// Kept separate from the schedule Broker to avoid ID collisions between
-// the executions and policy_executions tables.
+// PolicyBroker is an alias for Broker, used for policy executions.
 type PolicyBroker = Broker
 
 // PolicyScheduler manages cron entries for all enabled policies.
@@ -117,19 +115,27 @@ func (ps *PolicyScheduler) NextRuns(policyID uint) (nextSleep, nextWake *time.Ti
 }
 
 // RunSleepNow triggers an immediate sleep execution for a policy.
+// Manual triggers are allowed on disabled policies (operator override).
 func (ps *PolicyScheduler) RunSleepNow(policyID uint, trigger string) (uint, error) {
 	p, err := ps.store.GetPolicy(policyID)
 	if err != nil {
 		return 0, fmt.Errorf("policy %d not found: %w", policyID, err)
 	}
+	if !p.Enabled {
+		slog.Warn("manual trigger on disabled policy", "policyID", policyID, "direction", "sleep", "trigger", trigger)
+	}
 	return ps.run(context.Background(), *p, "sleep", trigger)
 }
 
 // RunWakeNow triggers an immediate wake execution for a policy.
+// Manual triggers are allowed on disabled policies (operator override).
 func (ps *PolicyScheduler) RunWakeNow(policyID uint, trigger string) (uint, error) {
 	p, err := ps.store.GetPolicy(policyID)
 	if err != nil {
 		return 0, fmt.Errorf("policy %d not found: %w", policyID, err)
+	}
+	if !p.Enabled {
+		slog.Warn("manual trigger on disabled policy", "policyID", policyID, "direction", "wake", "trigger", trigger)
 	}
 	return ps.run(context.Background(), *p, "wake", trigger)
 }
@@ -311,10 +317,20 @@ func (ps *PolicyScheduler) reload() error {
 }
 
 func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, trigger string) (uint, error) {
-	// Guard: don't start if already transitioning
-	if p.CurrentState == "transitioning" {
+	// Guard: atomically check and set transitioning state under mutex to
+	// prevent duplicate executions from concurrent cron fires or manual triggers.
+	ps.mu.Lock()
+	fresh, err := ps.store.GetPolicy(p.ID)
+	if err != nil {
+		ps.mu.Unlock()
+		return 0, fmt.Errorf("policy %d lookup: %w", p.ID, err)
+	}
+	if fresh.CurrentState == "transitioning" {
+		ps.mu.Unlock()
 		return 0, fmt.Errorf("policy %d is already transitioning", p.ID)
 	}
+	_ = ps.store.SetPolicyTransitioning(p.ID)
+	ps.mu.Unlock()
 
 	exec := &store.PolicyExecution{
 		PolicyID:  p.ID,
@@ -328,8 +344,6 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		return 0, fmt.Errorf("create policy execution: %w", err)
 	}
 	execID := exec.ID
-
-	_ = ps.store.SetPolicyTransitioning(p.ID)
 	slog.Info("policy scheduler: starting execution",
 		"policyID", p.ID, "execID", execID, "direction", direction, "trigger", trigger)
 
@@ -360,15 +374,8 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 				if err := ps.store.AppendPolicyLogLine(&dbLine); err != nil {
 					slog.Error("policy scheduler: log persist error", "execID", execID, "err", err)
 				}
-				// Publish as store.LogLine (same wire format) to the policy broker
-				ps.Broker.Publish(execID, store.LogLine{
-					ID:          dbLine.ID,
-					ExecutionID: dbLine.ExecutionID,
-					Seq:         dbLine.Seq,
-					Level:       dbLine.Level,
-					Message:     dbLine.Message,
-					Timestamp:   dbLine.Timestamp,
-				})
+				// Publish to the policy broker for live WebSocket streaming
+				ps.Broker.Publish(execID, dbLine)
 			}
 		}()
 

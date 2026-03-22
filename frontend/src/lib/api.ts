@@ -1,4 +1,4 @@
-import type { Schedule, ScheduleInput, Guardrails, Execution, LogLine, Workload, Node, NodePod, ExecutionPage, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecution, PolicyExecutionPage, WorkloadSnapshot, PolicyOverride, ScheduledException, ScheduledExceptionInput } from './types'
+import type { Guardrails, Workload, Node, NodePod, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecution, PolicyExecutionPage, LogLine, WorkloadSnapshot, PolicyOverride, ScheduledException, ScheduledExceptionInput } from './types'
 import { getCSRFToken } from './auth'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
@@ -47,48 +47,6 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
-// ── Schedules ─────────────────────────────────────────────────────────────────
-
-export const getSchedules = (): Promise<Schedule[]> =>
-  req<Schedule[]>('/api/schedules')
-
-export const createSchedule = (data: ScheduleInput): Promise<Schedule> =>
-  req<Schedule>('/api/schedules', {
-    method: 'POST',
-    body: JSON.stringify({
-      name: data.name,
-      type: data.type,
-      cron_expr: data.cronExpr,
-      timezone: data.timezone,
-      mode: data.mode,
-      enabled: data.enabled,
-      namespace_filter: data.namespaceFilter,
-    }),
-  })
-
-export const updateSchedule = (id: number, data: Partial<ScheduleInput>): Promise<Schedule> => {
-  const payload: Record<string, unknown> = {}
-  if (data.name !== undefined)            payload.name = data.name
-  if (data.cronExpr !== undefined)        payload.cron_expr = data.cronExpr
-  if (data.timezone !== undefined)        payload.timezone = data.timezone
-  if (data.mode !== undefined)            payload.mode = data.mode
-  if (data.enabled !== undefined)         payload.enabled = data.enabled
-  if (data.namespaceFilter !== undefined) payload.namespace_filter = data.namespaceFilter
-  return req<Schedule>(`/api/schedules/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(payload),
-  })
-}
-
-export const deleteSchedule = (id: number): Promise<void> =>
-  req<void>(`/api/schedules/${id}`, { method: 'DELETE' })
-
-export const reorderSchedules = (type: 'scale_down' | 'scale_up', ids: number[]): Promise<Schedule[]> =>
-  req<Schedule[]>('/api/schedules/reorder', {
-    method: 'PUT',
-    body: JSON.stringify({ type, ids }),
-  })
-
 // ── Guardrails ────────────────────────────────────────────────────────────────
 
 export const getGuardrails = (): Promise<Guardrails> =>
@@ -105,28 +63,6 @@ export const updateGuardrails = (data: Partial<Guardrails>): Promise<Guardrails>
       skip_node_taints: data.skipNodeTaints,
     }),
   })
-
-// ── Executions ────────────────────────────────────────────────────────────────
-
-export const getExecutions = (params?: {
-  scheduleId?: number
-  status?: string
-  page?: number
-  pageSize?: number
-}): Promise<ExecutionPage> => {
-  const q = new URLSearchParams()
-  if (params?.scheduleId) q.set('schedule_id', String(params.scheduleId))
-  if (params?.status) q.set('status', params.status)
-  if (params?.page !== undefined) q.set('page', String(params.page))
-  if (params?.pageSize) q.set('page_size', String(params.pageSize))
-  return req<ExecutionPage>(`/api/executions?${q}`)
-}
-
-export const getExecution = (id: number): Promise<Execution> =>
-  req<Execution>(`/api/executions/${id}`)
-
-export const getExecutionLogs = (id: number): Promise<LogLine[]> =>
-  req<LogLine[]>(`/api/executions/${id}/logs`)
 
 // ── Overview ──────────────────────────────────────────────────────────────────
 
@@ -217,17 +153,6 @@ export function streamPodLogs(
     },
   }
 }
-
-// ── Trigger ───────────────────────────────────────────────────────────────────
-
-export const triggerRun = (
-  scheduleId: number,
-  mode: 'plan' | 'apply'
-): Promise<{ executionId: number }> =>
-  req<{ executionId: number }>('/api/trigger', {
-    method: 'POST',
-    body: JSON.stringify({ scheduleId, mode }),
-  })
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
@@ -417,16 +342,6 @@ export const deleteException = (id: number): Promise<void> =>
   req<void>(`/api/exceptions/${id}`, { method: 'DELETE' })
 
 // ── WebSocket URL helper ──────────────────────────────────────────────────────
-
-export const wsLogsUrl = (executionId: number): string => {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ''
-  const base = apiUrl
-    ? apiUrl.replace(/^http/, 'ws')
-    : `${typeof window !== 'undefined' ? window.location.origin.replace(/^http/, 'ws') : ''}`
-
-  // Cookies are sent automatically on same-origin WebSocket upgrades — no token param needed.
-  return `${base}/ws/executions/${executionId}/logs`
-}
 
 export const wsPolicyLogsUrl = (executionId: number): string => {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ''

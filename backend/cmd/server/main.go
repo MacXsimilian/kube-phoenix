@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -41,11 +42,6 @@ func main() {
 		slog.Error("seed failed", "err", err)
 		os.Exit(1)
 	}
-	if n, err := st.MarkInterruptedExecutions(); err != nil {
-		slog.Error("startup: failed to mark interrupted executions", "err", err)
-	} else if n > 0 {
-		slog.Warn("startup: marked executions as interrupted (pod was restarted mid-run)", "count", n)
-	}
 	if n, err := st.MarkInterruptedPolicyExecutions(); err != nil {
 		slog.Error("startup: failed to mark interrupted policy executions", "err", err)
 	} else if n > 0 {
@@ -67,18 +63,9 @@ func main() {
 	}
 
 	// ── Background maintenance tickers ────────────────────────────────────
+	var tickerWg sync.WaitGroup
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	// ── Scheduler ─────────────────────────────────────────────────────────
-	sched := scheduler.New(st, k8s)
-	if k8s != nil {
-		if err := sched.Start(ctx); err != nil {
-			slog.Error("scheduler failed to start", "err", err)
-			os.Exit(1)
-		}
-		defer sched.Stop()
-	}
 
 	// ── Policy scheduler ──────────────────────────────────────────────────
 	policySched := scheduler.NewPolicyScheduler(st, k8s)
@@ -91,16 +78,20 @@ func main() {
 		if err := policySched.RecoverPolicies(ctx); err != nil {
 			slog.Error("policy recovery failed", "err", err)
 		}
-		go runTicker(ctx, time.Minute, "exception-tick", func() {
-			policySched.TickExceptions(ctx)
-		})
+		tickerWg.Add(1)
+		go func() {
+			defer tickerWg.Done()
+			runTicker(ctx, time.Minute, "exception-tick", func() {
+				policySched.TickExceptions(ctx)
+			})
+		}()
 	}
 
 	retentionDays := parseIntEnv("AUDIT_RETENTION_DAYS", 90)
-	startMaintenanceTickers(ctx, st, retentionDays)
+	startMaintenanceTickers(ctx, st, retentionDays, &tickerWg)
 
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(ctx, st, k8s, sched, policySched, cache)
+	router := api.NewRouter(ctx, st, k8s, policySched, cache)
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
 		Handler:      router,
@@ -123,6 +114,8 @@ func main() {
 	<-quit
 	slog.Info("shutting down...")
 	cancel() // stop background tickers
+	tickerWg.Wait()
+	slog.Info("background tickers stopped")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
@@ -132,34 +125,42 @@ func main() {
 	slog.Info("bye")
 }
 
-func startMaintenanceTickers(ctx context.Context, st *store.Store, retentionDays int) {
+func startMaintenanceTickers(ctx context.Context, st *store.Store, retentionDays int, wg *sync.WaitGroup) {
 	// Session cleanup — every 15 minutes.
-	go runTicker(ctx, 15*time.Minute, "session-cleanup", func() {
-		deleted, err := st.CleanExpiredSessions()
-		if err != nil {
-			slog.Error("session-cleanup failed", "err", err)
-			return
-		}
-		if deleted > 0 {
-			slog.Info("session-cleanup: expired sessions removed", "count", deleted)
-		}
-		if count, err := st.CountActiveSessions(); err == nil {
-			metrics.ActiveSessions.Set(float64(count))
-		}
-	})
-
-	// Audit log retention — daily.
-	if retentionDays > 0 {
-		go runTicker(ctx, 24*time.Hour, "audit-retention", func() {
-			deleted, err := st.CleanOldAuditLogs(time.Duration(retentionDays) * 24 * time.Hour)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runTicker(ctx, 15*time.Minute, "session-cleanup", func() {
+			deleted, err := st.CleanExpiredSessions()
 			if err != nil {
-				slog.Error("audit-retention failed", "err", err)
+				slog.Error("session-cleanup failed", "err", err)
 				return
 			}
 			if deleted > 0 {
-				slog.Info("audit-retention: old entries removed", "count", deleted, "retentionDays", retentionDays)
+				slog.Info("session-cleanup: expired sessions removed", "count", deleted)
+			}
+			if count, err := st.CountActiveSessions(); err == nil {
+				metrics.ActiveSessions.Set(float64(count))
 			}
 		})
+	}()
+
+	// Audit log retention — daily.
+	if retentionDays > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runTicker(ctx, 24*time.Hour, "audit-retention", func() {
+				deleted, err := st.CleanOldAuditLogs(time.Duration(retentionDays) * 24 * time.Hour)
+				if err != nil {
+					slog.Error("audit-retention failed", "err", err)
+					return
+				}
+				if deleted > 0 {
+					slog.Info("audit-retention: old entries removed", "count", deleted, "retentionDays", retentionDays)
+				}
+			})
+		}()
 	}
 }
 

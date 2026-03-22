@@ -48,8 +48,8 @@ func (h *Handler) resetDB(w http.ResponseWriter, r *http.Request) {
 		slog.Info("admin: reset "+typ, "msg", msg)
 	}
 
-	emit("step", "Stopping scheduler...")
-	h.scheduler.Stop()
+	emit("step", "Stopping policy scheduler...")
+	h.policyScheduler.Stop()
 
 	emit("step", "Dropping all tables...")
 	if err := h.store.DropAllTables(); err != nil {
@@ -72,10 +72,10 @@ func (h *Handler) resetDB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	emit("step", "Restarting scheduler...")
-	if err := h.scheduler.Restart(r.Context()); err != nil {
-		slog.Error("admin: scheduler restart failed", "err", err)
-		emit("error", "Scheduler restart failed — see server logs for details")
+	emit("step", "Restarting policy scheduler...")
+	if err := h.policyScheduler.Restart(r.Context()); err != nil {
+		slog.Error("admin: policy scheduler restart failed", "err", err)
+		emit("error", "Policy scheduler restart failed — see server logs for details")
 		return
 	}
 

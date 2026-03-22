@@ -26,7 +26,7 @@ func (s *Store) CreatePolicy(p *Policy) error {
 func (s *Store) UpdatePolicy(id uint, updates map[string]interface{}) (*Policy, error) {
 	allowed := map[string]bool{
 		"name": true, "description": true, "namespace_filter": true, "label_selector": true,
-		"sleep_cron": true, "wake_cron": true, "timezone": true,
+		"sleep_windows": true, "sleep_cron": true, "wake_cron": true, "timezone": true,
 		"mode": true, "enabled": true, "timeout_minutes": true,
 	}
 	for k := range updates {
@@ -81,21 +81,38 @@ func (s *Store) DeletePolicy(id uint) error {
 }
 
 // HasApplyPolicyOverlap returns true when another enabled apply-mode policy
-// already has a non-empty namespace_filter or label_selector that could
-// overlap with the given parameters. Used for conflict detection on save.
-// This is a best-effort check; the full overlap resolution happens at runtime.
+// could potentially overlap with the given targeting parameters. Used for
+// conflict detection on save — blocks when overlap is likely.
+//
+// Overlap logic:
+//   - If the new policy targets everything (both filters empty), any other
+//     apply-mode policy is a conflict.
+//   - If another policy targets everything, it conflicts with any new policy.
+//   - If both policies share the same namespace scope (same filter or one is
+//     empty/universal), they may overlap — we flag it.
+//
+// Label selector intersection is not computed exactly (would require a K8s API
+// call); instead, same-namespace policies are treated as overlapping.
 func (s *Store) HasApplyPolicyOverlap(excludeID uint, namespaceFilter, labelSelector string) (bool, error) {
 	if namespaceFilter == "" && labelSelector == "" {
-		// targets everything — always a potential overlap with any other policy
+		// New policy targets everything — overlap with ANY other apply-mode policy.
 		var count int64
 		err := s.db.Model(&Policy{}).
 			Where("id != ? AND enabled = true AND mode = 'apply'", excludeID).
 			Count(&count).Error
 		return count > 0, err
 	}
+
+	// Check for policies that could overlap:
+	// 1. Another policy targets everything (namespace_filter = '' AND label_selector = '')
+	// 2. Another policy targets the same namespace scope (namespace_filter matches or is universal)
 	var count int64
 	err := s.db.Model(&Policy{}).
-		Where("id != ? AND enabled = true AND mode = 'apply' AND (namespace_filter = '' OR namespace_filter = ?)", excludeID, namespaceFilter).
+		Where(`id != ? AND enabled = true AND mode = 'apply' AND (
+			(namespace_filter = '' AND label_selector = '') OR
+			namespace_filter = '' OR
+			namespace_filter = ?
+		)`, excludeID, namespaceFilter).
 		Count(&count).Error
 	return count > 0, err
 }

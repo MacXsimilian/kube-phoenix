@@ -14,7 +14,6 @@ import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
 import AboutModal from './AboutModal'
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
-import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined'
 import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
 import SecurityOutlinedIcon from '@mui/icons-material/SecurityOutlined'
 import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined'
@@ -39,7 +38,6 @@ const NAV: NavItem[] = [
   { label: 'Overview', href: '/overview', icon: <DashboardOutlinedIcon fontSize="small" /> },
   { label: 'Cluster State', href: '/cluster', icon: <HubOutlinedIcon fontSize="small" /> },
   { label: 'Guardrails', href: '/guardrails', icon: <SecurityOutlinedIcon fontSize="small" /> },
-  { label: 'Schedules', href: '/schedules', icon: <ScheduleOutlinedIcon fontSize="small" /> },
   { label: 'Policies', href: '/policies', icon: <PolicyOutlinedIcon fontSize="small" /> },
   { label: 'Exceptions', href: '/exceptions', icon: <EventNoteOutlinedIcon fontSize="small" /> },
   { label: 'History', href: '/history', icon: <HistoryOutlinedIcon fontSize="small" /> },

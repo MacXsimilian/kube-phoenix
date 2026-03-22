@@ -24,10 +24,10 @@ import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import CloudOffIcon from '@mui/icons-material/CloudOff'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
-import { getExecutions } from '@/lib/api'
-import type { Execution } from '@/lib/types'
+import { getPolicyExecutions } from '@/lib/api'
+import type { PolicyExecution } from '@/lib/types'
 
-function duration(exec: Execution): string {
+function duration(exec: PolicyExecution): string {
   if (!exec.finishedAt) return 'Running...'
   const ms = new Date(exec.finishedAt).getTime() - new Date(exec.startedAt).getTime()
   const s = Math.floor(ms / 1000)
@@ -42,7 +42,7 @@ function formatDate(iso: string): string {
   })
 }
 
-function StatusChip({ status }: { status: Execution['status'] }) {
+function StatusChip({ status }: { status: PolicyExecution['status'] }) {
   if (status === 'running') {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
@@ -61,8 +61,8 @@ function StatusChip({ status }: { status: Execution['status'] }) {
   )
 }
 
-function SummaryCell({ exec }: { exec: Execution }) {
-  const isWake = exec.schedule?.type === 'scale_up'
+function SummaryCell({ exec }: { exec: PolicyExecution }) {
+  const isWake = exec.direction === 'wake'
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
       <Tooltip title={isWake ? 'Restored' : 'Scaled'}>
@@ -102,11 +102,11 @@ function SummaryCell({ exec }: { exec: Execution }) {
   )
 }
 
-export default function ExecutionTable({
+export default function PolicyExecutionTable({
   onSelect,
   initialExecId,
 }: {
-  onSelect: (e: Execution) => void
+  onSelect: (e: PolicyExecution) => void
   initialExecId?: number
 }) {
   const [page, setPage] = useState(0)
@@ -114,8 +114,8 @@ export default function ExecutionTable({
   const [autoOpened, setAutoOpened] = useState(false)
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['executions', page, rowsPerPage],
-    queryFn: () => getExecutions({ page, pageSize: rowsPerPage }),
+    queryKey: ['policy-executions', page, rowsPerPage],
+    queryFn: () => getPolicyExecutions({ page, pageSize: rowsPerPage }),
     refetchInterval: 10_000,
   })
 
@@ -185,12 +185,12 @@ export default function ExecutionTable({
                       <TableCell sx={{ fontSize: 13 }}>{formatDate(exec.startedAt)}</TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                          {exec.schedule?.type === 'scale_down' ? (
+                          {exec.direction === 'sleep' ? (
                             <BedtimeIcon sx={{ fontSize: 14, color: 'primary.main' }} />
                           ) : (
                             <WbSunnyIcon sx={{ fontSize: 14, color: 'warning.main' }} />
                           )}
-                          <Typography variant="body2">{exec.schedule?.name ?? '—'}</Typography>
+                          <Typography variant="body2">{exec.direction === 'sleep' ? 'Sleep' : 'Wake'}</Typography>
                         </Box>
                       </TableCell>
                       <TableCell>

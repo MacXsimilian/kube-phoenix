@@ -14,9 +14,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/MacXsimilian/kube-phoenix)](https://github.com/MacXsimilian/kube-phoenix/stargazers)
 [![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](https://github.com/MacXsimilian/kube-phoenix/issues)
 
-**Schedule your Kubernetes cluster to sleep at night and wake in the morning. Stop paying for idle nodes.**
+**Define when your Kubernetes cluster sleeps and wakes. Stop paying for idle nodes.**
 
-kube-phoenix is a self-hosted web application for managing cluster sleep/wake policies. It replaces ad-hoc bash CronJobs with a proper operator: a Go backend with a full-featured UI, policy-based scheduling, live log streaming, guardrails to protect critical workloads, and a Helm chart for one-command deployment.
+kube-phoenix is a self-hosted web application for managing cluster sleep/wake policies. Define sleep windows ("Mon-Fri 7 PM - 7 AM"), and kube-phoenix handles the rest: scaling workloads to zero, draining nodes, and restoring everything on schedule. It replaces ad-hoc bash CronJobs with a proper operator: a Go backend with a full-featured UI, policy-based scheduling, live log streaming, guardrails to protect critical workloads, and a Helm chart for one-command deployment.
 
 ---
 
@@ -37,7 +37,7 @@ kubectl port-forward -n kube-phoenix svc/kube-phoenix 8080:80
 # Open http://localhost:8080
 ```
 
-All schedules are seeded **disabled** in **plan mode** — nothing will scale until you explicitly enable a schedule and switch it to `apply` mode. The same applies to Policies.
+New policies start in **plan mode** — nothing will scale until you explicitly switch a policy to `apply` mode.
 
 → Full deployment guide (external DB, Ingress, AWS ALB, Helm values): [docs/deployment.md](docs/deployment.md)
 
@@ -72,33 +72,27 @@ make docker-build
 
 ## How it works
 
-kube-phoenix supports two scheduling paradigms:
-
-### Policies (recommended)
-
-A **Policy** is a unified entity that declares _when_ workloads sleep and _when_ they wake — both in one place, with a single `sleepCron` and `wakeCron` expression.
+A **Policy** declares _when_ workloads should sleep using **sleep windows** — human-readable time ranges like "Mon–Fri 7 PM – 7 AM".
 
 ```
-Policy: "Weekdays"
-  sleepCron: "0 20 * * 1-5"   ← Mon–Fri 20:00 → scale all matching workloads to 0
-  wakeCron:  "0 8 * * 1-5"    ← Mon–Fri 08:00 → restore saved replica counts
+Policy: "Dev environments"
+  sleepWindows:
+    - days: Mon–Fri, startTime: 19:00, endTime: 07:00
   namespaceFilter: "staging,dev"
   labelSelector:  "team=backend"
   mode: apply
 ```
 
-Policies also support:
+The system compiles windows into cron expressions internally and manages the full lifecycle:
 
-- **Overrides** — one-time windows that take precedence over the schedule (`stay_awake`, `force_sleep`) or skip a single cron tick (`skip_sleep`, `skip_wake`)
+- **Overrides** — one-time windows that take precedence (`stay_awake`, `force_sleep`) or skip a single tick (`skip_sleep`, `skip_wake`)
 - **Scheduled Exceptions** — future windows with ticket references (e.g. "keep staging up this weekend for a release") with a pending → active → completed lifecycle
 - **Startup recovery** — on pod restart, the intended state at `now` is computed and any mismatch triggers an automatic recovery execution
 - **DB-backed replica storage** — replica counts are stored in `WorkloadSnapshot` rows (not just K8s annotations), so restores are reliable even if annotations were overwritten
 
-### Legacy Schedules
+An advanced cron mode is available for power users who need raw 5-field cron expressions.
 
-The original `scale_down` / `scale_up` schedule model is still supported for backwards compatibility. Each schedule runs one operation on a cron expression.
-
-### Scale down (both models)
+### Sleep
 
 ```
 For each matching Deployment / StatefulSet
@@ -112,7 +106,7 @@ For each matching Deployment / StatefulSet
         └─► Delete node
 ```
 
-### Scale up (both models)
+### Wake
 
 ```
 For each matching Deployment / StatefulSet
@@ -138,14 +132,12 @@ flowchart TB
         direction TB
         Router["Chi Router + Session Auth middleware"]
         Handlers["API Handlers"]
-        Scheduler["Scheduler<br/>(legacy schedules)"]
-        PolicyScheduler["PolicyScheduler<br/>(policies + exceptions)"]
+        WindowCompiler["Window Compiler<br/>(sleep windows → cron)"]
+        PolicyScheduler["PolicyScheduler<br/>(cron engine + exceptions)"]
         PolicyEngine["PolicyEngine<br/>(IntendedState evaluation)"]
-        Scaler["Scaler<br/>Scale Down / Scale Up"]
         PolicyScaler["PolicyScaler<br/>(DB-backed snapshots)"]
         Cache["Cluster Cache<br/>10 s background refresh"]
         Broker["WS Log Broker<br/>pub/sub fan-out"]
-        PolicyBroker["Policy WS Broker<br/>pub/sub fan-out"]
         GORM["GORM"]
         SPA["Embedded SPA<br/>Next.js static files"]
     end
@@ -157,17 +149,14 @@ flowchart TB
     Browser -- "WebSocket · live logs" --> Router
     Router --> Handlers
     Router --> SPA
-    Handlers --> Scheduler
+    Handlers --> WindowCompiler
     Handlers --> PolicyScheduler
     Handlers --> Cache
     Handlers --> GORM
-    Scheduler --> Scaler
-    Scheduler --> Broker
     PolicyScheduler --> PolicyScaler
     PolicyScheduler --> PolicyEngine
-    PolicyScheduler --> PolicyBroker
+    PolicyScheduler --> Broker
     PolicyScaler --> K8s
-    Scaler --> K8s
     Cache --> K8s
     GORM --> PG
 ```
@@ -176,14 +165,13 @@ flowchart TB
 
 ## Features
 
-- **Overview** — cluster health at a glance: current scale state, live indicator, partial-sleep namespace breakdown, schedule next-run countdown, and live activity feed with inline log drawer
+- **Overview** — cluster health at a glance: current scale state, live indicator, partial-sleep namespace breakdown, policy next-run countdown, and live activity feed
 - **Cluster State** — live view of all Deployments, StatefulSets, and nodes with resizable drill-down drawers; pod detail includes live CPU/memory usage, annotations, node instance type, Kubernetes events, and a streaming container log viewer with search navigation
 - **Guardrails** — protect namespaces, node labels, and taints from ever being touched by the scaler
-- **Policies** — unified sleep/wake policies: one entity declares both when workloads sleep and when they wake, with namespace and label selector targeting, plan/apply mode, one-time overrides (stay_awake, force_sleep, skip_sleep, skip_wake), DB-backed replica snapshots, and startup recovery
+- **Policies** — declarative sleep window policies: define "Mon–Fri 7 PM – 7 AM" and the system handles the rest; namespace and label selector targeting, plan/apply mode, one-time overrides (stay_awake, force_sleep, skip_sleep, skip_wake), DB-backed replica snapshots, startup recovery, 24h mini timeline on cards, and a weekly timeline visualization on the detail page; advanced cron mode available for power users
 - **Scheduled Exceptions** — future one-time windows with ticket references (JIRA/GitHub), a pending→active→completed lifecycle, and optional "sleep on end" to restore workloads automatically when the window closes
-- **Schedules** — legacy model: multiple sleep and wake schedules with a visual cron builder (day-of-week picker, hour/minute dropdowns, live human-readable preview, and an advanced raw cron toggle for power users), per-schedule timezones, and optional namespace filters; inline enable/disable toggle and drag-to-reorder
-- **History** — full execution log for both schedules and policies, with live WebSocket streaming; jump-to-error navigation and workload count badges
-- **Manual triggers** — run any schedule or policy immediately; policies support separate Sleep Now / Wake Now buttons
+- **History** — full execution log with live WebSocket streaming; jump-to-error navigation and workload count badges
+- **Manual triggers** — Sleep Now / Wake Now buttons on each policy
 - **Users** — multi-user management with three RBAC roles (admin, operator, viewer) and granular permissions; admin-only page for creating, editing, and deleting users
 - **Audit Log** — searchable audit trail with before/after diffs, filterable by user, action, and resource; configurable retention
 - **Authentication** — session-based auth via HTTP-only cookies with CSRF double-submit protection; optional Keycloak OIDC integration (Authorization Code + PKCE, AD group-to-role mapping, account linking); login rate limiting (per-IP and per-username)
@@ -234,12 +222,12 @@ kube-phoenix exposes a Prometheus metrics endpoint at `/metrics` (no authenticat
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `kube_phoenix_executions_total` | Counter | `status`, `mode`, `schedule_type` | Total schedule executions |
-| `kube_phoenix_execution_duration_seconds` | Histogram | `mode`, `schedule_type`, `status` | Execution wall-clock duration |
-| `kube_phoenix_workloads_scaled_total` | Counter | `direction` | Workloads scaled (down/up) |
-| `kube_phoenix_nodes_drained_total` | Counter | — | Nodes drained during scale-down |
-| `kube_phoenix_nodes_deleted_total` | Counter | — | Nodes deleted during scale-down |
-| `kube_phoenix_active_schedules` | Gauge | `schedule_type`, `mode` | Enabled schedules by type and mode |
+| `kube_phoenix_executions_total` | Counter | `status`, `mode`, `direction` | Total policy executions |
+| `kube_phoenix_execution_duration_seconds` | Histogram | `mode`, `direction`, `status` | Execution wall-clock duration |
+| `kube_phoenix_workloads_scaled_total` | Counter | `direction` | Workloads scaled (sleep/wake) |
+| `kube_phoenix_nodes_drained_total` | Counter | — | Nodes drained during sleep |
+| `kube_phoenix_nodes_deleted_total` | Counter | — | Nodes deleted during sleep |
+| `kube_phoenix_active_policies` | Gauge | `mode` | Enabled policies by mode |
 | `kube_phoenix_auth_attempts_total` | Counter | `status`, `method` | Login attempts by outcome and method (local/oidc) |
 | `kube_phoenix_user_actions_total` | Counter | `action`, `user`, `resource_type` | User-initiated mutations (schedule.update, trigger.manual, etc.) |
 | `kube_phoenix_active_sessions` | Gauge | — | Currently active user sessions |
@@ -260,7 +248,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, branching strategy, comm
 |---|---|
 | Architecture & system design | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Deployment (external DB, Ingress, AWS ALB, Helm values) | [docs/deployment.md](docs/deployment.md) |
-| Configuration (env vars, auth, schedules) | [docs/configuration.md](docs/configuration.md) |
+| Configuration (env vars, auth, policies) | [docs/configuration.md](docs/configuration.md) |
 | API reference + Swagger UI | [docs/api.md](docs/api.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | Release history | [CHANGELOG.md](CHANGELOG.md) |

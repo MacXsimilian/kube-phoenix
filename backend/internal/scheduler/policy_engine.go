@@ -74,20 +74,20 @@ func NextFire(cronExpr, timezone string, now time.Time) time.Time {
 // skip_sleep / skip_wake overrides affect scheduler behaviour (suppress the
 // next cron tick) but do not change the intended state returned here.
 func IntendedState(p store.Policy, overrides []store.PolicyOverride, now time.Time) PolicyState {
-	// 1. Check windowed overrides
+	// 1. Check windowed overrides — force_sleep has highest priority.
+	// Process force_sleep first, then stay_awake, to ensure deterministic
+	// precedence regardless of database row order.
 	for _, o := range overrides {
-		switch o.OverrideType {
-		case "force_sleep":
-			if o.StartsAt != nil && o.EndsAt != nil {
-				if !now.Before(*o.StartsAt) && !now.After(*o.EndsAt) {
-					return PolicyStateSleeping
-				}
+		if o.OverrideType == "force_sleep" && o.StartsAt != nil && o.EndsAt != nil {
+			if !now.Before(*o.StartsAt) && !now.After(*o.EndsAt) {
+				return PolicyStateSleeping
 			}
-		case "stay_awake":
-			if o.StartsAt != nil && o.EndsAt != nil {
-				if !now.Before(*o.StartsAt) && !now.After(*o.EndsAt) {
-					return PolicyStateAwake
-				}
+		}
+	}
+	for _, o := range overrides {
+		if o.OverrideType == "stay_awake" && o.StartsAt != nil && o.EndsAt != nil {
+			if !now.Before(*o.StartsAt) && !now.After(*o.EndsAt) {
+				return PolicyStateAwake
 			}
 		}
 	}

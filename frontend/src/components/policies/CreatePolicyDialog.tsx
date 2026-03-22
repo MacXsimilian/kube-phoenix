@@ -16,12 +16,21 @@ import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import { createPolicy, updatePolicy } from '@/lib/api'
 import { TIMEZONES } from '@/lib/constants'
-import type { Policy, PolicyInput } from '@/lib/types'
+import type { Policy, PolicyInput, SleepWindow } from '@/lib/types'
 import CronBuilder from '../schedules/CronBuilder'
+import WindowPicker from './WindowPicker'
 
-const DEFAULTS: PolicyInput = {
+type ScheduleMode = 'windows' | 'cron'
+
+const DEFAULT_WINDOWS: SleepWindow[] = [
+  { daysOfWeek: [1, 2, 3, 4, 5], startTime: '19:00', endTime: '07:00' },
+]
+
+const DEFAULTS: PolicyInput & { _windows: SleepWindow[]; _scheduleMode: ScheduleMode } = {
   name: '',
   description: '',
   sleepCron: '',
@@ -32,12 +41,32 @@ const DEFAULTS: PolicyInput = {
   timeoutMinutes: 30,
   namespaceFilter: '',
   labelSelector: '',
+  _windows: DEFAULT_WINDOWS,
+  _scheduleMode: 'windows',
 }
 
 function isValidCron(expr: string): boolean {
-  if (!expr) return true // optional fields
+  if (!expr) return true
   const parts = expr.trim().split(/\s+/)
-  return parts.length === 5
+  if (parts.length !== 5) return false
+  const ranges = [
+    [0, 59],  // minute
+    [0, 23],  // hour
+    [1, 31],  // day of month
+    [1, 12],  // month
+    [0, 7],   // day of week (0 and 7 both = Sunday)
+  ]
+  return parts.every((part, i) => {
+    if (part === '*') return true
+    // Handle comma-separated and ranges
+    return part.split(',').every(seg => {
+      const range = seg.split('-')
+      return range.every(v => {
+        const n = parseInt(v, 10)
+        return !isNaN(n) && n >= ranges[i][0] && n <= ranges[i][1]
+      })
+    })
+  })
 }
 
 export default function CreatePolicyDialog({
@@ -54,12 +83,13 @@ export default function CreatePolicyDialog({
   const qc = useQueryClient()
   const isEdit = !!existing
 
-  const [form, setForm] = useState<PolicyInput>(DEFAULTS)
+  const [form, setForm] = useState(DEFAULTS)
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (open) {
       if (existing) {
+        const hasWindows = existing.sleepWindows && existing.sleepWindows.length > 0
         setForm({
           name: existing.name,
           description: existing.description || '',
@@ -71,6 +101,8 @@ export default function CreatePolicyDialog({
           timeoutMinutes: existing.timeoutMinutes,
           namespaceFilter: existing.namespaceFilter || '',
           labelSelector: existing.labelSelector || '',
+          _windows: hasWindows ? existing.sleepWindows! : DEFAULT_WINDOWS,
+          _scheduleMode: hasWindows ? 'windows' : 'cron',
         })
       } else {
         setForm(DEFAULTS)
@@ -79,27 +111,42 @@ export default function CreatePolicyDialog({
     }
   }, [open, existing])
 
-  function set<K extends keyof PolicyInput>(key: K, val: PolicyInput[K]) {
+  function set<K extends keyof typeof DEFAULTS>(key: K, val: (typeof DEFAULTS)[K]) {
     setForm(f => ({ ...f, [key]: val }))
   }
 
   function validate(): string {
     if (!form.name.trim()) return 'Name is required'
-    if (!form.sleepCron && !form.wakeCron) return 'At least one of Sleep Cron or Wake Cron is required'
-    if (form.sleepCron && !isValidCron(form.sleepCron)) return 'Invalid sleep cron expression'
-    if (form.wakeCron && !isValidCron(form.wakeCron)) return 'Invalid wake cron expression'
-    if ((form.timeoutMinutes ?? 0) < 0 || (form.timeoutMinutes ?? 0) > 1440) return 'Timeout must be 0–1440 minutes'
+    if (form._scheduleMode === 'windows') {
+      if (form._windows.length === 0) return 'At least one sleep window is required'
+      if (form._windows.every(w => w.daysOfWeek.length === 0)) return 'Select at least one day'
+    } else {
+      if (!form.sleepCron && !form.wakeCron) return 'At least one of Sleep Cron or Wake Cron is required'
+      if (form.sleepCron && !isValidCron(form.sleepCron)) return 'Invalid sleep cron expression'
+      if (form.wakeCron && !isValidCron(form.wakeCron)) return 'Invalid wake cron expression'
+    }
+    if ((form.timeoutMinutes ?? 0) < 0 || (form.timeoutMinutes ?? 0) > 1440) return 'Timeout must be 0\u20131440 minutes'
     return ''
   }
 
   const mutation = useMutation({
     mutationFn: () => {
-      const payload: PolicyInput = { ...form }
-      if (!payload.sleepCron) delete payload.sleepCron
-      if (!payload.wakeCron) delete payload.wakeCron
-      if (!payload.namespaceFilter) delete payload.namespaceFilter
-      if (!payload.labelSelector) delete payload.labelSelector
-      if (!payload.description) delete payload.description
+      const payload: PolicyInput = {
+        name: form.name,
+        description: form.description || undefined,
+        timezone: form.timezone,
+        mode: form.mode,
+        enabled: form.enabled,
+        timeoutMinutes: form.timeoutMinutes,
+        namespaceFilter: form.namespaceFilter || undefined,
+        labelSelector: form.labelSelector || undefined,
+      }
+      if (form._scheduleMode === 'windows') {
+        payload.sleepWindows = form._windows.filter(w => w.daysOfWeek.length > 0)
+      } else {
+        if (form.sleepCron) payload.sleepCron = form.sleepCron
+        if (form.wakeCron) payload.wakeCron = form.wakeCron
+      }
       return isEdit ? updatePolicy(existing!.id, payload) : createPolicy(payload)
     },
     onSuccess: () => {
@@ -151,7 +198,24 @@ export default function CreatePolicyDialog({
           inputProps={{ maxLength: 1024 }}
         />
 
-        <Divider><Typography variant="caption" color="text.disabled">Schedule</Typography></Divider>
+        <Divider>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Typography variant="caption" color="text.disabled">Schedule</Typography>
+            <ToggleButtonGroup
+              value={form._scheduleMode}
+              exclusive
+              onChange={(_, v) => v && set('_scheduleMode', v)}
+              size="small"
+            >
+              <ToggleButton value="windows" sx={{ fontSize: 11, px: 1.5, py: 0.25 }}>
+                Windows
+              </ToggleButton>
+              <ToggleButton value="cron" sx={{ fontSize: 11, px: 1.5, py: 0.25 }}>
+                Advanced (cron)
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+        </Divider>
 
         <TextField
           label="Timezone"
@@ -166,25 +230,33 @@ export default function CreatePolicyDialog({
           ))}
         </TextField>
 
-        <Box>
-          <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-            Sleep Cron (optional)
-          </Typography>
-          <CronBuilder
-            value={form.sleepCron ?? ''}
-            onChange={v => set('sleepCron', v)}
+        {form._scheduleMode === 'windows' ? (
+          <WindowPicker
+            windows={form._windows}
+            onChange={w => set('_windows', w)}
           />
-        </Box>
-
-        <Box>
-          <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-            Wake Cron (optional)
-          </Typography>
-          <CronBuilder
-            value={form.wakeCron ?? ''}
-            onChange={v => set('wakeCron', v)}
-          />
-        </Box>
+        ) : (
+          <>
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                Sleep Cron (optional)
+              </Typography>
+              <CronBuilder
+                value={form.sleepCron ?? ''}
+                onChange={v => set('sleepCron', v)}
+              />
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                Wake Cron (optional)
+              </Typography>
+              <CronBuilder
+                value={form.wakeCron ?? ''}
+                onChange={v => set('wakeCron', v)}
+              />
+            </Box>
+          </>
+        )}
 
         <Divider><Typography variant="caption" color="text.disabled">Targeting</Typography></Divider>
 

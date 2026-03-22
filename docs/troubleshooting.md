@@ -1,11 +1,13 @@
 # Troubleshooting
 
-## A schedule ran but nothing was scaled
+## A policy ran but nothing was scaled
 
 1. Check the execution log in the **History** page — every skip is logged with a reason.
-2. Confirm the schedule is in **apply** mode, not **plan** mode. All default schedules start in plan mode.
-3. Confirm the schedule is **enabled** — the toggle on the Schedules page.
-4. Check that the target namespaces are not in **Guardrails → Skip Namespaces**.
+2. Confirm the policy is in **apply** mode, not **plan** mode. New policies start in plan mode.
+3. Confirm the policy is **enabled**.
+4. Check **Namespace Filter** — if set, only matching namespaces are targeted.
+5. Check **Label Selector** — if set, only workloads matching the selector are targeted.
+6. Check that the target namespaces are not in **Guardrails → Skip Namespaces**.
 
 ## The backend crashes on startup
 
@@ -37,7 +39,7 @@ kubectl get deployments -A -o json | \
   jq '.items[] | select(.metadata.annotations["kube-phoenix/previous-replicas"]) | .metadata.namespace + "/" + .metadata.name'
 ```
 
-Trigger the corresponding scale-up schedule manually from the **History** or **Schedules** page to restore those workloads.
+Trigger a **Wake Now** from the **Policies** page to restore those workloads.
 
 ## A workload is stuck with the `previous-replicas` annotation
 
@@ -134,15 +136,6 @@ The API returns 500 errors and `/healthz` fails after the app was previously run
 
 ---
 
-## A policy ran but nothing was scaled
-
-1. Check the policy execution log in **History** — every skip is logged with a reason.
-2. Confirm the policy is in **apply** mode. New policies default to plan mode.
-3. Confirm the policy is **enabled**.
-4. Check **Namespace Filter** — if set, only matching namespaces are targeted.
-5. Check **Label Selector** — if set, only workloads matching the selector are targeted.
-6. Check **Guardrails → Skip Namespaces** — namespaces in that list are always excluded.
-
 ## A policy is stuck in `transitioning` state
 
 `transitioning` means a sleep or wake execution is currently running. If the execution finished but the state was not updated:
@@ -188,6 +181,6 @@ kube-phoenix stores replica counts in `workload_snapshots` rows at sleep time. I
 
 ## See also
 
-- [Configuration](configuration.md) — environment variables and schedule setup
+- [Configuration](configuration.md) — environment variables and policy setup
 - [Deployment](deployment.md) — Helm installation and values reference
 - [API Reference](api.md) — endpoint documentation

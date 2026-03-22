@@ -83,7 +83,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
-          provenance: false
+          provenance: true
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |

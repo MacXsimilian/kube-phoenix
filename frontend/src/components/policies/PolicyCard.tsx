@@ -22,6 +22,8 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import { deletePolicy, triggerPolicySleep, triggerPolicyWake } from '@/lib/api'
 import type { Policy } from '@/lib/types'
+import { windowsToText } from '@/lib/windowUtils'
+import MiniTimeline from './MiniTimeline'
 
 const STATE_COLORS: Record<string, { bg: string; color: string; label: string }> = {
   sleeping:      { bg: 'rgba(99,102,241,0.18)',  color: '#a5b4fc', label: 'Sleeping' },
@@ -77,6 +79,7 @@ export default function PolicyCard({
     onSuccess: ({ executionId }) => {
       qc.invalidateQueries({ queryKey: ['policies'] })
       qc.invalidateQueries({ queryKey: ['policy-executions'] })
+      qc.invalidateQueries({ queryKey: ['policy-executions', policy.id] })
       router.push(`/policies/detail/?id=${policy.id}&exec=${executionId}`)
     },
     onError: (err: unknown) => {
@@ -89,6 +92,7 @@ export default function PolicyCard({
     onSuccess: ({ executionId }) => {
       qc.invalidateQueries({ queryKey: ['policies'] })
       qc.invalidateQueries({ queryKey: ['policy-executions'] })
+      qc.invalidateQueries({ queryKey: ['policy-executions', policy.id] })
       router.push(`/policies/detail/?id=${policy.id}&exec=${executionId}`)
     },
     onError: (err: unknown) => {
@@ -140,29 +144,48 @@ export default function PolicyCard({
                 {policy.description}
               </Typography>
             )}
-            {/* Cron times */}
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 0.5 }}>
-              {policy.sleepCron && (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <BedtimeIcon sx={{ fontSize: 13, color: '#a5b4fc' }} />
-                  <Typography variant="caption" color="text.secondary" fontFamily="monospace">
-                    {policy.sleepCron}
-                  </Typography>
-                  <Typography variant="caption" color="text.disabled">
-                    {fmtNext(policy.nextSleepAt)}
-                  </Typography>
-                </Box>
+            {/* Schedule display */}
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 0.5, alignItems: 'center' }}>
+              {policy.sleepWindows && policy.sleepWindows.length > 0 ? (
+                <>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <BedtimeIcon sx={{ fontSize: 13, color: '#a5b4fc' }} />
+                    <Typography variant="caption" color="text.secondary">
+                      {windowsToText(policy.sleepWindows)}
+                    </Typography>
+                  </Box>
+                  <MiniTimeline windows={policy.sleepWindows} width={200} height={14} />
+                </>
+              ) : (
+                <>
+                  {policy.sleepCron && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <BedtimeIcon sx={{ fontSize: 13, color: '#a5b4fc' }} />
+                      <Typography variant="caption" color="text.secondary" fontFamily="monospace">
+                        {policy.sleepCron}
+                      </Typography>
+                    </Box>
+                  )}
+                  {policy.wakeCron && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <WbSunnyIcon sx={{ fontSize: 13, color: '#fcd34d' }} />
+                      <Typography variant="caption" color="text.secondary" fontFamily="monospace">
+                        {policy.wakeCron}
+                      </Typography>
+                    </Box>
+                  )}
+                </>
               )}
-              {policy.wakeCron && (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <WbSunnyIcon sx={{ fontSize: 13, color: '#fcd34d' }} />
-                  <Typography variant="caption" color="text.secondary" fontFamily="monospace">
-                    {policy.wakeCron}
-                  </Typography>
-                  <Typography variant="caption" color="text.disabled">
-                    {fmtNext(policy.nextWakeAt)}
-                  </Typography>
-                </Box>
+              {/* Next fire times */}
+              {policy.nextSleepAt && (
+                <Typography variant="caption" color="text.disabled">
+                  sleep {fmtNext(policy.nextSleepAt)}
+                </Typography>
+              )}
+              {policy.nextWakeAt && (
+                <Typography variant="caption" color="text.disabled">
+                  wake {fmtNext(policy.nextWakeAt)}
+                </Typography>
               )}
               {policy.timezone && policy.timezone !== 'UTC' && (
                 <Typography variant="caption" color="text.disabled">{policy.timezone}</Typography>
