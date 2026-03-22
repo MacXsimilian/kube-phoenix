@@ -93,7 +93,7 @@ func (h *Handler) createException(w http.ResponseWriter, r *http.Request) {
 		LabelSelector:   body.LabelSelector,
 		Status:          "pending",
 	}
-	if ex.SleepOnEnd == false && !body.SleepOnEndSet {
+	if !ex.SleepOnEnd && !body.SleepOnEndSet {
 		ex.SleepOnEnd = true // default to true
 	}
 
@@ -292,11 +292,11 @@ func parseIDFromString(s string) (uint, error) {
 func parseUintBase(s string, base, bits int, dst *uint64) (int, error) {
 	n := uint64(0)
 	for _, c := range s {
-		d := uint64(c - '0')
-		if d > 9 {
+		if c < '0' || c > '9' {
 			return 0, &numError{s}
 		}
-		n = n*uint64(base) + d
+		d := uint64(c-'0') //#nosec G115 -- c is '0'..'9', subtraction cannot overflow
+		n = n*uint64(base) + d //#nosec G115 -- base is always 10 in callers
 	}
 	*dst = n
 	return len(s), nil

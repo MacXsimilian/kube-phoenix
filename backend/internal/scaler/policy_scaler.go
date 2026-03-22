@@ -118,7 +118,9 @@ func (r *PolicyRunner) RunPolicySleep(
 				if err := r.base.k8s.ScaleDeployment(ctx, d.Namespace, d.Name, 0); err != nil {
 					emit(logCh, "error", fmt.Sprintf("Failed to scale %s: %s", wl, err))
 					// Remove snapshot since scale failed
-					r.store.DeleteWorkloadSnapshot(snap.ID)
+					if delErr := r.store.DeleteWorkloadSnapshot(snap.ID); delErr != nil {
+						emit(logCh, "warn", fmt.Sprintf("Could not remove snapshot for %s: %s", wl, delErr))
+					}
 					counts.Errors++
 					continue
 				}
@@ -196,7 +198,9 @@ func (r *PolicyRunner) RunPolicySleep(
 				}
 				if err := r.base.k8s.ScaleStatefulSet(ctx, ss.Namespace, ss.Name, 0); err != nil {
 					emit(logCh, "error", fmt.Sprintf("Failed to scale %s: %s", wl, err))
-					r.store.DeleteWorkloadSnapshot(snap.ID)
+					if delErr := r.store.DeleteWorkloadSnapshot(snap.ID); delErr != nil {
+						emit(logCh, "warn", fmt.Sprintf("Could not remove snapshot for %s: %s", wl, delErr))
+					}
 					counts.Errors++
 					continue
 				}

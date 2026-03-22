@@ -411,7 +411,7 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 
 		// Update policy's cached state
 		nextSleep, nextWake := ps.NextRuns(p.ID)
-		newState := p.CurrentState
+		var newState string
 		if status == "success" {
 			if direction == "sleep" {
 				newState = "sleeping"
