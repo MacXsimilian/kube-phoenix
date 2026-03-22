@@ -43,7 +43,12 @@ func New(dsn string) (*Store, error) {
 	END $$`)
 	db.Exec("DROP INDEX IF EXISTS idx_users_o_id_c_subject")
 
-	if err := db.AutoMigrate(&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{}, &User{}, &Session{}, &AuditLog{}); err != nil {
+	if err := db.AutoMigrate(
+		&Schedule{}, &Guardrails{}, &Execution{}, &LogLine{},
+		&User{}, &Session{}, &AuditLog{},
+		&Policy{}, &PolicyExecution{}, &PolicyLogLine{},
+		&WorkloadSnapshot{}, &PolicyOverride{}, &ScheduledException{},
+	); err != nil {
 		return nil, err
 	}
 	slog.Info("store: schema migration complete")

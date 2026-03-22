@@ -1,6 +1,9 @@
 package store
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Schedule struct {
 	ID              uint   `gorm:"primaryKey" json:"id"`
@@ -99,4 +102,165 @@ type AuditLog struct {
 	After        string    `gorm:"type:jsonb" json:"after,omitempty"`
 	IPAddress    string    `gorm:"size:45" json:"ipAddress,omitempty"`
 	Timestamp    time.Time `gorm:"index" json:"timestamp"`
+}
+
+// ─── Policy model ─────────────────────────────────────────────────────────────
+
+// WorkloadTarget identifies a specific Kubernetes workload.
+type WorkloadTarget struct {
+	Kind      string `json:"kind"`      // "Deployment" | "StatefulSet"
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+}
+
+// Policy is a unified sleep/wake schedule that governs a set of workloads.
+// It replaces the separate scale_down + scale_up schedule pair with a single
+// entity that declares the awake window and tracks current state.
+type Policy struct {
+	ID              uint   `gorm:"primaryKey" json:"id"`
+	Name            string `gorm:"size:255" json:"name"`
+	Description     string `gorm:"size:1024" json:"description"`
+	NamespaceFilter string `gorm:"size:4096" json:"namespaceFilter"` // comma-separated; empty = all
+	LabelSelector   string `gorm:"size:4096" json:"labelSelector"`   // full k8s label selector syntax
+
+	// Schedule — both are optional so a policy can have only one direction.
+	SleepCron string `gorm:"size:255" json:"sleepCron"` // 5-field; empty = no auto-sleep
+	WakeCron  string `gorm:"size:255" json:"wakeCron"`  // 5-field; empty = no auto-wake
+	Timezone  string `gorm:"size:100" json:"timezone"`
+
+	Mode           string `gorm:"size:10" json:"mode"`           // "plan" | "apply"
+	Enabled        bool   `json:"enabled"`
+	TimeoutMinutes int    `json:"timeoutMinutes"` // 0 = server default (120 min)
+
+	// Derived state — cached after each execution, updated by the policy scheduler.
+	CurrentState string     `gorm:"size:20;default:unknown" json:"currentState"` // sleeping|awake|unknown|transitioning
+	StateSince   *time.Time `json:"stateSince"`
+	LastSleepAt  *time.Time `json:"lastSleepAt"`
+	LastWakeAt   *time.Time `json:"lastWakeAt"`
+	NextSleepAt  *time.Time `json:"nextSleepAt"` // calculated from cron
+	NextWakeAt   *time.Time `json:"nextWakeAt"`  // calculated from cron
+
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// PolicyExecution records a single sleep or wake run driven by a Policy.
+type PolicyExecution struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	PolicyID  uint      `gorm:"index" json:"policyId"`
+	Policy    Policy    `gorm:"foreignKey:PolicyID" json:"policy"`
+	Direction string    `gorm:"size:10;index" json:"direction"` // "sleep" | "wake"
+	Trigger   string    `gorm:"size:30" json:"trigger"`         // scheduled|manual_sleep|manual_wake|recovery|skip_applied|override_start|override_end|exception_start|exception_end
+	StartedAt time.Time `gorm:"index" json:"startedAt"`
+	FinishedAt *time.Time `json:"finishedAt"`
+	Status     string     `gorm:"index;size:20" json:"status"` // running|success|failed|interrupted|skipped
+	Mode       string     `gorm:"size:10" json:"mode"`         // "plan" | "apply"
+
+	CountScaled    int `json:"countScaled"`
+	CountSkipped   int `json:"countSkipped"`
+	CountErrors    int `json:"countErrors"`
+	CountProtected int `json:"countProtected"`
+	CountDrained   int `json:"countDrained"`
+	CountDeleted   int `json:"countDeleted"`
+}
+
+// PolicyLogLine is a structured log line for a PolicyExecution.
+type PolicyLogLine struct {
+	ID          uint            `gorm:"primaryKey" json:"id"`
+	ExecutionID uint            `gorm:"index:idx_pll_exec_seq" json:"executionId"`
+	Execution   PolicyExecution `gorm:"foreignKey:ExecutionID;constraint:OnDelete:CASCADE" json:"-"`
+	Seq         int             `gorm:"index:idx_pll_exec_seq" json:"seq"`
+	Level       string          `gorm:"size:10" json:"level"` // "info" | "ok" | "plan" | "error" | "warn"
+	Message     string          `json:"message"`
+	Timestamp   time.Time       `json:"timestamp"`
+}
+
+// WorkloadSnapshot records the replica count of a workload at sleep time.
+// The wake execution reads from these rows instead of K8s annotations (which
+// are also written as a belt-and-suspenders fallback).
+type WorkloadSnapshot struct {
+	ID               uint      `gorm:"primaryKey" json:"id"`
+	PolicyID         uint      `gorm:"index" json:"policyId"`
+	SleepExecutionID uint      `gorm:"index" json:"sleepExecutionId"`
+	// WakeExecutionID is null while the workload is still sleeping.
+	WakeExecutionID  *uint     `gorm:"index" json:"wakeExecutionId"`
+	Kind             string    `gorm:"size:50" json:"kind"`
+	Namespace        string    `gorm:"size:63;index" json:"namespace"`
+	Name             string    `gorm:"size:253" json:"name"`
+	ReplicasBefore   int32     `json:"replicasBefore"`
+	ReplicasRestored *int32    `json:"replicasRestored"` // nil until woken
+	RestoredAt       *time.Time `json:"restoredAt"`
+
+	// Edge case flags
+	WasAlreadyZero      bool `json:"wasAlreadyZero"`      // was at 0 before we touched it
+	WasDeletedAtWake    bool `json:"wasDeletedAtWake"`    // workload gone when we tried to restore
+	WasExternallyScaled bool `json:"wasExternallyScaled"` // someone changed replicas while sleeping
+
+	CapturedAt time.Time `gorm:"index" json:"capturedAt"`
+}
+
+// PolicyOverride suppresses or inverts the normal cron schedule for a policy.
+type PolicyOverride struct {
+	ID           uint       `gorm:"primaryKey" json:"id"`
+	PolicyID     uint       `gorm:"index" json:"policyId"`
+	OverrideType string     `gorm:"size:30" json:"overrideType"` // stay_awake|force_sleep|skip_sleep|skip_wake
+	StartsAt     *time.Time `json:"startsAt"`                    // nil for skip_sleep/skip_wake
+	EndsAt       *time.Time `json:"endsAt"`                      // nil for skip_sleep/skip_wake
+	// TargetCronTime is the specific cron tick being skipped (skip_sleep/skip_wake only).
+	TargetCronTime *time.Time `json:"targetCronTime"`
+	Reason         string     `gorm:"size:1024" json:"reason"`
+	CreatedBy      string     `gorm:"size:255" json:"createdBy"`
+	CreatedAt      time.Time  `json:"createdAt"`
+}
+
+// ScheduledException is a future one-time window that overrides normal sleep/wake
+// behaviour for specific workloads. It supports the "ticket" use case: create now,
+// executes automatically later.
+type ScheduledException struct {
+	ID            uint      `gorm:"primaryKey" json:"id"`
+	PolicyID      *uint     `gorm:"index" json:"policyId"` // optional — can be freestanding
+	ExceptionType string    `gorm:"size:20" json:"exceptionType"` // "stay_awake" | "force_sleep"
+	StartsAt      time.Time `gorm:"index" json:"startsAt"`
+	EndsAt        time.Time `json:"endsAt"`
+	TicketRef     string    `gorm:"size:255" json:"ticketRef"` // JIRA-123, GH-456, etc.
+	Reason        string    `gorm:"size:1024" json:"reason"`
+	SleepOnEnd    bool      `gorm:"default:true" json:"sleepOnEnd"` // return to policy state at EndsAt
+
+	// Freestanding target (used when PolicyID is nil or for workload-level targeting)
+	NamespaceFilter string `gorm:"size:4096" json:"namespaceFilter"`
+	LabelSelector   string `gorm:"size:4096" json:"labelSelector"`
+
+	// WorkloadTargets is a JSON array of WorkloadTarget for specific workload targeting.
+	WorkloadTargets string `gorm:"type:jsonb;default:'[]'" json:"-"`
+
+	// Lifecycle
+	Status                  string     `gorm:"size:20;default:pending" json:"status"` // pending|active|completed|cancelled
+	StartExecutionID        *uint      `json:"startExecutionId"`
+	EndExecutionID          *uint      `json:"endExecutionId"`
+	CancelledAt             *time.Time `json:"cancelledAt"`
+	CancelReason            string     `gorm:"size:1024" json:"cancelReason"`
+
+	CreatedBy string    `gorm:"size:255" json:"createdBy"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// GetWorkloadTargets deserialises the JSON-stored workload targets.
+func (e *ScheduledException) GetWorkloadTargets() []WorkloadTarget {
+	if e.WorkloadTargets == "" || e.WorkloadTargets == "[]" {
+		return nil
+	}
+	var targets []WorkloadTarget
+	_ = json.Unmarshal([]byte(e.WorkloadTargets), &targets)
+	return targets
+}
+
+// SetWorkloadTargets serialises workload targets to JSON for storage.
+func (e *ScheduledException) SetWorkloadTargets(targets []WorkloadTarget) error {
+	b, err := json.Marshal(targets)
+	if err != nil {
+		return err
+	}
+	e.WorkloadTargets = string(b)
+	return nil
 }
