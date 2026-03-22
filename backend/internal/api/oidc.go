@@ -3,17 +3,32 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
+	gooidc "github.com/coreos/go-oidc/v3/oidc"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/auth"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"golang.org/x/oauth2"
 )
+
+// errMissingIDToken is returned when the token response contains no id_token field.
+var errMissingIDToken = errors.New("oidc: id_token missing from token response")
+
+// oidcClaims holds the extracted claims from an ID token.
+type oidcClaims struct {
+	Sub               string
+	PreferredUsername string
+	Email             string
+	GivenName         string
+	FamilyName        string
+	Groups            []string
+}
 
 // oidcConfig returns the OIDC configuration status for the frontend.
 func (h *Handler) oidcConfig(w http.ResponseWriter, r *http.Request) {
@@ -87,107 +102,26 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate state.
-	stateCookie, err := r.Cookie("__kp_oidc_state")
-	if err != nil || stateCookie.Value == "" {
-		slog.Warn("oidc: missing state cookie")
-		jsonError(w, "invalid OIDC state", http.StatusBadRequest)
-		return
-	}
-	if r.URL.Query().Get("state") != stateCookie.Value {
-		slog.Warn("oidc: state mismatch")
-		jsonError(w, "invalid OIDC state", http.StatusBadRequest)
+	verifier, ok := h.oidcValidateAndClearCookies(w, r)
+	if !ok {
 		return
 	}
 
-	// Read PKCE verifier cookie.
-	verifierCookie, err := r.Cookie("__kp_oidc_verifier")
-	if err != nil || verifierCookie.Value == "" {
-		slog.Warn("oidc: missing PKCE verifier cookie")
-		jsonError(w, "invalid OIDC state", http.StatusBadRequest)
-		return
-	}
-
-	// Clear state and verifier cookies.
-	http.SetCookie(w, &http.Cookie{
-		Name:   "__kp_oidc_state",
-		Value:  "",
-		Path:   "/api/auth/oidc",
-		MaxAge: -1,
-	})
-	http.SetCookie(w, &http.Cookie{
-		Name:   "__kp_oidc_verifier",
-		Value:  "",
-		Path:   "/api/auth/oidc",
-		MaxAge: -1,
-	})
-
-	// Exchange authorization code for tokens.
 	code := r.URL.Query().Get("code")
 	if code == "" {
 		jsonError(w, "missing authorization code", http.StatusBadRequest)
 		return
 	}
 
-	exchCtx := r.Context()
-	if h.oidcProvider.HTTPClient != nil {
-		exchCtx = context.WithValue(exchCtx, oauth2.HTTPClient, h.oidcProvider.HTTPClient)
-	}
-	token, err := h.oidcProvider.OAuth2.Exchange(exchCtx, code, oauth2.VerifierOption(verifierCookie.Value))
+	idToken, err := h.oidcExchangeAndVerify(r.Context(), code, verifier)
 	if err != nil {
-		slog.Error("oidc: token exchange failed", "err", err)
 		metrics.AuthAttemptsTotal.WithLabelValues("failure", "oidc").Inc()
 		jsonError(w, "OIDC authentication failed", http.StatusUnauthorized)
 		return
 	}
 
-	// Extract and verify ID token.
-	rawIDToken, ok := token.Extra("id_token").(string)
+	claims, ok := oidcExtractClaims(idToken, h.oidcProvider.GroupsClaim)
 	if !ok {
-		slog.Error("oidc: no id_token in response")
-		metrics.AuthAttemptsTotal.WithLabelValues("failure", "oidc").Inc()
-		jsonError(w, "OIDC authentication failed", http.StatusUnauthorized)
-		return
-	}
-
-	idToken, err := h.oidcProvider.Verifier.Verify(r.Context(), rawIDToken)
-	if err != nil {
-		slog.Error("oidc: id_token verification failed", "err", err)
-		metrics.AuthAttemptsTotal.WithLabelValues("failure", "oidc").Inc()
-		jsonError(w, "OIDC authentication failed", http.StatusUnauthorized)
-		return
-	}
-
-	// Extract claims.
-	var claims struct {
-		Sub               string   `json:"sub"`
-		PreferredUsername  string   `json:"preferred_username"`
-		Email             string   `json:"email"`
-		GivenName         string   `json:"given_name"`
-		FamilyName        string   `json:"family_name"`
-		Groups            []string `json:"groups"`
-	}
-	if err := idToken.Claims(&claims); err != nil {
-		slog.Error("oidc: claims extraction failed", "err", err)
-		jsonError(w, "OIDC authentication failed", http.StatusUnauthorized)
-		return
-	}
-
-	// Also check for groups under the configured claim name if different.
-	if h.oidcProvider.GroupsClaim != "groups" {
-		var extra map[string]json.RawMessage
-		if err := idToken.Claims(&extra); err == nil {
-			if raw, ok := extra[h.oidcProvider.GroupsClaim]; ok {
-				var groups []string
-				if json.Unmarshal(raw, &groups) == nil {
-					claims.Groups = groups
-				}
-			}
-		}
-	}
-
-	if claims.Sub == "" {
-		slog.Error("oidc: empty sub claim in id_token")
 		jsonError(w, "OIDC authentication failed", http.StatusUnauthorized)
 		return
 	}
@@ -197,15 +131,12 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 			"sub", claims.Sub, "username", claims.PreferredUsername, "claim", h.oidcProvider.GroupsClaim)
 	}
 
-	// Map groups to role.
 	role := auth.MapGroupsToRole(claims.Groups, h.oidcProvider.AdminGroups, h.oidcProvider.OpGroups)
-
 	username := claims.PreferredUsername
 	if username == "" {
 		username = claims.Sub
 	}
 
-	// Upsert user.
 	user, err := h.store.GetOrCreateOIDCUser(claims.Sub, username, claims.Email, role, claims.GivenName, claims.FamilyName)
 	if err != nil {
 		jsonInternalError(w, err, "oidc user upsert failed")
@@ -215,19 +146,123 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	if !user.Enabled {
 		slog.Warn("oidc: disabled user attempted login", "username", user.Username, "sub", claims.Sub)
 		metrics.AuthAttemptsTotal.WithLabelValues("failure", "oidc").Inc()
-		// Redirect to login page with error.
 		http.Redirect(w, r, "/?error=account_disabled", http.StatusFound)
 		return
 	}
 
-	// Create session.
 	metrics.AuthAttemptsTotal.WithLabelValues("success", "oidc").Inc()
 	_ = h.store.UpdateLastLogin(user.ID)
 
+	if err := h.createOIDCSession(w, r, user); err != nil {
+		jsonInternalError(w, err, "create session failed")
+		return
+	}
+
+	h.audit(r, "auth.login", "user", &user.ID, nil, map[string]string{"username": user.Username, "method": "oidc"})
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// oidcValidateAndClearCookies validates the OIDC state and PKCE verifier cookies,
+// clears them, and returns the PKCE verifier value.
+func (h *Handler) oidcValidateAndClearCookies(w http.ResponseWriter, r *http.Request) (string, bool) {
+	stateCookie, err := r.Cookie("__kp_oidc_state")
+	if err != nil || stateCookie.Value == "" {
+		slog.Warn("oidc: missing state cookie")
+		jsonError(w, "invalid OIDC state", http.StatusBadRequest)
+		return "", false
+	}
+	if r.URL.Query().Get("state") != stateCookie.Value {
+		slog.Warn("oidc: state mismatch")
+		jsonError(w, "invalid OIDC state", http.StatusBadRequest)
+		return "", false
+	}
+
+	verifierCookie, err := r.Cookie("__kp_oidc_verifier")
+	if err != nil || verifierCookie.Value == "" {
+		slog.Warn("oidc: missing PKCE verifier cookie")
+		jsonError(w, "invalid OIDC state", http.StatusBadRequest)
+		return "", false
+	}
+
+	http.SetCookie(w, &http.Cookie{Name: "__kp_oidc_state", Value: "", Path: "/api/auth/oidc", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "__kp_oidc_verifier", Value: "", Path: "/api/auth/oidc", MaxAge: -1})
+	return verifierCookie.Value, true
+}
+
+// oidcExchangeAndVerify exchanges the authorization code for tokens and verifies the ID token.
+func (h *Handler) oidcExchangeAndVerify(ctx context.Context, code, verifier string) (*gooidc.IDToken, error) {
+	exchCtx := ctx
+	if h.oidcProvider.HTTPClient != nil {
+		exchCtx = context.WithValue(ctx, oauth2.HTTPClient, h.oidcProvider.HTTPClient)
+	}
+
+	token, err := h.oidcProvider.OAuth2.Exchange(exchCtx, code, oauth2.VerifierOption(verifier))
+	if err != nil {
+		slog.Error("oidc: token exchange failed", "err", err)
+		return nil, err
+	}
+
+	rawIDToken, ok := token.Extra("id_token").(string)
+	if !ok {
+		slog.Error("oidc: no id_token in response")
+		return nil, errMissingIDToken
+	}
+
+	idToken, err := h.oidcProvider.Verifier.Verify(ctx, rawIDToken)
+	if err != nil {
+		slog.Error("oidc: id_token verification failed", "err", err)
+		return nil, err
+	}
+	return idToken, nil
+}
+
+// oidcExtractClaims extracts standard claims and the configured groups claim from an ID token.
+func oidcExtractClaims(idToken *gooidc.IDToken, groupsClaim string) (oidcClaims, bool) {
+	var raw struct {
+		Sub               string   `json:"sub"`
+		PreferredUsername string   `json:"preferred_username"`
+		Email             string   `json:"email"`
+		GivenName         string   `json:"given_name"`
+		FamilyName        string   `json:"family_name"`
+		Groups            []string `json:"groups"`
+	}
+	if err := idToken.Claims(&raw); err != nil {
+		slog.Error("oidc: claims extraction failed", "err", err)
+		return oidcClaims{}, false
+	}
+	if raw.Sub == "" {
+		slog.Error("oidc: empty sub claim in id_token")
+		return oidcClaims{}, false
+	}
+
+	groups := raw.Groups
+	if groupsClaim != "groups" {
+		var extra map[string]json.RawMessage
+		if err := idToken.Claims(&extra); err == nil {
+			if data, ok := extra[groupsClaim]; ok {
+				var g []string
+				if json.Unmarshal(data, &g) == nil {
+					groups = g
+				}
+			}
+		}
+	}
+
+	return oidcClaims{
+		Sub:               raw.Sub,
+		PreferredUsername: raw.PreferredUsername,
+		Email:             raw.Email,
+		GivenName:         raw.GivenName,
+		FamilyName:        raw.FamilyName,
+		Groups:            groups,
+	}, true
+}
+
+// createOIDCSession creates a kube-phoenix session and sets the session + CSRF cookies.
+func (h *Handler) createOIDCSession(w http.ResponseWriter, r *http.Request, user *store.User) error {
 	sessToken, err := store.GenerateToken()
 	if err != nil {
-		jsonInternalError(w, err, "generate session token failed")
-		return
+		return err
 	}
 
 	now := time.Now()
@@ -241,11 +276,9 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:    now,
 	}
 	if err := h.store.CreateSession(sess); err != nil {
-		jsonInternalError(w, err, "create session failed")
-		return
+		return err
 	}
 
-	// Set session + CSRF cookies.
 	secure := os.Getenv("COOKIE_SECURE") != "false"
 	http.SetCookie(w, &http.Cookie{
 		Name:     "__kp_session",
@@ -255,15 +288,11 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
 	})
+
 	csrfToken, err := authmw.GenerateCSRFToken()
 	if err != nil {
-		jsonInternalError(w, err, "generate CSRF token failed")
-		return
+		return err
 	}
 	authmw.SetCSRFCookie(w, csrfToken, secure)
-
-	h.audit(r, "auth.login", "user", &user.ID, nil, map[string]string{"username": user.Username, "method": "oidc"})
-
-	// Redirect to frontend.
-	http.Redirect(w, r, "/", http.StatusFound)
+	return nil
 }

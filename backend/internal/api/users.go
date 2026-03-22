@@ -105,29 +105,10 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// OIDC users: role is managed by AD groups, not editable here.
-	if target.Source == "oidc" {
-		delete(body, "role")
-	}
-
-	if role, ok := body["role"].(string); ok {
-		if !auth.ValidRole(role) {
-			jsonError(w, "role must be admin, operator, or viewer", http.StatusBadRequest)
-			return
-		}
-	}
-
-	// Prevent admin from demoting themselves.
 	caller := authmw.UserFromContext(r.Context())
-	if caller != nil && caller.ID == id {
-		if role, ok := body["role"].(string); ok && role != caller.Role {
-			jsonError(w, "cannot change your own role", http.StatusBadRequest)
-			return
-		}
-		if enabled, ok := body["enabled"].(bool); ok && !enabled {
-			jsonError(w, "cannot disable your own account", http.StatusBadRequest)
-			return
-		}
+	if msg, code := validateUserUpdate(body, target, caller, id); msg != "" {
+		jsonError(w, msg, code)
+		return
 	}
 
 	updated, err := h.store.UpdateUser(id, body)
@@ -143,6 +124,30 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonOK(w, updated)
+}
+
+// validateUserUpdate enforces role/self-modification rules and strips non-editable
+// fields from body. Returns an error message and HTTP status, or "" if valid.
+func validateUserUpdate(body map[string]interface{}, target *store.User, caller *store.User, id uint) (string, int) {
+	// OIDC users: role is managed by AD groups, not editable here.
+	if target.Source == "oidc" {
+		delete(body, "role")
+	}
+
+	if role, ok := body["role"].(string); ok && !auth.ValidRole(role) {
+		return "role must be admin, operator, or viewer", http.StatusBadRequest
+	}
+
+	if caller != nil && caller.ID == id {
+		if role, ok := body["role"].(string); ok && role != caller.Role {
+			return "cannot change your own role", http.StatusBadRequest
+		}
+		if enabled, ok := body["enabled"].(bool); ok && !enabled {
+			return "cannot disable your own account", http.StatusBadRequest
+		}
+	}
+
+	return "", 0
 }
 
 // ─── Delete user ─────────────────────────────────────────────────────────────

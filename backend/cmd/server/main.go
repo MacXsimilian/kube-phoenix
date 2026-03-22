@@ -75,36 +75,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Session cleanup — every 15 minutes.
-	go runTicker(ctx, 15*time.Minute, "session-cleanup", func() {
-		deleted, err := st.CleanExpiredSessions()
-		if err != nil {
-			slog.Error("session-cleanup failed", "err", err)
-			return
-		}
-		if deleted > 0 {
-			slog.Info("session-cleanup: expired sessions removed", "count", deleted)
-		}
-		// Update active sessions gauge.
-		if count, err := st.CountActiveSessions(); err == nil {
-			metrics.ActiveSessions.Set(float64(count))
-		}
-	})
-
-	// Audit log retention — daily.
 	retentionDays := parseIntEnv("AUDIT_RETENTION_DAYS", 90)
-	if retentionDays > 0 {
-		go runTicker(ctx, 24*time.Hour, "audit-retention", func() {
-			deleted, err := st.CleanOldAuditLogs(time.Duration(retentionDays) * 24 * time.Hour)
-			if err != nil {
-				slog.Error("audit-retention failed", "err", err)
-				return
-			}
-			if deleted > 0 {
-				slog.Info("audit-retention: old entries removed", "count", deleted, "retentionDays", retentionDays)
-			}
-		})
-	}
+	startMaintenanceTickers(ctx, st, retentionDays)
 
 	// ── HTTP server ───────────────────────────────────────────────────────
 	router := api.NewRouter(ctx, st, k8s, sched, cache)
@@ -137,6 +109,37 @@ func main() {
 		slog.Error("shutdown error", "err", err)
 	}
 	slog.Info("bye")
+}
+
+func startMaintenanceTickers(ctx context.Context, st *store.Store, retentionDays int) {
+	// Session cleanup — every 15 minutes.
+	go runTicker(ctx, 15*time.Minute, "session-cleanup", func() {
+		deleted, err := st.CleanExpiredSessions()
+		if err != nil {
+			slog.Error("session-cleanup failed", "err", err)
+			return
+		}
+		if deleted > 0 {
+			slog.Info("session-cleanup: expired sessions removed", "count", deleted)
+		}
+		if count, err := st.CountActiveSessions(); err == nil {
+			metrics.ActiveSessions.Set(float64(count))
+		}
+	})
+
+	// Audit log retention — daily.
+	if retentionDays > 0 {
+		go runTicker(ctx, 24*time.Hour, "audit-retention", func() {
+			deleted, err := st.CleanOldAuditLogs(time.Duration(retentionDays) * 24 * time.Hour)
+			if err != nil {
+				slog.Error("audit-retention failed", "err", err)
+				return
+			}
+			if deleted > 0 {
+				slog.Info("audit-retention: old entries removed", "count", deleted, "retentionDays", retentionDays)
+			}
+		})
+	}
 }
 
 func runTicker(ctx context.Context, interval time.Duration, name string, fn func()) {
