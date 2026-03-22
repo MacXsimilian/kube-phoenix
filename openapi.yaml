@@ -1875,7 +1875,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /api/admin/reset-db:
+  /api/danger/reset-db:
     post:
       operationId: resetDatabase
       summary: Reset database

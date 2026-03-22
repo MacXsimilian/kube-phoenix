@@ -88,11 +88,52 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication via HTTP
 | `GET` | `/api/guardrails` | Get guardrails config |
 | `PUT` | `/api/guardrails` | Update guardrails |
 
+### Policies (viewer+ read, operator+ write)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
+| `GET` | `/api/policies` | List all policies (includes computed `nextSleepAt` / `nextWakeAt`) |
+| `GET` | `/api/policies/{id}` | Get policy |
+| `POST` | `/api/policies` | Create policy |
+| `PUT` | `/api/policies/{id}` | Update policy (partial) |
+| `DELETE` | `/api/policies/{id}` | Delete policy |
+| `GET` | `/api/policies/{id}/snapshots` | Workload snapshots for a policy (`?open=true` = only un-restored) |
+| `GET` | `/api/policies/{id}/overrides` | List overrides for a policy |
+| `POST` | `/api/policies/{id}/overrides` | Create an override (`stay_awake`, `force_sleep`, `skip_sleep`, `skip_wake`) |
+| `DELETE` | `/api/policies/{id}/overrides/{overrideId}` | Delete an override |
+
+### Policy operations (operator+)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
+| `POST` | `/api/policies/{id}/sleep` | Manually trigger a sleep run |
+| `POST` | `/api/policies/{id}/wake` | Manually trigger a wake run |
+
+### Policy executions (viewer+)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
+| `GET` | `/api/policy-executions` | List policy executions (filters: `policy_id`, `status`, `page`, `page_size`) |
+| `GET` | `/api/policy-executions/{id}` | Get execution |
+| `GET` | `/api/policy-executions/{id}/logs` | Get log lines for an execution |
+| `GET` | `/api/policy-executions/{id}/snapshots` | Workload snapshots for an execution |
+| `GET` | `/ws/policy-executions/{id}/logs` | WebSocket — live policy execution log streaming |
+
+### Scheduled Exceptions (viewer+ read, operator+ write)
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
+| `GET` | `/api/exceptions` | List exceptions (filters: `policy_id`, `status`) |
+| `GET` | `/api/exceptions/{id}` | Get exception |
+| `POST` | `/api/exceptions` | Create exception |
+| `PUT` | `/api/exceptions/{id}` | Update exception (pending only) |
+| `DELETE` | `/api/exceptions/{id}` | Cancel exception (triggers sleep-on-end if active) |
+
 ### Operations (operator+)
 
 | Method | Path | Description |
 | :----- | :--- | :---------- |
-| `POST` | `/api/trigger` | Manually trigger a schedule — `{"scheduleId": 1, "mode": "plan"}` |
+| `POST` | `/api/trigger` | Manually trigger a legacy schedule — `{"scheduleId": 1, "mode": "plan"}` |
 
 ### Audit logs (viewer+)
 
@@ -113,7 +154,7 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication via HTTP
 
 | Method | Path | Description |
 | :----- | :--- | :---------- |
-| `POST` | `/api/admin/reset-db` | Reset database — streams NDJSON progress; body: `{"confirm":"RESET DATABASE"}` |
+| `POST` | `/api/danger/reset-db` | Reset database — streams NDJSON progress; body: `{"confirm":"RESET DATABASE"}` |
 
 ---
 

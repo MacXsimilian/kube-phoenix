@@ -206,7 +206,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, sche
 			// ── Admin danger zone ────────────────────────────────────
 			r.Group(func(r chi.Router) {
 				r.Use(authmw.RequirePermission(auth.PermAdminResetDB))
-				r.Post("/admin/reset-db", h.resetDB)
+				r.Post("/danger/reset-db", h.resetDB)
 			})
 		})
 

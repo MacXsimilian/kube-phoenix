@@ -77,9 +77,73 @@ Set `ADMIN_USER` and `ADMIN_PASSWORD` to seed the first admin account on startup
 - CSRF protection via double-submit cookie pattern (`__kp_csrf` cookie + `X-CSRF-Token` header)
 - WebSocket auth uses cookies automatically on same-origin upgrade (no query param needed)
 
+## Policies
+
+A **Policy** is the recommended way to configure sleep/wake scheduling. Unlike the legacy Schedule model (two separate `scale_down` / `scale_up` entries), a policy declares both the sleep and wake crons in one place.
+
+### Policy fields
+
+| Field | Description |
+| :---- | :---------- |
+| **Name** | Human-readable label (max 255 chars) |
+| **Description** | Optional longer description (max 1024 chars) |
+| **Sleep Cron** | 5-field cron for when workloads should scale to 0. Optional if Wake Cron is set. |
+| **Wake Cron** | 5-field cron for when workloads should be restored. Optional if Sleep Cron is set. |
+| **Timezone** | IANA timezone — e.g. `Europe/Budapest`. Defaults to `UTC`. |
+| **Mode** | `plan` — dry-run, logs only; `apply` — executes for real |
+| **Enabled** | Whether the policy fires on its cron schedule. Manual triggers always work regardless. |
+| **Namespace Filter** | Comma-separated namespace names. Leave empty to target all namespaces. Same validation rules as schedules. |
+| **Label Selector** | Standard Kubernetes label selector syntax (e.g. `app=api,tier!=db`). Evaluated via `k8s.io/apimachinery/pkg/labels`. |
+| **Timeout Minutes** | Max execution duration in minutes (0–1440). Defaults to 30. |
+
+### Policy state
+
+A policy tracks its `currentState`:
+
+| State | Meaning |
+|---|---|
+| `awake` | Workloads are running normally |
+| `sleeping` | Workloads are scaled to 0 |
+| `transitioning` | A sleep or wake run is currently in progress |
+| `unknown` | State has not been determined yet (fresh policy or after a restart) |
+
+On startup, the intended state at `now` is computed from the cron schedule and override stack. If it differs from `currentState`, a **recovery execution** is queued automatically.
+
+### Overrides
+
+Overrides take precedence over the normal cron schedule for a policy:
+
+| Type | Description |
+|---|---|
+| `stay_awake` | Windowed override — keep workloads running between `startsAt` and `endsAt`, even during a normal sleep window |
+| `force_sleep` | Windowed override — keep workloads at 0 between `startsAt` and `endsAt`, even during a normal wake window |
+| `skip_sleep` | Skip exactly one sleep cron tick (identified by `targetCronTime`) |
+| `skip_wake` | Skip exactly one wake cron tick (identified by `targetCronTime`) |
+
+Precedence order (highest to lowest): `force_sleep` > `stay_awake` > skip overrides > cron schedule.
+
+### Scheduled Exceptions
+
+Exceptions are one-time windows — useful for release weekends or on-call periods — that can be scheduled in advance.
+
+| Field | Description |
+|---|---|
+| **Exception Type** | `stay_awake` or `force_sleep` |
+| **Starts At / Ends At** | The window boundaries (must be in the future at creation) |
+| **Ticket Ref** | External ticket reference (e.g. `JIRA-1234`, `GH#567`) |
+| **Reason** | Free-text reason |
+| **Sleep on End** | If true (default), immediately trigger a sleep run when the window ends |
+| **Namespace Filter / Label Selector** | Optional overrides; defaults to the policy's own targeting |
+
+**Lifecycle:** `pending` → `active` (when `startsAt` is reached) → `completed` (when `endsAt` is reached). Deleting a pending or active exception cancels it; if active and `sleepOnEnd` is true, a sleep run fires immediately.
+
+The exception tick loop runs every minute and transitions exceptions between states automatically.
+
+---
+
 ## Schedules
 
-Each schedule defines when the scaler fires, how it fires, and which namespaces it targets.
+Each legacy schedule defines when the scaler fires, how it fires, and which namespaces it targets.
 
 ### Schedule fields
 

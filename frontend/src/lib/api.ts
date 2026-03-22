@@ -234,7 +234,7 @@ export const triggerRun = (
 export type ResetEvent = { type: 'step' | 'done' | 'error'; message: string }
 
 export async function* resetDatabaseStream(): AsyncGenerator<ResetEvent> {
-  const res = await fetch(`${BASE}/api/admin/reset-db`, {
+  const res = await fetch(`${BASE}/api/danger/reset-db`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken() },
