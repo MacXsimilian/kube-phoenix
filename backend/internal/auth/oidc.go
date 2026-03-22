@@ -29,13 +29,13 @@ type OIDCConfig struct {
 
 // OIDCProvider wraps the go-oidc verifier and oauth2 config.
 type OIDCProvider struct {
-	Verifier       *oidc.IDTokenVerifier
-	OAuth2         oauth2.Config
-	HTTPClient     *http.Client // custom client (e.g. skip TLS verify); nil = default
-	GroupsClaim    string
-	AdminGroups    []string
-	OpGroups       []string
-	EndSessionURL  string // end_session_endpoint from OIDC discovery
+	Verifier      *oidc.IDTokenVerifier
+	OAuth2        oauth2.Config
+	HTTPClient    *http.Client // custom client (e.g. skip TLS verify); nil = default
+	GroupsClaim   string
+	AdminGroups   []string
+	OpGroups      []string
+	EndSessionURL string // end_session_endpoint from OIDC discovery
 }
 
 // NewOIDCProvider creates a provider by performing OIDC discovery against the issuer.

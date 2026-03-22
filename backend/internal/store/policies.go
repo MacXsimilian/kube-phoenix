@@ -230,9 +230,9 @@ func (s *Store) GetSnapshotsForPolicy(policyID uint) ([]WorkloadSnapshot, error)
 func (s *Store) CloseSnapshot(id uint, wakeExecID uint, replicasRestored int32) error {
 	now := time.Now()
 	return s.db.Model(&WorkloadSnapshot{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"wake_execution_id":  wakeExecID,
-		"replicas_restored":  replicasRestored,
-		"restored_at":        now,
+		"wake_execution_id": wakeExecID,
+		"replicas_restored": replicasRestored,
+		"restored_at":       now,
 	}).Error
 }
 

@@ -64,35 +64,21 @@ func NextFire(cronExpr, timezone string, now time.Time) time.Time {
 	return sched.Next(now)
 }
 
-// IntendedState computes the policy's intended state at the given time.
-//
-// Override precedence (highest to lowest):
-//  1. Active force_sleep override → sleeping
-//  2. Active stay_awake override  → awake
-//  3. Cron-based evaluation (most recent fire wins)
-//
-// skip_sleep / skip_wake overrides affect scheduler behaviour (suppress the
-// next cron tick) but do not change the intended state returned here.
-func IntendedState(p store.Policy, overrides []store.PolicyOverride, now time.Time) PolicyState {
-	// 1. Check windowed overrides — force_sleep has highest priority.
-	// Process force_sleep first, then stay_awake, to ensure deterministic
-	// precedence regardless of database row order.
+// hasActiveWindowedOverride checks if any override of the given type is active at now.
+func hasActiveWindowedOverride(overrides []store.PolicyOverride, overrideType string, now time.Time) bool {
 	for _, o := range overrides {
-		if o.OverrideType == "force_sleep" && o.StartsAt != nil && o.EndsAt != nil {
-			if !now.Before(*o.StartsAt) && !now.After(*o.EndsAt) {
-				return PolicyStateSleeping
-			}
+		if o.OverrideType != overrideType || o.StartsAt == nil || o.EndsAt == nil {
+			continue
+		}
+		if !now.Before(*o.StartsAt) && !now.After(*o.EndsAt) {
+			return true
 		}
 	}
-	for _, o := range overrides {
-		if o.OverrideType == "stay_awake" && o.StartsAt != nil && o.EndsAt != nil {
-			if !now.Before(*o.StartsAt) && !now.After(*o.EndsAt) {
-				return PolicyStateAwake
-			}
-		}
-	}
+	return false
+}
 
-	// 2. Cron-based: most recent event wins
+// stateFromCrons determines the intended state based on most recent cron fires.
+func stateFromCrons(p store.Policy, now time.Time) PolicyState {
 	lastSleep := MostRecentFire(p.SleepCron, p.Timezone, now)
 	lastWake := MostRecentFire(p.WakeCron, p.Timezone, now)
 
@@ -108,6 +94,25 @@ func IntendedState(p store.Policy, overrides []store.PolicyOverride, now time.Ti
 	default:
 		return PolicyStateAwake
 	}
+}
+
+// IntendedState computes the policy's intended state at the given time.
+//
+// Override precedence (highest to lowest):
+//  1. Active force_sleep override → sleeping
+//  2. Active stay_awake override  → awake
+//  3. Cron-based evaluation (most recent fire wins)
+//
+// skip_sleep / skip_wake overrides affect scheduler behaviour (suppress the
+// next cron tick) but do not change the intended state returned here.
+func IntendedState(p store.Policy, overrides []store.PolicyOverride, now time.Time) PolicyState {
+	if hasActiveWindowedOverride(overrides, "force_sleep", now) {
+		return PolicyStateSleeping
+	}
+	if hasActiveWindowedOverride(overrides, "stay_awake", now) {
+		return PolicyStateAwake
+	}
+	return stateFromCrons(p, now)
 }
 
 // HasSkipOverride returns true if there is a skip_sleep or skip_wake override
