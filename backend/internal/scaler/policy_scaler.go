@@ -46,6 +46,13 @@ func (r *PolicyRunner) RunPolicySleep(
 
 	emit(logCh, "info", fmt.Sprintf("Policy sleep — namespace filter: %q  label selector: %q", policy.NamespaceFilter, policy.LabelSelector))
 
+	// Pre-fetch open snapshots once to avoid O(n²) lookups in the per-workload loop.
+	openSnaps, _ := r.store.GetOpenSnapshots(policy.ID)
+	snappedSet := make(map[string]bool, len(openSnaps))
+	for _, s := range openSnaps {
+		snappedSet[s.Kind+"/"+s.Namespace+"/"+s.Name] = true
+	}
+
 	// ── Deployments ────────────────────────────────────────────────────────
 	emit(logCh, "info", "Fetching Deployments...")
 	var deployments []interface{ GetNamespace() string }
@@ -68,21 +75,11 @@ func (r *PolicyRunner) RunPolicySleep(
 
 			wl := formatWorkload("Deployment", d.Namespace, d.Name)
 
-			// Check for existing open snapshot (double-sleep guard)
-			open, snapErr := r.store.GetOpenSnapshots(policy.ID)
-			if snapErr == nil {
-				alreadySnapped := false
-				for _, s := range open {
-					if s.Kind == "Deployment" && s.Namespace == d.Namespace && s.Name == d.Name {
-						alreadySnapped = true
-						break
-					}
-				}
-				if alreadySnapped {
-					emit(logCh, "info", fmt.Sprintf("Snapshot already exists for %s (skipping double-sleep)", wl))
-					counts.Skipped++
-					continue
-				}
+			// Double-sleep guard: skip if an open snapshot already exists.
+			if snappedSet["Deployment/"+d.Namespace+"/"+d.Name] {
+				emit(logCh, "info", fmt.Sprintf("Snapshot already exists for %s (skipping double-sleep)", wl))
+				counts.Skipped++
+				continue
 			}
 
 			snap := &store.WorkloadSnapshot{
@@ -151,20 +148,11 @@ func (r *PolicyRunner) RunPolicySleep(
 			}
 			wl := formatWorkload("StatefulSet", ss.Namespace, ss.Name)
 
-			open, snapErr := r.store.GetOpenSnapshots(policy.ID)
-			if snapErr == nil {
-				alreadySnapped := false
-				for _, s := range open {
-					if s.Kind == "StatefulSet" && s.Namespace == ss.Namespace && s.Name == ss.Name {
-						alreadySnapped = true
-						break
-					}
-				}
-				if alreadySnapped {
-					emit(logCh, "info", fmt.Sprintf("Snapshot already exists for %s (skipping double-sleep)", wl))
-					counts.Skipped++
-					continue
-				}
+			// Double-sleep guard: skip if an open snapshot already exists.
+			if snappedSet["StatefulSet/"+ss.Namespace+"/"+ss.Name] {
+				emit(logCh, "info", fmt.Sprintf("Snapshot already exists for %s (skipping double-sleep)", wl))
+				counts.Skipped++
+				continue
 			}
 
 			snap := &store.WorkloadSnapshot{
