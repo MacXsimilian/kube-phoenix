@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.0...v0.3.1) (2026-03-22)
+
+
+### Bug Fixes
+
+* **frontend:** audit fixes for timeouts, error logging, a11y, and validation ([#203](https://github.com/MacXsimilian/kube-phoenix/issues/203)) ([5bd51f8](https://github.com/MacXsimilian/kube-phoenix/commit/5bd51f8288f7b26d6a8e8f0f8ff200a49926e5f1))
+
 ## [0.3.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.2.0...v0.3.0) (2026-03-22)
 
 > **Note:** v0.3.0 was released immediately after v0.2.0 due to a branch merge
