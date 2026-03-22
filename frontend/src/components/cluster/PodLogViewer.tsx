@@ -196,7 +196,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
 
   const handleCopy = useCallback(() => {
     const text = lines.join('\n')
-    navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => {})
+    navigator.clipboard.writeText(text).then(() => setCopied(true)).catch((err) => { if (process.env.NODE_ENV === 'development') console.warn('[kp] clipboard write failed:', err) })
   }, [lines])
 
   const handleDownload = useCallback(() => {
@@ -226,7 +226,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
       <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: containers.length > 1 ? 1 : 0 }}>
           <Tooltip title="Back to pod details">
-            <IconButton size="small" onClick={onBack}>
+            <IconButton size="small" onClick={onBack} aria-label="Back to pod details">
               <ArrowBackIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
@@ -332,10 +332,10 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
                       <Typography variant="caption" sx={{ color: matchIndices.length > 0 ? 'primary.main' : 'error.main', whiteSpace: 'nowrap' }}>
                         {matchIndices.length > 0 ? `${currentMatchIdx + 1}/${matchIndices.length}` : 'No matches'}
                       </Typography>
-                      <IconButton size="small" onClick={() => jumpToMatch('prev')} disabled={matchIndices.length === 0} sx={{ p: 0.25 }}>
+                      <IconButton size="small" onClick={() => jumpToMatch('prev')} disabled={matchIndices.length === 0} sx={{ p: 0.25 }} aria-label="Previous match">
                         <KeyboardArrowUpIcon sx={{ fontSize: 16 }} />
                       </IconButton>
-                      <IconButton size="small" onClick={() => jumpToMatch('next')} disabled={matchIndices.length === 0} sx={{ p: 0.25 }}>
+                      <IconButton size="small" onClick={() => jumpToMatch('next')} disabled={matchIndices.length === 0} sx={{ p: 0.25 }} aria-label="Next match">
                         <KeyboardArrowDownIcon sx={{ fontSize: 16 }} />
                       </IconButton>
                     </Stack>
@@ -360,14 +360,14 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
           />
           <Tooltip title={copied ? 'Copied!' : 'Copy all logs'}>
             <span>
-              <IconButton size="small" onClick={handleCopy} disabled={lines.length === 0}>
+              <IconButton size="small" onClick={handleCopy} disabled={lines.length === 0} aria-label="Copy all logs">
                 <ContentCopyIcon sx={{ fontSize: 16, color: copied ? 'success.main' : 'text.secondary' }} />
               </IconButton>
             </span>
           </Tooltip>
           <Tooltip title="Download as .log">
             <span>
-              <IconButton size="small" onClick={handleDownload} disabled={lines.length === 0}>
+              <IconButton size="small" onClick={handleDownload} disabled={lines.length === 0} aria-label="Download logs">
                 <DownloadIcon sx={{ fontSize: 16 }} />
               </IconButton>
             </span>

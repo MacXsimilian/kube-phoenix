@@ -176,7 +176,7 @@ function CollapsibleKVSection({ title, entries }: { title: string; entries: [str
         <Typography variant="caption" sx={{ color: 'text.disabled', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, fontSize: 10, flex: 1 }}>
           {title} ({entries.length})
         </Typography>
-        <IconButton size="small" sx={{ p: 0 }}>
+        <IconButton size="small" sx={{ p: 0 }} aria-label={open ? 'Collapse section' : 'Expand section'}>
           <ExpandMoreIcon sx={{ fontSize: 16, color: 'text.disabled', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
         </IconButton>
       </Box>
