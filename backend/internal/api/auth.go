@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -89,7 +90,34 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 
 	h.audit(r, "auth.logout", "", nil, nil, nil)
 	clearSessionCookies(w)
+
+	// For OIDC users, return the Keycloak end_session URL so the browser can
+	// terminate the SSO session (RP-initiated logout). Without this, Keycloak's
+	// session stays alive and SSO re-authenticates the user silently.
+	user := authmw.UserFromContext(r.Context())
+	if user != nil && user.Source == "oidc" &&
+		h.oidcProvider != nil && h.oidcProvider.EndSessionURL != "" {
+
+		postLogoutURI := oidcBaseURL(h.oidcCfg.RedirectURL)
+		logoutURL := h.oidcProvider.EndSessionURL +
+			"?client_id=" + url.QueryEscape(h.oidcCfg.ClientID) +
+			"&post_logout_redirect_uri=" + url.QueryEscape(postLogoutURI)
+
+		jsonOK(w, map[string]string{"oidcLogoutUrl": logoutURL})
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// oidcBaseURL derives the app root URL from the OIDC redirect callback URL.
+// e.g. "https://app.example.com/api/auth/oidc/callback" → "https://app.example.com/"
+func oidcBaseURL(redirectURL string) string {
+	u, err := url.Parse(redirectURL)
+	if err != nil || u.Host == "" {
+		return "/"
+	}
+	return u.Scheme + "://" + u.Host + "/"
 }
 
 // ─── Me ──────────────────────────────────────────────────────────────────────
