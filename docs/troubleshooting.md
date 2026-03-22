@@ -25,6 +25,20 @@ The Kubernetes client uses the pod's ServiceAccount token (in-cluster config). P
 - **RBAC not applied:** verify the ClusterRole and ClusterRoleBinding exist: `kubectl get clusterrolebinding kube-phoenix`.
 - **Cache not yet populated:** on cold start the ClusterCache populates asynchronously. Wait a few seconds and refresh.
 
+## An execution is stuck in the `running` state
+
+On startup, kube-phoenix automatically marks any executions left in `running` as `interrupted`. This covers the case where the pod was killed mid-run (OOMKill, node eviction, deployment rollout).
+
+If you see an execution marked `interrupted` in the History page, it means the run did not complete cleanly. Check whether workloads were partially scaled:
+
+```bash
+# List deployments with the previous-replicas annotation (scaled down, not yet woken)
+kubectl get deployments -A -o json | \
+  jq '.items[] | select(.metadata.annotations["kube-phoenix/previous-replicas"]) | .metadata.namespace + "/" + .metadata.name'
+```
+
+Trigger the corresponding scale-up schedule manually from the **History** or **Schedules** page to restore those workloads.
+
 ## A workload is stuck with the `previous-replicas` annotation
 
 This happens when a scale-up run was interrupted or partially failed. The workload has `replicas=0` and the annotation present, so it looks sleeping but the wake didn't complete.
