@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -34,19 +34,16 @@ export function ThemeModeProvider({ children }: { children: React.ReactNode }) {
     return () => mq.removeEventListener('change', handler)
   }, [])
 
-  function setMode(m: ThemeMode) {
+  const setMode = useCallback((m: ThemeMode) => {
     setModeState(m)
     localStorage.setItem(STORAGE_KEY, m)
-  }
+  }, [])
 
-  const resolvedMode: 'light' | 'dark' =
-    mode === 'system' ? (systemDark ? 'dark' : 'light') : mode
-
-  const value = useMemo(
-    () => ({ mode, setMode, resolvedMode }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode, resolvedMode],
-  )
+  const value = useMemo(() => {
+    const resolvedMode: 'light' | 'dark' =
+      mode === 'system' ? (systemDark ? 'dark' : 'light') : mode
+    return { mode, setMode, resolvedMode }
+  }, [mode, systemDark, setMode])
 
   return (
     <ThemeModeContext.Provider value={value}>

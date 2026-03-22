@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -118,11 +118,17 @@ export default function AuditLogPage() {
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(25)
   const [userFilter, setUserFilter] = useState('')
+  const [debouncedUserFilter, setDebouncedUserFilter] = useState('')
   const [actionFilter, setActionFilter] = useState('')
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedUserFilter(userFilter), 300)
+    return () => clearTimeout(t)
+  }, [userFilter])
+
   const { data, isLoading } = useQuery({
-    queryKey: ['audit-logs', page, pageSize, userFilter, actionFilter],
-    queryFn: () => getAuditLogs({ user: userFilter || undefined, action: actionFilter || undefined, page, pageSize }),
+    queryKey: ['audit-logs', page, pageSize, debouncedUserFilter, actionFilter],
+    queryFn: () => getAuditLogs({ user: debouncedUserFilter || undefined, action: actionFilter || undefined, page, pageSize }),
   })
 
   return (
