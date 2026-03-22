@@ -77,7 +77,7 @@ export default function PolicyCard({
     onSuccess: ({ executionId }) => {
       qc.invalidateQueries({ queryKey: ['policies'] })
       qc.invalidateQueries({ queryKey: ['policy-executions'] })
-      router.push(`/policies/${policy.id}?exec=${executionId}`)
+      router.push(`/policies/detail/?id=${policy.id}&exec=${executionId}`)
     },
     onError: (err: unknown) => {
       onNotify?.(err instanceof Error ? err.message : 'Trigger sleep failed', 'error')
@@ -89,7 +89,7 @@ export default function PolicyCard({
     onSuccess: ({ executionId }) => {
       qc.invalidateQueries({ queryKey: ['policies'] })
       qc.invalidateQueries({ queryKey: ['policy-executions'] })
-      router.push(`/policies/${policy.id}?exec=${executionId}`)
+      router.push(`/policies/detail/?id=${policy.id}&exec=${executionId}`)
     },
     onError: (err: unknown) => {
       onNotify?.(err instanceof Error ? err.message : 'Trigger wake failed', 'error')
@@ -182,7 +182,7 @@ export default function PolicyCard({
           {/* Actions */}
           <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0, alignItems: 'center' }}>
             <Tooltip title="View details">
-              <IconButton size="small" onClick={() => router.push(`/policies/${policy.id}`)} aria-label="View policy">
+              <IconButton size="small" onClick={() => router.push(`/policies/detail/?id=${policy.id}`)} aria-label="View policy">
                 <OpenInNewIcon fontSize="small" />
               </IconButton>
             </Tooltip>
