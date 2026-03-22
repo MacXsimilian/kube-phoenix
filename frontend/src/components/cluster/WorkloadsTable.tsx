@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'next/navigation'
 import Paper from '@mui/material/Paper'
@@ -60,7 +60,7 @@ export default function WorkloadsTable() {
   const colors = useColors()
   const SC = statusColors(isDark)
 
-  function handleSort(col: typeof sortCol) {
+  const handleSort = useCallback((col: typeof sortCol) => {
     if (sortCol === col) {
       if (sortDir === 'asc') setSortDir('desc')
       else { setSortCol(null); setSortDir('asc') }
@@ -68,7 +68,7 @@ export default function WorkloadsTable() {
       setSortCol(col)
       setSortDir('asc')
     }
-  }
+  }, [sortCol, sortDir])
 
   const namespaces = useMemo(
     () => ['all', ...Array.from(new Set(workloads.map((w) => w.namespace))).sort()],

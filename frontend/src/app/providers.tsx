@@ -12,6 +12,7 @@ import AppShell from '@/components/layout/AppShell'
 import { AuthProvider, useAuth } from '@/lib/auth'
 import LoginScreen from '@/components/auth/LoginScreen'
 import { ThemeModeProvider, useThemeMode } from '@/lib/themeMode'
+import ErrorBoundary from '@/components/ErrorBoundary'
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, checking, backendError } = useAuth()
@@ -24,7 +25,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
     )
   }
   if (!isAuthenticated) return <LoginScreen />
-  return <AppShell>{children}</AppShell>
+  return <ErrorBoundary><AppShell>{children}</AppShell></ErrorBoundary>
 }
 
 function ThemedApp({ children }: { children: React.ReactNode }) {
