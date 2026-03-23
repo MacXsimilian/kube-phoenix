@@ -45,9 +45,9 @@ type policyResponse struct {
 }
 
 func (h *Handler) policyResp(p store.Policy) policyResponse {
-	nt := h.policyScheduler.NextTransition(p.ID)
+	nextTransition := h.policyScheduler.NextTransition(p.ID)
 	windows := parseSleepWindows(p)
-	return policyResponse{Policy: p, NextTransitionAt: nt, SleepWindows: windows}
+	return policyResponse{Policy: p, NextTransitionAt: nextTransition, SleepWindows: windows}
 }
 
 // parseSleepWindows deserializes stored windows.
@@ -80,13 +80,13 @@ func (h *Handler) listPolicies(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) getPolicy(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 	p, err := h.store.GetPolicy(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, "not found", http.StatusNotFound)
+			jsonError(w, ErrNotFound, http.StatusNotFound)
 		} else {
 			jsonInternalError(w, err, "get policy failed")
 		}
@@ -104,7 +104,7 @@ type createPolicyInput struct {
 func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
 	var input createPolicyInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		jsonError(w, "invalid body", http.StatusBadRequest)
+		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
 	}
 	p := input.Policy
@@ -136,7 +136,7 @@ func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	p.CurrentState = "unknown"
 
-	if p.Mode == "apply" && p.Enabled {
+	if p.Mode == store.PolicyModeApply && p.Enabled {
 		overlap, err := h.store.HasApplyPolicyOverlap(0, p.NamespaceFilter, p.LabelSelector)
 		if err != nil {
 			jsonInternalError(w, err, "conflict check failed")
@@ -154,12 +154,8 @@ func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Info("policy created", "policyID", p.ID, "name", p.Name)
 	h.audit(r, "policy.create", "policy", &p.ID, nil, p)
-	if err := h.policyScheduler.Reload(); err != nil {
-		slog.Error("policy scheduler reload after create failed", "err", err)
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(h.policyResp(p))
+	h.reloadScheduler(p.ID)
+	jsonCreated(w, h.policyResp(p))
 }
 
 // policyFieldMap maps JSON field names to database column names.
@@ -202,18 +198,18 @@ func applySleepWindowUpdates(body map[string]interface{}, updates map[string]int
 func (h *Handler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 	old, err := h.store.GetPolicy(id)
 	if err != nil {
-		jsonError(w, "not found", http.StatusNotFound)
+		jsonError(w, ErrNotFound, http.StatusNotFound)
 		return
 	}
 
 	var body map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, "invalid body", http.StatusBadRequest)
+		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
 	}
 
@@ -254,7 +250,7 @@ func (h *Handler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 			finalEnabled = b
 		}
 	}
-	if finalMode == "apply" && finalEnabled {
+	if finalMode == store.PolicyModeApply && finalEnabled {
 		finalNS := old.NamespaceFilter
 		if v, ok := updates["namespace_filter"]; ok {
 			finalNS = fmt.Sprintf("%v", v)
@@ -281,22 +277,20 @@ func (h *Handler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.audit(r, "policy.update", "policy", &id, old, p)
-	if err := h.policyScheduler.Reload(); err != nil {
-		slog.Error("policy scheduler reload after update failed", "policyID", id, "err", err)
-	}
+	h.reloadScheduler(id)
 	jsonOK(w, h.policyResp(*p))
 }
 
 func (h *Handler) deletePolicy(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 	old, _ := h.store.GetPolicy(id)
 	if err := h.store.DeletePolicy(id); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, "not found", http.StatusNotFound)
+			jsonError(w, ErrNotFound, http.StatusNotFound)
 		} else {
 			jsonInternalError(w, err, "delete policy failed")
 		}
@@ -304,20 +298,18 @@ func (h *Handler) deletePolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Info("policy deleted", "policyID", id)
 	h.audit(r, "policy.delete", "policy", &id, old, nil)
-	if err := h.policyScheduler.Reload(); err != nil {
-		slog.Error("policy scheduler reload after delete failed", "policyID", id, "err", err)
-	}
+	h.reloadScheduler(id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) triggerPolicySleep(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 	if _, err := h.store.GetPolicy(id); err != nil {
-		jsonError(w, "not found", http.StatusNotFound)
+		jsonError(w, ErrNotFound, http.StatusNotFound)
 		return
 	}
 	execID, err := h.policyScheduler.RunSleepNow(id, "manual_sleep")
@@ -337,11 +329,11 @@ func (h *Handler) triggerPolicySleep(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) triggerPolicyWake(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 	if _, err := h.store.GetPolicy(id); err != nil {
-		jsonError(w, "not found", http.StatusNotFound)
+		jsonError(w, ErrNotFound, http.StatusNotFound)
 		return
 	}
 	execID, err := h.policyScheduler.RunWakeNow(id, "manual_wake")
@@ -367,7 +359,7 @@ func validatePolicyFields(p store.Policy) string {
 	if p.TimeoutMinutes < 0 || p.TimeoutMinutes > 1440 {
 		return "timeoutMinutes must be between 0 and 1440"
 	}
-	if p.Mode != "" && p.Mode != "plan" && p.Mode != "apply" {
+	if p.Mode != "" && p.Mode != store.PolicyModePlan && p.Mode != store.PolicyModeApply {
 		return "mode must be plan or apply"
 	}
 	if p.Timezone != "" {
@@ -388,7 +380,7 @@ func validatePolicyUpdates(updates map[string]interface{}) string {
 		}
 	}
 	if v, ok := updates["mode"]; ok {
-		if m := fmt.Sprintf("%v", v); m != "plan" && m != "apply" {
+		if m := fmt.Sprintf("%v", v); m != store.PolicyModePlan && m != store.PolicyModeApply {
 			return "mode must be plan or apply"
 		}
 	}

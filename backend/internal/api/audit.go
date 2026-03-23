@@ -87,7 +87,6 @@ func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID
 
 	select {
 	case h.auditWriter.ch <- entry:
-		// enqueued
 	default:
 		metrics.AuditDropsTotal.Inc()
 		slog.Warn("audit-writer: buffer full, entry dropped", "action", action, "user", username)

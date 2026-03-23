@@ -14,18 +14,18 @@ import (
 )
 
 func (h *Handler) listExceptions(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	f := store.ScheduledExceptionFilter{}
-	if pid := q.Get("policy_id"); pid != "" {
+	query := r.URL.Query()
+	filter := store.ScheduledExceptionFilter{}
+	if pid := query.Get("policy_id"); pid != "" {
 		id, err := parseIDFromString(pid)
 		if err == nil {
-			f.PolicyID = &id
+			filter.PolicyID = &id
 		}
 	}
-	if s := q.Get("status"); s != "" {
-		f.Status = s
+	if s := query.Get("status"); s != "" {
+		filter.Status = s
 	}
-	items, err := h.store.ListScheduledExceptions(f)
+	items, err := h.store.ListScheduledExceptions(filter)
 	if err != nil {
 		jsonInternalError(w, err, "list exceptions failed")
 		return
@@ -48,13 +48,13 @@ func (h *Handler) listExceptions(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) getException(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 	ex, err := h.store.GetScheduledException(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, "not found", http.StatusNotFound)
+			jsonError(w, ErrNotFound, http.StatusNotFound)
 		} else {
 			jsonInternalError(w, err, "get exception failed")
 		}
@@ -66,7 +66,7 @@ func (h *Handler) getException(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) createException(w http.ResponseWriter, r *http.Request) {
 	var body exceptionInput
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, "invalid body", http.StatusBadRequest)
+		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
 	}
 	if msg := validateExceptionInput(body); msg != "" {
@@ -92,7 +92,7 @@ func (h *Handler) createException(w http.ResponseWriter, r *http.Request) {
 		SleepOnEnd:      body.SleepOnEnd,
 		NamespaceFilter: body.NamespaceFilter,
 		LabelSelector:   body.LabelSelector,
-		Status:          "pending",
+		Status:          store.ExceptionStatusPending,
 	}
 	if !ex.SleepOnEnd && !body.SleepOnEndSet {
 		ex.SleepOnEnd = true // default to true
@@ -118,30 +118,28 @@ func (h *Handler) createException(w http.ResponseWriter, r *http.Request) {
 		"exceptionID", ex.ID, "ticketRef", ex.TicketRef, "startsAt", ex.StartsAt)
 	h.audit(r, "exception.create", "exception", &ex.ID, nil, exceptionWithTargets(ex))
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(exceptionWithTargets(ex))
+	jsonCreated(w, exceptionWithTargets(ex))
 }
 
 func (h *Handler) updateException(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 	ex, err := h.store.GetScheduledException(id)
 	if err != nil {
-		jsonError(w, "not found", http.StatusNotFound)
+		jsonError(w, ErrNotFound, http.StatusNotFound)
 		return
 	}
-	if ex.Status != "pending" {
+	if ex.Status != store.ExceptionStatusPending {
 		jsonError(w, "only pending exceptions can be edited", http.StatusConflict)
 		return
 	}
 
 	var body exceptionInput
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, "invalid body", http.StatusBadRequest)
+		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
 	}
 
@@ -159,17 +157,17 @@ func (h *Handler) updateException(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) deleteException(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 	ex, err := h.store.GetScheduledException(id)
 	if err != nil {
-		jsonError(w, "not found", http.StatusNotFound)
+		jsonError(w, ErrNotFound, http.StatusNotFound)
 		return
 	}
 
 	// If active, trigger sleep-on-end before cancelling
-	if ex.Status == "active" && ex.SleepOnEnd && ex.PolicyID != nil {
+	if ex.Status == store.ExceptionStatusActive && ex.SleepOnEnd && ex.PolicyID != nil {
 		slog.Info("exception cancelled while active — triggering sleep-on-end", "exceptionID", id)
 		if _, runErr := h.policyScheduler.RunSleepNow(*ex.PolicyID, "exception_end"); runErr != nil {
 			slog.Error("exception cancel: sleep-on-end failed", "exceptionID", id, "err", runErr)
@@ -177,7 +175,7 @@ func (h *Handler) deleteException(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updates := map[string]interface{}{
-		"status":        "cancelled",
+		"status":        store.ExceptionStatusCancelled,
 		"cancel_reason": "deleted via API",
 	}
 	if _, err := h.store.UpdateScheduledException(id, updates); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -198,20 +199,17 @@ func (h *Handler) oidcExchangeAndVerify(ctx context.Context, code, verifier stri
 
 	token, err := h.oidcProvider.OAuth2.Exchange(exchCtx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
-		slog.Error("oidc: token exchange failed", "err", err)
-		return nil, err
+		return nil, fmt.Errorf("oidc: token exchange: %w", err)
 	}
 
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok {
-		slog.Error("oidc: no id_token in response")
 		return nil, errMissingIDToken
 	}
 
 	idToken, err := h.oidcProvider.Verifier.Verify(ctx, rawIDToken)
 	if err != nil {
-		slog.Error("oidc: id_token verification failed", "err", err)
-		return nil, err
+		return nil, fmt.Errorf("oidc: id_token verification: %w", err)
 	}
 	return idToken, nil
 }
@@ -227,11 +225,9 @@ func oidcExtractClaims(idToken *gooidc.IDToken, groupsClaim string) (oidcClaims,
 		Groups            []string `json:"groups"`
 	}
 	if err := idToken.Claims(&raw); err != nil {
-		slog.Error("oidc: claims extraction failed", "err", err)
 		return oidcClaims{}, false
 	}
 	if raw.Sub == "" {
-		slog.Error("oidc: empty sub claim in id_token")
 		return oidcClaims{}, false
 	}
 
