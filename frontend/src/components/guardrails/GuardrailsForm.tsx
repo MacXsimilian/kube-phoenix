@@ -32,11 +32,13 @@ function ChipInput({
   hint,
   values,
   onChange,
+  readOnly = false,
 }: {
   label: string
   hint?: string
   values: string[]
   onChange: (v: string[]) => void
+  readOnly?: boolean
 }) {
   const [input, setInput] = useState('')
 
@@ -71,17 +73,19 @@ function ChipInput({
         onClick={() => document.getElementById(`chip-input-${label}`)?.focus()}
       >
         {values.map((v) => (
-          <Chip key={v} label={v} size="small" onDelete={() => onChange(values.filter((x) => x !== v))} sx={{ fontFamily: 'monospace', fontSize: 12 }} />
+          <Chip key={v} label={v} size="small" onDelete={readOnly ? undefined : () => onChange(values.filter((x) => x !== v))} sx={{ fontFamily: 'monospace', fontSize: 12 }} />
         ))}
-        <input
-          id={`chip-input-${label}`}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKey}
-          onBlur={add}
-          placeholder={values.length === 0 ? 'Type and press Enter...' : ''}
-          style={{ background: 'transparent', border: 'none', outline: 'none', color: 'inherit', fontSize: 13, fontFamily: 'inherit', minWidth: 140, flex: 1 }}
-        />
+        {!readOnly && (
+          <input
+            id={`chip-input-${label}`}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKey}
+            onBlur={add}
+            placeholder={values.length === 0 ? 'Type and press Enter...' : ''}
+            style={{ background: 'transparent', border: 'none', outline: 'none', color: 'inherit', fontSize: 13, fontFamily: 'inherit', minWidth: 140, flex: 1 }}
+          />
+        )}
       </Box>
     </Box>
   )
@@ -92,9 +96,11 @@ function ChipInput({
 function ProtectedChipInput({
   values,
   onChange,
+  readOnly = false,
 }: {
   values: string[]
   onChange: (v: string[]) => void
+  readOnly?: boolean
 }) {
   const [input, setInput] = useState('')
   const [pendingRemove, setPendingRemove] = useState<string | null>(null)
@@ -145,7 +151,7 @@ function ProtectedChipInput({
             key={v}
             label={v}
             size="small"
-            onDelete={() => setPendingRemove(v)}
+            onDelete={readOnly ? undefined : () => setPendingRemove(v)}
             sx={{
               fontFamily: 'monospace',
               fontSize: 12,
@@ -155,15 +161,17 @@ function ProtectedChipInput({
             }}
           />
         ))}
-        <input
-          id="protected-chip-input"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKey}
-          onBlur={add}
-          placeholder={values.length === 0 ? 'Type and press Enter to add...' : ''}
-          style={{ background: 'transparent', border: 'none', outline: 'none', color: 'inherit', fontSize: 13, fontFamily: 'inherit', minWidth: 160, flex: 1 }}
-        />
+        {!readOnly && (
+          <input
+            id="protected-chip-input"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKey}
+            onBlur={add}
+            placeholder={values.length === 0 ? 'Type and press Enter to add...' : ''}
+            style={{ background: 'transparent', border: 'none', outline: 'none', color: 'inherit', fontSize: 13, fontFamily: 'inherit', minWidth: 160, flex: 1 }}
+          />
+        )}
       </Box>
 
       {/* Confirmation dialog */}
@@ -281,7 +289,7 @@ export default function GuardrailsForm() {
         <Grid size={12}>
           <Card sx={{ border: '1px solid', borderColor: 'rgba(245,158,11,0.40)', bgcolor: 'rgba(245,158,11,0.03)' }}>
             <CardContent sx={{ p: 3 }}>
-              <ProtectedChipInput values={systemNs} onChange={setSystemNs} />
+              <ProtectedChipInput values={systemNs} onChange={setSystemNs} readOnly={!hasEdit} />
             </CardContent>
           </Card>
         </Grid>
@@ -301,6 +309,7 @@ export default function GuardrailsForm() {
                 hint="e.g. monitoring, staging"
                 values={skipNs}
                 onChange={setSkipNs}
+                readOnly={!hasEdit}
               />
             </CardContent>
           </Card>
@@ -322,18 +331,21 @@ export default function GuardrailsForm() {
                   hint="Nodes running pods from these namespaces are never drained"
                   values={skipNsNode}
                   onChange={setSkipNsNode}
+                  readOnly={!hasEdit}
                 />
                 <ChipInput
                   label="Skip Node Labels"
                   hint="key=value format, e.g. karpenter.k8s.aws/ec2nodeclass=default"
                   values={skipLabels}
                   onChange={setSkipLabels}
+                  readOnly={!hasEdit}
                 />
                 <ChipInput
                   label="Skip Node Taints"
                   hint="key=value:effect format, e.g. karpenter-eks-base=true:NoSchedule"
                   values={skipTaints}
                   onChange={setSkipTaints}
+                  readOnly={!hasEdit}
                 />
               </Box>
             </CardContent>
