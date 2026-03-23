@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.5](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.4...v0.3.5) (2026-03-23)
+
+
+### Bug Fixes
+
+* **backend:** policy delete fails with foreign key violation ([#211](https://github.com/MacXsimilian/kube-phoenix/issues/211)) ([420d772](https://github.com/MacXsimilian/kube-phoenix/commit/420d772c36e2b4ece5290611b84ac9c902bcdc5a))
+* **frontend:** display human-readable labels for override and exception types ([9bf227b](https://github.com/MacXsimilian/kube-phoenix/commit/9bf227b731fd0a521d9b3e972b5d8038efb970d3))
+* **frontend:** human-readable labels for override and exception types ([#210](https://github.com/MacXsimilian/kube-phoenix/issues/210)) ([9bf227b](https://github.com/MacXsimilian/kube-phoenix/commit/9bf227b731fd0a521d9b3e972b5d8038efb970d3))
+* **frontend:** make guardrails read-only for viewer role ([#212](https://github.com/MacXsimilian/kube-phoenix/issues/212)) ([a57d756](https://github.com/MacXsimilian/kube-phoenix/commit/a57d7561d099fd9b048cf27fbb258dbb2f17c59d))
+
 ## [0.3.4](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.3...v0.3.4) (2026-03-23)
 
 
