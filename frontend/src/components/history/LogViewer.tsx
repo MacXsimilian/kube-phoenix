@@ -36,8 +36,23 @@ import { useTheme } from '@mui/material/styles'
 import { semanticColors, useColors } from '@/lib/colors'
 import { getPolicyExecutionLogs, wsPolicyLogsUrl } from '@/lib/api'
 import { useDrawerResize } from '@/lib/useDrawerResize'
-import { LOG_LEVEL_COLORS_DARK, LOG_LEVEL_COLORS_LIGHT } from '@/lib/statusColors'
 import type { PolicyExecution, LogLine } from '@/lib/types'
+
+const LEVEL_COLORS_DARK: Record<LogLine['level'], string> = {
+  info: '#22D3EE',
+  ok: '#22C55E',
+  plan: '#C084FC',
+  error: '#F87171',
+  warn: '#FBBF24',
+}
+
+const LEVEL_COLORS_LIGHT: Record<LogLine['level'], string> = {
+  info: '#0369A1',
+  ok: '#15803D',
+  plan: '#6D28D9',
+  error: '#B91C1C',
+  warn: '#92400E',
+}
 
 // ── Summary parsing ──────────────────────────────────────────────────────────
 
@@ -276,7 +291,7 @@ function PolicyExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunn
 
 function LogLineRow({ line }: { line: LogLine }) {
   const theme = useTheme()
-  const levelColors = theme.palette.mode === 'dark' ? LOG_LEVEL_COLORS_DARK : LOG_LEVEL_COLORS_LIGHT
+  const levelColors = theme.palette.mode === 'dark' ? LEVEL_COLORS_DARK : LEVEL_COLORS_LIGHT
   return (
     <Box
       component="div"
@@ -316,6 +331,8 @@ export default function LogViewer({
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isRunning = execution?.status === 'running'
+  const isRunningRef = useRef(isRunning)
+  isRunningRef.current = isRunning
 
   const { data: historicLines = [], isError: logsError } = useQuery({
     queryKey: ['logs', execution?.id],
@@ -352,7 +369,7 @@ export default function LogViewer({
         ws.close()
         wsRef.current = null
         reconnectTimerRef.current = setTimeout(() => {
-          if (execution?.status === 'running' && wsRef.current === null) openWs()
+          if (isRunningRef.current && wsRef.current === null) openWs()
         }, 3000)
       }
     }

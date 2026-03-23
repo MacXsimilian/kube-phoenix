@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(u)
         } else {
           // Probe if backend requires auth at all (dev mode check).
-          fetch(`${BASE}/api/schedules`, { credentials: 'include' })
+          fetch(`${BASE}/api/policies`, { credentials: 'include' })
             .then(res => {
               if (res.ok) {
                 // No auth required — dev mode. Create a synthetic user.

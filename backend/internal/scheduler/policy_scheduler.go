@@ -197,8 +197,11 @@ func (ps *PolicyScheduler) TickExceptions(ctx context.Context) {
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
+const tickInterval = 30 * time.Second
+const defaultExecutionTimeout = 2 * time.Hour
+
 func (ps *PolicyScheduler) tickLoop(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -340,7 +343,7 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 	go func() {
 		timeout := time.Duration(p.TimeoutMinutes) * time.Minute
 		if timeout <= 0 {
-			timeout = 2 * time.Hour
+			timeout = defaultExecutionTimeout
 		}
 		runCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()

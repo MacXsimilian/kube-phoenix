@@ -15,7 +15,7 @@ export function formatTime(time: string): string {
 
 /**
  * Returns true if the window crosses midnight (end <= start).
- * AllDay windows do not cross midnight — they cover the full day.
+ * AllDay windows do not cross midnight.
  */
 export function isOvernight(w: SleepWindow): boolean {
   if (w.allDay) return false
@@ -39,7 +39,6 @@ export function formatDayRange(days: number[]): string {
   const weekend = [0, 6]
   if (arrEq(sorted, weekdays)) return 'Mon\u2013Fri'
   if (arrEq(sorted, weekend)) return 'Sat\u2013Sun'
-  if (arrEq(sorted, [0, 1, 2, 3, 4, 5, 6])) return 'Every day'
 
   // Try to find consecutive runs
   const runs: number[][] = []
@@ -89,4 +88,20 @@ export function windowsToText(windows: SleepWindow[]): string {
 export function timeToHours(time: string): number {
   const [h, m] = time.split(':').map(Number)
   return h + m / 60
+}
+
+/**
+ * Returns the current day-of-week (0=Sun) and fractional hour,
+ * optionally converted to the given IANA timezone.
+ */
+export function nowInTimezone(tz?: string): { dayOfWeek: number; fractionalHour: number } {
+  let now = new Date()
+  if (tz) {
+    const str = now.toLocaleString('en-US', { timeZone: tz })
+    now = new Date(str)
+  }
+  return {
+    dayOfWeek: now.getDay(),
+    fractionalHour: now.getHours() + now.getMinutes() / 60,
+  }
 }

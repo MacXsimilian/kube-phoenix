@@ -4,22 +4,13 @@ import React from 'react'
 import Box from '@mui/material/Box'
 import Tooltip from '@mui/material/Tooltip'
 import type { SleepWindow } from '@/lib/types'
-import { timeToHours, isOvernight, windowsToText } from '@/lib/windowUtils'
+import { timeToHours, isOvernight, windowsToText, nowInTimezone } from '@/lib/windowUtils'
 
 const W = 280
 const H = 16
-const SLOTS = 288 // 24h * 12 = 5-min resolution
 
 function hourToX(hour: number): number {
   return (hour / 24) * W
-}
-
-/** Convert current time to the given IANA timezone without external libraries. */
-function nowInTimezone(tz?: string): Date {
-  if (!tz) return new Date()
-  const now = new Date()
-  const str = now.toLocaleString('en-US', { timeZone: tz })
-  return new Date(str)
 }
 
 /**
@@ -38,9 +29,7 @@ export default function MiniTimeline({
 }) {
   if (!windows || windows.length === 0) return null
 
-  const now = nowInTimezone(timezone)
-  const todayDow = now.getDay() // 0=Sun
-  const currentHour = now.getHours() + now.getMinutes() / 60
+  const { dayOfWeek: todayDow, fractionalHour: currentHour } = nowInTimezone(timezone)
 
   // Build sleep blocks for today
   const blocks: { x: number; w: number }[] = []
@@ -69,7 +58,6 @@ export default function MiniTimeline({
   }
 
   const nowX = hourToX(currentHour)
-  const scaleX = width / W
 
   return (
     <Tooltip title={windowsToText(windows)} placement="top">

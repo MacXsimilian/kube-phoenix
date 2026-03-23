@@ -4,7 +4,7 @@ import React from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
-import { timeToHours, isOvernight } from '@/lib/windowUtils'
+import { timeToHours, isOvernight, nowInTimezone } from '@/lib/windowUtils'
 
 const ROW_H = 24
 const LABEL_W = 36
@@ -14,14 +14,6 @@ const TOTAL_H = 7 * ROW_H + 20 // 7 rows + header
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const DOW_MAP = [1, 2, 3, 4, 5, 6, 0] // index to JS day-of-week
-
-/** Convert current time to the given IANA timezone without external libraries. */
-function nowInTimezone(tz?: string): Date {
-  if (!tz) return new Date()
-  const now = new Date()
-  const str = now.toLocaleString('en-US', { timeZone: tz })
-  return new Date(str)
-}
 
 function hourToX(h: number): number {
   return LABEL_W + (h / 24) * BAR_W
@@ -140,9 +132,8 @@ export default function WeeklyTimeline({
 }) {
   if (!windows || windows.length === 0) return null
 
-  const now = nowInTimezone(timezone)
-  const todayRow = DOW_MAP.indexOf(now.getDay())
-  const nowH = now.getHours() + now.getMinutes() / 60
+  const { dayOfWeek, fractionalHour: nowH } = nowInTimezone(timezone)
+  const todayRow = DOW_MAP.indexOf(dayOfWeek)
   const nowX = hourToX(nowH)
 
   const allBlocks = [

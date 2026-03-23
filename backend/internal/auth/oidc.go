@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/stringutil"
 	"golang.org/x/oauth2"
 )
 
@@ -140,23 +141,9 @@ func OIDCConfigFromEnv() *OIDCConfig {
 		ClientSecret:   os.Getenv("OIDC_CLIENT_SECRET"),
 		RedirectURL:    os.Getenv("OIDC_REDIRECT_URL"),
 		GroupsClaim:    os.Getenv("OIDC_GROUPS_CLAIM"),
-		AdminGroups:    splitCSV(os.Getenv("OIDC_ROLE_ADMIN_GROUPS")),
-		OperatorGroups: splitCSV(os.Getenv("OIDC_ROLE_OPERATOR_GROUPS")),
+		AdminGroups:    stringutil.SplitCSV(os.Getenv("OIDC_ROLE_ADMIN_GROUPS")),
+		OperatorGroups: stringutil.SplitCSV(os.Getenv("OIDC_ROLE_OPERATOR_GROUPS")),
 		SkipTLSVerify:  strings.EqualFold(os.Getenv("OIDC_SKIP_TLS_VERIFY"), "true"),
 	}
 }
 
-func splitCSV(s string) []string {
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}

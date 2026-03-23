@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/auth"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
@@ -184,18 +185,5 @@ func isDuplicateKeyError(err error) bool {
 		return false
 	}
 	msg := err.Error()
-	return len(msg) > 0 && (contains(msg, "duplicate key") || contains(msg, "UNIQUE constraint"))
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "UNIQUE constraint")
 }

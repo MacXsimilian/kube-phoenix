@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
@@ -290,24 +291,6 @@ func exceptionWithTargets(ex *store.ScheduledException) exceptionResponseShape {
 
 // parseIDFromString parses a uint from a string query parameter.
 func parseIDFromString(s string) (uint, error) {
-	var id uint64
-	_, err := parseUintBase(s, 10, 64, &id)
+	id, err := strconv.ParseUint(s, 10, 64)
 	return uint(id), err
 }
-
-func parseUintBase(s string, base, bits int, dst *uint64) (int, error) {
-	n := uint64(0)
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0, &numError{s}
-		}
-		d := uint64(c - '0')   //#nosec G115 -- c is '0'..'9', subtraction cannot overflow
-		n = n*uint64(base) + d //#nosec G115 -- base is always 10 in callers
-	}
-	*dst = n
-	return len(s), nil
-}
-
-type numError struct{ s string }
-
-func (e *numError) Error() string { return "invalid number: " + e.s }

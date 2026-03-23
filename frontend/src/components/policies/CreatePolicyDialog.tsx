@@ -26,7 +26,7 @@ const DEFAULT_WINDOWS: SleepWindow[] = [
   { daysOfWeek: [1, 2, 3, 4, 5], startTime: '19:00', endTime: '07:00', allDay: false },
 ]
 
-const DEFAULTS: PolicyInput & { _windows: SleepWindow[] } = {
+const DEFAULTS: PolicyInput & { editingWindows: SleepWindow[] } = {
   name: '',
   description: '',
   sleepWindows: DEFAULT_WINDOWS,
@@ -36,7 +36,7 @@ const DEFAULTS: PolicyInput & { _windows: SleepWindow[] } = {
   timeoutMinutes: 30,
   namespaceFilter: '',
   labelSelector: '',
-  _windows: DEFAULT_WINDOWS,
+  editingWindows: DEFAULT_WINDOWS,
 }
 
 
@@ -74,7 +74,7 @@ export default function CreatePolicyDialog({
           timeoutMinutes: existing.timeoutMinutes,
           namespaceFilter: existing.namespaceFilter || '',
           labelSelector: existing.labelSelector || '',
-          _windows: windows,
+          editingWindows: windows,
         })
       } else {
         setForm(DEFAULTS)
@@ -89,8 +89,8 @@ export default function CreatePolicyDialog({
 
   function validate(): string {
     if (!form.name.trim()) return 'Name is required'
-    if (form._windows.length === 0) return 'At least one sleep window is required'
-    if (form._windows.every(w => w.daysOfWeek.length === 0)) return 'Select at least one day'
+    if (form.editingWindows.length === 0) return 'At least one sleep window is required'
+    if (form.editingWindows.every(w => w.daysOfWeek.length === 0)) return 'Select at least one day'
     if ((form.timeoutMinutes ?? 0) < 0 || (form.timeoutMinutes ?? 0) > 1440) return 'Timeout must be 0\u20131440 minutes'
     return ''
   }
@@ -100,7 +100,7 @@ export default function CreatePolicyDialog({
       const payload: PolicyInput = {
         name: form.name,
         description: form.description || undefined,
-        sleepWindows: form._windows.filter(w => w.daysOfWeek.length > 0),
+        sleepWindows: form.editingWindows.filter(w => w.daysOfWeek.length > 0),
         timezone: form.timezone,
         mode: form.mode,
         enabled: form.enabled,
@@ -175,17 +175,17 @@ export default function CreatePolicyDialog({
         </TextField>
 
         <WindowPicker
-          windows={form._windows}
-          onChange={w => set('_windows', w)}
+          windows={form.editingWindows}
+          onChange={w => set('editingWindows', w)}
         />
 
         {/* Live preview */}
-        {form._windows.length > 0 && form._windows.some(w => w.daysOfWeek.length > 0) && (
+        {form.editingWindows.length > 0 && form.editingWindows.some(w => w.daysOfWeek.length > 0) && (
           <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, p: 1.5, bgcolor: 'rgba(255,255,255,0.01)' }}>
             <Typography variant="caption" color="text.disabled" fontWeight={600} letterSpacing={0.5} textTransform="uppercase" sx={{ mb: 0.5, display: 'block' }}>
               Preview
             </Typography>
-            <WeeklyTimeline windows={form._windows} />
+            <WeeklyTimeline windows={form.editingWindows} />
           </Box>
         )}
 

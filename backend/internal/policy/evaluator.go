@@ -83,8 +83,9 @@ func NextTransition(windows []SleepWindow, timezone string, now time.Time) *time
 	local := now.In(loc)
 	currentState := Evaluate(windows, timezone, now)
 
-	// Collect all boundary times in the next 8 days.
-	boundaries := collectBoundaries(windows, local, 8)
+	// Collect all boundary times in the next week + 1 day buffer.
+	const maxLookaheadDays = 8
+	boundaries := collectBoundaries(windows, local, maxLookaheadDays)
 
 	// Find the earliest boundary after now where the state differs.
 	for _, b := range boundaries {
