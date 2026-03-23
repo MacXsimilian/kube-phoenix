@@ -2,12 +2,11 @@
 
 import React from 'react'
 import Box from '@mui/material/Box'
-import Typography from '@mui/material/Typography'
 import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
-import { timeToHours, isOvernight, nowInTimezone } from '@/lib/windowUtils'
+import { timeToHours, isOvernight, nowInTimezone, DOW_MAP, computeTimeRangeBlocks } from '@/lib/windowUtils'
+import LegendItem from './LegendItem'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const DOW_MAP = [1, 2, 3, 4, 5, 6, 0] // index → JS day-of-week
 
 const STRIP_H = 6
 const GAP = 4
@@ -57,6 +56,16 @@ function windowSegments(windows: SleepWindow[]): Segment[] {
   return segs
 }
 
+function timeRangeToSegments(startISO: string, endISO: string, color: string, glow: string, tz?: string): Segment[] {
+  return computeTimeRangeBlocks(startISO, endISO, tz).map(tb => ({
+    row: tb.row,
+    x1: hourToX(tb.startHour),
+    x2: hourToX(tb.endHour),
+    color,
+    glow,
+  }))
+}
+
 function overrideSegments(overrides: PolicyOverride[], tz?: string): Segment[] {
   if (!overrides) return []
   const segs: Segment[] = []
@@ -64,9 +73,7 @@ function overrideSegments(overrides: PolicyOverride[], tz?: string): Segment[] {
     if (!ov.startsAt || !ov.endsAt) continue
     const color = ov.overrideType === 'force_sleep' ? 'rgba(239,68,68,0.55)' : 'rgba(245,158,11,0.55)'
     const glow = ov.overrideType === 'force_sleep' ? '#EF4444' : '#F59E0B'
-    const start = toTZ(ov.startsAt, tz)
-    const end = toTZ(ov.endsAt, tz)
-    addTimeRangeSegments(segs, start, end, color, glow)
+    segs.push(...timeRangeToSegments(ov.startsAt, ov.endsAt, color, glow, tz))
   }
   return segs
 }
@@ -78,38 +85,9 @@ function exceptionSegments(exceptions: ScheduledException[], tz?: string): Segme
     if (ex.status === 'cancelled' || ex.status === 'completed') continue
     const color = ex.exceptionType === 'force_sleep' ? 'rgba(239,68,68,0.55)' : 'rgba(34,197,94,0.55)'
     const glow = ex.exceptionType === 'force_sleep' ? '#EF4444' : '#22C55E'
-    const start = toTZ(ex.startsAt, tz)
-    const end = toTZ(ex.endsAt, tz)
-    addTimeRangeSegments(segs, start, end, color, glow)
+    segs.push(...timeRangeToSegments(ex.startsAt, ex.endsAt, color, glow, tz))
   }
   return segs
-}
-
-function toTZ(iso: string, tz?: string): Date {
-  const d = new Date(iso)
-  if (!tz) return d
-  return new Date(d.toLocaleString('en-US', { timeZone: tz }))
-}
-
-function addTimeRangeSegments(segs: Segment[], start: Date, end: Date, color: string, glow: string) {
-  const cursor = new Date(start)
-  cursor.setHours(0, 0, 0, 0)
-  const endDay = new Date(end)
-  endDay.setHours(0, 0, 0, 0)
-
-  while (cursor <= endDay) {
-    const row = DOW_MAP.indexOf(cursor.getDay())
-    if (row !== -1) {
-      const isStart = cursor.getTime() === new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
-      const isEnd = cursor.getTime() === endDay.getTime()
-      const sh = isStart ? start.getHours() + start.getMinutes() / 60 : 0
-      const eh = isEnd ? end.getHours() + end.getMinutes() / 60 : 24
-      if (eh > sh) {
-        segs.push({ row, x1: hourToX(sh), x2: hourToX(eh), color, glow })
-      }
-    }
-    cursor.setDate(cursor.getDate() + 1)
-  }
 }
 
 export default function LedGlowTimeline({
@@ -262,35 +240,18 @@ export default function LedGlowTimeline({
 
       {/* Legend */}
       <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
-        <LegendItem color="#7C3AED" label="Sleep" />
-        <LegendItem color="#22C55E" label="Awake" />
+        <LegendItem color="#7C3AED" label="Sleep" variant="led" />
+        <LegendItem color="#22C55E" label="Awake" variant="led" />
         {overrides && overrides.some(o => o.overrideType === 'stay_awake') && (
-          <LegendItem color="#F59E0B" label="Stay awake" />
+          <LegendItem color="#F59E0B" label="Stay awake" variant="led" />
         )}
         {overrides && overrides.some(o => o.overrideType === 'force_sleep') && (
-          <LegendItem color="#EF4444" label="Force sleep" />
+          <LegendItem color="#EF4444" label="Force sleep" variant="led" />
         )}
         {exceptions && exceptions.some(e => e.exceptionType === 'stay_awake') && (
-          <LegendItem color="#22C55E" label="Exception" />
+          <LegendItem color="#22C55E" label="Exception" variant="led" />
         )}
       </Box>
-    </Box>
-  )
-}
-
-function LegendItem({ color, label }: { color: string; label: string }) {
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-      <Box sx={{
-        width: 12,
-        height: 4,
-        borderRadius: 2,
-        bgcolor: color,
-        boxShadow: `0 0 6px ${color}`,
-      }} />
-      <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11 }}>
-        {label}
-      </Typography>
     </Box>
   )
 }

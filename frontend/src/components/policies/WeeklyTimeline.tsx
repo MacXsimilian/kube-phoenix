@@ -2,9 +2,9 @@
 
 import React from 'react'
 import Box from '@mui/material/Box'
-import Typography from '@mui/material/Typography'
 import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
-import { timeToHours, isOvernight, nowInTimezone } from '@/lib/windowUtils'
+import { timeToHours, isOvernight, nowInTimezone, DOW_MAP, computeTimeRangeBlocks } from '@/lib/windowUtils'
+import LegendItem from './LegendItem'
 
 const ROW_H = 24
 const LABEL_W = 36
@@ -13,7 +13,6 @@ const TOTAL_W = LABEL_W + BAR_W
 const TOTAL_H = 7 * ROW_H + 20 // 7 rows + header
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const DOW_MAP = [1, 2, 3, 4, 5, 6, 0] // index to JS day-of-week
 
 function hourToX(h: number): number {
   return LABEL_W + (h / 24) * BAR_W
@@ -57,40 +56,14 @@ function windowBlocks(windows: SleepWindow[]): Block[] {
   return blocks
 }
 
-/** Convert an ISO timestamp to a Date in the given timezone. */
-function toTZ(iso: string, tz?: string): Date {
-  const d = new Date(iso)
-  if (!tz) return d
-  const str = d.toLocaleString('en-US', { timeZone: tz })
-  return new Date(str)
-}
-
-function timeRangeBlocks(
-  startISO: string, endISO: string, color: string, opacity: number, tz?: string,
-): Block[] {
-  const blocks: Block[] = []
-  const start = toTZ(startISO, tz)
-  const end = toTZ(endISO, tz)
-
-  const cursor = new Date(start)
-  cursor.setHours(0, 0, 0, 0)
-  const endDay = new Date(end)
-  endDay.setHours(0, 0, 0, 0)
-
-  while (cursor <= endDay) {
-    const row = DOW_MAP.indexOf(cursor.getDay())
-    if (row !== -1) {
-      const isSameAsStart = cursor.getTime() === new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
-      const isSameAsEnd = cursor.getTime() === endDay.getTime()
-      const sh = isSameAsStart ? start.getHours() + start.getMinutes() / 60 : 0
-      const eh = isSameAsEnd ? end.getHours() + end.getMinutes() / 60 : 24
-      if (eh > sh) {
-        blocks.push({ row, x1: hourToX(sh), x2: hourToX(eh), color, opacity })
-      }
-    }
-    cursor.setDate(cursor.getDate() + 1)
-  }
-  return blocks
+function timeRangeToBlocks(startISO: string, endISO: string, color: string, opacity: number, tz?: string): Block[] {
+  return computeTimeRangeBlocks(startISO, endISO, tz).map(tb => ({
+    row: tb.row,
+    x1: hourToX(tb.startHour),
+    x2: hourToX(tb.endHour),
+    color,
+    opacity,
+  }))
 }
 
 function overrideBlocks(overrides: PolicyOverride[], tz?: string): Block[] {
@@ -99,7 +72,7 @@ function overrideBlocks(overrides: PolicyOverride[], tz?: string): Block[] {
   for (const ov of overrides) {
     if (!ov.startsAt || !ov.endsAt) continue
     const color = ov.overrideType === 'force_sleep' ? '#ef4444' : '#f59e0b'
-    blocks.push(...timeRangeBlocks(ov.startsAt, ov.endsAt, color, 0.35, tz))
+    blocks.push(...timeRangeToBlocks(ov.startsAt, ov.endsAt, color, 0.35, tz))
   }
   return blocks
 }
@@ -110,7 +83,7 @@ function exceptionBlocks(exceptions: ScheduledException[], tz?: string): Block[]
   for (const ex of exceptions) {
     if (ex.status === 'cancelled' || ex.status === 'completed') continue
     const color = ex.exceptionType === 'force_sleep' ? '#ef4444' : '#22c55e'
-    blocks.push(...timeRangeBlocks(ex.startsAt, ex.endsAt, color, 0.3, tz))
+    blocks.push(...timeRangeToBlocks(ex.startsAt, ex.endsAt, color, 0.3, tz))
   }
   return blocks
 }
@@ -252,17 +225,6 @@ export default function WeeklyTimeline({
           <LegendItem color="#22c55e" label="Exception" />
         )}
       </Box>
-    </Box>
-  )
-}
-
-function LegendItem({ color, label }: { color: string; label: string }) {
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-      <Box sx={{ width: 10, height: 10, borderRadius: 0.5, bgcolor: color, opacity: 0.4 }} />
-      <Typography variant="caption" color="text.disabled">
-        {label}
-      </Typography>
     </Box>
   )
 }
