@@ -26,7 +26,7 @@ import {
 import type { ScheduledException } from '@/lib/types'
 import CreatePolicyDialog from '@/components/policies/CreatePolicyDialog'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
-import WeeklyTimeline from '@/components/policies/WeeklyTimeline'
+import LedGlowTimeline from '@/components/policies/LedGlowTimeline'
 import OverridesSection from '@/components/policies/OverridesSection'
 import ExceptionsSection from '@/components/policies/ExceptionsSection'
 import ExecutionHistoryTable from '@/components/policies/ExecutionHistoryTable'
@@ -136,10 +136,11 @@ export default function PolicyDetailPage() {
                 ({policy.timezone || 'UTC'})
               </Typography>
             </Box>
-            <WeeklyTimeline
+            <LedGlowTimeline
               windows={policy.sleepWindows}
               overrides={overrides}
               exceptions={exceptions}
+              timezone={policy.timezone}
             />
           </Box>
         ) : null}
