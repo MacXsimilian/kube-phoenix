@@ -10,6 +10,7 @@ import (
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/stringutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -58,29 +59,22 @@ func (r *Runner) ok(ch chan<- LogLine, msg string)     { emit(ch, "ok", msg) }
 func (r *Runner) plan(ch chan<- LogLine, msg string)   { emit(ch, "plan", msg) }
 func (r *Runner) errLog(ch chan<- LogLine, msg string) { emit(ch, "error", msg) }
 
-// splitCSV splits a comma-separated string into a trimmed set.
-func splitCSV(s string) map[string]bool {
-	m := map[string]bool{}
-	for _, v := range strings.Split(s, ",") {
-		v = strings.TrimSpace(v)
-		if v != "" {
-			m[v] = true
-		}
-	}
-	return m
-}
-
 // mergeCSV merges two comma-separated strings into a single trimmed set.
 func mergeCSV(a, b string) map[string]bool {
-	m := splitCSV(a)
-	for k, v := range splitCSV(b) {
+	m := stringutil.SplitCSVSet(a)
+	for k, v := range stringutil.SplitCSVSet(b) {
 		m[k] = v
 	}
 	return m
 }
 
+// splitCSV splits a comma-separated string into a trimmed set.
+func splitCSV(s string) map[string]bool {
+	return stringutil.SplitCSVSet(s)
+}
+
 // isApply returns true when mode is "apply".
-func isApply(mode string) bool { return mode == "apply" }
+func isApply(mode string) bool { return mode == store.PolicyModeApply }
 
 // namespaceAllowed returns true if the namespace should be processed.
 // If filter is empty, all namespaces are allowed (subject to guardrail skip list).

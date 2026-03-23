@@ -7,6 +7,8 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
+const subscriberChannelBuffer = 256
+
 // Broker manages WebSocket subscriber channels for live log streaming.
 type Broker struct {
 	mu     sync.RWMutex
@@ -22,7 +24,7 @@ func NewBroker() *Broker {
 }
 
 func (b *Broker) Subscribe(execID uint) chan store.PolicyLogLine {
-	ch := make(chan store.PolicyLogLine, 256)
+	ch := make(chan store.PolicyLogLine, subscriberChannelBuffer)
 	b.mu.Lock()
 	b.subs[execID] = append(b.subs[execID], ch)
 	b.mu.Unlock()

@@ -81,7 +81,7 @@ func HasSkipOverride(overrides []store.PolicyOverride, direction string, now tim
 func ActiveException(exceptions []store.ScheduledException, policyID *uint, now time.Time) *store.ScheduledException {
 	for i := range exceptions {
 		e := &exceptions[i]
-		if e.Status != "pending" && e.Status != "active" {
+		if e.Status != store.ExceptionStatusPending && e.Status != store.ExceptionStatusActive {
 			continue
 		}
 		if policyID != nil && e.PolicyID != nil && *e.PolicyID != *policyID {

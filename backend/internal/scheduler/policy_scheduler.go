@@ -129,7 +129,11 @@ func (ps *PolicyScheduler) RecoverPolicies(ctx context.Context) error {
 			continue
 		}
 		windows := parsePolicyWindows(p)
-		overrides, _ := ps.store.ListActiveOverrides(p.ID, now)
+		overrides, err := ps.store.ListActiveOverrides(p.ID, now)
+		if err != nil {
+			slog.Warn("failed to list active overrides", "policyID", p.ID, "err", err)
+			overrides = nil
+		}
 		intended := IntendedState(windows, p.Timezone, overrides, now)
 		if intended == PolicyStateUnknown {
 			continue
@@ -165,9 +169,9 @@ func (ps *PolicyScheduler) TickExceptions(ctx context.Context) {
 	for _, ex := range exceptions {
 		ex := ex
 		switch ex.Status {
-		case "pending":
+		case store.ExceptionStatusPending:
 			if !now.Before(ex.StartsAt) {
-				if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, "active"); err != nil {
+				if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusActive); err != nil {
 					slog.Error("exception: set active failed", "exceptionID", ex.ID, "err", err)
 					continue
 				}
@@ -178,9 +182,9 @@ func (ps *PolicyScheduler) TickExceptions(ctx context.Context) {
 					}
 				}
 			}
-		case "active":
+		case store.ExceptionStatusActive:
 			if now.After(ex.EndsAt) {
-				if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, "completed"); err != nil {
+				if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusCompleted); err != nil {
 					slog.Error("exception: set completed failed", "exceptionID", ex.ID, "err", err)
 					continue
 				}
@@ -197,11 +201,14 @@ func (ps *PolicyScheduler) TickExceptions(ctx context.Context) {
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
-const tickInterval = 30 * time.Second
-const defaultExecutionTimeout = 2 * time.Hour
+const (
+	policyEvalTickInterval  = 30 * time.Second
+	defaultExecutionTimeout = 2 * time.Hour
+	execLogChannelBuffer    = 512
+)
 
 func (ps *PolicyScheduler) tickLoop(ctx context.Context) {
-	ticker := time.NewTicker(tickInterval)
+	ticker := time.NewTicker(policyEvalTickInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -233,13 +240,17 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, now time.Time) {
 		return
 	}
 
-	overrides, _ := ps.store.ListActiveOverrides(p.ID, now)
+	overrides, err := ps.store.ListActiveOverrides(p.ID, now)
+	if err != nil {
+		slog.Warn("failed to list active overrides", "policyID", p.ID, "err", err)
+		overrides = nil
+	}
 	intended := IntendedState(cp.windows, p.Timezone, overrides, now)
 
 	if intended == PolicyStateUnknown {
 		return
 	}
-	if p.CurrentState == string(intended) || p.CurrentState == "transitioning" {
+	if p.CurrentState == string(intended) || p.CurrentState == store.PolicyStateTransitioning {
 		return
 	}
 
@@ -318,7 +329,7 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		ps.mu.Unlock()
 		return 0, fmt.Errorf("policy %d lookup: %w", p.ID, err)
 	}
-	if fresh.CurrentState == "transitioning" {
+	if fresh.CurrentState == store.PolicyStateTransitioning {
 		ps.mu.Unlock()
 		return 0, fmt.Errorf("policy %d is already transitioning", p.ID)
 	}
@@ -330,7 +341,7 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		Direction: direction,
 		Trigger:   trigger,
 		StartedAt: time.Now(),
-		Status:    "running",
+		Status:    store.ExecStatusRunning,
 		Mode:      p.Mode,
 	}
 	if err := ps.store.CreatePolicyExecution(exec); err != nil {
@@ -348,7 +359,7 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		runCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
-		logCh := make(chan scaler.LogLine, 512)
+		logCh := make(chan scaler.LogLine, execLogChannelBuffer)
 		seq := 0
 
 		var wg sync.WaitGroup
@@ -387,9 +398,9 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		wg.Wait()
 		ps.Broker.Close(execID)
 
-		status := "success"
+		status := store.ExecStatusSuccess
 		if runErr != nil {
-			status = "failed"
+			status = store.ExecStatusFailed
 			slog.Error("policy scheduler: execution failed", "execID", execID, "err", runErr)
 		}
 
@@ -421,11 +432,11 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		// Update policy's cached state
 		nextTransition := ps.NextTransition(p.ID)
 		var newState string
-		if status == "success" {
+		if status == store.ExecStatusSuccess {
 			if direction == "sleep" {
-				newState = "sleeping"
+				newState = store.PolicyStateSleeping
 			} else {
-				newState = "awake"
+				newState = store.PolicyStateAwake
 			}
 		} else {
 			newState = "unknown"

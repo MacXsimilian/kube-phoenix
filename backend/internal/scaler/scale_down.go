@@ -8,6 +8,11 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
+const (
+	drainTimeoutPerPod = 15 // seconds per pod
+	drainTimeoutBase   = 60 // base seconds
+)
+
 // RunScaleDown scales all Deployments and StatefulSets to 0 (excluding skip namespaces)
 // and drains + deletes non-protected nodes.
 // namespaceFilter: comma-separated list of namespaces to target; empty = all.
@@ -97,7 +102,7 @@ func (r *Runner) drainNodes(ctx context.Context, mode string, g *store.Guardrail
 		}
 
 		podCount := podCountPerNode[name]
-		drainTimeout := time.Duration(podCount*15+60) * time.Second
+		drainTimeout := time.Duration(podCount*drainTimeoutPerPod+drainTimeoutBase) * time.Second
 		r.drainAndDeleteNode(ctx, mode, name, podCount, drainTimeout, logCh, counts)
 	}
 }
