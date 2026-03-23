@@ -250,7 +250,7 @@ kube-phoenix/
 │       │   │   └── GuardrailsForm.tsx
 │       │   ├── policies/
 │       │   │   ├── PolicyCard.tsx       # State badge, sleep/wake buttons, edit/delete
-│       │   │   ├── CreatePolicyDialog.tsx  # Create/edit form with WindowPicker
+│       │   │   ├── CreatePolicyDialog.tsx  # Create/edit form with WindowPicker and dashboard mini-card preview
 │       │   │   ├── WindowPicker.tsx     # Day/time picker for SleepWindow objects
 │       │   │   ├── MiniTimeline.tsx     # 24h SVG bar showing sleep/wake periods
 │       │   │   ├── WeeklyTimeline.tsx   # 7-day SVG timeline visualisation
@@ -1482,9 +1482,9 @@ Features: container selector (multi-container pods), search with match counter a
 
 **`PolicyCard`** — displays a single policy with state badge (awake/sleeping/unknown), sleep/wake action buttons, mode badge, and an enabled toggle. The toggle uses an optimistic update — it flips immediately in local state, fires `PUT /api/policies/:id` with `{ enabled: <new value> }`, and reverts on error. Has edit and delete actions.
 
-**`CreatePolicyDialog`** — form for creating or editing a policy. The primary input is the `WindowPicker` for defining sleep windows. An "All Day" toggle marks the window as covering the full 24 hours. A live preview shows the resulting sleep/wake periods. Also includes: name, description, timezone, namespace filter, label selector, mode, timeout, and enabled switch.
+**`CreatePolicyDialog`** — form for creating or editing a policy. The primary input is the `WindowPicker` for defining sleep windows. An "All Day" toggle marks the window as covering the full 24 hours. A **dashboard mini-card preview** shows the resulting schedule: a card header with timezone badge, the `WeeklyTimeline` grid with brand-purple sleep blocks and green awake rows, and a stats footer showing total weekly sleep/awake hours (via `computeWeeklyStats()`) with icons and a human-readable schedule summary. Also includes: name, description, timezone, namespace filter, label selector, mode, timeout, and enabled switch.
 
-**`WindowPicker`** — the day/time picker for `SleepWindow` objects. Each window defines `daysOfWeek` (chip row: Mon–Sun), `startTime`, and `endTime`. Multiple windows can be stacked. The picker shows a live `MiniTimeline` (24h SVG bar) and `WeeklyTimeline` (7-day SVG) preview of the resulting sleep/wake periods. Windows are the sole schedule source of truth — the backend evaluates them directly.
+**`WindowPicker`** — the day/time picker for `SleepWindow` objects. Each window is an independent card with day-of-week buttons, an all-day slide toggle, and per-window sleep/wake time pickers. Preset buttons ("Weekday nights", "Weekends", "Nights + weekends", "Business hours") apply common patterns. A never-wake warning appears when all 7 days are set to all-day sleep. Windows are the sole schedule source of truth — the backend evaluates them directly.
 
 **`GuardrailsForm`** — four `ChipInput` fields (Skip Namespaces, Critical Namespaces, Skip Node Labels, Skip Node Taints). The `ChipInput` component renders chips for each value with delete buttons, and an inline text input for adding new values. Pressing Enter or Tab, or blurring the input, adds the current value as a chip. Backspace on empty input removes the last chip.
 

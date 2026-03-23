@@ -427,11 +427,18 @@ The `WindowPicker` component provides the schedule editing UI:
 
 An SVG-based weekly timeline that visualizes sleep windows, overrides, and exceptions as colored blocks across a 7-day x 24-hour grid. Features:
 
-- Renders sleep windows as indigo blocks on the appropriate day rows.
-- Overlays override and exception windows in distinct colors.
+- Renders sleep windows as brand-purple (`#7C3AED`, opacity 0.45) blocks on the appropriate day rows.
+- Awake periods are visually distinct with green (`#22C55E`, opacity 0.10, 0.18 for today) row backgrounds — awake is never empty/transparent.
+- Overlays override and exception windows in distinct colors (amber `#F59E0B`, red `#EF4444`).
 - Shows a "now" marker line converted to the policy's timezone using `toLocaleString()`.
 - All-day windows render as full-width bars.
 - Overnight windows split across two rows (evening portion on the start day, morning portion on the next day).
+- Legend includes both "Sleep" and "Awake" entries.
+
+In the **CreatePolicyDialog**, the timeline is wrapped in a **dashboard mini-card** preview with:
+- A card header showing "Schedule Preview" and the selected timezone.
+- The `WeeklyTimeline` grid rendered at full width.
+- A stats footer showing total weekly sleep/awake hours (computed by `computeWeeklyStats()`) with `BedtimeIcon`/`WbSunnyIcon` and a human-readable schedule summary via `windowsToText()`.
 
 ### Frontend Types
 
