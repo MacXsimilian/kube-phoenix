@@ -30,9 +30,9 @@ import type { PolicyExecution } from '@/lib/types'
 function duration(exec: PolicyExecution): string {
   if (!exec.finishedAt) return 'Running...'
   const ms = new Date(exec.finishedAt).getTime() - new Date(exec.startedAt).getTime()
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s`
-  return `${Math.floor(s / 60)}m ${s % 60}s`
+  const durationSeconds = Math.floor(ms / 1000)
+  if (durationSeconds < 60) return `${durationSeconds}s`
+  return `${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s`
 }
 
 function formatDate(iso: string): string {

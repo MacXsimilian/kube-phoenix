@@ -43,8 +43,8 @@ function ChipInput({
   const [input, setInput] = useState('')
 
   const add = () => {
-    const v = input.trim()
-    if (v && !values.includes(v)) onChange([...values, v])
+    const trimmedInput = input.trim()
+    if (trimmedInput && !values.includes(trimmedInput)) onChange([...values, trimmedInput])
     setInput('')
   }
 
@@ -106,8 +106,8 @@ function ProtectedChipInput({
   const [pendingRemove, setPendingRemove] = useState<string | null>(null)
 
   const add = () => {
-    const v = input.trim()
-    if (v && !values.includes(v)) onChange([...values, v])
+    const trimmedInput = input.trim()
+    if (trimmedInput && !values.includes(trimmedInput)) onChange([...values, trimmedInput])
     setInput('')
   }
 
@@ -221,7 +221,7 @@ function fromCsv(s: string) { return s.split(',').map((v) => v.trim()).filter(Bo
 export default function GuardrailsForm() {
   const { user } = useAuth()
   const hasEdit = canEditGuardrails(user?.permissions)
-  const qc = useQueryClient()
+  const queryClient = useQueryClient()
   const { data: g, isLoading, isError: loadError } = useQuery({ queryKey: ['guardrails'], queryFn: getGuardrails })
 
   const [systemNs, setSystemNs] = useState<string[]>([])
@@ -254,7 +254,7 @@ export default function GuardrailsForm() {
         skipNodeTaints: csv(skipTaints),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['guardrails'] })
+      queryClient.invalidateQueries({ queryKey: ['guardrails'] })
       setSaveError(null)
       setSnackOpen(true)
     },

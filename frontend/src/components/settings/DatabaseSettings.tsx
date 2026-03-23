@@ -195,7 +195,6 @@ export default function DatabaseSettings() {
         </CardContent>
       </Card>
 
-      {/* Step 1: Initial warning */}
       <Dialog open={step1Open} onClose={() => setStep1Open(false)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <WarningAmberRoundedIcon color="error" />
@@ -218,7 +217,6 @@ export default function DatabaseSettings() {
         </DialogActions>
       </Dialog>
 
-      {/* Step 2: Type the confirmation phrase */}
       <Dialog open={step2Open} onClose={() => setStep2Open(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Confirm destructive operation</DialogTitle>
         <DialogContent>
@@ -251,7 +249,6 @@ export default function DatabaseSettings() {
         </DialogActions>
       </Dialog>
 
-      {/* Progress dialog */}
       <ResetProgressDialog
         open={progressOpen}
         events={progressEvents}

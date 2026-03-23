@@ -29,6 +29,7 @@ import { sinceMs } from '@/lib/formatters'
 import { useTheme } from '@mui/material/styles'
 import { statusColors } from '@/components/cluster/statusColors'
 import { useColors } from '@/lib/colors'
+import { WORKLOADS_REFETCH_MS } from '@/lib/constants'
 import WorkloadDetailDrawer from './WorkloadDetailDrawer'
 
 export default function WorkloadsTable() {
@@ -36,7 +37,7 @@ export default function WorkloadsTable() {
   const { data: workloads = [], isLoading, isError, error, dataUpdatedAt, refetch } = useQuery({
     queryKey: ['workloads'],
     queryFn: getWorkloads,
-    refetchInterval: 30_000,
+    refetchInterval: WORKLOADS_REFETCH_MS,
   })
 
   const { data: guardrails } = useQuery({ queryKey: ['guardrails'], queryFn: getGuardrails })
@@ -48,8 +49,8 @@ export default function WorkloadsTable() {
   const [statusFilter, setStatusFilter] = useState(validStatuses.includes(initialStatus) ? initialStatus : 'all')
 
   useEffect(() => {
-    const v = searchParams.get('status') ?? 'all'
-    setStatusFilter(validStatuses.includes(v) ? v : 'all')
+    const statusFromUrl = searchParams.get('status') ?? 'all'
+    setStatusFilter(validStatuses.includes(statusFromUrl) ? statusFromUrl : 'all')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
   const [sortCol, setSortCol] = useState<'namespace' | 'name' | 'kind' | 'replicas' | 'status' | null>(null)
@@ -58,7 +59,7 @@ export default function WorkloadsTable() {
   const [selectedWorkload, setSelectedWorkload] = useState<Workload | null>(null)
   const isDark = useTheme().palette.mode === 'dark'
   const colors = useColors()
-  const SC = statusColors(isDark)
+  const STATUS_COLORS = statusColors(isDark)
 
   const handleSort = useCallback((col: typeof sortCol) => {
     if (sortCol === col) {
@@ -218,7 +219,7 @@ export default function WorkloadsTable() {
                 </TableRow>
               ) : (
                 sorted.map((w) => {
-                  const sc = SC[w.status]
+                  const statusColor = STATUS_COLORS[w.status]
                   const unhealthy = w.readyReplicas < w.currentReplicas && w.currentReplicas > 0
                   return (
                     <TableRow key={`${w.namespace}/${w.name}/${w.kind}`} hover onClick={() => setSelectedWorkload(w)} sx={{ cursor: 'pointer' }}>
@@ -250,9 +251,9 @@ export default function WorkloadsTable() {
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={sc.label}
+                          label={statusColor.label}
                           size="small"
-                          sx={{ height: 20, fontSize: 11, bgcolor: sc.bgcolor, color: sc.color }}
+                          sx={{ height: 20, fontSize: 11, bgcolor: statusColor.bgcolor, color: statusColor.color }}
                         />
                       </TableCell>
                     </TableRow>

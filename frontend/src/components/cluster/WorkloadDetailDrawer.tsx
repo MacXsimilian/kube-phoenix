@@ -27,13 +27,15 @@ import { statusColors } from '@/components/cluster/statusColors'
 import { useTheme } from '@mui/material/styles'
 import { useColors } from '@/lib/colors'
 import { useDrawerResize } from '@/lib/useDrawerResize'
+import { WORKLOAD_PODS_REFETCH_MS } from '@/lib/constants'
 import type { NodePod, Workload } from '@/lib/types'
 import PodDetailContent from './PodDetailContent'
 import PodRow from './PodRow'
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
-function ReplicaBar({ ready, current, saved, isDark, colors }: { ready: number; current: number; saved: number | null; isDark: boolean; colors: ReturnType<typeof import('@/lib/colors').useColors> }) {
+function ReplicaBar({ ready, current, saved }: { ready: number; current: number; saved: number | null }) {
+  const colors = useColors()
   const total = saved ?? current
   const pct = total > 0 ? Math.round((ready / total) * 100) : 0
   const color = pct >= 100 ? colors.success : pct > 0 ? colors.warning : colors.errorLight
@@ -71,17 +73,17 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
     queryKey: ['workload-pods', workload?.namespace, workload?.kind, workload?.name],
     queryFn: () => getWorkloadPods(workload!.namespace, workload!.kind, workload!.name),
     enabled: workload != null,
-    refetchInterval: 15_000,
+    refetchInterval: WORKLOAD_PODS_REFETCH_MS,
   })
 
   const filtered = useMemo(
-    () => !search ? pods : pods.filter((p) =>
-      p.name.toLowerCase().includes(search.toLowerCase())
+    () => !search ? pods : pods.filter((pod) =>
+      pod.name.toLowerCase().includes(search.toLowerCase())
     ),
     [pods, search]
   )
 
-  const sc = workload ? statusColors(isDark)[workload.status] : null
+  const statusColor = workload ? statusColors(isDark)[workload.status] : null
 
   function handleClose() {
     setSelectedPod(null)
@@ -158,7 +160,7 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
                           size="small"
                           sx={{ height: 18, fontSize: 10, bgcolor: 'rgba(124,58,237,0.12)', color: 'primary.main' }}
                         />
-                        {sc && <Chip label={sc.label} size="small" sx={{ height: 18, fontSize: 10, bgcolor: sc.bgcolor, color: sc.color }} />}
+                        {statusColor && <Chip label={statusColor.label} size="small" sx={{ height: 18, fontSize: 10, bgcolor: statusColor.bgcolor, color: statusColor.color }} />}
                       </Box>
                     </>
                   )}
@@ -176,8 +178,6 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
                   ready={workload.readyReplicas}
                   current={workload.currentReplicas}
                   saved={workload.savedReplicas}
-                  isDark={isDark}
-                  colors={colors}
                 />
               </Box>
             )}
@@ -244,7 +244,7 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
                   </TableHead>
                   <TableBody>
                     {filtered.map((pod) => (
-                      <PodRow key={pod.name} pod={pod} onClick={() => setSelectedPod(pod)} isDark={isDark} colors={colors} />
+                      <PodRow key={pod.name} pod={pod} onClick={() => setSelectedPod(pod)} />
                     ))}
                   </TableBody>
                 </Table>

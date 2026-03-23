@@ -62,13 +62,4 @@ export const LOG_LEVEL_COLORS_LIGHT: Record<LogLine['level'], string> = {
   warn: '#92400E',
 }
 
-// ── Override / exception type labels ────────────────────────────────────────
-
-export const TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  keep_awake:  { label: 'Keep Awake',  color: '#86efac', bg: 'rgba(34,197,94,0.18)' },
-  force_sleep: { label: 'Force Sleep', color: '#a5b4fc', bg: 'rgba(99,102,241,0.18)' },
-  delay_sleep: { label: 'Delay Sleep', color: '#fcd34d', bg: 'rgba(245,158,11,0.18)' },
-  skip_wake:   { label: 'Skip Wake',   color: '#fca5a5', bg: 'rgba(239,68,68,0.18)' },
-}
-
 export const TYPE_LABEL_FALLBACK = { label: 'Unknown', color: '#94A3B8', bg: 'rgba(148,163,184,0.15)' }

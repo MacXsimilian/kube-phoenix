@@ -14,12 +14,8 @@ import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import StatusChip from '@/components/shared/StatusChip'
 import { fmtDt } from '@/lib/formatters'
+import { TYPE_LABELS, TYPE_LABEL_FALLBACK } from '@/lib/statusColors'
 import type { ScheduledException } from '@/lib/types'
-
-const EXCEPTION_TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  stay_awake:  { label: 'Stay Awake',  color: '#FCD34D', bg: 'rgba(245,158,11,0.15)' },
-  force_sleep: { label: 'Force Sleep', color: '#FCA5A5', bg: 'rgba(239,68,68,0.15)' },
-}
 
 export default function ExceptionsSection({
   exceptions,
@@ -63,8 +59,8 @@ export default function ExceptionsSection({
               <TableRow key={ex.id}>
                 <TableCell>
                   {(() => {
-                    const t = EXCEPTION_TYPE_LABELS[ex.exceptionType] ?? { label: ex.exceptionType, color: '#94A3B8', bg: 'rgba(148,163,184,0.15)' }
-                    return <Chip label={t.label} size="small" sx={{ fontSize: 10, color: t.color, bgcolor: t.bg }} />
+                    const typeLabel = TYPE_LABELS[ex.exceptionType] ?? TYPE_LABEL_FALLBACK
+                    return <Chip label={typeLabel.label} size="small" sx={{ fontSize: 10, color: typeLabel.color, bgcolor: typeLabel.bg }} />
                   })()}
                 </TableCell>
                 <TableCell>{fmtDt(ex.startsAt)} \u2192 {fmtDt(ex.endsAt)}</TableCell>

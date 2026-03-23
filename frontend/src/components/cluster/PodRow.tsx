@@ -3,9 +3,10 @@ import TableCell from '@mui/material/TableCell'
 import TableRow from '@mui/material/TableRow'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
+import { useTheme } from '@mui/material/styles'
 import { fmtCpu, fmtMem, podAge } from '@/lib/formatters'
 import { getPodStatusStyle } from '@/components/cluster/statusColors'
-import type { useColors } from '@/lib/colors'
+import { useColors } from '@/lib/colors'
 
 export interface PodRowPod {
   name: string
@@ -19,28 +20,28 @@ export interface PodRowPod {
   ownerName?: string
 }
 
-function ownerStyle(kind: string) {
-  if (kind === 'Deployment')  return { color: '#7C3AED', bgcolor: 'rgba(124,58,237,0.12)' }
-  if (kind === 'StatefulSet') return { color: '#6366F1', bgcolor: 'rgba(99,102,241,0.12)' }
-  if (kind === 'Job' || kind === 'CronJob') return { color: '#14B8A6', bgcolor: 'rgba(20,184,166,0.12)' }
-  return { color: '#94A3B8', bgcolor: 'rgba(148,163,184,0.12)' }
+const POD_OWNER_COLORS: Record<string, { color: string; bgcolor: string }> = {
+  Deployment:  { color: '#7C3AED', bgcolor: 'rgba(124,58,237,0.12)' },
+  StatefulSet: { color: '#6366F1', bgcolor: 'rgba(99,102,241,0.12)' },
+  Job:         { color: '#14B8A6', bgcolor: 'rgba(20,184,166,0.12)' },
+  CronJob:     { color: '#14B8A6', bgcolor: 'rgba(20,184,166,0.12)' },
 }
+
+const POD_OWNER_FALLBACK = { color: '#94A3B8', bgcolor: 'rgba(148,163,184,0.12)' }
 
 export default function PodRow({
   pod,
   onClick,
-  isDark,
-  colors,
   showOwner,
 }: {
   pod: PodRowPod
   onClick?: () => void
-  isDark: boolean
-  colors: ReturnType<typeof useColors>
   showOwner?: boolean
 }) {
-  const ss = getPodStatusStyle(pod.status, isDark)
-  const os = showOwner && pod.ownerKind ? ownerStyle(pod.ownerKind) : null
+  const isDark = useTheme().palette.mode === 'dark'
+  const colors = useColors()
+  const statusStyle = getPodStatusStyle(pod.status, isDark)
+  const ownerColor = showOwner && pod.ownerKind ? (POD_OWNER_COLORS[pod.ownerKind] ?? POD_OWNER_FALLBACK) : null
   const readyColor = pod.readyContainers === pod.totalContainers
     ? colors.success
     : pod.readyContainers > 0
@@ -55,16 +56,16 @@ export default function PodRow({
             {pod.name}
           </Typography>
         </Tooltip>
-        <Chip label={pod.status} size="small" sx={{ height: 15, fontSize: 10, bgcolor: ss.bgcolor, color: ss.color, mt: 0.25 }} />
+        <Chip label={pod.status} size="small" sx={{ height: 15, fontSize: 10, bgcolor: statusStyle.bgcolor, color: statusStyle.color, mt: 0.25 }} />
       </TableCell>
       {showOwner && (
         <TableCell sx={{ py: 0.75 }}>
-          {os ? (
+          {ownerColor ? (
             <Tooltip title={`${pod.ownerKind}: ${pod.ownerName}`} arrow>
               <Chip
                 label={pod.ownerName}
                 size="small"
-                sx={{ height: 18, fontSize: 10, bgcolor: os.bgcolor, color: os.color, maxWidth: 130, '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' } }}
+                sx={{ height: 18, fontSize: 10, bgcolor: ownerColor.bgcolor, color: ownerColor.color, maxWidth: 130, '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' } }}
               />
             </Tooltip>
           ) : (

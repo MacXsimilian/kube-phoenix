@@ -41,7 +41,7 @@ const ROLE_COLORS: Record<string, 'error' | 'warning' | 'default'> = {
 export default function UsersPage() {
   const { user: me } = useAuth()
   const router = useRouter()
-  const qc = useQueryClient()
+  const queryClient = useQueryClient()
   const { data: users, isLoading, isError } = useQuery({ queryKey: ['users'], queryFn: getUsers })
 
   const [search, setSearch] = useState('')
@@ -65,19 +65,19 @@ export default function UsersPage() {
 
   const createMutation = useMutation({
     mutationFn: () => createUserAPI(form),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setCreateOpen(false); setForm({ username: '', email: '', password: '', role: 'viewer' }); setCreateError('') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); setCreateOpen(false); setForm({ username: '', email: '', password: '', role: 'viewer' }); setCreateError('') },
     onError: (err: Error) => setCreateError(err.message),
   })
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => updateUserAPI(id, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setMutationError('') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); setMutationError('') },
     onError: (err: Error) => setMutationError(err.message),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => deleteUserAPI(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setDeleteTarget(null); setMutationError('') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); setDeleteTarget(null); setMutationError('') },
     onError: (err: Error) => { setMutationError(err.message); setDeleteTarget(null) },
   })
 

@@ -20,6 +20,7 @@ import { getPolicyExecutions } from '@/lib/api'
 import type { PolicyExecution } from '@/lib/types'
 import { timeAgo } from '@/lib/formatters'
 import { useColors } from '@/lib/colors'
+import { ACTIVITY_FEED_STALE_MS, ACTIVITY_FEED_REFETCH_MS } from '@/lib/constants'
 import StatusChip from '@/components/shared/StatusChip'
 import LogViewer from '@/components/history/LogViewer'
 
@@ -30,8 +31,8 @@ export default function ActivityFeed() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['policy-executions', 'feed'],
     queryFn: () => getPolicyExecutions({ pageSize: 3 }),
-    staleTime: 14_000,
-    refetchInterval: 15_000,
+    staleTime: ACTIVITY_FEED_STALE_MS,
+    refetchInterval: ACTIVITY_FEED_REFETCH_MS,
   })
 
   return (

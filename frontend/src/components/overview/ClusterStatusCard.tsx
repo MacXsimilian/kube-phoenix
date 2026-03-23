@@ -27,7 +27,7 @@ import { useColors } from '@/lib/colors'
 // useClusterStream subscribes to the backend SSE stream and pushes received
 // Overview updates directly into the TanStack Query cache, eliminating polling.
 function useClusterStream() {
-  const qc = useQueryClient()
+  const queryClient = useQueryClient()
   const mountedRef = useRef(true)
   const [disconnected, setDisconnected] = useState(false)
   const failCountRef = useRef(0)
@@ -63,7 +63,7 @@ function useClusterStream() {
             for (const line of lines) {
               if (line.startsWith('data: ')) {
                 try {
-                  qc.setQueryData<Overview>(['overview'], JSON.parse(line.slice(6)))
+                  queryClient.setQueryData<Overview>(['overview'], JSON.parse(line.slice(6)))
                 } catch { /* skip malformed events */ }
               }
             }
@@ -82,13 +82,13 @@ function useClusterStream() {
       mountedRef.current = false
       controller.abort()
     }
-  }, [qc])
+  }, [queryClient])
 
   return disconnected
 }
 
 export default function ClusterStatusCard() {
-  const qc = useQueryClient()
+  const queryClient = useQueryClient()
   const router = useRouter()
   const { user } = useAuth()
   const hasTrigger = canTriggerSchedules(user?.permissions)
@@ -124,8 +124,8 @@ export default function ClusterStatusCard() {
       return triggerPolicySleep(firstPolicy.id)
     },
     onSuccess: ({ executionId }) => {
-      qc.invalidateQueries({ queryKey: ['policies'] })
-      qc.invalidateQueries({ queryKey: ['overview'] })
+      queryClient.invalidateQueries({ queryKey: ['policies'] })
+      queryClient.invalidateQueries({ queryKey: ['overview'] })
       router.push(`/policies/detail/?id=${firstPolicy!.id}&exec=${executionId}`)
     },
     onError: (err: unknown) => {
@@ -139,8 +139,8 @@ export default function ClusterStatusCard() {
       return triggerPolicyWake(firstPolicy.id)
     },
     onSuccess: ({ executionId }) => {
-      qc.invalidateQueries({ queryKey: ['policies'] })
-      qc.invalidateQueries({ queryKey: ['overview'] })
+      queryClient.invalidateQueries({ queryKey: ['policies'] })
+      queryClient.invalidateQueries({ queryKey: ['overview'] })
       router.push(`/policies/detail/?id=${firstPolicy!.id}&exec=${executionId}`)
     },
     onError: (err: unknown) => {

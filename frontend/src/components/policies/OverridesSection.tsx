@@ -20,14 +20,8 @@ import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { deletePolicyOverride, createPolicyOverride } from '@/lib/api'
 import { fmtDt } from '@/lib/formatters'
+import { TYPE_LABELS, TYPE_LABEL_FALLBACK } from '@/lib/statusColors'
 import type { PolicyOverride } from '@/lib/types'
-
-const OVERRIDE_TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  stay_awake:  { label: 'Stay Awake',  color: '#FCD34D', bg: 'rgba(245,158,11,0.15)' },
-  force_sleep: { label: 'Force Sleep', color: '#FCA5A5', bg: 'rgba(239,68,68,0.15)' },
-  skip_sleep:  { label: 'Skip Sleep',  color: '#A5B4FC', bg: 'rgba(99,102,241,0.15)' },
-  skip_wake:   { label: 'Skip Wake',   color: '#A5B4FC', bg: 'rgba(99,102,241,0.15)' },
-}
 
 export default function OverridesSection({
   policyId,
@@ -105,8 +99,8 @@ export default function OverridesSection({
                 <TableRow key={ov.id}>
                   <TableCell>
                     {(() => {
-                      const t = OVERRIDE_TYPE_LABELS[ov.overrideType] ?? { label: ov.overrideType, color: '#94A3B8', bg: 'rgba(148,163,184,0.15)' }
-                      return <Chip label={t.label} size="small" sx={{ fontSize: 10, color: t.color, bgcolor: t.bg }} />
+                      const typeLabel = TYPE_LABELS[ov.overrideType] ?? TYPE_LABEL_FALLBACK
+                      return <Chip label={typeLabel.label} size="small" sx={{ fontSize: 10, color: typeLabel.color, bgcolor: typeLabel.bg }} />
                     })()}
                   </TableCell>
                   <TableCell>

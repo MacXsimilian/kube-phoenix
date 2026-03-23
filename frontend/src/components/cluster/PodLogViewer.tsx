@@ -194,17 +194,17 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
 
   const handleCopy = useCallback(() => {
     const text = lines.join('\n')
-    navigator.clipboard.writeText(text).then(() => setCopied(true)).catch((err) => { if (process.env.NODE_ENV === 'development') console.warn('[kp] clipboard write failed:', err) })
+    navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => setCopied(false))
   }, [lines])
 
   const handleDownload = useCallback(() => {
     const text = lines.join('\n')
     const blob = new Blob([text], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${namespace}-${podName}-${container || 'default'}.log`
-    a.click()
+    const downloadLink = document.createElement('a')
+    downloadLink.href = url
+    downloadLink.download = `${namespace}-${podName}-${container || 'default'}.log`
+    downloadLink.click()
     URL.revokeObjectURL(url)
   }, [lines, namespace, podName, container])
 

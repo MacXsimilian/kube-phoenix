@@ -32,7 +32,7 @@ const STATUS_TABS = ['all', 'pending', 'active', 'completed', 'cancelled']
 
 export default function ExceptionsPage() {
   const { user } = useAuth()
-  const qc = useQueryClient()
+  const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ScheduledException | undefined>()
   const [tab, setTab] = useState(0)
@@ -49,7 +49,7 @@ export default function ExceptionsPage() {
   const deleteMut = useMutation({
     mutationFn: (id: number) => deleteException(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['exceptions'] })
+      queryClient.invalidateQueries({ queryKey: ['exceptions'] })
       setSnack({ msg: 'Exception cancelled', severity: 'success' })
     },
     onError: (err: unknown) => {
@@ -123,7 +123,7 @@ export default function ExceptionsPage() {
           </TableHead>
           <TableBody>
             {exceptions.map(ex => {
-              const sc = EXECUTION_STATUS_COLORS[ex.status] ?? EXECUTION_STATUS_FALLBACK
+              const statusColor = EXECUTION_STATUS_COLORS[ex.status] ?? EXECUTION_STATUS_FALLBACK
               return (
                 <TableRow key={ex.id} hover>
                   <TableCell>
@@ -141,7 +141,7 @@ export default function ExceptionsPage() {
                     <Chip
                       label={ex.status}
                       size="small"
-                      sx={{ height: 18, fontSize: 10, bgcolor: sc.bg, color: sc.color }}
+                      sx={{ height: 18, fontSize: 10, bgcolor: statusColor.bg, color: statusColor.color }}
                     />
                   </TableCell>
                   <TableCell>{ex.sleepOnEnd ? 'Yes' : 'No'}</TableCell>

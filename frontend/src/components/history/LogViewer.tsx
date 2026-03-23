@@ -304,7 +304,7 @@ export default function LogViewer({
   execution: PolicyExecution | null
   onClose: () => void
 }) {
-  const qc = useQueryClient()
+  const queryClient = useQueryClient()
   const [liveLines, setLiveLines] = useState<LogLine[]>([])
   const [copied, setCopied] = useState(false)
   const [wsError, setWsError] = useState(false)
@@ -391,7 +391,7 @@ export default function LogViewer({
     const text = lines
       .map((l) => `${new Date(l.timestamp).toLocaleTimeString()}  ${l.message}`)
       .join('\n')
-    navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => {})
+    navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => setCopied(false))
   }
 
   return (
@@ -529,7 +529,7 @@ export default function LogViewer({
                   severity="error"
                   sx={{ borderRadius: 0 }}
                   action={
-                    <Button color="inherit" size="small" onClick={() => qc.invalidateQueries({ queryKey: ['logs', execution?.id] })}>
+                    <Button color="inherit" size="small" onClick={() => queryClient.invalidateQueries({ queryKey: ['logs', execution?.id] })}>
                       Retry
                     </Button>
                   }
