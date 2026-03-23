@@ -1,232 +1,237 @@
 # Contributing to kube-phoenix
 
-Thank you for taking the time to contribute. This guide covers everything you need to go from zero to an open PR.
+Welcome, and thank you for considering a contribution to kube-phoenix. Whether you are
+fixing a typo, reporting a bug, or proposing a major feature, your involvement is
+valued. This guide explains how to set up a development environment, submit changes,
+and navigate the review process.
+
+## Types of Contributions
+
+| Contribution | How to start |
+| :----------- | :----------- |
+| Bug fix or small improvement | Open a pull request directly |
+| New feature | Open an issue first to discuss the approach |
+| Documentation | Open a pull request directly |
+| Security vulnerability | Report privately via [GitHub Security Advisories][security] -- do **not** open a public issue |
 
 ---
 
-## Table of Contents
+## Development Environment
 
-- [Code of conduct](#code-of-conduct)
-- [Before you start](#before-you-start)
-- [Local development setup](#local-development-setup)
-- [Project structure](#project-structure)
-- [Branching strategy](#branching-strategy)
-- [Commit conventions](#commit-conventions)
-- [Pull request checklist](#pull-request-checklist)
-- [CI pipeline](#ci-pipeline)
-- [Releases](#releases)
-
----
-
-## Code of conduct
-
-Be respectful. Criticism of code and ideas is welcome; criticism of people is not.
-
----
-
-## Before you start
-
-- **Bug fixes and small improvements** — open a PR directly.
-- **New features** — open an issue first to discuss the approach. This avoids wasted effort if the direction doesn't fit the project.
-- **Security vulnerabilities** — do **not** open a public issue. Report privately via [GitHub Security Advisories](https://github.com/MacXsimilian/kube-phoenix/security/advisories/new). Include a reproduction case and the potential impact. You will receive a response within 7 days.
-
----
-
-## Local development setup
-
-**Prerequisites**
+### Prerequisites
 
 | Tool | Version | Purpose |
 | :--- | :------ | :------ |
-| Go | 1.26.x | Backend |
-| Node.js | 24+ | Frontend |
-| Docker | any | Local PostgreSQL via `docker-compose.yml` |
-| kubectl | any | Optional — cluster endpoints return empty data without it |
+| Go | 1.26+ | Backend compilation and tests |
+| Node.js | 24+ | Frontend build (Next.js) |
+| Docker | any | Local PostgreSQL via `docker compose` |
 | golangci-lint | v2+ | Backend linting (`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`) |
-| govulncheck | latest | Backend vulnerability checks (`go install golang.org/x/vuln/cmd/govulncheck@latest`) |
+| govulncheck | latest | Vulnerability scanning (`go install golang.org/x/vuln/cmd/govulncheck@latest`) |
+| kubectl | any | Optional -- cluster endpoints return empty data without it |
 
-**Start everything**
+### Quick Start
 
 ```bash
-# 1. Start PostgreSQL (Docker)
+# 1. Clone and enter the repository
+git clone https://github.com/MacXsimilian/kube-phoenix.git
+cd kube-phoenix
+
+# 2. Start PostgreSQL
 make dev
 
-# 2. Backend — http://localhost:8080 (separate terminal)
+# 3. Start the backend (separate terminal) -- http://localhost:8080
 make dev-backend
 
-# 3. Frontend dev server — http://localhost:3000 (separate terminal)
+# 4. Start the frontend dev server (separate terminal) -- http://localhost:3000
 make dev-frontend
 ```
 
-In development, the frontend uses the `NEXT_PUBLIC_API_URL` environment variable to reach the backend API. When unset, it defaults to the same origin (relative `/api/*` paths). Set `NEXT_PUBLIC_API_URL=http://localhost:8080` when running the frontend dev server on a separate port. Authentication is disabled when `ADMIN_USER` / `ADMIN_PASSWORD` are unset.
+The backend auto-migrates the database schema and seeds default data on startup. No
+manual migration step is needed. Authentication is disabled when `ADMIN_USER` /
+`ADMIN_PASSWORD` are unset.
 
-The backend auto-migrates the database schema and seeds default data (guardrails + admin user) on startup. No manual migration step is needed.
+### CORS Configuration
 
-**CORS during local development**
-
-If you run the backend and frontend on different ports and see CORS errors:
-
-```bash
-export CORS_ALLOWED_ORIGIN=http://localhost:3000
-make dev-backend
-```
-
-**Run backend tests**
+If the frontend and backend run on different ports and you see CORS errors:
 
 ```bash
-cd backend && go test -coverprofile=coverage.out ./...
-cd backend && go tool cover -func=coverage.out
+CORS_ALLOWED_ORIGIN=http://localhost:3000 make dev-backend
 ```
 
-**Lint**
+### Running Tests and Linters
 
 ```bash
-cd backend && golangci-lint run   # requires golangci-lint v2 installed
+make test          # backend unit tests
+make lint          # golangci-lint (includes gosec)
 ```
-
-> **Note:** Frontend linting is not yet configured. See the roadmap for planned ESLint setup.
 
 ---
 
-## Project structure
+## Project Structure
 
 ```
 kube-phoenix/
-├── openapi.yaml                    # OpenAPI 3.1 spec — update for every API change
-├── backend/
-│   ├── cmd/server/main.go          # Entry point
-│   └── internal/
-│       ├── api/                    # HTTP handlers + Chi router
-│       ├── docs/                   # Embedded openapi.yaml (copied at build time)
-│       ├── policy/                 # Sleep window compiler (windows → cron)
-│       ├── scheduler/              # PolicyScheduler, PolicyEngine, WS log broker
-│       ├── scaler/                 # PolicyScaler (DB-backed sleep/wake)
-│       ├── k8s/                    # Kubernetes client + ClusterCache
-│       ├── store/                  # GORM models + queries
-│       └── middleware/             # BasicAuth
-├── frontend/src/
-│   ├── app/                        # Next.js pages
-│   ├── components/                 # Reusable UI components
-│   ├── lib/                        # API client, auth context, TypeScript types
-│   └── theme/                      # MUI theme (dark + light)
-├── helm/kube-phoenix/              # Helm chart
-└── examples/                       # Example Helm value overlays
+  openapi.yaml                    # OpenAPI 3.1 spec -- update for every API change
+  backend/
+    cmd/server/main.go            # Entry point
+    internal/
+      api/                        # HTTP handlers + Chi router
+      docs/                       # Embedded openapi.yaml (copied at build time)
+      policy/                     # Sleep window compiler
+      scheduler/                  # PolicyScheduler, PolicyEngine, WS log broker
+      scaler/                     # PolicyScaler (DB-backed sleep/wake)
+      k8s/                        # Kubernetes client + ClusterCache
+      store/                      # GORM models + queries
+      middleware/                  # BasicAuth
+  frontend/src/
+    app/                          # Next.js pages
+    components/                   # Reusable UI components
+    lib/                          # API client, auth context, TypeScript types
+    theme/                        # MUI theme (dark + light)
+  helm/kube-phoenix/              # Helm chart
+  examples/                       # Example Helm value overlays
 ```
 
 ---
 
-## Branching strategy
+## Development Workflow
 
-kube-phoenix uses **GitHub Flow** — a single protected `master` branch and short-lived feature branches.
-
-```
-master  (protected, always deployable)
-  ├── feat/emergency-wake   → PR → master
-  ├── fix/websocket-auth    → PR → master
-  └── docs/update-api-ref   → PR → master
-```
-
-- Branch off `master` for every non-trivial change.
-- Keep branches short-lived — open a PR as soon as you have something reviewable.
-- Never create tags manually — release-please owns all tags and releases.
+kube-phoenix uses **GitHub Flow** -- a single protected `master` branch with
+short-lived feature branches.
 
 ```bash
 git checkout master && git pull
 git checkout -b feat/your-feature
 
-# ... make changes ...
-
+# Make changes, test locally, then push
 git push -u origin feat/your-feature
-# Open a PR against master on GitHub
 ```
+
+Open a pull request against `master` on GitHub as soon as you have something
+reviewable. Keep branches short-lived.
 
 ---
 
-## Commit conventions
+## Commit Conventions
 
-kube-phoenix uses [Conventional Commits](https://www.conventionalcommits.org). release-please reads these to determine the version bump and generate the CHANGELOG automatically.
+All commits must follow [Conventional Commits](https://www.conventionalcommits.org).
+release-please reads these to determine the version bump and generate the changelog.
 
 | Prefix | Version bump | Use for |
 | :----- | :----------- | :------ |
-| `feat:` | minor | new user-facing feature |
-| `fix:` | patch | bug fix |
-| `perf:` | patch | performance improvement |
-| `feat!:` / `BREAKING CHANGE:` | major | breaking API or behaviour change |
-| `docs:` | none | documentation only |
+| `feat:` | minor | New user-facing feature |
+| `fix:` | patch | Bug fix |
+| `perf:` | patch | Performance improvement |
+| `feat!:` / `BREAKING CHANGE:` | major | Breaking API or behaviour change |
+| `docs:` | none | Documentation only |
 | `ci:` | none | CI/CD changes |
-| `chore:` | none | maintenance, dependencies, config |
-| `refactor:` | none | code restructure, no behaviour change |
-| `test:` | none | test-only changes |
+| `chore:` | none | Maintenance, dependencies, config |
+| `refactor:` | none | Code restructure, no behaviour change |
+| `test:` | none | Test-only changes |
 
-> **Pre-1.0 note:** While the project is pre-1.0 (current version 0.1.x), release-please is configured with `bump-patch-for-minor-pre-major: true`. This means `feat:` commits bump the **patch** version (not minor), and `feat!:` / `BREAKING CHANGE:` commits bump **minor** (not major). After v1.0.0, the table above applies as written.
+> **Pre-1.0 note:** While the project is below v1.0, `feat:` bumps **patch** (not
+> minor) and `feat!:` bumps **minor** (not major). After v1.0.0 the table above
+> applies as written.
 
-**Examples**
+**Examples:**
 
-```bash
-git commit -m "feat: add emergency wake endpoint"
-git commit -m "fix(scheduler): reload cron entries after timezone change"
-git commit -m "docs: add troubleshooting section to README"
-git commit -m "chore: bump golangci-lint to v2"
+```
+feat: add emergency wake endpoint
+fix(scheduler): reload cron entries after timezone change
+docs: add troubleshooting section to README
 ```
 
-Keep the subject line under 72 characters. Add a body if the change needs context.
+Keep the subject line under 72 characters. Add a body when the change needs context.
 
 ---
 
-## Pull request checklist
+## Pull Request Process
 
-Before requesting review, confirm:
+### Before Requesting Review
 
-- [ ] `go test ./...` passes (backend)
-- [ ] `npm run build` passes (frontend)
-- [ ] No new `golangci-lint` or `govulncheck` warnings introduced
-- [ ] New behaviour is covered by a test where practical
-- [ ] `openapi.yaml` updated if the change adds, removes, or modifies any API route or schema
-- [ ] README / ARCHITECTURE.md updated if the change affects documented behaviour, API routes, or configuration
-- [ ] Commit messages follow conventional commit format
+- [ ] `make test` passes
+- [ ] `make lint` introduces no new warnings
+- [ ] `npm run build` passes in `frontend/`
+- [ ] New behaviour is covered by tests where practical
+- [ ] `openapi.yaml` updated if any API route or schema changed
+- [ ] README or ARCHITECTURE.md updated if documented behaviour changed
+- [ ] All commits follow the conventional commit format
+
+### Review Expectations
+
+- At least one maintainer approval is required before merge.
+- Reviewers may request changes; please address or discuss each comment.
+- Keep the PR focused on a single concern. Split unrelated changes into separate PRs.
+
+### Merge Criteria
+
+- All required CI checks pass.
+- No unresolved review threads.
+- The branch is up to date with `master`.
 
 ---
 
-## CI pipeline
+## CI Pipeline
 
-Two workflows run automatically. All required jobs must pass before merging.
+Two workflows run automatically on every pull request. All required jobs must pass
+before merging.
 
-### CI workflow (`.github/workflows/ci.yml`)
+### CI (`ci.yml`)
 
-Runs on every PR and push to `master` when relevant paths change (`frontend/**`, `backend/**`, `openapi.yaml`, `Dockerfile`, `helm/**`, `.github/workflows/**`).
+Triggered on PRs and pushes to `master` when relevant paths change.
 
 | Job | What it checks |
 | :-- | :------------- |
-| Frontend build | `npm ci`, `npm run build` |
-| Backend build | `go vet`, `go test` + coverage report, `go build`, golangci-lint v2 (includes gosec), OpenAPI spec sync check |
+| Frontend build | `npm ci` and `npm run build` |
+| Backend build | `go vet`, `go test` with coverage, `go build`, golangci-lint, OpenAPI spec sync |
 | Helm lint | `helm lint helm/kube-phoenix` |
-| Go Report Card | Triggers a rescan at goreportcard.com (on push to `master` only) |
+| Go Report Card | Triggers rescan at goreportcard.com (push to `master` only) |
 
-### Security workflow (`.github/workflows/security.yml`)
+### Security (`security.yml`)
 
-Runs on every PR, push to `master`, **and weekly** (Monday 06:00 UTC).
+Triggered on PRs, pushes to `master`, and weekly (Monday 06:00 UTC).
 
 | Job | What it checks |
 | :-- | :------------- |
 | govulncheck | Go dependency vulnerability scan |
-| npm audit | npm dependency audit (high severity gate) |
-| Trivy image scan | Container image vulnerability scan |
+| npm audit | npm dependency audit (high-severity gate) |
+| Trivy image scan | Container image vulnerabilities |
 | Trivy filesystem scan | IaC and dependency scan |
-| TruffleHog | Verified leaked secrets only |
+| TruffleHog | Verified leaked secrets |
 
-All GitHub Actions action versions are pinned to a full commit SHA for supply chain integrity. When updating an action, always pin to the new SHA rather than a floating tag.
+All GitHub Actions versions are pinned to full commit SHAs for supply-chain integrity.
 
 ---
 
-## Releases
+## Release Process
 
-Release management is fully automated via [release-please](https://github.com/googleapis/release-please).
+Releases are fully automated via [release-please](https://github.com/googleapis/release-please).
 
-1. Merge PRs to `master` with conventional commit messages.
-2. release-please opens a Release PR with the bumped version and CHANGELOG diff.
-3. Review and merge the Release PR — this triggers the full release pipeline:
-   - Docker image built and pushed to `ghcr.io/macxsimilian/kube-phoenix` (semver tags + `latest`)
-   - Trivy vulnerability scan runs against the published image; CRITICAL/HIGH unfixed CVEs block the release
-   - Helm chart packaged and pushed to `oci://ghcr.io/macxsimilian/helm/kube-phoenix`
+1. Merge PRs to `master` using conventional commit messages.
+2. release-please opens a **Release PR** containing the version bump and changelog diff.
+3. Merging the Release PR triggers the release pipeline:
+   - Docker image pushed to `ghcr.io/macxsimilian/kube-phoenix` (semver tags + `latest`).
+   - Trivy scans the published image; CRITICAL/HIGH unfixed CVEs block the release.
+   - Helm chart pushed to `oci://ghcr.io/macxsimilian/helm/kube-phoenix`.
 
-**Never create tags manually.**
+Never create Git tags manually -- release-please owns all tags and releases.
+
+---
+
+## Code of Conduct
+
+All participants are expected to treat each other with respect. Constructive criticism
+of code and ideas is welcome; personal attacks are not. See
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for the full policy.
+
+---
+
+## Getting Help
+
+- **Bug reports and feature requests** -- [open an issue][issues].
+- **Questions and discussions** -- use [GitHub Discussions][discussions].
+- **Security concerns** -- report via [GitHub Security Advisories][security].
+
+[security]: https://github.com/MacXsimilian/kube-phoenix/security/advisories/new
+[issues]: https://github.com/MacXsimilian/kube-phoenix/issues
+[discussions]: https://github.com/MacXsimilian/kube-phoenix/discussions
