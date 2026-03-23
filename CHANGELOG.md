@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.5...v0.3.6) (2026-03-23)
+
+
+### Bug Fixes
+
+* **backend:** handle JSON encode and pagination param errors ([#218](https://github.com/MacXsimilian/kube-phoenix/issues/218)) ([81b5598](https://github.com/MacXsimilian/kube-phoenix/commit/81b5598dd337fd88dff0a2c659f95baf801c6987))
+
 ## [0.3.5](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.4...v0.3.5) (2026-03-23)
 
 
