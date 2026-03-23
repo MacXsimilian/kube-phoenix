@@ -22,6 +22,14 @@ export function podStatusStyle(isDark: boolean): Record<string, { color: string;
   }
 }
 
+/** Pod status chip style with fallback — used by shared PodRow */
+export function getPodStatusStyle(status: string, isDark: boolean): { color: string; bgcolor: string } {
+  const styles = podStatusStyle(isDark)
+  const c = isDark ? '#94A3B8' : '#475569'
+  const bg = isDark ? 'rgba(148,163,184,0.12)' : 'rgba(71,85,105,0.10)'
+  return styles[status] ?? { color: c, bgcolor: bg }
+}
+
 /** Node status chip colours — mode-aware */
 export function nodeStatusMap(isDark: boolean): Record<Node['status'], { bgcolor: string; color: string; label: string }> {
   const c = semanticColors(isDark)

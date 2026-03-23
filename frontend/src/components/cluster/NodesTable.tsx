@@ -25,7 +25,7 @@ import IconButton from '@mui/material/IconButton'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodes } from '@/lib/api'
 import type { Node } from '@/lib/types'
-import { fmtCpu, fmtMem, podAge, sinceMs } from '@/lib/formatters'
+import { fmtCpu, fmtMem, podAge, sinceMs, pct, pctColor } from '@/lib/formatters'
 import { nodeStatusMap } from '@/components/cluster/statusColors'
 import { useTheme } from '@mui/material/styles'
 import { useColors } from '@/lib/colors'
@@ -33,16 +33,6 @@ import NodeDetailDrawer from './NodeDetailDrawer'
 
 type SortCol = 'name' | 'age' | 'instanceType' | 'zone' | 'pods' | 'cpu' | 'mem' | 'status'
 type SortDir = 'asc' | 'desc'
-
-function pct(used: number, total: number): number {
-  return total > 0 ? Math.round((used / total) * 100) : 0
-}
-
-function pctColor(p: number, isDark: boolean): string {
-  if (p >= 85) return isDark ? '#F87171' : '#B91C1C'
-  if (p >= 65) return '#FBBF24'
-  return isDark ? '#22C55E' : '#15803D'
-}
 
 function ResourceBar({ used, total, usedLabel, totalLabel, isDark }: { used: number; total: number; usedLabel: string; totalLabel: string; isDark: boolean }) {
   const p = pct(used, total)

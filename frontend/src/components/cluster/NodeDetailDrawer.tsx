@@ -22,36 +22,14 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodePods } from '@/lib/api'
-import { fmtCpu, fmtMem, podAge, sinceMs } from '@/lib/formatters'
-import { podStatusStyle, nodeStatusMap } from '@/components/cluster/statusColors'
+import { fmtCpu, fmtMem, sinceMs, pct, pctColor } from '@/lib/formatters'
+import { nodeStatusMap } from '@/components/cluster/statusColors'
 import { useTheme } from '@mui/material/styles'
 import { useColors } from '@/lib/colors'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { Node, NodePod } from '@/lib/types'
 import PodDetailContent from './PodDetailContent'
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-function pct(used: number, total: number) {
-  return total > 0 ? Math.round((used / total) * 100) : 0
-}
-function pctColor(p: number, isDark: boolean) {
-  if (p >= 85) return isDark ? '#F87171' : '#B91C1C'
-  if (p >= 65) return '#FBBF24'
-  return isDark ? '#22C55E' : '#15803D'
-}
-function getPodStatusStyle(status: string, isDark: boolean) {
-  const styles = podStatusStyle(isDark)
-  const c = isDark ? '#94A3B8' : '#475569'
-  const bg = isDark ? 'rgba(148,163,184,0.12)' : 'rgba(71,85,105,0.10)'
-  return styles[status] ?? { color: c, bgcolor: bg }
-}
-function ownerStyle(kind: string) {
-  if (kind === 'Deployment')  return { color: '#7C3AED', bgcolor: 'rgba(124,58,237,0.12)' }
-  if (kind === 'StatefulSet') return { color: '#6366F1', bgcolor: 'rgba(99,102,241,0.12)' }
-  if (kind === 'Job' || kind === 'CronJob') return { color: '#14B8A6', bgcolor: 'rgba(20,184,166,0.12)' }
-  return { color: '#94A3B8', bgcolor: 'rgba(148,163,184,0.12)' }
-}
+import PodRow from './PodRow'
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
@@ -72,62 +50,6 @@ function MiniBar({ used, total, label, isDark }: { used: number; total: number; 
         />
       </Box>
     </Tooltip>
-  )
-}
-
-function PodRow({ pod, onClick, isDark, colors }: { pod: NodePod; onClick?: () => void; isDark: boolean; colors: ReturnType<typeof import('@/lib/colors').useColors> }) {
-  const ss = getPodStatusStyle(pod.status, isDark)
-  const os = pod.ownerKind ? ownerStyle(pod.ownerKind) : null
-  const readyColor = pod.readyContainers === pod.totalContainers
-    ? colors.success
-    : pod.readyContainers > 0
-    ? colors.warning
-    : colors.errorLight
-
-  return (
-    <TableRow hover onClick={onClick} sx={{ cursor: onClick ? 'pointer' : 'default' }}>
-      <TableCell sx={{ maxWidth: 170, py: 0.75 }}>
-        <Tooltip title={pod.name} arrow placement="top-start">
-          <Typography sx={{ fontSize: 12, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160, display: 'block' }}>
-            {pod.name}
-          </Typography>
-        </Tooltip>
-        <Chip label={pod.status} size="small" sx={{ height: 15, fontSize: 10, bgcolor: ss.bgcolor, color: ss.color, mt: 0.25 }} />
-      </TableCell>
-      <TableCell sx={{ py: 0.75 }}>
-        {os ? (
-          <Tooltip title={`${pod.ownerKind}: ${pod.ownerName}`} arrow>
-            <Chip
-              label={pod.ownerName}
-              size="small"
-              sx={{ height: 18, fontSize: 10, bgcolor: os.bgcolor, color: os.color, maxWidth: 130, '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' } }}
-            />
-          </Tooltip>
-        ) : (
-          <Typography color="text.disabled" sx={{ fontSize: 12 }}>—</Typography>
-        )}
-      </TableCell>
-      <TableCell sx={{ py: 0.75 }}>
-        <Typography sx={{ fontSize: 12, color: readyColor, fontFamily: 'monospace' }}>
-          {pod.readyContainers}/{pod.totalContainers}
-        </Typography>
-      </TableCell>
-      <TableCell sx={{ py: 0.75 }}>
-        <Typography sx={{ fontSize: 12, fontFamily: 'monospace', color: 'text.secondary' }}>
-          {pod.cpuUsage > 0 ? fmtCpu(pod.cpuUsage) : '—'}
-        </Typography>
-      </TableCell>
-      <TableCell sx={{ py: 0.75 }}>
-        <Typography sx={{ fontSize: 12, fontFamily: 'monospace', color: 'text.secondary' }}>
-          {pod.memUsage > 0 ? fmtMem(pod.memUsage) : '—'}
-        </Typography>
-      </TableCell>
-      <TableCell sx={{ py: 0.75 }}>
-        <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
-          {podAge(pod.startedAt)}
-        </Typography>
-      </TableCell>
-    </TableRow>
   )
 }
 
@@ -367,7 +289,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                         </TableCell>
                       </TableRow>
                       {nsPods.map((pod) => (
-                        <PodRow key={pod.name} pod={pod} onClick={() => setSelectedPod(pod)} isDark={isDark} colors={colors} />
+                        <PodRow key={pod.name} pod={pod} onClick={() => setSelectedPod(pod)} isDark={isDark} colors={colors} showOwner />
                       ))}
                     </React.Fragment>
                   ))}

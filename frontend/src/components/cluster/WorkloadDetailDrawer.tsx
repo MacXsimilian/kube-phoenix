@@ -22,22 +22,14 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getWorkloadPods } from '@/lib/api'
-import { fmtCpu, fmtMem, podAge, sinceMs } from '@/lib/formatters'
-import { statusColors, podStatusStyle } from '@/components/cluster/statusColors'
+import { sinceMs } from '@/lib/formatters'
+import { statusColors } from '@/components/cluster/statusColors'
 import { useTheme } from '@mui/material/styles'
 import { useColors } from '@/lib/colors'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { NodePod, Workload } from '@/lib/types'
 import PodDetailContent from './PodDetailContent'
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-function getPodStatusStyle(status: string, isDark: boolean) {
-  const styles = podStatusStyle(isDark)
-  const c = isDark ? '#94A3B8' : '#475569'
-  const bg = isDark ? 'rgba(148,163,184,0.12)' : 'rgba(71,85,105,0.10)'
-  return styles[status] ?? { color: c, bgcolor: bg }
-}
+import PodRow from './PodRow'
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
@@ -63,45 +55,6 @@ function ReplicaBar({ ready, current, saved, isDark, colors }: { ready: number; 
         sx={{ height: 4, borderRadius: 1, bgcolor: 'action.hover', '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 1 } }}
       />
     </Box>
-  )
-}
-
-function PodRow({ pod, onClick, isDark, colors }: { pod: NodePod; onClick: () => void; isDark: boolean; colors: ReturnType<typeof import('@/lib/colors').useColors> }) {
-  const ss = getPodStatusStyle(pod.status, isDark)
-  const readyColor = pod.readyContainers === pod.totalContainers
-    ? colors.success : pod.readyContainers > 0 ? colors.warning : colors.errorLight
-
-  return (
-    <TableRow hover onClick={onClick} sx={{ cursor: 'pointer' }}>
-      <TableCell sx={{ py: 0.75, maxWidth: 180 }}>
-        <Tooltip title={pod.name} arrow placement="top-start">
-          <Typography sx={{ fontSize: 12, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 170, display: 'block' }}>
-            {pod.name}
-          </Typography>
-        </Tooltip>
-        <Chip label={pod.status} size="small" sx={{ height: 15, fontSize: 10, bgcolor: ss.bgcolor, color: ss.color, mt: 0.25 }} />
-      </TableCell>
-      <TableCell sx={{ py: 0.75 }}>
-        <Typography sx={{ fontSize: 12, color: readyColor, fontFamily: 'monospace' }}>
-          {pod.readyContainers}/{pod.totalContainers}
-        </Typography>
-      </TableCell>
-      <TableCell sx={{ py: 0.75 }}>
-        <Typography sx={{ fontSize: 12, fontFamily: 'monospace', color: 'text.secondary' }}>
-          {pod.cpuUsage > 0 ? fmtCpu(pod.cpuUsage) : '—'}
-        </Typography>
-      </TableCell>
-      <TableCell sx={{ py: 0.75 }}>
-        <Typography sx={{ fontSize: 12, fontFamily: 'monospace', color: 'text.secondary' }}>
-          {pod.memUsage > 0 ? fmtMem(pod.memUsage) : '—'}
-        </Typography>
-      </TableCell>
-      <TableCell sx={{ py: 0.75 }}>
-        <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
-          {podAge(pod.startedAt)}
-        </Typography>
-      </TableCell>
-    </TableRow>
   )
 }
 
