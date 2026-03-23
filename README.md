@@ -1,13 +1,20 @@
-# kube-phoenix
+# kube-phoenix 🐦‍🔥
+
+[![Build Status](https://img.shields.io/github/actions/workflow/status/MacXsimilian/kube-phoenix/ci.yml?branch=master)](https://github.com/MacXsimilian/kube-phoenix/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/MacXsimilian/kube-phoenix?label=release&logo=github)](https://github.com/MacXsimilian/kube-phoenix/releases/latest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/macxsimilian/kube-phoenix/backend?cache=v2)](https://goreportcard.com/report/github.com/macxsimilian/kube-phoenix/backend)
+[![Go Version](https://img.shields.io/badge/go-1.26-00ADD8?logo=go&logoColor=white)](backend/go.mod)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](frontend/package.json)
+[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-6BA539?logo=openapiinitiative&logoColor=white)](openapi.yaml)
+[![Security Scan](https://img.shields.io/github/actions/workflow/status/MacXsimilian/kube-phoenix/security.yml?branch=master&label=security&logo=shieldsdotio&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/actions/workflows/security.yml)
+[![Docker](https://img.shields.io/badge/ghcr.io-kube--phoenix-2496ED?logo=docker&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/pkgs/container/kube-phoenix)
+[![Helm Chart](https://img.shields.io/badge/helm-oci%3A%2F%2Fghcr.io-0F1689?logo=helm&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/pkgs/container/helm%2Fkube-phoenix)
+[![Prometheus](https://img.shields.io/badge/metrics-prometheus-E6522C?logo=prometheus&logoColor=white)](#observability)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/MacXsimilian/kube-phoenix/blob/master/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/MacXsimilian/kube-phoenix)](https://github.com/MacXsimilian/kube-phoenix/stargazers)
+[![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](https://github.com/MacXsimilian/kube-phoenix/issues)
 
 **Scheduled sleep and wake for Kubernetes clusters.**
-
-[![Go Version](https://img.shields.io/badge/go-1.26-00ADD8?logo=go&logoColor=white)](backend/go.mod)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/MacXsimilian/kube-phoenix?logo=github)](https://github.com/MacXsimilian/kube-phoenix/releases/latest)
-[![CI](https://img.shields.io/github/actions/workflow/status/MacXsimilian/kube-phoenix/ci.yml?branch=master&label=CI)](https://github.com/MacXsimilian/kube-phoenix/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/macxsimilian/kube-phoenix/backend?cache=v2)](https://goreportcard.com/report/github.com/macxsimilian/kube-phoenix/backend)
-[![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/MacXsimilian/kube-phoenix?label=OpenSSF)](https://scorecard.dev/viewer/?uri=github.com/MacXsimilian/kube-phoenix)
 
 kube-phoenix replaces ad-hoc cron scripts with a proper operator for scheduling cluster downtime. Define sleep windows like "Mon--Fri 7 PM -- 7 AM," and kube-phoenix scales workloads to zero, drains nodes, and restores everything on schedule. A single Go binary serves both the API and a full-featured web UI -- deploy with one Helm command.
 
