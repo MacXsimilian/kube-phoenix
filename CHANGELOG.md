@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.3...v0.3.4) (2026-03-23)
+
+
+### Features
+
+* **frontend:** add LED glow timeline to policy detail page ([2e1d89c](https://github.com/MacXsimilian/kube-phoenix/commit/2e1d89c7e0de06cca874abe45015b1504cc20fbd))
+
 ## [0.3.3](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.2...v0.3.3) (2026-03-23)
 
 
