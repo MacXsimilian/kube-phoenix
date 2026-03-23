@@ -219,10 +219,20 @@ func (h *Handler) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		Action:   query.Get("action"),
 	}
 	if v := query.Get("page"); v != "" {
-		filter.Page, _ = strconv.Atoi(v)
+		p, err := strconv.Atoi(v)
+		if err != nil {
+			jsonError(w, "invalid page parameter", http.StatusBadRequest)
+			return
+		}
+		filter.Page = p
 	}
 	if v := query.Get("pageSize"); v != "" {
-		filter.PageSize, _ = strconv.Atoi(v)
+		ps, err := strconv.Atoi(v)
+		if err != nil {
+			jsonError(w, "invalid pageSize parameter", http.StatusBadRequest)
+			return
+		}
+		filter.PageSize = ps
 	}
 	if v := query.Get("from"); v != "" {
 		if t, err := time.Parse(time.RFC3339, v); err == nil {

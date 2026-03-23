@@ -19,7 +19,9 @@ func jsonOK(w http.ResponseWriter, v interface{}) {
 func jsonCreated(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("json encode response", "err", err)
+	}
 }
 
 func jsonError(w http.ResponseWriter, msg string, code int) {
