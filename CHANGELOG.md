@@ -2,10 +2,76 @@
 
 ## [0.3.2](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.1...v0.3.2) (2026-03-23)
 
+This release replaces the entire cron-based policy scheduling system with a direct window evaluator. Policies now store `SleepWindow[]` as the sole schedule source of truth — no more cron compilation, no "most recent fire" reverse-engineering, and no `robfig/cron` dependency. See [#205](https://github.com/MacXsimilian/kube-phoenix/pull/205) for the full PR.
 
-### Features
+### Why
 
-* window-native policy scheduling ([0d004c4](https://github.com/MacXsimilian/kube-phoenix/commit/0d004c414dd9fb5bfb81d62c489d3b072101b922))
+The old system compiled UI sleep windows into cron expressions, stored them, then reverse-engineered intended state by scanning backward through cron fire times. This was lossy (cron can't represent time ranges), fragile (the `MostRecentFire` algorithm walked 10,080 minutes), and created an artificial constraint forcing all windows to share the same times. Users couldn't create policies like "Mon–Fri 19:00–07:00 + Sat–Sun all day" in a single policy.
+
+### Architecture (new scheduling model)
+
+* `Evaluate(windows, timezone, now)` directly checks if current time falls inside any sleep window
+* `NextTransition(windows, timezone, now)` computes the next state flip by scanning boundary times
+* 30-second ticker replaces `robfig/cron` — evaluates all enabled policies each tick, triggers execution on state mismatch
+* Override precedence unchanged: `force_sleep` > `stay_awake` > window evaluation
+* `allDay` field on `SleepWindow` — first-class support for full-day sleep without wake
+
+### Backend
+
+* Remove `SleepCron`, `WakeCron`, `NextSleepAt`, `NextWakeAt` from Policy model; add `NextTransitionAt`
+* Remove `CompileWindowsToCrons`, `MostRecentFire`, `NextFire`, `stateFromCrons`
+* Remove `robfig/cron/v3` dependency
+* Startup migration converts legacy cron-only policies to windows, then drops old columns
+* `sleepWindows` is now required on policy create (no more raw cron input)
+* Remove "all windows must share same times" constraint
+
+### Frontend
+
+* WindowPicker rewritten: per-window cards with allDay slide toggle, independent time pickers, pill-style presets (Weekday nights, Weekends, Nights + weekends, Business hours), day buttons with keyboard accessibility, never-wake warning
+* Live `WeeklyTimeline` preview in CreatePolicyDialog — updates as user edits windows
+* Timeline components handle `allDay` as full 24h blocks with green awake / indigo sleep colors
+* Timezone-aware current-time marker via `nowInTimezone()`
+* Multi-day override and exception rendering in `WeeklyTimeline`
+* State-aware transition labels: "wake in 6h" when sleeping, "sleep in 2d" when awake
+* Removed cron mode toggle, `CronBuilder` component deleted
+
+### Bug Fixes
+
+* **api:** guardrails update silently broken — frontend sent snake_case keys, backend expected camelCase ([#205](https://github.com/MacXsimilian/kube-phoenix/pull/205))
+* **api:** policy update overlap check ran after DB write (TOCTOU race) — moved before write ([#205](https://github.com/MacXsimilian/kube-phoenix/pull/205))
+* **backend:** `overview.go` referenced removed `NextRuns` method ([#205](https://github.com/MacXsimilian/kube-phoenix/pull/205))
+* **frontend:** WeeklyTimeline orphaned code causing Turbopack parse error ([#205](https://github.com/MacXsimilian/kube-phoenix/pull/205))
+* **frontend:** stale `/api/schedules` probe in auth.tsx — changed to `/api/policies` ([#205](https://github.com/MacXsimilian/kube-phoenix/pull/205))
+* **frontend:** WebSocket reconnect stale closure in LogViewer ([#205](https://github.com/MacXsimilian/kube-phoenix/pull/205))
+
+### Code Quality
+
+* **backend:** deduplicate Deployment/StatefulSet processing across scaler and API packages (~200 lines removed)
+* **backend:** extract shared `stringutil.SplitCSV` (was implemented 3 times), replace hand-rolled `contains`/`parseUintBase` with stdlib
+* **backend:** name magic numbers (`tickInterval`, `defaultExecutionTimeout`, `maxLookaheadDays`)
+* **frontend:** break up `PolicyDetailPage` (526 → ~180 lines) into `OverridesSection`, `ExceptionsSection`, `ExecutionHistoryTable`
+* **frontend:** break up `SettingsPage` (470 → ~120 lines) into `AppearanceSettings`, `AccountSettings`, `DatabaseSettings`
+* **frontend:** centralize status color maps in `statusColors.ts` (was duplicated in 4+ components)
+* **frontend:** remove dead code (`SLOTS`, `scaleX`, unreachable `arrEq` check, `CronBuilder` component)
+
+### Documentation
+
+* New `docs/WINDOW_NATIVE_SCHEDULING.md` — architecture doc with Mermaid ER diagram, evaluator flowchart, scheduler sequence diagram
+* Updated `ARCHITECTURE.md` — replaced all cron references (21 edits)
+* Updated `README.md` — removed cron mentions, updated architecture diagram
+* Updated `openapi.yaml` — removed cron fields, added `allDay` and `nextTransitionAt`
+
+### Tests
+
+* 37 tests pass (18 evaluator + 14 windows + 5 allDay validation)
+
+### Breaking Changes
+
+* **API:** `sleepCron` and `wakeCron` fields removed from policy create/update/response
+* **API:** `nextSleepAt` and `nextWakeAt` replaced by single `nextTransitionAt` field
+* **API:** `sleepWindows` is now required on policy create (no more raw cron input)
+* **Dependency:** `robfig/cron/v3` removed — replaced by built-in 30-second ticker
+* **Migration:** existing cron-only policies are automatically converted to windows on startup
 
 ## [0.3.1](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.0...v0.3.1) (2026-03-22)
 
