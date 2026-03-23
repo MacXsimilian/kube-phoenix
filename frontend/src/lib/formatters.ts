@@ -43,6 +43,24 @@ export function timeUntil(iso: string): string {
   return remH > 0 ? `in ${d}d ${remH}h` : `in ${d}d`
 }
 
+/** Calculate a percentage, returning 0 when total is zero */
+export function pct(used: number, total: number): number {
+  return total > 0 ? Math.round((used / total) * 100) : 0
+}
+
+/** Return a colour for a percentage value, red >= 85, amber >= 65, green otherwise */
+export function pctColor(p: number, isDark: boolean): string {
+  if (p >= 85) return isDark ? '#F87171' : '#B91C1C'
+  if (p >= 65) return '#FBBF24'
+  return isDark ? '#22C55E' : '#15803D'
+}
+
+/** Format an ISO date-time string to a locale string, returning an em-dash for nullish values */
+export function fmtDt(iso: string | null | undefined): string {
+  if (!iso) return '\u2014'
+  return new Date(iso).toLocaleString()
+}
+
 /** Format an ISO timestamp as a relative past time: "just now", "5m ago", "2h ago", "3d ago" */
 export function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()

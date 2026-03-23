@@ -28,6 +28,22 @@ export const EXECUTION_STATUS_FALLBACK: { bg: string; color: string } = {
   color: '#94a3b8',
 }
 
+// ── Mode colors (plan / apply chips) ─────────────────────────────────────────
+
+export const MODE_COLORS: Record<string, { bg: string; color: string }> = {
+  apply: { bg: 'rgba(245,158,11,0.18)', color: '#FCD34D' },
+  plan:  { bg: 'rgba(59,130,246,0.18)',  color: '#93C5FD' },
+}
+
+// ── Exception / override type labels ─────────────────────────────────────────
+
+export const TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+  stay_awake:  { label: 'Stay Awake',  color: '#FCD34D', bg: 'rgba(245,158,11,0.15)' },
+  force_sleep: { label: 'Force Sleep', color: '#FCA5A5', bg: 'rgba(239,68,68,0.15)' },
+  skip_sleep:  { label: 'Skip Sleep',  color: '#A5B4FC', bg: 'rgba(99,102,241,0.15)' },
+  skip_wake:   { label: 'Skip Wake',   color: '#A5B4FC', bg: 'rgba(99,102,241,0.15)' },
+}
+
 // ── Log level colors ─────────────────────────────────────────────────────────
 
 export const LOG_LEVEL_COLORS_DARK: Record<LogLine['level'], string> = {
