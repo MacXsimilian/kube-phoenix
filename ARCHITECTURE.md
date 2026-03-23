@@ -540,3 +540,9 @@ Wake restores pod replicas, which creates pending pods. Karpenter detects
 unschedulable pods and provisions optimally-sized nodes via its bin-packing
 logic. Replicating node provisioning in kube-phoenix would duplicate Karpenter's
 sophistication and conflict with its internal state machine.
+
+---
+
+## Further Reading
+
+For implementation-level detail, see the [Backend Developer Guide](docs/backend-dev-guide.md) and [Frontend Developer Guide](docs/frontend-dev-guide.md).
