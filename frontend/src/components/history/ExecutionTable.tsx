@@ -14,7 +14,6 @@ import TablePagination from '@mui/material/TablePagination'
 import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
 import Skeleton from '@mui/material/Skeleton'
-import CircularProgress from '@mui/material/CircularProgress'
 import Typography from '@mui/material/Typography'
 import Tooltip from '@mui/material/Tooltip'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
@@ -25,6 +24,7 @@ import CloudOffIcon from '@mui/icons-material/CloudOff'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import { getPolicyExecutions } from '@/lib/api'
+import StatusChip from '@/components/shared/StatusChip'
 import type { PolicyExecution } from '@/lib/types'
 
 function duration(exec: PolicyExecution): string {
@@ -40,25 +40,6 @@ function formatDate(iso: string): string {
     month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
-}
-
-function StatusChip({ status }: { status: PolicyExecution['status'] }) {
-  if (status === 'running') {
-    return (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-        <CircularProgress size={12} />
-        <Chip label="Running" color="info" size="small" sx={{ height: 20, fontSize: 11 }} />
-      </Box>
-    )
-  }
-  return (
-    <Chip
-      label={status === 'success' ? 'Success' : 'Failed'}
-      color={status === 'success' ? 'success' : 'error'}
-      size="small"
-      sx={{ height: 20, fontSize: 11 }}
-    />
-  )
 }
 
 function SummaryCell({ exec }: { exec: PolicyExecution }) {
