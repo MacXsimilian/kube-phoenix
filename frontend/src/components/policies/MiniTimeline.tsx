@@ -64,7 +64,7 @@ export default function MiniTimeline({
       <Box sx={{ display: 'inline-flex', verticalAlign: 'middle' }}>
         <svg width={width} height={height} viewBox={`0 0 ${W} ${H}`} style={{ borderRadius: 4 }}>
           {/* Background — awake */}
-          <rect x={0} y={0} width={W} height={H} rx={3} fill="rgba(34,197,94,0.1)" />
+          <rect x={0} y={0} width={W} height={H} rx={3} fill="rgba(34,197,94,0.18)" />
 
           {/* Sleep blocks */}
           {blocks.map((b, i) => (
@@ -74,7 +74,7 @@ export default function MiniTimeline({
               y={0}
               width={Math.max(b.w, 1)}
               height={H}
-              fill="rgba(99,102,241,0.25)"
+              fill="rgba(124,58,237,0.50)"
               rx={b.x === 0 ? 3 : 0}
             />
           ))}

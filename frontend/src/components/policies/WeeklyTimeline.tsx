@@ -39,17 +39,17 @@ function windowBlocks(windows: SleepWindow[]): Block[] {
       if (row === -1) continue
 
       if (w.allDay) {
-        blocks.push({ row, x1: hourToX(0), x2: hourToX(24), color: '#6366f1', opacity: 0.3 })
+        blocks.push({ row, x1: hourToX(0), x2: hourToX(24), color: '#7C3AED', opacity: 0.45 })
       } else {
         const startH = timeToHours(w.startTime)
         const endH = timeToHours(w.endTime)
         const overnight = isOvernight(w)
         if (overnight) {
-          blocks.push({ row, x1: hourToX(startH), x2: hourToX(24), color: '#6366f1', opacity: 0.3 })
+          blocks.push({ row, x1: hourToX(startH), x2: hourToX(24), color: '#7C3AED', opacity: 0.45 })
           const nextRow = (row + 1) % 7
-          blocks.push({ row: nextRow, x1: hourToX(0), x2: hourToX(endH), color: '#6366f1', opacity: 0.3 })
+          blocks.push({ row: nextRow, x1: hourToX(0), x2: hourToX(endH), color: '#7C3AED', opacity: 0.45 })
         } else {
-          blocks.push({ row, x1: hourToX(startH), x2: hourToX(endH), color: '#6366f1', opacity: 0.3 })
+          blocks.push({ row, x1: hourToX(startH), x2: hourToX(endH), color: '#7C3AED', opacity: 0.45 })
         }
       }
     }
@@ -169,7 +169,7 @@ export default function WeeklyTimeline({
                 width={BAR_W}
                 height={ROW_H - 2}
                 rx={3}
-                fill={isToday ? 'rgba(34,197,94,0.1)' : 'rgba(34,197,94,0.05)'}
+                fill={isToday ? 'rgba(34,197,94,0.18)' : 'rgba(34,197,94,0.10)'}
               />
               {/* Day label */}
               <text
@@ -240,7 +240,8 @@ export default function WeeklyTimeline({
 
       {/* Legend */}
       <Box sx={{ display: 'flex', gap: 2, mt: 0.75 }}>
-        <LegendItem color="#6366f1" label="Sleep" />
+        <LegendItem color="#7C3AED" label="Sleep" />
+        <LegendItem color="#22C55E" label="Awake" />
         {overrides && overrides.some(o => o.overrideType === 'stay_awake') && (
           <LegendItem color="#f59e0b" label="Stay awake" />
         )}
