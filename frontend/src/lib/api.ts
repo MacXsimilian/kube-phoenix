@@ -6,6 +6,8 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
 // Mutation methods that require a CSRF token.
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'DELETE', 'PATCH'])
 
+const REQUEST_TIMEOUT_MS = 30_000
+
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const method = options?.method?.toUpperCase() ?? 'GET'
   const headers: Record<string, string> = {
@@ -22,6 +24,7 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
     credentials: 'include',
     headers,
+    signal: options?.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   })
 
   // 401 → session expired or not authenticated.
@@ -185,7 +188,7 @@ export async function* resetDatabaseStream(): AsyncGenerator<ResetEvent> {
     buf = lines.pop() ?? ''
     for (const line of lines) {
       if (line.trim()) {
-        try { yield JSON.parse(line) } catch { /* skip malformed lines */ }
+        try { yield JSON.parse(line) } catch { if (process.env.NODE_ENV === 'development') console.warn('[kp] skipping malformed JSON line:', line) }
       }
     }
   }

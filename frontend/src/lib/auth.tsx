@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetch(`${BASE}/api/auth/oidc/config`, { credentials: 'include' })
       .then(res => res.ok ? res.json() : null)
       .then(data => { if (data?.enabled) setOidcEnabled(true) })
-      .catch(() => {})
+      .catch((err) => { if (process.env.NODE_ENV === 'development') console.warn('[kp] OIDC config fetch failed:', err) })
 
     fetchMe()
       .then(u => {
@@ -141,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
       }
-    } catch { /* ignore */ }
+    } catch (err) { if (process.env.NODE_ENV === 'development') console.warn('[kp] logout failed:', err) }
     setUser(null)
   }, [])
 
