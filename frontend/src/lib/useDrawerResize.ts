@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH_RATIO } from './constants'
 
 /**
  * Shared hook for resizable side drawers.
@@ -8,7 +9,7 @@ import { useState, useCallback } from 'react'
  */
 export function useDrawerResize(
   initial: number,
-  min = 360,
+  min = DRAWER_MIN_WIDTH,
 ): [number, (e: React.MouseEvent) => void, (e: React.TouchEvent) => void] {
   const [drawerWidth, setDrawerWidth] = useState(initial)
 
@@ -19,7 +20,7 @@ export function useDrawerResize(
       const startWidth = drawerWidth
       const onMouseMove = (mv: MouseEvent) => {
         const delta = startX - mv.clientX
-        const next = Math.min(Math.max(startWidth + delta, min), window.innerWidth * 0.9)
+        const next = Math.min(Math.max(startWidth + delta, min), window.innerWidth * DRAWER_MAX_WIDTH_RATIO)
         setDrawerWidth(Math.round(next))
       }
       const onMouseUp = () => {
@@ -38,7 +39,7 @@ export function useDrawerResize(
       const startWidth = drawerWidth
       const onTouchMove = (mv: TouchEvent) => {
         const delta = startX - mv.touches[0].clientX
-        const next = Math.min(Math.max(startWidth + delta, min), window.innerWidth * 0.9)
+        const next = Math.min(Math.max(startWidth + delta, min), window.innerWidth * DRAWER_MAX_WIDTH_RATIO)
         setDrawerWidth(Math.round(next))
       }
       const onTouchEnd = () => {

@@ -1,4 +1,5 @@
 import type { SleepWindow } from './types'
+import { HOURS_PER_WEEK, MINUTES_PER_DAY, MINUTES_PER_HOUR } from './constants'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -17,11 +18,11 @@ export function formatTime(time: string): string {
  * Returns true if the window crosses midnight (end <= start).
  * AllDay windows do not cross midnight.
  */
-export function isOvernight(w: SleepWindow): boolean {
-  if (w.allDay) return false
-  const [sh, sm] = w.startTime.split(':').map(Number)
-  const [eh, em] = w.endTime.split(':').map(Number)
-  return eh * 60 + em <= sh * 60 + sm
+export function isOvernight(window: SleepWindow): boolean {
+  if (window.allDay) return false
+  const [sh, sm] = window.startTime.split(':').map(Number)
+  const [eh, em] = window.endTime.split(':').map(Number)
+  return eh * MINUTES_PER_HOUR + em <= sh * MINUTES_PER_HOUR + sm
 }
 
 /**
@@ -74,10 +75,10 @@ export function windowsToText(windows: SleepWindow[]): string {
   if (!windows || windows.length === 0) return ''
 
   return windows
-    .map(w => {
-      const days = formatDayRange(w.daysOfWeek)
-      if (w.allDay) return `${days} all day`
-      return `${days} ${formatTime(w.startTime)} \u2013 ${formatTime(w.endTime)}`
+    .map(window => {
+      const days = formatDayRange(window.daysOfWeek)
+      if (window.allDay) return `${days} all day`
+      return `${days} ${formatTime(window.startTime)} \u2013 ${formatTime(window.endTime)}`
     })
     .join(', ')
 }
@@ -94,28 +95,27 @@ export function timeToHours(time: string): number {
  * Compute total weekly sleep and awake hours from sleep windows.
  */
 export function computeWeeklyStats(windows: SleepWindow[]): { sleepHours: number; awakeHours: number } {
-  const totalWeekHours = 7 * 24
   let sleepMinutes = 0
 
-  for (const w of windows) {
-    if (w.daysOfWeek.length === 0) continue
+  for (const window of windows) {
+    if (window.daysOfWeek.length === 0) continue
     let minutesPerDay: number
-    if (w.allDay) {
-      minutesPerDay = 24 * 60
+    if (window.allDay) {
+      minutesPerDay = MINUTES_PER_DAY
     } else {
-      const [sh, sm] = w.startTime.split(':').map(Number)
-      const [eh, em] = w.endTime.split(':').map(Number)
-      const startMin = sh * 60 + sm
-      const endMin = eh * 60 + em
+      const [sh, sm] = window.startTime.split(':').map(Number)
+      const [eh, em] = window.endTime.split(':').map(Number)
+      const startMin = sh * MINUTES_PER_HOUR + sm
+      const endMin = eh * MINUTES_PER_HOUR + em
       minutesPerDay = endMin <= startMin
-        ? (24 * 60 - startMin) + endMin // overnight
+        ? (MINUTES_PER_DAY - startMin) + endMin // overnight
         : endMin - startMin
     }
-    sleepMinutes += minutesPerDay * w.daysOfWeek.length
+    sleepMinutes += minutesPerDay * window.daysOfWeek.length
   }
 
-  const sleepHours = Math.round(sleepMinutes / 60)
-  return { sleepHours, awakeHours: totalWeekHours - sleepHours }
+  const sleepHours = Math.round(sleepMinutes / MINUTES_PER_HOUR)
+  return { sleepHours, awakeHours: HOURS_PER_WEEK - sleepHours }
 }
 
 /**
@@ -125,8 +125,8 @@ export function computeWeeklyStats(windows: SleepWindow[]): { sleepHours: number
 export function nowInTimezone(tz?: string): { dayOfWeek: number; fractionalHour: number } {
   let now = new Date()
   if (tz) {
-    const str = now.toLocaleString('en-US', { timeZone: tz })
-    now = new Date(str)
+    const dateInTimezone = now.toLocaleString('en-US', { timeZone: tz })
+    now = new Date(dateInTimezone)
   }
   return {
     dayOfWeek: now.getDay(),
