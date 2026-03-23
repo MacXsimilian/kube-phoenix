@@ -111,10 +111,6 @@ function exceptionBlocks(exceptions: ScheduledException[], tz?: string): Block[]
     if (ex.status === 'cancelled' || ex.status === 'completed') continue
     const color = ex.exceptionType === 'force_sleep' ? '#ef4444' : '#22c55e'
     blocks.push(...timeRangeBlocks(ex.startsAt, ex.endsAt, color, 0.3, tz))
-        }
-      }
-      cursor.setDate(cursor.getDate() + 1)
-    }
   }
   return blocks
 }
