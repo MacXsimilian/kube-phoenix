@@ -33,12 +33,8 @@ import ExecutionHistoryTable from '@/components/policies/ExecutionHistoryTable'
 import { windowsToText } from '@/lib/windowUtils'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules } from '@/lib/rbac'
-import { STATE_COLORS } from '@/lib/statusColors'
-
-function fmtDt(iso: string | null | undefined) {
-  if (!iso) return '\u2014'
-  return new Date(iso).toLocaleString()
-}
+import { STATE_COLORS, MODE_COLORS } from '@/lib/statusColors'
+import { fmtDt } from '@/lib/formatters'
 
 export default function PolicyDetailPage() {
   const searchParams = useSearchParams()
@@ -107,8 +103,8 @@ export default function PolicyDetailPage() {
           label={policy.mode.toUpperCase()}
           size="small"
           sx={{
-            bgcolor: policy.mode === 'apply' ? 'rgba(245,158,11,0.18)' : 'rgba(59,130,246,0.18)',
-            color: policy.mode === 'apply' ? 'warning.main' : 'info.main',
+            bgcolor: (MODE_COLORS[policy.mode] ?? MODE_COLORS.plan).bg,
+            color: (MODE_COLORS[policy.mode] ?? MODE_COLORS.plan).color,
           }}
         />
         {canEdit && (

@@ -42,9 +42,6 @@ const DEFAULTS: PolicyInput & { editingWindows: SleepWindow[] } = {
   editingWindows: DEFAULT_WINDOWS,
 }
 
-
-
-
 export default function CreatePolicyDialog({
   open,
   onClose,
@@ -130,6 +127,9 @@ export default function CreatePolicyDialog({
     mutation.mutate()
   }
 
+  const activeWindows = form.editingWindows.filter(w => w.daysOfWeek.length > 0)
+  const weeklyStats = activeWindows.length > 0 ? computeWeeklyStats(activeWindows) : null
+
   return (
     <Dialog
       open={open}
@@ -208,34 +208,30 @@ export default function CreatePolicyDialog({
             </Box>
 
             {/* Stats footer */}
-            {(() => {
-              const activeWindows = form.editingWindows.filter(w => w.daysOfWeek.length > 0)
-              const { sleepHours, awakeHours } = computeWeeklyStats(activeWindows)
-              return (
-                <Box sx={{
-                  px: 2, py: 1.25,
-                  borderTop: '1px solid', borderColor: 'divider',
-                  display: 'flex', alignItems: 'center', gap: 2.5,
-                  bgcolor: 'rgba(255,255,255,0.015)',
-                }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                    <BedtimeIcon sx={{ fontSize: 13, color: '#A78BFA' }} />
-                    <Typography variant="caption" sx={{ color: '#A78BFA', fontWeight: 600, fontSize: 12 }}>
-                      {sleepHours}h sleep
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                    <WbSunnyIcon sx={{ fontSize: 13, color: '#86EFAC' }} />
-                    <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 600, fontSize: 12 }}>
-                      {awakeHours}h awake
-                    </Typography>
-                  </Box>
-                  <Typography variant="caption" color="text.disabled" sx={{ ml: 'auto', fontSize: 11 }}>
-                    {windowsToText(activeWindows)}
+            {weeklyStats && (
+              <Box sx={{
+                px: 2, py: 1.25,
+                borderTop: '1px solid', borderColor: 'divider',
+                display: 'flex', alignItems: 'center', gap: 2.5,
+                bgcolor: 'rgba(255,255,255,0.015)',
+              }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                  <BedtimeIcon sx={{ fontSize: 13, color: '#A78BFA' }} />
+                  <Typography variant="caption" sx={{ color: '#A78BFA', fontWeight: 600, fontSize: 12 }}>
+                    {weeklyStats.sleepHours}h sleep
                   </Typography>
                 </Box>
-              )
-            })()}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                  <WbSunnyIcon sx={{ fontSize: 13, color: '#86EFAC' }} />
+                  <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 600, fontSize: 12 }}>
+                    {weeklyStats.awakeHours}h awake
+                  </Typography>
+                </Box>
+                <Typography variant="caption" color="text.disabled" sx={{ ml: 'auto', fontSize: 11 }}>
+                  {windowsToText(activeWindows)}
+                </Typography>
+              </Box>
+            )}
           </Box>
         )}
 

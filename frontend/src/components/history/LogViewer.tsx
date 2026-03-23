@@ -37,22 +37,7 @@ import { semanticColors, useColors } from '@/lib/colors'
 import { getPolicyExecutionLogs, wsPolicyLogsUrl } from '@/lib/api'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { PolicyExecution, LogLine } from '@/lib/types'
-
-const LEVEL_COLORS_DARK: Record<LogLine['level'], string> = {
-  info: '#22D3EE',
-  ok: '#22C55E',
-  plan: '#C084FC',
-  error: '#F87171',
-  warn: '#FBBF24',
-}
-
-const LEVEL_COLORS_LIGHT: Record<LogLine['level'], string> = {
-  info: '#0369A1',
-  ok: '#15803D',
-  plan: '#6D28D9',
-  error: '#B91C1C',
-  warn: '#92400E',
-}
+import { LOG_LEVEL_COLORS_DARK, LOG_LEVEL_COLORS_LIGHT, MODE_COLORS } from '@/lib/statusColors'
 
 // ── Summary parsing ──────────────────────────────────────────────────────────
 
@@ -142,7 +127,7 @@ function nodeChip(isDark: boolean): Record<NodeEntry['action'], { label: string;
   }
 }
 
-function PolicyExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunning: boolean }) {
+function PolicyExecutionSummary({ lines }: { lines: LogLine[] }) {
   const isDark = useTheme().palette.mode === 'dark'
   const { workloads, nodes, errors } = parseSummary(lines)
 
@@ -253,7 +238,7 @@ function PolicyExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunn
                   return (
                     <TableRow key={`${n.name}/${n.action}`}>
                       <TableCell sx={{ flex: 1 }}>
-                        <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 12, color: '#E2E8F0' }}>
+                        <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 12, color: 'text.primary' }}>
                           {n.name}
                         </Typography>
                       </TableCell>
@@ -291,7 +276,7 @@ function PolicyExecutionSummary({ lines, isRunning }: { lines: LogLine[]; isRunn
 
 function LogLineRow({ line }: { line: LogLine }) {
   const theme = useTheme()
-  const levelColors = theme.palette.mode === 'dark' ? LEVEL_COLORS_DARK : LEVEL_COLORS_LIGHT
+  const levelColors = theme.palette.mode === 'dark' ? LOG_LEVEL_COLORS_DARK : LOG_LEVEL_COLORS_LIGHT
   return (
     <Box
       component="div"
@@ -464,8 +449,8 @@ export default function LogViewer({
                     size="small"
                     sx={{
                       height: 18, fontSize: 10,
-                      bgcolor: execution.mode === 'apply' ? 'rgba(245,158,11,0.15)' : 'rgba(59,130,246,0.15)',
-                      color: execution.mode === 'apply' ? 'warning.main' : 'info.main',
+                      bgcolor: (MODE_COLORS[execution.mode] ?? MODE_COLORS.plan).bg,
+                      color: (MODE_COLORS[execution.mode] ?? MODE_COLORS.plan).color,
                     }}
                   />
                   {execution.direction === 'wake' ? (
@@ -525,7 +510,7 @@ export default function LogViewer({
 
             <Divider />
 
-            <PolicyExecutionSummary lines={lines} isRunning={isRunning} />
+            <PolicyExecutionSummary lines={lines} />
 
             {/* Log area */}
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>

@@ -23,7 +23,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import { deletePolicy, triggerPolicySleep, triggerPolicyWake } from '@/lib/api'
 import type { Policy } from '@/lib/types'
 import { windowsToText } from '@/lib/windowUtils'
-import { STATE_COLORS } from '@/lib/statusColors'
+import { STATE_COLORS, MODE_COLORS } from '@/lib/statusColors'
 import MiniTimeline from './MiniTimeline'
 
 function fmtNext(iso: string | null | undefined): string {
@@ -125,8 +125,8 @@ export default function PolicyCard({
                 sx={{
                   height: 18,
                   fontSize: 10,
-                  bgcolor: policy.mode === 'apply' ? 'rgba(245,158,11,0.18)' : 'rgba(59,130,246,0.18)',
-                  color: policy.mode === 'apply' ? 'warning.main' : 'info.main',
+                  bgcolor: (MODE_COLORS[policy.mode] ?? MODE_COLORS.plan).bg,
+                  color: (MODE_COLORS[policy.mode] ?? MODE_COLORS.plan).color,
                 }}
               />
               {!policy.enabled && (
