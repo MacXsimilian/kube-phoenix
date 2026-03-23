@@ -26,5 +26,7 @@
 | Document | Description |
 | :------- | :---------- |
 | [Architecture](../ARCHITECTURE.md) | System design, data flows, and internals |
+| [Backend Developer Guide](backend-dev-guide.md) | Deep-dive into Go packages, data model, execution engine, and cluster pipeline |
+| [Frontend Developer Guide](frontend-dev-guide.md) | Deep-dive into React components, API layer, state management, and real-time flows |
 | [Contributing](../CONTRIBUTING.md) | Development setup, branching strategy, and PR checklist |
 | [Changelog](../CHANGELOG.md) | Release history |
