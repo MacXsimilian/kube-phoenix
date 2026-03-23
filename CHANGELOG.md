@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.1...v0.3.2) (2026-03-23)
+
+
+### Features
+
+* window-native policy scheduling ([0d004c4](https://github.com/MacXsimilian/kube-phoenix/commit/0d004c414dd9fb5bfb81d62c489d3b072101b922))
+
 ## [0.3.1](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.0...v0.3.1) (2026-03-22)
 
 
