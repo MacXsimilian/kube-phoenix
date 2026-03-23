@@ -1,9 +1,11 @@
 package store
 
 import (
+	"encoding/json"
 	"log/slog"
 	"time"
 
+	"github.com/macxsimilian/kube-phoenix/backend/internal/policy"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -64,7 +66,51 @@ func New(dsn string) (*Store, error) {
 	END $$`)
 
 	slog.Info("store: schema migration complete")
+
+	// Migrate legacy cron-only policies to window format.
+	migrateWindowsFromCrons(db)
+
+	// Drop legacy cron columns (idempotent).
+	db.Exec("ALTER TABLE policies DROP COLUMN IF EXISTS sleep_cron")
+	db.Exec("ALTER TABLE policies DROP COLUMN IF EXISTS wake_cron")
+	db.Exec("ALTER TABLE policies DROP COLUMN IF EXISTS next_sleep_at")
+	db.Exec("ALTER TABLE policies DROP COLUMN IF EXISTS next_wake_at")
+
 	return &Store{db: db}, nil
+}
+
+// migrateWindowsFromCrons converts legacy cron-only policies to the window format.
+func migrateWindowsFromCrons(db *gorm.DB) {
+	// Check if the legacy columns still exist.
+	var count int64
+	db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_name='policies' AND column_name='sleep_cron'").Scan(&count)
+	if count == 0 {
+		return // Already migrated.
+	}
+
+	type legacyPolicy struct {
+		ID           uint
+		SleepWindows string
+		SleepCron    string
+		WakeCron     string
+	}
+	var policies []legacyPolicy
+	db.Raw("SELECT id, sleep_windows, sleep_cron, wake_cron FROM policies WHERE (sleep_windows IS NULL OR sleep_windows = '' OR sleep_windows = '[]') AND (sleep_cron != '' OR wake_cron != '')").Scan(&policies)
+
+	for _, p := range policies {
+		windows, err := policy.CronsToWindows(p.SleepCron, p.WakeCron)
+		if err != nil || windows == nil {
+			slog.Warn("migration: could not reverse-compile crons, creating fallback all-day window",
+				"policyID", p.ID, "sleepCron", p.SleepCron, "wakeCron", p.WakeCron)
+			windows = []policy.SleepWindow{{
+				DaysOfWeek: []int{0, 1, 2, 3, 4, 5, 6},
+				AllDay:     true,
+			}}
+		}
+		j, _ := json.Marshal(windows)
+		db.Exec("UPDATE policies SET sleep_windows = ? WHERE id = ?", string(j), p.ID)
+		slog.Info("migration: converted cron policy to windows", "policyID", p.ID)
+	}
 }
 
 func (s *Store) DB() *gorm.DB { return s.db }

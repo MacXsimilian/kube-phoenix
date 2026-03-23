@@ -79,10 +79,8 @@ type Policy struct {
 	NamespaceFilter string `gorm:"size:4096" json:"namespaceFilter"` // comma-separated; empty = all
 	LabelSelector   string `gorm:"size:4096" json:"labelSelector"`   // full k8s label selector syntax
 
-	// Schedule — windows are the primary input; crons are compiled from them.
-	SleepWindows string `gorm:"type:text" json:"-"`        // JSON array of SleepWindow; empty for legacy cron-only policies
-	SleepCron    string `gorm:"size:255" json:"sleepCron"` // 5-field; compiled from windows or set directly
-	WakeCron     string `gorm:"size:255" json:"wakeCron"`  // 5-field; compiled from windows or set directly
+	// Schedule — SleepWindows is the sole schedule source of truth.
+	SleepWindows string `gorm:"type:text" json:"-"` // JSON array of policy.SleepWindow
 	Timezone     string `gorm:"size:100" json:"timezone"`
 
 	Mode           string `gorm:"size:10" json:"mode"` // "plan" | "apply"
@@ -90,12 +88,11 @@ type Policy struct {
 	TimeoutMinutes int    `json:"timeoutMinutes"` // 0 = server default (120 min)
 
 	// Derived state — cached after each execution, updated by the policy scheduler.
-	CurrentState string     `gorm:"size:20;default:unknown" json:"currentState"` // sleeping|awake|unknown|transitioning
-	StateSince   *time.Time `json:"stateSince"`
-	LastSleepAt  *time.Time `json:"lastSleepAt"`
-	LastWakeAt   *time.Time `json:"lastWakeAt"`
-	NextSleepAt  *time.Time `json:"nextSleepAt"` // calculated from cron
-	NextWakeAt   *time.Time `json:"nextWakeAt"`  // calculated from cron
+	CurrentState     string     `gorm:"size:20;default:unknown" json:"currentState"` // sleeping|awake|unknown|transitioning
+	StateSince       *time.Time `json:"stateSince"`
+	LastSleepAt      *time.Time `json:"lastSleepAt"`
+	LastWakeAt       *time.Time `json:"lastWakeAt"`
+	NextTransitionAt *time.Time `json:"nextTransitionAt"` // next predicted state flip
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`

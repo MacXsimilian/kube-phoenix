@@ -12,7 +12,6 @@ import (
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/policy"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
-	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
 )
 
@@ -38,34 +37,29 @@ func validateNamespaceFilter(filter string) string {
 	return ""
 }
 
-// policyResponse wraps Policy with computed next-run times and parsed windows.
+// policyResponse wraps Policy with computed next-transition time and parsed windows.
 type policyResponse struct {
 	store.Policy
-	NextSleepAt  *time.Time           `json:"nextSleepAt,omitempty"`
-	NextWakeAt   *time.Time           `json:"nextWakeAt,omitempty"`
-	SleepWindows []policy.SleepWindow `json:"sleepWindows"`
+	NextTransitionAt *time.Time           `json:"nextTransitionAt,omitempty"`
+	SleepWindows     []policy.SleepWindow `json:"sleepWindows"`
 }
 
 func (h *Handler) policyResp(p store.Policy) policyResponse {
-	ns, nw := h.policyScheduler.NextRuns(p.ID)
+	nt := h.policyScheduler.NextTransition(p.ID)
 	windows := parseSleepWindows(p)
-	return policyResponse{Policy: p, NextSleepAt: ns, NextWakeAt: nw, SleepWindows: windows}
+	return policyResponse{Policy: p, NextTransitionAt: nt, SleepWindows: windows}
 }
 
-// parseSleepWindows deserializes stored windows or reverse-compiles from crons.
+// parseSleepWindows deserializes stored windows.
 func parseSleepWindows(p store.Policy) []policy.SleepWindow {
 	if p.SleepWindows != "" {
 		var w []policy.SleepWindow
 		if err := json.Unmarshal([]byte(p.SleepWindows), &w); err != nil {
-			slog.Warn("failed to parse sleepWindows JSON, falling back to cron reverse-compile",
+			slog.Warn("failed to parse sleepWindows JSON",
 				"policyID", p.ID, "err", err)
 		} else if len(w) > 0 {
 			return w
 		}
-	}
-	// Best-effort reverse compile for legacy cron-only policies.
-	if w, _ := policy.CronsToWindows(p.SleepCron, p.WakeCron); w != nil {
-		return w
 	}
 	return nil
 }
@@ -101,27 +95,10 @@ func (h *Handler) getPolicy(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, h.policyResp(*p))
 }
 
-// createPolicyInput extends the policy with an optional sleepWindows field.
+// createPolicyInput is the request body for creating a policy.
 type createPolicyInput struct {
 	store.Policy
 	SleepWindows []policy.SleepWindow `json:"sleepWindows"`
-}
-
-// compileSleepWindows validates windows and sets the cron fields on the policy.
-// Returns an error message on failure, empty string on success.
-func compileSleepWindows(windows []policy.SleepWindow, p *store.Policy) string {
-	if err := policy.ValidateWindows(windows); err != nil {
-		return err.Error()
-	}
-	sleepCron, wakeCron, err := policy.CompileWindowsToCrons(windows)
-	if err != nil {
-		return err.Error()
-	}
-	p.SleepCron = sleepCron
-	p.WakeCron = wakeCron
-	windowsJSON, _ := json.Marshal(windows)
-	p.SleepWindows = string(windowsJSON)
-	return ""
 }
 
 func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
@@ -136,17 +113,17 @@ func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(input.SleepWindows) > 0 {
-		if msg := compileSleepWindows(input.SleepWindows, &p); msg != "" {
-			jsonError(w, msg, http.StatusBadRequest)
-			return
-		}
-	}
-
-	if p.SleepCron == "" && p.WakeCron == "" {
-		jsonError(w, "sleepWindows or at least one of sleepCron/wakeCron is required", http.StatusBadRequest)
+	if len(input.SleepWindows) == 0 {
+		jsonError(w, "sleepWindows is required", http.StatusBadRequest)
 		return
 	}
+	if err := policy.ValidateWindows(input.SleepWindows); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	windowsJSON, _ := json.Marshal(input.SleepWindows)
+	p.SleepWindows = string(windowsJSON)
+
 	if msg := validatePolicyFields(p); msg != "" {
 		jsonError(w, msg, http.StatusBadRequest)
 		return
@@ -191,16 +168,14 @@ var policyFieldMap = map[string]string{
 	"description":     "description",
 	"namespaceFilter": "namespace_filter",
 	"labelSelector":   "label_selector",
-	"sleepCron":       "sleep_cron",
-	"wakeCron":        "wake_cron",
 	"timezone":        "timezone",
 	"mode":            "mode",
 	"enabled":         "enabled",
 	"timeoutMinutes":  "timeout_minutes",
 }
 
-// applySleepWindowUpdates validates and compiles sleep windows into cron expressions,
-// merging the result into updates. Returns an error message on failure, empty string on success.
+// applySleepWindowUpdates validates sleep windows from the request body and
+// merges them into the update map.
 func applySleepWindowUpdates(body map[string]interface{}, updates map[string]interface{}) string {
 	rawWindows, ok := body["sleepWindows"]
 	if !ok {
@@ -215,19 +190,12 @@ func applySleepWindowUpdates(body map[string]interface{}, updates map[string]int
 		return "invalid sleepWindows format"
 	}
 	if len(windows) == 0 {
-		updates["sleep_windows"] = ""
-		return ""
+		return "sleepWindows must not be empty"
 	}
 	if err := policy.ValidateWindows(windows); err != nil {
 		return err.Error()
 	}
-	sleepCron, wakeCron, err := policy.CompileWindowsToCrons(windows)
-	if err != nil {
-		return err.Error()
-	}
 	updates["sleep_windows"] = string(windowsJSON)
-	updates["sleep_cron"] = sleepCron
-	updates["wake_cron"] = wakeCron
 	return ""
 }
 
@@ -265,17 +233,13 @@ func (h *Handler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate that the final state will have at least one cron expression.
-	finalSleep := old.SleepCron
-	finalWake := old.WakeCron
-	if v, ok := updates["sleep_cron"]; ok {
-		finalSleep = fmt.Sprintf("%v", v)
+	// Validate that the policy still has windows after update.
+	finalWindows := old.SleepWindows
+	if v, ok := updates["sleep_windows"]; ok {
+		finalWindows = fmt.Sprintf("%v", v)
 	}
-	if v, ok := updates["wake_cron"]; ok {
-		finalWake = fmt.Sprintf("%v", v)
-	}
-	if finalSleep == "" && finalWake == "" {
-		jsonError(w, "policy must have at least one sleep or wake schedule (via windows or cron expressions)", http.StatusBadRequest)
+	if finalWindows == "" || finalWindows == "[]" {
+		jsonError(w, "policy must have at least one sleep window", http.StatusBadRequest)
 		return
 	}
 
@@ -385,17 +349,6 @@ func validatePolicyFields(p store.Policy) string {
 	if p.Mode != "" && p.Mode != "plan" && p.Mode != "apply" {
 		return "mode must be plan or apply"
 	}
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	if p.SleepCron != "" {
-		if _, err := parser.Parse(p.SleepCron); err != nil {
-			return "invalid sleepCron expression"
-		}
-	}
-	if p.WakeCron != "" {
-		if _, err := parser.Parse(p.WakeCron); err != nil {
-			return "invalid wakeCron expression"
-		}
-	}
 	if p.Timezone != "" {
 		if _, err := time.LoadLocation(p.Timezone); err != nil {
 			return "invalid timezone"
@@ -407,30 +360,7 @@ func validatePolicyFields(p store.Policy) string {
 	return ""
 }
 
-// validateCronUpdate checks a cron field in the update map.
-func validateCronUpdate(updates map[string]interface{}, key, label string, parser cron.Parser) string {
-	v, ok := updates[key]
-	if !ok {
-		return ""
-	}
-	s := fmt.Sprintf("%v", v)
-	if s == "" {
-		return ""
-	}
-	if _, err := parser.Parse(s); err != nil {
-		return "invalid " + label + " expression"
-	}
-	return ""
-}
-
 func validatePolicyUpdates(updates map[string]interface{}) string {
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	if msg := validateCronUpdate(updates, "sleep_cron", "sleepCron", parser); msg != "" {
-		return msg
-	}
-	if msg := validateCronUpdate(updates, "wake_cron", "wakeCron", parser); msg != "" {
-		return msg
-	}
 	if v, ok := updates["timezone"]; ok {
 		if _, err := time.LoadLocation(fmt.Sprintf("%v", v)); err != nil {
 			return "invalid timezone"

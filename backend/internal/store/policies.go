@@ -26,7 +26,7 @@ func (s *Store) CreatePolicy(p *Policy) error {
 func (s *Store) UpdatePolicy(id uint, updates map[string]interface{}) (*Policy, error) {
 	allowed := map[string]bool{
 		"name": true, "description": true, "namespace_filter": true, "label_selector": true,
-		"sleep_windows": true, "sleep_cron": true, "wake_cron": true, "timezone": true,
+		"sleep_windows": true, "timezone": true,
 		"mode": true, "enabled": true, "timeout_minutes": true,
 	}
 	for k := range updates {
@@ -47,13 +47,12 @@ func (s *Store) UpdatePolicy(id uint, updates map[string]interface{}) (*Policy, 
 	return s.GetPolicy(id)
 }
 
-func (s *Store) UpdatePolicyState(id uint, state string, nextSleep, nextWake *time.Time) error {
+func (s *Store) UpdatePolicyState(id uint, state string, nextTransition *time.Time) error {
 	now := time.Now()
 	updates := map[string]interface{}{
-		"current_state": state,
-		"state_since":   now,
-		"next_sleep_at": nextSleep,
-		"next_wake_at":  nextWake,
+		"current_state":     state,
+		"state_since":       now,
+		"next_transition_at": nextTransition,
 	}
 	switch state {
 	case "sleeping":
