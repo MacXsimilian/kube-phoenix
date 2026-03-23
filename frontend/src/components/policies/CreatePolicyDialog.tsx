@@ -16,67 +16,31 @@ import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
-import ToggleButton from '@mui/material/ToggleButton'
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import { createPolicy, updatePolicy } from '@/lib/api'
 import { TIMEZONES } from '@/lib/constants'
 import type { Policy, PolicyInput, SleepWindow } from '@/lib/types'
-import CronBuilder from '../schedules/CronBuilder'
 import WindowPicker from './WindowPicker'
-
-type ScheduleMode = 'windows' | 'cron'
+import WeeklyTimeline from './WeeklyTimeline'
 
 const DEFAULT_WINDOWS: SleepWindow[] = [
-  { daysOfWeek: [1, 2, 3, 4, 5], startTime: '19:00', endTime: '07:00' },
+  { daysOfWeek: [1, 2, 3, 4, 5], startTime: '19:00', endTime: '07:00', allDay: false },
 ]
 
-const DEFAULTS: PolicyInput & { _windows: SleepWindow[]; _scheduleMode: ScheduleMode } = {
+const DEFAULTS: PolicyInput & { editingWindows: SleepWindow[] } = {
   name: '',
   description: '',
-  sleepCron: '',
-  wakeCron: '',
+  sleepWindows: DEFAULT_WINDOWS,
   timezone: 'UTC',
   mode: 'plan',
   enabled: true,
   timeoutMinutes: 30,
   namespaceFilter: '',
   labelSelector: '',
-  _windows: DEFAULT_WINDOWS,
-  _scheduleMode: 'windows',
+  editingWindows: DEFAULT_WINDOWS,
 }
 
-function isValidCron(expr: string): boolean {
-  if (!expr) return true
-  const parts = expr.trim().split(/\s+/)
-  if (parts.length !== 5) return false
-  const ranges = [
-    [0, 59],  // minute
-    [0, 23],  // hour
-    [1, 31],  // day of month
-    [1, 12],  // month
-    [0, 7],   // day of week (0 and 7 both = Sunday)
-  ]
-  return parts.every((part, i) => {
-    if (part === '*') return true
-    // Handle comma-separated values
-    return part.split(',').every(seg => {
-      // Strip step suffix (e.g. */5, 1-10/2)
-      const [rangePart, stepStr] = seg.split('/')
-      if (stepStr !== undefined) {
-        const step = parseInt(stepStr, 10)
-        if (isNaN(step) || step < 1) return false
-      }
-      if (rangePart === '*') return true
-      // Handle ranges (e.g. 1-5)
-      const bounds = rangePart.split('-')
-      if (bounds.length > 2) return false
-      return bounds.every(v => {
-        const n = parseInt(v, 10)
-        return !isNaN(n) && n >= ranges[i][0] && n <= ranges[i][1]
-      })
-    })
-  })
-}
+
+
 
 export default function CreatePolicyDialog({
   open,
@@ -99,19 +63,18 @@ export default function CreatePolicyDialog({
     if (open) {
       if (existing) {
         const hasWindows = existing.sleepWindows && existing.sleepWindows.length > 0
+        const windows = hasWindows ? existing.sleepWindows! : DEFAULT_WINDOWS
         setForm({
           name: existing.name,
           description: existing.description || '',
-          sleepCron: existing.sleepCron || '',
-          wakeCron: existing.wakeCron || '',
+          sleepWindows: windows,
           timezone: existing.timezone || 'UTC',
           mode: existing.mode,
           enabled: existing.enabled,
           timeoutMinutes: existing.timeoutMinutes,
           namespaceFilter: existing.namespaceFilter || '',
           labelSelector: existing.labelSelector || '',
-          _windows: hasWindows ? existing.sleepWindows! : DEFAULT_WINDOWS,
-          _scheduleMode: hasWindows ? 'windows' : 'cron',
+          editingWindows: windows,
         })
       } else {
         setForm(DEFAULTS)
@@ -126,14 +89,8 @@ export default function CreatePolicyDialog({
 
   function validate(): string {
     if (!form.name.trim()) return 'Name is required'
-    if (form._scheduleMode === 'windows') {
-      if (form._windows.length === 0) return 'At least one sleep window is required'
-      if (form._windows.every(w => w.daysOfWeek.length === 0)) return 'Select at least one day'
-    } else {
-      if (!form.sleepCron && !form.wakeCron) return 'At least one of Sleep Cron or Wake Cron is required'
-      if (form.sleepCron && !isValidCron(form.sleepCron)) return 'Invalid sleep cron expression'
-      if (form.wakeCron && !isValidCron(form.wakeCron)) return 'Invalid wake cron expression'
-    }
+    if (form.editingWindows.length === 0) return 'At least one sleep window is required'
+    if (form.editingWindows.every(w => w.daysOfWeek.length === 0)) return 'Select at least one day'
     if ((form.timeoutMinutes ?? 0) < 0 || (form.timeoutMinutes ?? 0) > 1440) return 'Timeout must be 0\u20131440 minutes'
     return ''
   }
@@ -143,18 +100,13 @@ export default function CreatePolicyDialog({
       const payload: PolicyInput = {
         name: form.name,
         description: form.description || undefined,
+        sleepWindows: form.editingWindows.filter(w => w.daysOfWeek.length > 0),
         timezone: form.timezone,
         mode: form.mode,
         enabled: form.enabled,
         timeoutMinutes: form.timeoutMinutes,
         namespaceFilter: form.namespaceFilter || undefined,
         labelSelector: form.labelSelector || undefined,
-      }
-      if (form._scheduleMode === 'windows') {
-        payload.sleepWindows = form._windows.filter(w => w.daysOfWeek.length > 0)
-      } else {
-        if (form.sleepCron) payload.sleepCron = form.sleepCron
-        if (form.wakeCron) payload.wakeCron = form.wakeCron
       }
       return isEdit ? updatePolicy(existing!.id, payload) : createPolicy(payload)
     },
@@ -207,24 +159,7 @@ export default function CreatePolicyDialog({
           inputProps={{ maxLength: 1024 }}
         />
 
-        <Divider>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Typography variant="caption" color="text.disabled">Schedule</Typography>
-            <ToggleButtonGroup
-              value={form._scheduleMode}
-              exclusive
-              onChange={(_, v) => v && set('_scheduleMode', v)}
-              size="small"
-            >
-              <ToggleButton value="windows" sx={{ fontSize: 11, px: 1.5, py: 0.25 }}>
-                Windows
-              </ToggleButton>
-              <ToggleButton value="cron" sx={{ fontSize: 11, px: 1.5, py: 0.25 }}>
-                Advanced (cron)
-              </ToggleButton>
-            </ToggleButtonGroup>
-          </Box>
-        </Divider>
+        <Divider><Typography variant="caption" color="text.disabled">Schedule</Typography></Divider>
 
         <TextField
           label="Timezone"
@@ -239,32 +174,19 @@ export default function CreatePolicyDialog({
           ))}
         </TextField>
 
-        {form._scheduleMode === 'windows' ? (
-          <WindowPicker
-            windows={form._windows}
-            onChange={w => set('_windows', w)}
-          />
-        ) : (
-          <>
-            <Box>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                Sleep Cron (optional)
-              </Typography>
-              <CronBuilder
-                value={form.sleepCron ?? ''}
-                onChange={v => set('sleepCron', v)}
-              />
-            </Box>
-            <Box>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                Wake Cron (optional)
-              </Typography>
-              <CronBuilder
-                value={form.wakeCron ?? ''}
-                onChange={v => set('wakeCron', v)}
-              />
-            </Box>
-          </>
+        <WindowPicker
+          windows={form.editingWindows}
+          onChange={w => set('editingWindows', w)}
+        />
+
+        {/* Live preview */}
+        {form.editingWindows.length > 0 && form.editingWindows.some(w => w.daysOfWeek.length > 0) && (
+          <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, p: 1.5, bgcolor: 'rgba(255,255,255,0.01)' }}>
+            <Typography variant="caption" color="text.disabled" fontWeight={600} letterSpacing={0.5} textTransform="uppercase" sx={{ mb: 0.5, display: 'block' }}>
+              Preview
+            </Typography>
+            <WeeklyTimeline windows={form.editingWindows} />
+          </Box>
         )}
 
         <Divider><Typography variant="caption" color="text.disabled">Targeting</Typography></Divider>

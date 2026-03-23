@@ -21,57 +21,23 @@ func (r *Runner) RunScaleDown(ctx context.Context, mode, namespaceFilter string,
 
 	skipNS := mergeCSV(g.SystemNamespaces, g.SkipNamespaces)
 
-	// ── Scale Deployments ──────────────────────────────────────────────────
+	// ── Scale Deployments & StatefulSets ─────────────────────────────────
 	r.info(logCh, "Fetching Deployments...")
-	deployments, err := r.k8s.ListDeployments(ctx, "")
-	if err != nil {
-		r.errLog(logCh, "Failed to list deployments: "+err.Error())
+	deployments, dErr := r.k8s.ListDeployments(ctx, "")
+	if dErr != nil {
+		r.errLog(logCh, "Failed to list deployments: "+dErr.Error())
 		counts.Errors++
-	} else {
-		entries := make([]workloadEntry, 0, len(deployments))
-		for _, d := range deployments {
-			if skipNS[d.Namespace] || !namespaceAllowed(d.Namespace, namespaceFilter) {
-				counts.Skipped++
-				continue
-			}
-			replicas := int32(0)
-			if d.Spec.Replicas != nil {
-				replicas = *d.Spec.Replicas
-			}
-			entries = append(entries, workloadEntry{
-				Kind: "Deployment", Namespace: d.Namespace, Name: d.Name,
-				Replicas: replicas, Annotations: d.Annotations,
-				Annotate: r.k8s.AnnotateDeployment, Scale: r.k8s.ScaleDeployment,
-			})
-		}
-		r.scaleDownWorkloads(ctx, mode, entries, logCh, counts)
 	}
 
-	// ── Scale StatefulSets ─────────────────────────────────────────────────
 	r.info(logCh, "Fetching StatefulSets...")
-	statefulsets, err := r.k8s.ListStatefulSets(ctx, "")
-	if err != nil {
-		r.errLog(logCh, "Failed to list statefulsets: "+err.Error())
+	statefulsets, ssErr := r.k8s.ListStatefulSets(ctx, "")
+	if ssErr != nil {
+		r.errLog(logCh, "Failed to list statefulsets: "+ssErr.Error())
 		counts.Errors++
-	} else {
-		entries := make([]workloadEntry, 0, len(statefulsets))
-		for _, ss := range statefulsets {
-			if skipNS[ss.Namespace] || !namespaceAllowed(ss.Namespace, namespaceFilter) {
-				counts.Skipped++
-				continue
-			}
-			replicas := int32(0)
-			if ss.Spec.Replicas != nil {
-				replicas = *ss.Spec.Replicas
-			}
-			entries = append(entries, workloadEntry{
-				Kind: "StatefulSet", Namespace: ss.Namespace, Name: ss.Name,
-				Replicas: replicas, Annotations: ss.Annotations,
-				Annotate: r.k8s.AnnotateStatefulSet, Scale: r.k8s.ScaleStatefulSet,
-			})
-		}
-		r.scaleDownWorkloads(ctx, mode, entries, logCh, counts)
 	}
+
+	entries := r.collectFilteredEntries(deployments, statefulsets, skipNS, namespaceFilter, counts, true)
+	r.scaleDownWorkloads(ctx, mode, entries, logCh, counts)
 
 	// ── Drain & Delete Nodes ──────────────────────────────────────────────
 	r.drainNodes(ctx, mode, g, logCh, counts)

@@ -83,14 +83,12 @@ Policy: "Dev environments"
   mode: apply
 ```
 
-The system compiles windows into cron expressions internally and manages the full lifecycle:
+A 30-second ticker evaluates all windows against the current time (in each policy's timezone) and triggers sleep or wake executions when the intended state differs from the actual state. The full lifecycle includes:
 
-- **Overrides** — one-time windows that take precedence (`stay_awake`, `force_sleep`) or skip a single tick (`skip_sleep`, `skip_wake`)
+- **Overrides** — time-windowed overrides that take precedence (`stay_awake`, `force_sleep`) or skip the next transition (`skip_sleep`, `skip_wake`)
 - **Scheduled Exceptions** — future windows with ticket references (e.g. "keep staging up this weekend for a release") with a pending → active → completed lifecycle
 - **Startup recovery** — on pod restart, the intended state at `now` is computed and any mismatch triggers an automatic recovery execution
 - **DB-backed replica storage** — replica counts are stored in `WorkloadSnapshot` rows (not just K8s annotations), so restores are reliable even if annotations were overwritten
-
-An advanced cron mode is available for power users who need raw 5-field cron expressions.
 
 ### Sleep
 
@@ -132,8 +130,8 @@ flowchart TB
         direction TB
         Router["Chi Router + Session Auth middleware"]
         Handlers["API Handlers"]
-        WindowCompiler["Window Compiler<br/>(sleep windows → cron)"]
-        PolicyScheduler["PolicyScheduler<br/>(cron engine + exceptions)"]
+        WindowEvaluator["Window Evaluator<br/>(direct window evaluation)"]
+        PolicyScheduler["PolicyScheduler<br/>(30s ticker + exceptions)"]
         PolicyEngine["PolicyEngine<br/>(IntendedState evaluation)"]
         PolicyScaler["PolicyScaler<br/>(DB-backed snapshots)"]
         Cache["Cluster Cache<br/>10 s background refresh"]
@@ -149,7 +147,7 @@ flowchart TB
     Browser -- "WebSocket · live logs" --> Router
     Router --> Handlers
     Router --> SPA
-    Handlers --> WindowCompiler
+    Handlers --> WindowEvaluator
     Handlers --> PolicyScheduler
     Handlers --> Cache
     Handlers --> GORM
@@ -168,7 +166,7 @@ flowchart TB
 - **Overview** — cluster health at a glance: current scale state, live indicator, partial-sleep namespace breakdown, policy next-run countdown, and live activity feed
 - **Cluster State** — live view of all Deployments, StatefulSets, and nodes with resizable drill-down drawers; pod detail includes live CPU/memory usage, annotations, node instance type, Kubernetes events, and a streaming container log viewer with search navigation
 - **Guardrails** — protect namespaces, node labels, and taints from ever being touched by the scaler
-- **Policies** — declarative sleep window policies: define "Mon–Fri 7 PM – 7 AM" and the system handles the rest; namespace and label selector targeting, plan/apply mode, one-time overrides (stay_awake, force_sleep, skip_sleep, skip_wake), DB-backed replica snapshots, startup recovery, 24h mini timeline on cards, and a weekly timeline visualization on the detail page; advanced cron mode available for power users
+- **Policies** — declarative sleep window policies: define "Mon–Fri 7 PM – 7 AM" and the system handles the rest; namespace and label selector targeting, plan/apply mode, one-time overrides (stay_awake, force_sleep, skip_sleep, skip_wake), DB-backed replica snapshots, startup recovery, 24h mini timeline on cards, and a weekly timeline visualization on the detail page
 - **Scheduled Exceptions** — future one-time windows with ticket references (JIRA/GitHub), a pending→active→completed lifecycle, and optional "sleep on end" to restore workloads automatically when the window closes
 - **History** — full execution log with live WebSocket streaming; jump-to-error navigation and workload count badges
 - **Manual triggers** — Sleep Now / Wake Now buttons on each policy
@@ -184,7 +182,7 @@ flowchart TB
 
 | Layer     | Technology                                                |
 | :-------- | :-------------------------------------------------------- |
-| Backend   | Go 1.26, chi v5.2, GORM v1.31, robfig/cron v3, client-go |
+| Backend   | Go 1.26, chi v5.2, GORM v1.31, client-go                 |
 | Frontend  | Next.js 16, React 19, Material UI v7, TanStack Query v5   |
 | Database  | PostgreSQL 17                                             |
 | Packaging | Helm 4, GHCR (OCI), GitHub Actions                        |

@@ -108,6 +108,7 @@ export interface SleepWindow {
   daysOfWeek: number[] // 0=Sun, 1=Mon, ..., 6=Sat
   startTime: string    // "HH:MM" 24h
   endTime: string      // "HH:MM" 24h
+  allDay: boolean      // entire calendar day is sleeping
 }
 
 export interface Policy {
@@ -117,8 +118,6 @@ export interface Policy {
   namespaceFilter: string
   labelSelector: string
   sleepWindows: SleepWindow[] | null
-  sleepCron: string
-  wakeCron: string
   timezone: string
   mode: 'plan' | 'apply'
   enabled: boolean
@@ -129,8 +128,7 @@ export interface Policy {
   lastWakeAt: string | null
   createdAt: string
   updatedAt: string
-  nextSleepAt?: string | null
-  nextWakeAt?: string | null
+  nextTransitionAt?: string | null
 }
 
 export interface PolicyInput {
@@ -138,9 +136,7 @@ export interface PolicyInput {
   description?: string
   namespaceFilter?: string
   labelSelector?: string
-  sleepWindows?: SleepWindow[]
-  sleepCron?: string
-  wakeCron?: string
+  sleepWindows: SleepWindow[]
   timezone?: string
   mode?: 'plan' | 'apply'
   enabled?: boolean

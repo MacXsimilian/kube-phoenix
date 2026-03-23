@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -9,27 +10,31 @@ import (
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/policy"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scaler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
-	"github.com/robfig/cron/v3"
 )
 
 // PolicyBroker is an alias for Broker, used for policy executions.
 type PolicyBroker = Broker
 
-// PolicyScheduler manages cron entries for all enabled policies.
-// Each policy registers two cron entries (sleep + wake). It also runs
-// a recovery pass on startup to catch any missed transitions.
+// cachedPolicy holds a parsed in-memory representation of a policy.
+type cachedPolicy struct {
+	policy  store.Policy
+	windows []policy.SleepWindow
+}
+
+// PolicyScheduler evaluates all enabled policies on a 30-second tick and
+// triggers sleep/wake executions when the intended state differs from the
+// current state.
 type PolicyScheduler struct {
 	store  *store.Store
 	runner *scaler.PolicyRunner
 	Broker *PolicyBroker
 
-	mu   sync.Mutex
-	cron *cron.Cron
-	// entryIDs maps policyID → [sleepEntryID, wakeEntryID]. A zero ID means
-	// the policy has no cron registered in that direction.
-	entryIDs map[uint][2]cron.EntryID
+	mu       sync.Mutex
+	cancel   context.CancelFunc
+	policies map[uint]cachedPolicy
 }
 
 // NewPolicyScheduler creates a PolicyScheduler. Pass nil k8sClient in tests.
@@ -38,85 +43,55 @@ func NewPolicyScheduler(st *store.Store, k8sClient *k8s.Client) *PolicyScheduler
 		store:    st,
 		runner:   scaler.NewPolicyRunner(k8sClient, st),
 		Broker:   NewBroker(),
-		entryIDs: map[uint][2]cron.EntryID{},
+		policies: map[uint]cachedPolicy{},
 	}
 }
 
-// Start loads all enabled policies and starts the cron engine.
+// Start loads all enabled policies and begins the evaluation ticker.
 func (ps *PolicyScheduler) Start(ctx context.Context) error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
-	ps.cron = cron.New()
+	ctx, ps.cancel = context.WithCancel(ctx)
 	if err := ps.reload(); err != nil {
 		return err
 	}
-	ps.cron.Start()
+	go ps.tickLoop(ctx)
 	slog.Info("policy scheduler started")
 	return nil
 }
 
-// Stop gracefully shuts down the policy cron engine.
+// Stop gracefully shuts down the ticker.
 func (ps *PolicyScheduler) Stop() {
-	if ps.cron != nil {
-		ctx := ps.cron.Stop()
-		<-ctx.Done()
+	if ps.cancel != nil {
+		ps.cancel()
 	}
 }
 
-// Reload re-reads all policies from the DB and re-registers cron entries.
-// Called after any policy CRUD operation.
+// Reload re-reads all policies from the DB. Called after any policy CRUD.
 func (ps *PolicyScheduler) Reload() error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	return ps.reload()
 }
 
-// Restart stops + recreates the cron engine. Used after a database reset.
+// Restart stops and restarts the scheduler. Used after a database reset.
 func (ps *PolicyScheduler) Restart(ctx context.Context) error {
 	ps.Stop()
-	ps.mu.Lock()
-	ps.cron = cron.New()
-	ps.entryIDs = map[uint][2]cron.EntryID{}
-	if err := ps.reload(); err != nil {
-		ps.mu.Unlock()
-		return err
-	}
-	ps.cron.Start()
-	ps.mu.Unlock()
-	return nil
+	return ps.Start(ctx)
 }
 
-// NextRuns returns the next scheduled sleep and wake times for a policy,
-// or nil if not registered.
-func (ps *PolicyScheduler) NextRuns(policyID uint) (nextSleep, nextWake *time.Time) {
+// NextTransition returns the next predicted state change for a policy.
+func (ps *PolicyScheduler) NextTransition(policyID uint) *time.Time {
 	ps.mu.Lock()
-	defer ps.mu.Unlock()
-	if ps.cron == nil {
-		return nil, nil
-	}
-	ids, ok := ps.entryIDs[policyID]
+	cp, ok := ps.policies[policyID]
+	ps.mu.Unlock()
 	if !ok {
-		return nil, nil
+		return nil
 	}
-	if ids[0] != 0 {
-		e := ps.cron.Entry(ids[0])
-		if e.ID != 0 {
-			t := e.Next
-			nextSleep = &t
-		}
-	}
-	if ids[1] != 0 {
-		e := ps.cron.Entry(ids[1])
-		if e.ID != 0 {
-			t := e.Next
-			nextWake = &t
-		}
-	}
-	return nextSleep, nextWake
+	return policy.NextTransition(cp.windows, cp.policy.Timezone, time.Now())
 }
 
 // RunSleepNow triggers an immediate sleep execution for a policy.
-// Manual triggers are allowed on disabled policies (operator override).
 func (ps *PolicyScheduler) RunSleepNow(policyID uint, trigger string) (uint, error) {
 	p, err := ps.store.GetPolicy(policyID)
 	if err != nil {
@@ -129,7 +104,6 @@ func (ps *PolicyScheduler) RunSleepNow(policyID uint, trigger string) (uint, err
 }
 
 // RunWakeNow triggers an immediate wake execution for a policy.
-// Manual triggers are allowed on disabled policies (operator override).
 func (ps *PolicyScheduler) RunWakeNow(policyID uint, trigger string) (uint, error) {
 	p, err := ps.store.GetPolicy(policyID)
 	if err != nil {
@@ -142,8 +116,8 @@ func (ps *PolicyScheduler) RunWakeNow(policyID uint, trigger string) (uint, erro
 }
 
 // RecoverPolicies compares each enabled policy's CurrentState against the
-// cron-computed IntendedState and queues a recovery execution for any mismatch.
-// Called once at startup after MarkInterruptedPolicyExecutions.
+// window-evaluated IntendedState and queues a recovery execution for any
+// mismatch. Called once at startup.
 func (ps *PolicyScheduler) RecoverPolicies(ctx context.Context) error {
 	policies, err := ps.store.ListPolicies()
 	if err != nil {
@@ -154,13 +128,13 @@ func (ps *PolicyScheduler) RecoverPolicies(ctx context.Context) error {
 		if !p.Enabled {
 			continue
 		}
+		windows := parsePolicyWindows(p)
 		overrides, _ := ps.store.ListActiveOverrides(p.ID, now)
-		intended := IntendedState(p, overrides, now)
+		intended := IntendedState(windows, p.Timezone, overrides, now)
 		if intended == PolicyStateUnknown {
 			continue
 		}
-		actual := p.CurrentState
-		if actual == string(intended) {
+		if p.CurrentState == string(intended) {
 			continue
 		}
 		direction := "sleep"
@@ -169,7 +143,7 @@ func (ps *PolicyScheduler) RecoverPolicies(ctx context.Context) error {
 		}
 		slog.Info("policy scheduler: recovery execution queued",
 			"policyID", p.ID, "name", p.Name,
-			"actual", actual, "intended", intended, "direction", direction)
+			"actual", p.CurrentState, "intended", intended, "direction", direction)
 		if _, err := ps.run(ctx, p, direction, "recovery"); err != nil {
 			slog.Error("policy scheduler: recovery execution failed",
 				"policyID", p.ID, "err", err)
@@ -180,8 +154,7 @@ func (ps *PolicyScheduler) RecoverPolicies(ctx context.Context) error {
 
 // ─── Exception ticker ─────────────────────────────────────────────────────────
 
-// TickExceptions is called periodically (every minute) to start and end
-// ScheduledExceptions whose windows are reached.
+// TickExceptions is called periodically to start and end ScheduledExceptions.
 func (ps *PolicyScheduler) TickExceptions(ctx context.Context) {
 	now := time.Now()
 	exceptions, err := ps.store.ListPendingExceptions()
@@ -194,7 +167,6 @@ func (ps *PolicyScheduler) TickExceptions(ctx context.Context) {
 		switch ex.Status {
 		case "pending":
 			if !now.Before(ex.StartsAt) {
-				// Window has started — activate and wake the workloads
 				if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, "active"); err != nil {
 					slog.Error("exception: set active failed", "exceptionID", ex.ID, "err", err)
 					continue
@@ -208,7 +180,6 @@ func (ps *PolicyScheduler) TickExceptions(ctx context.Context) {
 			}
 		case "active":
 			if now.After(ex.EndsAt) {
-				// Window has ended — complete and optionally sleep the workloads
 				if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, "completed"); err != nil {
 					slog.Error("exception: set completed failed", "exceptionID", ex.ID, "err", err)
 					continue
@@ -226,23 +197,78 @@ func (ps *PolicyScheduler) TickExceptions(ctx context.Context) {
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
+const tickInterval = 30 * time.Second
+const defaultExecutionTimeout = 2 * time.Hour
+
+func (ps *PolicyScheduler) tickLoop(ctx context.Context) {
+	ticker := time.NewTicker(tickInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			ps.evaluateAll()
+		}
+	}
+}
+
+func (ps *PolicyScheduler) evaluateAll() {
+	ps.mu.Lock()
+	snapshot := make([]cachedPolicy, 0, len(ps.policies))
+	for _, cp := range ps.policies {
+		snapshot = append(snapshot, cp)
+	}
+	ps.mu.Unlock()
+
+	now := time.Now()
+	for _, cp := range snapshot {
+		ps.evaluatePolicy(cp, now)
+	}
+}
+
+func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, now time.Time) {
+	p := cp.policy
+	if !p.Enabled {
+		return
+	}
+
+	overrides, _ := ps.store.ListActiveOverrides(p.ID, now)
+	intended := IntendedState(cp.windows, p.Timezone, overrides, now)
+
+	if intended == PolicyStateUnknown {
+		return
+	}
+	if p.CurrentState == string(intended) || p.CurrentState == "transitioning" {
+		return
+	}
+
+	direction := "sleep"
+	if intended == PolicyStateAwake {
+		direction = "wake"
+	}
+
+	// Check for skip override.
+	if skip := HasSkipOverride(overrides, direction, now); skip != nil {
+		slog.Info("policy scheduler: transition skipped by override",
+			"policyID", p.ID, "overrideID", skip.ID, "direction", direction)
+		_ = ps.store.DeletePolicyOverride(skip.ID)
+		return
+	}
+
+	if _, err := ps.run(context.Background(), p, direction, "scheduled"); err != nil {
+		slog.Error("policy scheduler: scheduled execution failed",
+			"policyID", p.ID, "direction", direction, "err", err)
+	}
+}
+
 func (ps *PolicyScheduler) reload() error {
 	policies, err := ps.store.ListPolicies()
 	if err != nil {
 		return fmt.Errorf("reload policies: %w", err)
 	}
 
-	// Remove all existing entries
-	for _, ids := range ps.entryIDs {
-		if ids[0] != 0 {
-			ps.cron.Remove(ids[0])
-		}
-		if ids[1] != 0 {
-			ps.cron.Remove(ids[1])
-		}
-	}
-	ps.entryIDs = map[uint][2]cron.EntryID{}
-
+	ps.policies = map[uint]cachedPolicy{}
 	modeCounts := map[string]float64{}
 
 	for _, p := range policies {
@@ -250,7 +276,6 @@ func (ps *PolicyScheduler) reload() error {
 			continue
 		}
 		modeCounts[p.Mode]++
-		p := p // capture
 
 		if _, err := time.LoadLocation(p.Timezone); err != nil {
 			slog.Warn("policy scheduler: invalid timezone, skipping policy",
@@ -258,14 +283,12 @@ func (ps *PolicyScheduler) reload() error {
 			continue
 		}
 
-		ids := ps.registerPolicyCrons(p)
-		ps.entryIDs[p.ID] = ids
+		windows := parsePolicyWindows(p)
+		ps.policies[p.ID] = cachedPolicy{policy: p, windows: windows}
 		slog.Info("policy scheduler: registered policy",
-			"policyID", p.ID, "name", p.Name,
-			"sleepCron", p.SleepCron, "wakeCron", p.WakeCron)
+			"policyID", p.ID, "name", p.Name, "windowCount", len(windows))
 	}
 
-	// Update the active policies gauge.
 	metrics.ActivePolicies.Reset()
 	for mode, count := range modeCounts {
 		metrics.ActivePolicies.WithLabelValues(mode).Set(count)
@@ -274,46 +297,21 @@ func (ps *PolicyScheduler) reload() error {
 	return nil
 }
 
-// registerPolicyCrons adds sleep and wake cron entries for a single policy.
-func (ps *PolicyScheduler) registerPolicyCrons(p store.Policy) [2]cron.EntryID {
-	var ids [2]cron.EntryID
-	if p.SleepCron != "" {
-		ids[0] = ps.addCronEntry(p, "sleep", p.SleepCron)
+// parsePolicyWindows deserializes the SleepWindows JSON from a policy.
+func parsePolicyWindows(p store.Policy) []policy.SleepWindow {
+	if p.SleepWindows == "" {
+		return nil
 	}
-	if p.WakeCron != "" {
-		ids[1] = ps.addCronEntry(p, "wake", p.WakeCron)
+	var windows []policy.SleepWindow
+	if err := json.Unmarshal([]byte(p.SleepWindows), &windows); err != nil {
+		slog.Warn("policy scheduler: failed to parse windows JSON",
+			"policyID", p.ID, "err", err)
+		return nil
 	}
-	return ids
-}
-
-// addCronEntry registers a single cron entry for a policy direction, returning the entry ID (0 on failure).
-func (ps *PolicyScheduler) addCronEntry(p store.Policy, direction, cronExpr string) cron.EntryID {
-	expr := "CRON_TZ=" + p.Timezone + " " + cronExpr
-	eid, err := ps.cron.AddFunc(expr, func() {
-		now := time.Now()
-		overrides, _ := ps.store.ListActiveOverrides(p.ID, now)
-		if skip := HasSkipOverride(overrides, direction, now); skip != nil {
-			slog.Info("policy scheduler: "+direction+" skipped by override",
-				"policyID", p.ID, "overrideID", skip.ID)
-			_ = ps.store.DeletePolicyOverride(skip.ID)
-			return
-		}
-		if _, err := ps.run(context.Background(), p, direction, "scheduled"); err != nil {
-			slog.Error("policy scheduler: scheduled "+direction+" failed",
-				"policyID", p.ID, "err", err)
-		}
-	})
-	if err != nil {
-		slog.Error("policy scheduler: failed to register "+direction+" cron",
-			"policyID", p.ID, "cronExpr", cronExpr, "err", err)
-		return 0
-	}
-	return eid
+	return windows
 }
 
 func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, trigger string) (uint, error) {
-	// Guard: atomically check and set transitioning state under mutex to
-	// prevent duplicate executions from concurrent cron fires or manual triggers.
 	ps.mu.Lock()
 	fresh, err := ps.store.GetPolicy(p.ID)
 	if err != nil {
@@ -345,7 +343,7 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 	go func() {
 		timeout := time.Duration(p.TimeoutMinutes) * time.Minute
 		if timeout <= 0 {
-			timeout = 2 * time.Hour
+			timeout = defaultExecutionTimeout
 		}
 		runCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
@@ -369,7 +367,6 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 				if err := ps.store.AppendPolicyLogLine(&dbLine); err != nil {
 					slog.Error("policy scheduler: log persist error", "execID", execID, "err", err)
 				}
-				// Publish to the policy broker for live WebSocket streaming
 				ps.Broker.Publish(execID, dbLine)
 			}
 		}()
@@ -422,7 +419,7 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		}
 
 		// Update policy's cached state
-		nextSleep, nextWake := ps.NextRuns(p.ID)
+		nextTransition := ps.NextTransition(p.ID)
 		var newState string
 		if status == "success" {
 			if direction == "sleep" {
@@ -433,7 +430,7 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		} else {
 			newState = "unknown"
 		}
-		_ = ps.store.UpdatePolicyState(p.ID, newState, nextSleep, nextWake)
+		_ = ps.store.UpdatePolicyState(p.ID, newState, nextTransition)
 
 		slog.Info("policy scheduler: execution finished",
 			"policyID", p.ID, "execID", execID, "direction", direction,

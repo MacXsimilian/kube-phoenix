@@ -4,7 +4,7 @@ import React from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
-import { timeToHours, isOvernight } from '@/lib/windowUtils'
+import { timeToHours, isOvernight, nowInTimezone } from '@/lib/windowUtils'
 
 const ROW_H = 24
 const LABEL_W = 36
@@ -34,61 +34,83 @@ interface Block {
 function windowBlocks(windows: SleepWindow[]): Block[] {
   const blocks: Block[] = []
   for (const w of windows) {
-    const startH = timeToHours(w.startTime)
-    const endH = timeToHours(w.endTime)
-    const overnight = isOvernight(w)
-
     for (const dow of w.daysOfWeek) {
       const row = DOW_MAP.indexOf(dow)
       if (row === -1) continue
 
-      if (overnight) {
-        // Same day: startH → 24
-        blocks.push({ row, x1: hourToX(startH), x2: hourToX(24), color: '#6366f1', opacity: 0.3 })
-        // Next day: 0 → endH
-        const nextRow = (row + 1) % 7
-        blocks.push({ row: nextRow, x1: hourToX(0), x2: hourToX(endH), color: '#6366f1', opacity: 0.3 })
+      if (w.allDay) {
+        blocks.push({ row, x1: hourToX(0), x2: hourToX(24), color: '#6366f1', opacity: 0.3 })
       } else {
-        blocks.push({ row, x1: hourToX(startH), x2: hourToX(endH), color: '#6366f1', opacity: 0.3 })
+        const startH = timeToHours(w.startTime)
+        const endH = timeToHours(w.endTime)
+        const overnight = isOvernight(w)
+        if (overnight) {
+          blocks.push({ row, x1: hourToX(startH), x2: hourToX(24), color: '#6366f1', opacity: 0.3 })
+          const nextRow = (row + 1) % 7
+          blocks.push({ row: nextRow, x1: hourToX(0), x2: hourToX(endH), color: '#6366f1', opacity: 0.3 })
+        } else {
+          blocks.push({ row, x1: hourToX(startH), x2: hourToX(endH), color: '#6366f1', opacity: 0.3 })
+        }
       }
     }
   }
   return blocks
 }
 
-function overrideBlocks(overrides: PolicyOverride[]): Block[] {
-  if (!overrides) return []
-  const blocks: Block[] = []
-  for (const ov of overrides) {
-    if (!ov.startsAt || !ov.endsAt) continue
-    const start = new Date(ov.startsAt)
-    const end = new Date(ov.endsAt)
-    const color = ov.overrideType === 'force_sleep' ? '#ef4444' : '#f59e0b'
+/** Convert an ISO timestamp to a Date in the given timezone. */
+function toTZ(iso: string, tz?: string): Date {
+  const d = new Date(iso)
+  if (!tz) return d
+  const str = d.toLocaleString('en-US', { timeZone: tz })
+  return new Date(str)
+}
 
-    // For simplicity, mark the start day's row
-    const row = DOW_MAP.indexOf(start.getDay())
-    if (row === -1) continue
-    const sh = start.getHours() + start.getMinutes() / 60
-    const eh = end.getDay() === start.getDay() ? end.getHours() + end.getMinutes() / 60 : 24
-    blocks.push({ row, x1: hourToX(sh), x2: hourToX(eh), color, opacity: 0.35 })
+function timeRangeBlocks(
+  startISO: string, endISO: string, color: string, opacity: number, tz?: string,
+): Block[] {
+  const blocks: Block[] = []
+  const start = toTZ(startISO, tz)
+  const end = toTZ(endISO, tz)
+
+  const cursor = new Date(start)
+  cursor.setHours(0, 0, 0, 0)
+  const endDay = new Date(end)
+  endDay.setHours(0, 0, 0, 0)
+
+  while (cursor <= endDay) {
+    const row = DOW_MAP.indexOf(cursor.getDay())
+    if (row !== -1) {
+      const isSameAsStart = cursor.getTime() === new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
+      const isSameAsEnd = cursor.getTime() === endDay.getTime()
+      const sh = isSameAsStart ? start.getHours() + start.getMinutes() / 60 : 0
+      const eh = isSameAsEnd ? end.getHours() + end.getMinutes() / 60 : 24
+      if (eh > sh) {
+        blocks.push({ row, x1: hourToX(sh), x2: hourToX(eh), color, opacity })
+      }
+    }
+    cursor.setDate(cursor.getDate() + 1)
   }
   return blocks
 }
 
-function exceptionBlocks(exceptions: ScheduledException[]): Block[] {
+function overrideBlocks(overrides: PolicyOverride[], tz?: string): Block[] {
+  if (!overrides) return []
+  const blocks: Block[] = []
+  for (const ov of overrides) {
+    if (!ov.startsAt || !ov.endsAt) continue
+    const color = ov.overrideType === 'force_sleep' ? '#ef4444' : '#f59e0b'
+    blocks.push(...timeRangeBlocks(ov.startsAt, ov.endsAt, color, 0.35, tz))
+  }
+  return blocks
+}
+
+function exceptionBlocks(exceptions: ScheduledException[], tz?: string): Block[] {
   if (!exceptions) return []
   const blocks: Block[] = []
   for (const ex of exceptions) {
     if (ex.status === 'cancelled' || ex.status === 'completed') continue
-    const start = new Date(ex.startsAt)
-    const end = new Date(ex.endsAt)
     const color = ex.exceptionType === 'force_sleep' ? '#ef4444' : '#22c55e'
-
-    const row = DOW_MAP.indexOf(start.getDay())
-    if (row === -1) continue
-    const sh = start.getHours() + start.getMinutes() / 60
-    const eh = end.getDay() === start.getDay() ? end.getHours() + end.getMinutes() / 60 : 24
-    blocks.push({ row, x1: hourToX(sh), x2: hourToX(eh), color, opacity: 0.3 })
+    blocks.push(...timeRangeBlocks(ex.startsAt, ex.endsAt, color, 0.3, tz))
   }
   return blocks
 }
@@ -97,22 +119,23 @@ export default function WeeklyTimeline({
   windows,
   overrides,
   exceptions,
+  timezone,
 }: {
   windows: SleepWindow[]
   overrides?: PolicyOverride[]
   exceptions?: ScheduledException[]
+  timezone?: string
 }) {
   if (!windows || windows.length === 0) return null
 
-  const now = new Date()
-  const todayRow = DOW_MAP.indexOf(now.getDay())
-  const nowH = now.getHours() + now.getMinutes() / 60
+  const { dayOfWeek, fractionalHour: nowH } = nowInTimezone(timezone)
+  const todayRow = DOW_MAP.indexOf(dayOfWeek)
   const nowX = hourToX(nowH)
 
   const allBlocks = [
     ...windowBlocks(windows),
-    ...overrideBlocks(overrides ?? []),
-    ...exceptionBlocks(exceptions ?? []),
+    ...overrideBlocks(overrides ?? [], timezone),
+    ...exceptionBlocks(exceptions ?? [], timezone),
   ]
 
   return (
@@ -146,7 +169,7 @@ export default function WeeklyTimeline({
                 width={BAR_W}
                 height={ROW_H - 2}
                 rx={3}
-                fill={isToday ? 'rgba(148,163,184,0.08)' : 'rgba(148,163,184,0.03)'}
+                fill={isToday ? 'rgba(34,197,94,0.1)' : 'rgba(34,197,94,0.05)'}
               />
               {/* Day label */}
               <text

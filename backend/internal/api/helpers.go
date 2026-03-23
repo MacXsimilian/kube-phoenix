@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/stringutil"
 )
 
 func jsonOK(w http.ResponseWriter, v interface{}) {
@@ -36,12 +36,5 @@ func parseID(r *http.Request, param string) (uint, error) {
 }
 
 func splitCSVLocal(s string) map[string]bool {
-	m := map[string]bool{}
-	for _, v := range strings.Split(s, ",") {
-		v = strings.TrimSpace(v)
-		if v != "" {
-			m[v] = true
-		}
-	}
-	return m
+	return stringutil.SplitCSVSet(s)
 }

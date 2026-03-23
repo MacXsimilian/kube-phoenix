@@ -331,6 +331,8 @@ export default function LogViewer({
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isRunning = execution?.status === 'running'
+  const isRunningRef = useRef(isRunning)
+  isRunningRef.current = isRunning
 
   const { data: historicLines = [], isError: logsError } = useQuery({
     queryKey: ['logs', execution?.id],
@@ -367,7 +369,7 @@ export default function LogViewer({
         ws.close()
         wsRef.current = null
         reconnectTimerRef.current = setTimeout(() => {
-          if (execution?.status === 'running' && wsRef.current === null) openWs()
+          if (isRunningRef.current && wsRef.current === null) openWs()
         }, 3000)
       }
     }

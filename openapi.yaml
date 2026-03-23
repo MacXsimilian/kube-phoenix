@@ -576,10 +576,12 @@ components:
           type: string
           description: End time in HH:MM format (24-hour). If before startTime, spans midnight.
           example: "08:00"
+        allDay:
+          type: boolean
+          description: When true, the entire calendar day is sleeping. startTime/endTime are ignored.
+          default: false
       required:
         - daysOfWeek
-        - startTime
-        - endTime
 
     Policy:
       description: A unified sleep/wake policy that declares when workloads should be sleeping vs awake.
@@ -602,17 +604,9 @@ components:
           description: Standard Kubernetes label selector syntax.
         sleepWindows:
           type: ["array", "null"]
-          description: Human-friendly sleep windows. When provided, sleepCron and wakeCron are compiled from these.
+          description: Sleep windows defining when workloads should be sleeping.
           items:
             $ref: "#/components/schemas/SleepWindow"
-        sleepCron:
-          type: string
-          description: 5-field cron expression for when workloads should go to sleep. Compiled from sleepWindows or set directly.
-          example: "0 20 * * 1-5"
-        wakeCron:
-          type: string
-          description: 5-field cron expression for when workloads should wake up. Compiled from sleepWindows or set directly.
-          example: "0 8 * * 1-5"
         timezone:
           type: string
           default: UTC
@@ -643,14 +637,11 @@ components:
           type: ["string", "null"]
           format: date-time
           readOnly: true
-        nextSleepAt:
+        nextTransitionAt:
           type: ["string", "null"]
           format: date-time
           readOnly: true
-        nextWakeAt:
-          type: ["string", "null"]
-          format: date-time
-          readOnly: true
+          description: Next predicted state transition time.
         createdAt:
           type: string
           format: date-time
@@ -663,7 +654,7 @@ components:
         - name
 
     PolicyCreate:
-      description: Request body for creating a policy. Provide either sleepWindows OR sleepCron/wakeCron directly.
+      description: Request body for creating a policy.
       type: object
       properties:
         name:
@@ -676,13 +667,9 @@ components:
           type: string
         sleepWindows:
           type: array
-          description: Human-friendly sleep windows. Mutually exclusive with sleepCron/wakeCron.
+          description: Sleep windows defining when workloads should be sleeping.
           items:
             $ref: "#/components/schemas/SleepWindow"
-        sleepCron:
-          type: string
-        wakeCron:
-          type: string
         timezone:
           type: string
           default: UTC
@@ -698,9 +685,10 @@ components:
           default: 30
       required:
         - name
+        - sleepWindows
 
     PolicyUpdate:
-      description: Partial update for a policy — only provided fields are written. Provide either sleepWindows OR sleepCron/wakeCron.
+      description: Partial update for a policy — only provided fields are written.
       type: object
       properties:
         name:
@@ -713,13 +701,9 @@ components:
           type: string
         sleepWindows:
           type: array
-          description: Human-friendly sleep windows. Mutually exclusive with sleepCron/wakeCron.
+          description: Sleep windows — replaces all existing windows when provided.
           items:
             $ref: "#/components/schemas/SleepWindow"
-        sleepCron:
-          type: string
-        wakeCron:
-          type: string
         timezone:
           type: string
         mode:

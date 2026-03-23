@@ -191,65 +191,64 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, buildWorkloadResponse(deployments, statefulsets))
 }
 
+// workloadMeta holds the kind-agnostic fields needed to build a WorkloadResponse.
+type workloadMeta struct {
+	Namespace    string
+	Name         string
+	Kind         string
+	Replicas     *int32
+	Annotations  map[string]string
+	ReadyReplicas int32
+}
+
+// toWorkloadResponse converts a workloadMeta into a WorkloadResponse.
+func toWorkloadResponse(m workloadMeta) WorkloadResponse {
+	current := int32(0)
+	if m.Replicas != nil {
+		current = *m.Replicas
+	}
+	saved := parseSavedReplicas(m.Annotations)
+	if saved == nil {
+		if v, ok := m.Annotations["previous-replicas"]; ok {
+			if n, err := strconv.ParseInt(v, 10, 32); err == nil {
+				n32 := int32(n)
+				saved = &n32
+			} else {
+				slog.Warn("malformed previous-replicas annotation", "workload", m.Namespace+"/"+m.Name, "value", v)
+			}
+		}
+	}
+	return WorkloadResponse{
+		Namespace:       m.Namespace,
+		Name:            m.Name,
+		Kind:            m.Kind,
+		CurrentReplicas: current,
+		SavedReplicas:   saved,
+		ReadyReplicas:   m.ReadyReplicas,
+		Status:          workloadStatus(current, saved),
+	}
+}
+
 func buildWorkloadResponse(deployments []appsv1.Deployment, statefulsets []appsv1.StatefulSet) []WorkloadResponse {
-	var result []WorkloadResponse
+	result := make([]WorkloadResponse, 0, len(deployments)+len(statefulsets))
 
 	for _, d := range deployments {
-		current := int32(0)
-		if d.Spec.Replicas != nil {
-			current = *d.Spec.Replicas
-		}
-		saved := parseSavedReplicas(d.Annotations)
-		if saved == nil {
-			if v, ok := d.Annotations["previous-replicas"]; ok {
-				if n, err := strconv.ParseInt(v, 10, 32); err == nil {
-					n32 := int32(n)
-					saved = &n32
-				} else {
-					slog.Warn("malformed previous-replicas annotation", "workload", d.Namespace+"/"+d.Name, "value", v)
-				}
-			}
-		}
-		result = append(result, WorkloadResponse{
-			Namespace:       d.Namespace,
-			Name:            d.Name,
-			Kind:            "Deployment",
-			CurrentReplicas: current,
-			SavedReplicas:   saved,
-			ReadyReplicas:   d.Status.ReadyReplicas,
-			Status:          workloadStatus(current, saved),
-		})
+		result = append(result, toWorkloadResponse(workloadMeta{
+			Namespace: d.Namespace, Name: d.Name, Kind: "Deployment",
+			Replicas: d.Spec.Replicas, Annotations: d.Annotations,
+			ReadyReplicas: d.Status.ReadyReplicas,
+		}))
 	}
-
 	for _, ss := range statefulsets {
-		current := int32(0)
-		if ss.Spec.Replicas != nil {
-			current = *ss.Spec.Replicas
-		}
-		saved := parseSavedReplicas(ss.Annotations)
-		if saved == nil {
-			if v, ok := ss.Annotations["previous-replicas"]; ok {
-				if n, err := strconv.ParseInt(v, 10, 32); err == nil {
-					n32 := int32(n)
-					saved = &n32
-				} else {
-					slog.Warn("malformed previous-replicas annotation", "workload", ss.Namespace+"/"+ss.Name, "value", v)
-				}
-			}
-		}
-		result = append(result, WorkloadResponse{
-			Namespace:       ss.Namespace,
-			Name:            ss.Name,
-			Kind:            "StatefulSet",
-			CurrentReplicas: current,
-			SavedReplicas:   saved,
-			ReadyReplicas:   ss.Status.ReadyReplicas,
-			Status:          workloadStatus(current, saved),
-		})
+		result = append(result, toWorkloadResponse(workloadMeta{
+			Namespace: ss.Namespace, Name: ss.Name, Kind: "StatefulSet",
+			Replicas: ss.Spec.Replicas, Annotations: ss.Annotations,
+			ReadyReplicas: ss.Status.ReadyReplicas,
+		}))
 	}
 
-	if result == nil {
-		result = []WorkloadResponse{}
+	if len(result) == 0 {
+		return []WorkloadResponse{}
 	}
 	return result
 }

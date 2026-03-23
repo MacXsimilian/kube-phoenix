@@ -50,7 +50,7 @@ kube-phoenix is a web application that manages Kubernetes cluster **sleep/wake p
 
 | Capability               | Description                                                               |
 | :----------------------- | :------------------------------------------------------------------------ |
-| Policy management        | CRUD for named sleep/wake policies with sleep windows or raw cron         |
+| Policy management        | CRUD for named sleep/wake policies with sleep windows                     |
 | Guardrails               | Configurable exclusion lists for namespaces, node labels, and node taints |
 | Dry-run (plan) mode      | Every scale operation can be simulated before applying                    |
 | Live log streaming       | WebSocket-based log fan-out during an active execution                    |
@@ -72,7 +72,7 @@ kube-phoenix is a web application that manages Kubernetes cluster **sleep/wake p
 | Backend language        | Go 1.26                                                  |
 | HTTP router             | go-chi/chi v5.2                                          |
 | Database                | PostgreSQL via GORM v1.31 (gorm.io/driver/postgres v1.6) |
-| Policy scheduler        | robfig/cron v3 (5-field cron expressions)                |
+| Policy scheduler        | 30-second ticker with window evaluator                   |
 | WebSocket               | gorilla/websocket                                        |
 | Kubernetes SDK          | k8s.io/client-go                                         |
 | Frontend framework      | Next.js 16 (static export)                               |
@@ -133,7 +133,7 @@ flowchart TB
 2. SPA calls `GET /api/*` endpoints (JSON over HTTP) for data.
 3. For live log streaming, SPA opens `ws[s]://host/ws/policy-executions/:id/logs`.
 4. The Go binary calls the Kubernetes API Server directly using the pod's ServiceAccount token (in-cluster config).
-5. The PolicyScheduler fires sleep or wake jobs on cron schedule (compiled from sleep windows); results are persisted to PostgreSQL and streamed to subscribers.
+5. The PolicyScheduler evaluates sleep windows on a 30-second tick cycle and triggers executions when the intended state differs from actual; results are persisted to PostgreSQL and streamed to subscribers.
 
 ---
 
@@ -170,12 +170,12 @@ kube-phoenix/
 │   │   │
 │   │   ├── scheduler/
 │   │   │   ├── broker.go             # Extracted Broker type (pub/sub for WebSocket log fan-out)
-│   │   │   ├── policy_scheduler.go   # PolicyScheduler: per-policy cron, recovery, exception tick
-│   │   │   ├── policy_engine.go      # Pure evaluation: IntendedState, NextFire, MostRecentFire
+│   │   │   ├── policy_scheduler.go   # PolicyScheduler: 30s ticker, recovery, exception tick
+│   │   │   ├── policy_engine.go      # Pure evaluation: IntendedState, override precedence
 │   │   │   └── policy_scaler.go      # DB-backed sleep/wake with WorkloadSnapshot persistence
 │   │   │
 │   │   ├── policy/
-│   │   │   └── windows.go        # SleepWindow-to-cron compiler
+│   │   │   └── windows.go        # SleepWindow type, validation, and evaluator
 │   │   │
 │   │   ├── k8s/
 │   │   │   ├── client.go         # Typed k8s API wrapper
@@ -267,7 +267,7 @@ kube-phoenix/
 │       │   ├── auth.tsx           # AuthProvider, useAuth hook
 │       │   ├── types.ts           # TypeScript interfaces
 │       │   ├── queryClient.ts     # TanStack QueryClient singleton
-│       │   ├── cronToText.ts      # 5-field cron → human readable
+│       │   ├── cronToText.ts      # Legacy cron-to-text helper (retained for historical display)
 │       │   ├── windowUtils.ts    # SleepWindow formatting helpers
 │       │   ├── themeMode.tsx      # ThemeModeProvider + useThemeMode (light/dark/system)
 │       │   ├── colors.ts          # useColors() hook — mode-aware semantic color palette
@@ -312,7 +312,7 @@ kube-phoenix/
 
 The backend is a single Go binary that serves three roles simultaneously:
 - **HTTP API server** for the frontend SPA
-- **Policy scheduler** that fires sleep and wake operations based on policy sleep windows
+- **Policy scheduler** that evaluates sleep windows on a 30-second tick and fires sleep/wake operations when state diverges
 - **Static file server** for the embedded Next.js SPA
 
 ### 4.1 Entry Point — cmd/server/main.go
@@ -359,7 +359,7 @@ main()
 2. `signal.Notify` delivers the signal to a buffered channel; `main` unblocks.
 3. `server.Shutdown(ctx)` is called with a 30-second deadline.
 4. In-flight HTTP requests are allowed to complete.
-5. The PolicyScheduler's `Stop()` method halts the cron dispatcher (ongoing scale operations run to completion in their goroutines — they are not force-killed).
+5. The PolicyScheduler's `Stop()` method cancels the evaluation ticker (ongoing scale operations run to completion in their goroutines — they are not force-killed).
 6. The database connection pool is closed.
 
 ### 4.2 HTTP Router & Middleware Stack
@@ -591,19 +591,19 @@ The policy scheduler lives in `internal/scheduler/policy_scheduler.go` and is th
 
 #### PolicyScheduler
 
-The PolicyScheduler manages per-policy cron entries derived from each policy's sleep/wake cron expressions. These cron expressions are either set directly (advanced mode) or compiled from SleepWindow objects via `internal/policy/windows.go`.
+The PolicyScheduler evaluates all enabled policies on a 30-second ticker. For each policy, it calls `Evaluate(windows, timezone, now)` to determine the intended state (sleeping or awake), compares it against the current state, and triggers an execution if they differ. Override precedence: force_sleep > stay_awake > window evaluation.
 
-**Sleep windows:** Users define sleep periods as `SleepWindow` objects with `daysOfWeek` (e.g. `[1,2,3,4,5]`), `startTime` (e.g. `"19:00"`), and `endTime` (e.g. `"07:00"`). The window compiler converts these to a pair of 5-field cron expressions: one for the sleep transition and one for the wake transition. The API accepts both windows (preferred) and raw cron expressions (advanced mode).
+**Sleep windows:** Users define sleep periods as `SleepWindow` objects with `daysOfWeek` (e.g. `[1,2,3,4,5]`), `startTime` (e.g. `"19:00"`), and `endTime` (e.g. `"07:00"`). Windows are the sole schedule source of truth — the backend evaluates them directly via `internal/policy/windows.go`.
 
 **Key methods:**
 
-- **`Start(ctx)`** — loads all enabled policies, registers cron entries for each, starts the cron dispatcher.
-- **`Stop()`** — halts the cron dispatcher; ongoing operations run to completion.
+- **`Start(ctx)`** — loads all enabled policies, starts the 30-second evaluation ticker.
+- **`Stop()`** — cancels the evaluation ticker; ongoing operations run to completion.
 - **`RecoverPolicies(ctx)`** — called at startup. Computes `IntendedState(now)` for each enabled policy and reconciles if the cluster state diverges (e.g. pod was restarted mid-sleep).
 - **`TickExceptions(ctx)`** — called every 60s by a background ticker. Checks for scheduled exceptions that have started or ended and triggers the appropriate sleep/wake transition.
 - **`RunSleepNow(ctx, policyID, trigger)`** / **`RunWakeNow(ctx, policyID, trigger)`** — manual triggers. Creates a PolicyExecution and launches the operation in a goroutine.
-- **`schedulePolicy(p)`** — registers sleep and wake cron entries for a policy (uses `CRON_TZ=` prefix for timezone).
-- **`unschedulePolicy(policyID)`** — removes cron entries when a policy is disabled or deleted.
+- **`reloadPolicies()`** — reloads all enabled policies into the in-memory cache for the next tick evaluation.
+- **`removeCachedPolicy(policyID)`** — removes a policy from the in-memory cache when it is disabled or deleted.
 
 #### Broker (`internal/scheduler/broker.go`)
 
@@ -1097,8 +1097,8 @@ classDiagram
         -store *Store
         -k8s *Client
         -mu sync.Mutex
-        -entries map~uint, cron.EntryID~
-        -cron *cron.Cron
+        -policies map~uint, cachedPolicy~
+        -cancel context.CancelFunc
         +PolicyBroker *Broker
         +Start(ctx)
         +Stop()
@@ -1107,14 +1107,14 @@ classDiagram
         +RunSleepNow(ctx, policyID, trigger) uint, error
         +RunWakeNow(ctx, policyID, trigger) uint, error
         -run(ctx, policyID, direction, trigger) uint, error
-        -schedulePolicy(p Policy)
-        -unschedulePolicy(policyID)
+        -reloadPolicies()
+        -removeCachedPolicy(policyID)
     }
 
     class PolicyEngine {
         +IntendedState(p Policy, overrides, now) string
-        +NextFire(expr, tz, from) *time.Time
-        +MostRecentFire(expr, tz, now) *time.Time
+        +Evaluate(windows, tz, now) IntendedState
+        +NextTransition(windows, tz, now) *time.Time
     }
 
     class PolicyScaler {
@@ -1482,9 +1482,9 @@ Features: container selector (multi-container pods), search with match counter a
 
 **`PolicyCard`** — displays a single policy with state badge (awake/sleeping/unknown), sleep/wake action buttons, mode badge, and an enabled toggle. The toggle uses an optimistic update — it flips immediately in local state, fires `PUT /api/policies/:id` with `{ enabled: <new value> }`, and reverts on error. Has edit and delete actions.
 
-**`CreatePolicyDialog`** — form for creating or editing a policy. The primary input is the `WindowPicker` for defining sleep windows. An "Advanced raw cron" toggle swaps the picker for raw 5-field cron text fields. Also includes: name, description, timezone, namespace filter, label selector, mode, timeout, and enabled switch.
+**`CreatePolicyDialog`** — form for creating or editing a policy. The primary input is the `WindowPicker` for defining sleep windows. An "All Day" toggle marks the window as covering the full 24 hours. A live preview shows the resulting sleep/wake periods. Also includes: name, description, timezone, namespace filter, label selector, mode, timeout, and enabled switch.
 
-**`WindowPicker`** — the day/time picker for `SleepWindow` objects. Each window defines `daysOfWeek` (chip row: Mon–Sun), `startTime`, and `endTime`. Multiple windows can be stacked. The picker shows a live `MiniTimeline` (24h SVG bar) and `WeeklyTimeline` (7-day SVG) preview of the resulting sleep/wake periods. Windows are compiled to cron expressions by the backend (`internal/policy/windows.go`).
+**`WindowPicker`** — the day/time picker for `SleepWindow` objects. Each window defines `daysOfWeek` (chip row: Mon–Sun), `startTime`, and `endTime`. Multiple windows can be stacked. The picker shows a live `MiniTimeline` (24h SVG bar) and `WeeklyTimeline` (7-day SVG) preview of the resulting sleep/wake periods. Windows are the sole schedule source of truth — the backend evaluates them directly.
 
 **`GuardrailsForm`** — four `ChipInput` fields (Skip Namespaces, Critical Namespaces, Skip Node Labels, Skip Node Taints). The `ChipInput` component renders chips for each value with delete buttons, and an inline text input for adding new values. Pressing Enter or Tab, or blurring the input, adds the current value as a chip. Backspace on empty input removes the last chip.
 
@@ -1643,9 +1643,7 @@ erDiagram
         bigint id PK
         varchar(255) name "not null"
         varchar(1024) description
-        jsonb sleep_windows "SleepWindow array; compiled to crons"
-        varchar(255) sleep_cron "5-field; compiled from windows or raw"
-        varchar(255) wake_cron "5-field; compiled from windows or raw"
+        jsonb sleep_windows "SleepWindow array; evaluated directly by ticker"
         varchar(100) timezone "default UTC"
         varchar(10) mode "plan | apply"
         boolean enabled "default true"
@@ -1709,7 +1707,7 @@ erDiagram
         varchar(30) override_type "stay_awake|force_sleep|skip_sleep|skip_wake"
         timestamptz starts_at "nullable (skip types)"
         timestamptz ends_at "nullable (skip types)"
-        timestamptz target_cron_time "nullable (windowed types)"
+        timestamptz target_cron_time "nullable; used as valid-until for skip overrides"
         varchar(1024) reason
         varchar(255) created_by
         timestamptz created_at
@@ -1984,7 +1982,7 @@ sequenceDiagram
 ### Sleep Sequence (Policy-Based)
 
 ```
-Trigger (cron from sleep window, manual, or exception)
+Trigger (scheduled (30s ticker), manual, or exception)
          │
          ▼
 policyScheduler.run(ctx, policyID, "sleep", trigger)
@@ -2025,7 +2023,7 @@ policyScaler.RunSleep(ctx, policy, execID, mode, logCh)
 ### Wake Sequence (Policy-Based)
 
 ```
-Trigger (cron from sleep window end, manual, or exception end)
+Trigger (scheduled (30s ticker), manual, or exception end)
          │
          ▼
 policyScheduler.run(ctx, policyID, "wake", trigger)
@@ -2121,18 +2119,18 @@ stateDiagram-v2
     apply --> plan : set mode to plan
 
     note right of plan
-        Cron fires → dry-run only
+        Ticker detects mismatch → dry-run only
         Logs what WOULD happen
         No K8s mutations
     end note
 
     note right of apply
-        Cron fires → live execution
+        Ticker detects mismatch → live execution
         Scales workloads to 0 (sleep) or restores snapshots (wake)
     end note
 
     note right of dis
-        Cron entries removed
+        Policy removed from ticker cache
         Policy skipped
     end note
 ```
@@ -2635,7 +2633,7 @@ go build ./cmd/server/
 
 **Changing the sleep/wake logic:**
 1. Modify `internal/scheduler/policy_scaler.go` for sleep/wake execution changes.
-2. Modify `internal/policy/windows.go` for sleep window-to-cron compilation changes.
+2. Modify `internal/policy/windows.go` for sleep window validation changes.
 
 **Changing the theme:**
 1. Edit `frontend/src/theme/theme.ts`. The `createAppTheme(mode)` function receives `'light' | 'dark'` and must return correct palette values for both modes.
@@ -2695,15 +2693,13 @@ go build ./cmd/server/
 
 **Trade-off:** Requires Karpenter to be installed and configured. A cluster without Karpenter (or Cluster Autoscaler) would leave pods pending indefinitely after scale-up.
 
-### 13.7 Blocking cron (no concurrent runs)
+### 13.7 Preventing concurrent runs (ticker model)
 
-**Decision:** robfig/cron v3 does not prevent concurrent execution by default. The PolicyScheduler does not implement a distributed lock.
+**Decision:** The 30-second evaluation ticker detects state mismatches (intended vs. actual) and triggers executions. The `transitioning` guard in `run()` prevents concurrent executions for the same policy.
 
-**Current behavior:** If a scale operation is running when the cron fires again (e.g., a long execution that overlaps with the next day's policy trigger), a second execution will start. This is a known gap.
+**How it works:** When `run()` starts an execution, it sets the policy's `current_state` to `transitioning`. On each tick, the evaluator skips any policy whose state is `transitioning`. Once the execution completes, the state is updated to `sleeping` or `awake`, and subsequent ticks resume normal evaluation.
 
-**Why accepted:** The default policy cadence (once daily) and the 30-minute timeout make overlap extremely unlikely in practice. A distributed lock (Redis, PostgreSQL advisory lock) adds significant complexity for a rare edge case.
-
-**Future fix:** Check `store.ListPolicyExecutions` for status=running before starting a new execution, returning early if one is already in progress.
+**Why this is sufficient:** The `transitioning` state acts as a per-policy mutex without requiring external coordination (Redis, PostgreSQL advisory locks). A distributed lock would add complexity for no benefit since the application runs as a single replica.
 
 ### 13.8 Session-based auth with CSRF protection
 
@@ -2794,7 +2790,7 @@ All metrics are declared as package-level variables using `promauto`, which regi
 | Location | What is recorded |
 |----------|-----------------|
 | `policy_scheduler.go` `run()` goroutine (on completion) | `ExecutionsTotal`, `ExecutionDuration`, `WorkloadsScaledTotal`, `NodesDrainedTotal`, `NodesDeletedTotal` |
-| `policy_scheduler.go` `schedulePolicy()` | `ActivePolicies` — reset and recount on every cron reload |
+| `policy_scheduler.go` `reloadPolicies()` | `ActivePolicies` — reset and recount on every reload |
 | `api/auth.go` `login()` | `LoginAttemptsTotal`, `ActiveSessions` |
 | `middleware/auth.go` session validation | `AuthErrorsTotal`, `ActiveSessions` |
 | `middleware/ratelimit.go` | `RateLimitRejectionsTotal` |

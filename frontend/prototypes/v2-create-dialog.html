@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>v2 — Create Policy Dialog (Polished)</title>
+<style>
+  :root {
+    --bg: #0F0F13;
+    --paper: #1A1A24;
+    --surface: #1E1E2A;
+    --primary: #7C3AED;
+    --primary-light: #9F67FF;
+    --primary-dim: rgba(124,58,237,0.12);
+    --primary-glow: rgba(124,58,237,0.06);
+    --sleep: #6366F1;
+    --sleep-bg: rgba(99,102,241,0.55);
+    --awake-bg: rgba(34,197,94,0.18);
+    --warning: #F59E0B;
+    --error: #EF4444;
+    --success: #22C55E;
+    --text: #E4E4E7;
+    --text-sec: #9999A8;
+    --text-muted: #555566;
+    --divider: rgba(255,255,255,0.06);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    background: var(--bg); color: var(--text);
+    display:flex; justify-content:center; padding:40px 16px;
+    min-height:100vh;
+  }
+
+  /* Dialog */
+  .dlg {
+    background: var(--paper); border-radius:14px;
+    width:100%; max-width:620px;
+    box-shadow: 0 32px 64px rgba(0,0,0,0.5), 0 0 0 1px var(--divider);
+  }
+  .dlg-head {
+    padding:20px 24px 14px;
+    border-bottom:1px solid var(--divider);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .dlg-head h2 { font-size:17px; font-weight:700; letter-spacing:-0.2px; }
+  .close {
+    background:none; border:none; color:var(--text-sec);
+    cursor:pointer; font-size:18px; width:30px; height:30px;
+    border-radius:50%; display:flex; align-items:center; justify-content:center;
+  }
+  .close:hover { background:rgba(255,255,255,0.06); }
+  .dlg-body { padding:20px 24px; }
+  .dlg-foot {
+    padding:14px 24px;
+    border-top:1px solid var(--divider);
+    display:flex; justify-content:flex-end; gap:10px;
+  }
+
+  /* Form fields */
+  .field { margin-bottom:14px; }
+  .field label {
+    display:block; font-size:11px; font-weight:500;
+    color:var(--text-sec); margin-bottom:5px;
+    text-transform:uppercase; letter-spacing:0.6px;
+  }
+  .field input, .field select, .field textarea {
+    width:100%; padding:9px 12px;
+    background:rgba(255,255,255,0.03);
+    border:1px solid var(--divider); border-radius:8px;
+    color:var(--text); font-size:13px; font-family:inherit;
+    transition:border-color 0.15s;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus {
+    outline:none; border-color:var(--primary);
+  }
+  .field textarea { resize:vertical; min-height:48px; }
+
+  /* Section divider */
+  .sec {
+    display:flex; align-items:center; gap:10px;
+    margin:20px 0 14px; font-size:10px; font-weight:700;
+    text-transform:uppercase; letter-spacing:1.2px; color:var(--text-muted);
+  }
+  .sec::after { content:''; flex:1; height:1px; background:var(--divider); }
+
+  /* Buttons */
+  .btn {
+    padding:8px 18px; border-radius:8px; border:none;
+    font-size:13px; font-family:inherit; font-weight:600; cursor:pointer;
+    transition:all 0.12s;
+  }
+  .btn-ghost { background:none; color:var(--text-sec); }
+  .btn-ghost:hover { color:var(--text); }
+  .btn-primary { background:var(--primary); color:#fff; }
+  .btn-primary:hover { background:var(--primary-light); }
+
+  /* Preset bar */
+  .presets {
+    display:flex; gap:6px; margin-bottom:16px;
+  }
+  .preset {
+    padding:7px 14px; border-radius:20px;
+    border:1px solid var(--divider); background:none;
+    color:var(--text-sec); font-size:12px; font-weight:500;
+    cursor:pointer; font-family:inherit; transition:all 0.12s;
+    display:flex; align-items:center; gap:6px;
+  }
+  .preset:hover { border-color:var(--primary); color:var(--primary-light); }
+  .preset.on { border-color:var(--primary); background:var(--primary-dim); color:var(--primary-light); }
+  .preset .dot { width:6px; height:6px; border-radius:50%; background:var(--sleep); opacity:0.7; }
+
+  /* Window card */
+  .win {
+    border:1px solid var(--divider); border-radius:10px;
+    margin-bottom:10px; overflow:hidden;
+    background:var(--surface);
+  }
+  .win-head {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 14px 8px; background:rgba(255,255,255,0.015);
+    border-bottom:1px solid var(--divider);
+  }
+  .win-head .num {
+    font-size:10px; font-weight:700; text-transform:uppercase;
+    letter-spacing:1px; color:var(--text-muted);
+  }
+  .win-del {
+    background:none; border:none; color:var(--text-muted);
+    cursor:pointer; font-size:13px; padding:2px 6px; border-radius:4px;
+  }
+  .win-del:hover { color:var(--error); background:rgba(239,68,68,0.08); }
+  .win-body { padding:12px 14px; }
+
+  /* Day buttons */
+  .days { display:flex; gap:4px; margin-bottom:10px; }
+  .day {
+    width:38px; height:30px; border-radius:7px;
+    border:1px solid var(--divider); background:none;
+    color:var(--text-muted); font-size:11px; font-weight:600;
+    cursor:pointer; font-family:inherit;
+    display:flex; align-items:center; justify-content:center;
+    transition:all 0.1s;
+  }
+  .day.on {
+    border-color:var(--primary); color:var(--primary-light);
+    background:var(--primary-dim);
+    box-shadow:0 0 0 1px rgba(124,58,237,0.15);
+  }
+  .day:hover { border-color:var(--primary); }
+
+  /* All-day toggle */
+  .allday-bar {
+    display:flex; align-items:center; gap:8px;
+    padding:6px 10px; border-radius:7px;
+    cursor:pointer; transition:all 0.12s;
+    margin-bottom:8px;
+  }
+  .allday-bar.off { background:transparent; }
+  .allday-bar.active {
+    background:rgba(99,102,241,0.06);
+    border:1px solid rgba(99,102,241,0.1);
+    margin:-1px; /* compensate border */
+  }
+  .allday-bar .toggle {
+    width:34px; height:18px; border-radius:9px;
+    background:rgba(255,255,255,0.1); position:relative;
+    transition:background 0.2s; flex-shrink:0;
+  }
+  .allday-bar.active .toggle { background:var(--sleep); }
+  .allday-bar .toggle .knob {
+    position:absolute; top:2px; left:2px;
+    width:14px; height:14px; border-radius:50%;
+    background:#fff; transition:left 0.2s;
+  }
+  .allday-bar.active .toggle .knob { left:18px; }
+  .allday-bar .lbl { font-size:12px; color:var(--text-sec); }
+  .allday-bar.active .lbl { color:var(--text); }
+  .allday-bar .hint { font-size:10px; color:var(--text-muted); margin-left:auto; }
+
+  /* Time pickers */
+  .times {
+    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+    opacity:1; transition:opacity 0.15s;
+  }
+  .times.hidden { opacity:0; height:0; overflow:hidden; margin:0; pointer-events:none; }
+  .times label { font-size:11px; color:var(--text-sec); }
+  .times select {
+    padding:5px 6px; background:rgba(255,255,255,0.04);
+    border:1px solid var(--divider); border-radius:6px;
+    color:var(--text); font-size:12px; font-family:inherit;
+    min-width:50px;
+  }
+  .times select:focus { outline:none; border-color:var(--primary); }
+  .times .colon { color:var(--text-muted); font-size:12px; }
+  .times .badge {
+    font-size:10px; padding:2px 8px; border-radius:10px;
+    background:rgba(99,102,241,0.12); color:#a5b4fc;
+    margin-left:4px;
+  }
+
+  /* Add window button */
+  .add-win {
+    width:100%; padding:9px; border:1px dashed var(--divider);
+    border-radius:8px; background:none; color:var(--text-muted);
+    font-size:12px; cursor:pointer; font-family:inherit;
+    transition:all 0.12s; margin-bottom:14px;
+  }
+  .add-win:hover { border-color:var(--primary); color:var(--primary-light); }
+
+  /* Summary */
+  .summary {
+    font-size:12px; color:var(--text-sec); margin-bottom:4px;
+    line-height:1.5;
+  }
+  .warn {
+    font-size:11px; color:var(--warning); margin-top:4px;
+  }
+
+  /* Preview */
+  .preview {
+    border:1px solid var(--divider); border-radius:10px;
+    padding:14px; background:var(--surface);
+    margin-top:6px;
+  }
+  .preview-label {
+    font-size:10px; font-weight:700; text-transform:uppercase;
+    letter-spacing:1px; color:var(--text-muted); margin-bottom:8px;
+  }
+  .tl-hours { display:flex; margin-left:32px; margin-bottom:3px; }
+  .tl-hour { flex:1; font-size:8px; color:var(--text-muted); text-align:center; }
+  .tl-row { display:flex; align-items:center; gap:5px; margin-bottom:2px; }
+  .tl-day { font-size:10px; color:var(--text-muted); width:26px; text-align:right; flex-shrink:0; }
+  .tl-bar {
+    flex:1; height:16px; display:flex; border-radius:3px;
+    overflow:hidden; background:rgba(255,255,255,0.02);
+  }
+  .tl-seg { height:100%; }
+  .tl-seg.sleep { background:var(--sleep-bg); }
+  .tl-seg.awake { background:var(--awake-bg); }
+  .tl-legend {
+    display:flex; gap:12px; margin-top:6px; font-size:9px; color:var(--text-muted);
+  }
+  .tl-legend span { display:flex; align-items:center; gap:4px; }
+  .tl-sw { width:8px; height:8px; border-radius:2px; }
+
+  /* Inline row */
+  .inline { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .inline .field { flex:1; min-width:130px; margin-bottom:10px; }
+  .inline .field select { padding:8px 10px; }
+
+  .sw-row { display:flex; align-items:center; gap:8px; }
+  .sw {
+    position:relative; width:36px; height:19px;
+    background:rgba(255,255,255,0.1); border-radius:10px;
+    cursor:pointer; transition:background 0.2s;
+  }
+  .sw.on { background:var(--primary); }
+  .sw .dot {
+    position:absolute; top:2px; left:2px;
+    width:15px; height:15px; border-radius:50%;
+    background:#fff; transition:left 0.2s;
+  }
+  .sw.on .dot { left:19px; }
+
+  /* Collapse */
+  .collapse-btn {
+    display:flex; align-items:center; gap:6px;
+    cursor:pointer; margin:14px 0 6px; font-size:10px;
+    font-weight:700; text-transform:uppercase; letter-spacing:1px;
+    color:var(--text-muted); background:none; border:none; font-family:inherit;
+  }
+  .collapse-btn:hover { color:var(--text-sec); }
+  .collapse-btn .arr { font-size:9px; transition:transform 0.2s; }
+  .collapse-btn .arr.open { transform:rotate(90deg); }
+  .collapse-body { max-height:0; overflow:hidden; transition:max-height 0.3s; }
+</style>
+</head>
+<body>
+
+<div class="dlg">
+  <div class="dlg-head">
+    <h2>New Policy</h2>
+    <button class="close">&times;</button>
+  </div>
+  <div class="dlg-body">
+
+    <div class="field">
+      <label>Name</label>
+      <input type="text" placeholder="e.g. Weekend sleep" value="Nights + weekends">
+    </div>
+    <div class="field">
+      <label>Description</label>
+      <textarea placeholder="Optional description..."></textarea>
+    </div>
+
+    <div class="sec">Schedule</div>
+
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
+      <label style="font-size:11px;color:var(--text-sec)">Timezone</label>
+      <select style="padding:5px 8px;background:rgba(255,255,255,0.03);border:1px solid var(--divider);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;width:auto">
+        <option>UTC</option><option>Europe/Berlin</option><option>America/New_York</option>
+      </select>
+    </div>
+
+    <!-- Presets -->
+    <div class="presets" id="presets">
+      <button class="preset" data-p="weeknights"><span class="dot"></span>Weekday nights</button>
+      <button class="preset" data-p="weekends"><span class="dot"></span>Weekends</button>
+      <button class="preset on" data-p="nights+wknd"><span class="dot"></span>Nights + weekends</button>
+      <button class="preset" data-p="business"><span class="dot"></span>Business hours</button>
+    </div>
+
+    <!-- Window cards -->
+    <div id="winsWrap"></div>
+    <button class="add-win" onclick="addWin()">+ Add window</button>
+
+    <!-- Summary -->
+    <div class="summary" id="summary"></div>
+    <div class="warn" id="warn"></div>
+
+    <!-- Live preview -->
+    <div class="preview" id="previewBox">
+      <div class="preview-label">Weekly preview</div>
+      <div class="tl-hours" id="hourLabels"></div>
+      <div id="tlRows"></div>
+      <div class="tl-legend">
+        <span><span class="tl-sw" style="background:var(--sleep-bg)"></span> Sleep</span>
+        <span><span class="tl-sw" style="background:var(--awake-bg)"></span> Awake</span>
+      </div>
+    </div>
+
+    <!-- Targeting & Settings (collapsible) -->
+    <button class="collapse-btn" onclick="toggle('extra')">
+      <span class="arr" id="extraArr">&#9654;</span> Targeting &amp; Settings
+    </button>
+    <div class="collapse-body" id="extraBody">
+      <div class="field" style="margin-top:8px">
+        <label>Namespace filter</label>
+        <input type="text" placeholder="e.g. staging, dev  (empty = all)">
+      </div>
+      <div class="field">
+        <label>Label selector</label>
+        <input type="text" placeholder="e.g. app=api, tier!=db">
+      </div>
+      <div class="inline">
+        <div class="field">
+          <label>Mode</label>
+          <select><option>Plan (dry-run)</option><option>Apply (live)</option></select>
+        </div>
+        <div class="field">
+          <label>Timeout (min)</label>
+          <input type="number" value="30" min="0" max="1440">
+        </div>
+        <div class="field" style="display:flex;align-items:flex-end;padding-bottom:8px">
+          <div class="sw-row">
+            <div class="sw on" onclick="this.classList.toggle('on')"><div class="dot"></div></div>
+            <span style="font-size:12px">Enabled</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dlg-foot">
+    <button class="btn btn-ghost">Cancel</button>
+    <button class="btn btn-primary">Create Policy</button>
+  </div>
+</div>
+
+<script>
+const LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const CRON_DOW = [1,2,3,4,5,6,0];
+
+let wins = [];
+let uid = 0;
+
+function addWin(cfg) {
+  wins.push({
+    id: ++uid,
+    days: cfg?.days || [],
+    allDay: cfg?.allDay ?? false,
+    startH: cfg?.startH ?? 19, startM: cfg?.startM ?? 0,
+    endH: cfg?.endH ?? 7, endM: cfg?.endM ?? 0,
+  });
+  render();
+}
+function delWin(id) { wins = wins.filter(w => w.id !== id); render(); }
+
+function render() {
+  const wrap = document.getElementById('winsWrap');
+  wrap.innerHTML = '';
+  wins.forEach((w, idx) => {
+    const isON = !w.allDay && (w.endH < w.startH || (w.endH === w.startH && w.endM <= w.startM));
+    const card = document.createElement('div');
+    card.className = 'win';
+    card.innerHTML = `
+      <div class="win-head">
+        <span class="num">${wins.length > 1 ? `Window ${idx+1}` : 'Sleep window'}</span>
+        ${wins.length > 1 ? `<button class="win-del" onclick="delWin(${w.id})">&times;</button>` : ''}
+      </div>
+      <div class="win-body">
+        <div class="days">
+          ${LABELS.map((l,di) => {
+            const dow = CRON_DOW[di];
+            return `<button class="day ${w.days.includes(dow)?'on':''}" onclick="togDay(${w.id},${dow})">${l}</button>`;
+          }).join('')}
+        </div>
+
+        <div class="allday-bar ${w.allDay?'active':'off'}" onclick="setAD(${w.id},${!w.allDay})">
+          <div class="toggle"><div class="knob"></div></div>
+          <span class="lbl">All day</span>
+          ${w.allDay ? '<span class="hint">No wake-up on selected days</span>' : ''}
+        </div>
+
+        <div class="times ${w.allDay?'hidden':''}">
+          <label>Sleep</label>
+          <select onchange="setT(${w.id},'startH',+this.value)">${hO(w.startH)}</select>
+          <span class="colon">:</span>
+          <select onchange="setT(${w.id},'startM',+this.value)">${mO(w.startM)}</select>
+
+          <label style="margin-left:8px">Wake</label>
+          <select onchange="setT(${w.id},'endH',+this.value)">${hO(w.endH)}</select>
+          <span class="colon">:</span>
+          <select onchange="setT(${w.id},'endM',+this.value)">${mO(w.endM)}</select>
+          ${isON ? '<span class="badge">next day</span>' : ''}
+        </div>
+      </div>
+    `;
+    wrap.appendChild(card);
+  });
+  updatePreview();
+  updateSummary();
+}
+
+function hO(s) { let o=''; for(let h=0;h<24;h++) o+=`<option value="${h}" ${h===s?'selected':''}>${String(h).padStart(2,'0')}</option>`; return o; }
+function mO(s) { let o=''; [0,5,10,15,20,25,30,35,40,45,50,55].forEach(m=>{o+=`<option value="${m}" ${m===s?'selected':''}>${String(m).padStart(2,'0')}</option>`;}); return o; }
+
+function togDay(id, dow) {
+  const w = wins.find(x=>x.id===id);
+  const i = w.days.indexOf(dow);
+  if (i>=0) w.days.splice(i,1); else w.days.push(dow);
+  render();
+}
+function setAD(id, v) { wins.find(x=>x.id===id).allDay = v; render(); }
+function setT(id, f, v) { wins.find(x=>x.id===id)[f] = v; render(); }
+
+function updateSummary() {
+  const el = document.getElementById('summary');
+  const warnEl = document.getElementById('warn');
+  const parts = [];
+  wins.forEach(w => {
+    if (!w.days.length) return;
+    const dayStr = compactDays(w.days);
+    if (w.allDay) { parts.push(`${dayStr} all day`); return; }
+    const s = `${String(w.startH).padStart(2,'0')}:${String(w.startM).padStart(2,'0')}`;
+    const e = `${String(w.endH).padStart(2,'0')}:${String(w.endM).padStart(2,'0')}`;
+    parts.push(`${dayStr} ${fmt12(s)}\u2013${fmt12(e)}`);
+  });
+  el.textContent = parts.join(', ') || '';
+
+  const allSleepDays = new Set();
+  wins.forEach(w => { if (w.allDay) w.days.forEach(d => allSleepDays.add(d)); });
+  warnEl.textContent = (wins.some(w=>w.days.length>0) && wins.filter(w=>w.days.length>0).every(w=>w.allDay) && allSleepDays.size===7)
+    ? '\u26A0 All 7 days are all-day sleep \u2014 workloads will never wake up.' : '';
+}
+
+function fmt12(t) {
+  const [h,m] = t.split(':').map(Number);
+  const suf = h>=12?'PM':'AM';
+  const h12 = h===0?12:h>12?h-12:h;
+  return m===0?`${h12} ${suf}`:`${h12}:${String(m).padStart(2,'0')} ${suf}`;
+}
+
+function compactDays(days) {
+  const map = {1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat',0:'Sun'};
+  const sorted = [...days].sort((a,b) => ([1,2,3,4,5,6,0].indexOf(a) - [1,2,3,4,5,6,0].indexOf(b)));
+  if (sorted.length===7) return 'Every day';
+  const s = sorted.map(d=>[1,2,3,4,5,6,0].indexOf(d)).sort((a,b)=>a-b);
+  if (s.length===5 && s.join()==='0,1,2,3,4') return 'Mon\u2013Fri';
+  if (s.length===2 && s.join()==='5,6') return 'Sat\u2013Sun';
+  return sorted.map(d=>map[d]).join(', ');
+}
+
+function updatePreview() {
+  const G = {};
+  for (let di=0;di<7;di++) for(let h=0;h<24;h++) G[`${di}-${h}`]='awake';
+
+  wins.forEach(w => {
+    w.days.forEach(dow => {
+      const di = [1,2,3,4,5,6,0].indexOf(dow);
+      if (di===-1) return;
+      if (w.allDay) {
+        for(let h=0;h<24;h++) G[`${di}-${h}`]='sleep';
+      } else {
+        const isON = w.endH<w.startH||(w.endH===w.startH&&w.endM<=w.startM);
+        if (isON) {
+          for(let h=w.startH;h<24;h++) G[`${di}-${h}`]='sleep';
+          const ni=(di+1)%7;
+          for(let h=0;h<w.endH;h++) G[`${ni}-${h}`]='sleep';
+          if(w.endM>0) G[`${ni}-${w.endH}`]='sleep';
+        } else {
+          for(let h=w.startH;h<w.endH;h++) G[`${di}-${h}`]='sleep';
+          if(w.endM>0) G[`${di}-${w.endH}`]='sleep';
+        }
+      }
+    });
+  });
+
+  const hl = document.getElementById('hourLabels');
+  hl.innerHTML = '';
+  for(let h=0;h<24;h+=3) {
+    const d=document.createElement('div');
+    d.className='tl-hour'; d.style.flex='3'; d.textContent=h;
+    hl.appendChild(d);
+  }
+
+  const rows = document.getElementById('tlRows');
+  rows.innerHTML = '';
+  LABELS.forEach((l,di) => {
+    const row = document.createElement('div');
+    row.className='tl-row';
+    let html=`<span class="tl-day">${l}</span><div class="tl-bar">`;
+    for(let h=0;h<24;h++) html+=`<div class="tl-seg ${G[`${di}-${h}`]}" style="flex:1"></div>`;
+    html+='</div>';
+    row.innerHTML=html;
+    rows.appendChild(row);
+  });
+}
+
+/* Presets */
+const PRESETS = {
+  weeknights: [{ days:[1,2,3,4,5], startH:19, startM:0, endH:7, endM:0 }],
+  weekends: [{ days:[0,6], allDay:true }],
+  'nights+wknd': [
+    { days:[1,2,3,4,5], startH:19, startM:0, endH:7, endM:0 },
+    { days:[0,6], allDay:true },
+  ],
+  business: [
+    { days:[1,2,3,4,5], startH:17, startM:0, endH:9, endM:0 },
+    { days:[0,6], allDay:true },
+  ],
+};
+
+document.getElementById('presets').addEventListener('click', e => {
+  const btn = e.target.closest('.preset');
+  if (!btn) return;
+  document.querySelectorAll('.preset').forEach(c=>c.classList.remove('on'));
+  btn.classList.add('on');
+  wins=[]; uid=0;
+  (PRESETS[btn.dataset.p]||[]).forEach(cfg=>addWin(cfg));
+});
+
+function toggle(id) {
+  const body=document.getElementById(id+'Body');
+  const arr=document.getElementById(id+'Arr');
+  const open=body.style.maxHeight&&body.style.maxHeight!=='0px';
+  body.style.maxHeight=open?'0px':'500px';
+  arr.classList.toggle('open',!open);
+}
+
+// Init
+addWin({ days:[1,2,3,4,5], startH:19, startM:0, endH:7, endM:0 });
+addWin({ days:[0,6], allDay:true });
+</script>
+</body>
+</html>

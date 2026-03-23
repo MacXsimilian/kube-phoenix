@@ -23,14 +23,8 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import { deletePolicy, triggerPolicySleep, triggerPolicyWake } from '@/lib/api'
 import type { Policy } from '@/lib/types'
 import { windowsToText } from '@/lib/windowUtils'
+import { STATE_COLORS } from '@/lib/statusColors'
 import MiniTimeline from './MiniTimeline'
-
-const STATE_COLORS: Record<string, { bg: string; color: string; label: string }> = {
-  sleeping:      { bg: 'rgba(99,102,241,0.18)',  color: '#a5b4fc', label: 'Sleeping' },
-  awake:         { bg: 'rgba(34,197,94,0.18)',   color: '#86efac', label: 'Awake' },
-  transitioning: { bg: 'rgba(245,158,11,0.18)',  color: '#fcd34d', label: 'Transitioning' },
-  unknown:       { bg: 'rgba(148,163,184,0.15)', color: '#94a3b8', label: 'Unknown' },
-}
 
 function fmtNext(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -156,35 +150,16 @@ export default function PolicyCard({
                   </Box>
                   <MiniTimeline windows={policy.sleepWindows} width={200} height={14} />
                 </>
-              ) : (
-                <>
-                  {policy.sleepCron && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <BedtimeIcon sx={{ fontSize: 13, color: '#a5b4fc' }} />
-                      <Typography variant="caption" color="text.secondary" fontFamily="monospace">
-                        {policy.sleepCron}
-                      </Typography>
-                    </Box>
-                  )}
-                  {policy.wakeCron && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <WbSunnyIcon sx={{ fontSize: 13, color: '#fcd34d' }} />
-                      <Typography variant="caption" color="text.secondary" fontFamily="monospace">
-                        {policy.wakeCron}
-                      </Typography>
-                    </Box>
-                  )}
-                </>
-              )}
-              {/* Next fire times */}
-              {policy.nextSleepAt && (
+              ) : null}
+              {/* Next transition — state-aware */}
+              {policy.currentState === 'sleeping' && policy.nextTransitionAt && (
                 <Typography variant="caption" color="text.disabled">
-                  sleep {fmtNext(policy.nextSleepAt)}
+                  wake {fmtNext(policy.nextTransitionAt)}
                 </Typography>
               )}
-              {policy.nextWakeAt && (
+              {policy.currentState === 'awake' && policy.nextTransitionAt && (
                 <Typography variant="caption" color="text.disabled">
-                  wake {fmtNext(policy.nextWakeAt)}
+                  sleep {fmtNext(policy.nextTransitionAt)}
                 </Typography>
               )}
               {policy.timezone && policy.timezone !== 'UTC' && (
