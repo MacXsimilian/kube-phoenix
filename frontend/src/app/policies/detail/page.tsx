@@ -345,7 +345,7 @@ export default function PolicyDetailPage() {
               <TextField
                 type="datetime-local"
                 size="small"
-                label="Target Cron Time"
+                label="Valid Until"
                 value={overrideForm.targetCronTime}
                 onChange={e => setOverrideForm(f => ({ ...f, targetCronTime: e.target.value }))}
                 slotProps={{ inputLabel: { shrink: true } }}

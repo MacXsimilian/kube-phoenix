@@ -65,62 +65,60 @@ function windowBlocks(windows: SleepWindow[]): Block[] {
   return blocks
 }
 
-function overrideBlocks(overrides: PolicyOverride[]): Block[] {
-  if (!overrides) return []
+/** Convert an ISO timestamp to a Date in the given timezone. */
+function toTZ(iso: string, tz?: string): Date {
+  const d = new Date(iso)
+  if (!tz) return d
+  const str = d.toLocaleString('en-US', { timeZone: tz })
+  return new Date(str)
+}
+
+function timeRangeBlocks(
+  startISO: string, endISO: string, color: string, opacity: number, tz?: string,
+): Block[] {
   const blocks: Block[] = []
-  for (const ov of overrides) {
-    if (!ov.startsAt || !ov.endsAt) continue
-    const start = new Date(ov.startsAt)
-    const end = new Date(ov.endsAt)
-    const color = ov.overrideType === 'force_sleep' ? '#ef4444' : '#f59e0b'
+  const start = toTZ(startISO, tz)
+  const end = toTZ(endISO, tz)
 
-    // Iterate through each day the override spans
-    const cursor = new Date(start)
-    cursor.setHours(0, 0, 0, 0)
-    const endDay = new Date(end)
-    endDay.setHours(0, 0, 0, 0)
+  const cursor = new Date(start)
+  cursor.setHours(0, 0, 0, 0)
+  const endDay = new Date(end)
+  endDay.setHours(0, 0, 0, 0)
 
-    while (cursor <= endDay) {
-      const row = DOW_MAP.indexOf(cursor.getDay())
-      if (row !== -1) {
-        const isSameAsStart = cursor.getTime() === new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
-        const isSameAsEnd = cursor.getTime() === endDay.getTime()
-        const sh = isSameAsStart ? start.getHours() + start.getMinutes() / 60 : 0
-        const eh = isSameAsEnd ? end.getHours() + end.getMinutes() / 60 : 24
-        if (eh > sh) {
-          blocks.push({ row, x1: hourToX(sh), x2: hourToX(eh), color, opacity: 0.35 })
-        }
+  while (cursor <= endDay) {
+    const row = DOW_MAP.indexOf(cursor.getDay())
+    if (row !== -1) {
+      const isSameAsStart = cursor.getTime() === new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
+      const isSameAsEnd = cursor.getTime() === endDay.getTime()
+      const sh = isSameAsStart ? start.getHours() + start.getMinutes() / 60 : 0
+      const eh = isSameAsEnd ? end.getHours() + end.getMinutes() / 60 : 24
+      if (eh > sh) {
+        blocks.push({ row, x1: hourToX(sh), x2: hourToX(eh), color, opacity })
       }
-      cursor.setDate(cursor.getDate() + 1)
     }
+    cursor.setDate(cursor.getDate() + 1)
   }
   return blocks
 }
 
-function exceptionBlocks(exceptions: ScheduledException[]): Block[] {
+function overrideBlocks(overrides: PolicyOverride[], tz?: string): Block[] {
+  if (!overrides) return []
+  const blocks: Block[] = []
+  for (const ov of overrides) {
+    if (!ov.startsAt || !ov.endsAt) continue
+    const color = ov.overrideType === 'force_sleep' ? '#ef4444' : '#f59e0b'
+    blocks.push(...timeRangeBlocks(ov.startsAt, ov.endsAt, color, 0.35, tz))
+  }
+  return blocks
+}
+
+function exceptionBlocks(exceptions: ScheduledException[], tz?: string): Block[] {
   if (!exceptions) return []
   const blocks: Block[] = []
   for (const ex of exceptions) {
     if (ex.status === 'cancelled' || ex.status === 'completed') continue
-    const start = new Date(ex.startsAt)
-    const end = new Date(ex.endsAt)
     const color = ex.exceptionType === 'force_sleep' ? '#ef4444' : '#22c55e'
-
-    // Iterate through each day the exception spans
-    const cursor = new Date(start)
-    cursor.setHours(0, 0, 0, 0)
-    const endDay = new Date(end)
-    endDay.setHours(0, 0, 0, 0)
-
-    while (cursor <= endDay) {
-      const row = DOW_MAP.indexOf(cursor.getDay())
-      if (row !== -1) {
-        const isSameAsStart = cursor.getTime() === new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
-        const isSameAsEnd = cursor.getTime() === endDay.getTime()
-        const sh = isSameAsStart ? start.getHours() + start.getMinutes() / 60 : 0
-        const eh = isSameAsEnd ? end.getHours() + end.getMinutes() / 60 : 24
-        if (eh > sh) {
-          blocks.push({ row, x1: hourToX(sh), x2: hourToX(eh), color, opacity: 0.3 })
+    blocks.push(...timeRangeBlocks(ex.startsAt, ex.endsAt, color, 0.3, tz))
         }
       }
       cursor.setDate(cursor.getDate() + 1)
@@ -149,8 +147,8 @@ export default function WeeklyTimeline({
 
   const allBlocks = [
     ...windowBlocks(windows),
-    ...overrideBlocks(overrides ?? []),
-    ...exceptionBlocks(exceptions ?? []),
+    ...overrideBlocks(overrides ?? [], timezone),
+    ...exceptionBlocks(exceptions ?? [], timezone),
   ]
 
   return (

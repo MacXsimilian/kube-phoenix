@@ -4,98 +4,7 @@ import (
 	"testing"
 )
 
-func TestCompileWindowsToCrons_WeekdayOvernight(t *testing.T) {
-	windows := []SleepWindow{{
-		DaysOfWeek: []int{1, 2, 3, 4, 5},
-		StartTime:  "19:00",
-		EndTime:    "07:00",
-	}}
-	sleep, wake, err := CompileWindowsToCrons(windows)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if sleep != "0 19 * * 1,2,3,4,5" {
-		t.Errorf("sleepCron = %q, want %q", sleep, "0 19 * * 1,2,3,4,5")
-	}
-	if wake != "0 7 * * 2,3,4,5,6" {
-		t.Errorf("wakeCron = %q, want %q", wake, "0 7 * * 2,3,4,5,6")
-	}
-}
-
-func TestCompileWindowsToCrons_Weekend(t *testing.T) {
-	windows := []SleepWindow{{
-		DaysOfWeek: []int{0, 6},
-		StartTime:  "00:00",
-		EndTime:    "23:59",
-	}}
-	sleep, wake, err := CompileWindowsToCrons(windows)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if sleep != "0 0 * * 0,6" {
-		t.Errorf("sleepCron = %q, want %q", sleep, "0 0 * * 0,6")
-	}
-	if wake != "59 23 * * 0,6" {
-		t.Errorf("wakeCron = %q, want %q", wake, "59 23 * * 0,6")
-	}
-}
-
-func TestCompileWindowsToCrons_SaturdayOvernightWrapsToSunday(t *testing.T) {
-	windows := []SleepWindow{{
-		DaysOfWeek: []int{6},
-		StartTime:  "20:00",
-		EndTime:    "08:00",
-	}}
-	sleep, wake, err := CompileWindowsToCrons(windows)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if sleep != "0 20 * * 6" {
-		t.Errorf("sleepCron = %q, want %q", sleep, "0 20 * * 6")
-	}
-	// Saturday night -> Sunday morning
-	if wake != "0 8 * * 0" {
-		t.Errorf("wakeCron = %q, want %q", wake, "0 8 * * 0")
-	}
-}
-
-func TestCompileWindowsToCrons_MergedDays(t *testing.T) {
-	// Two windows with same times but different days get merged.
-	windows := []SleepWindow{
-		{DaysOfWeek: []int{1, 2, 3}, StartTime: "19:00", EndTime: "07:00"},
-		{DaysOfWeek: []int{4, 5}, StartTime: "19:00", EndTime: "07:00"},
-	}
-	sleep, wake, err := CompileWindowsToCrons(windows)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if sleep != "0 19 * * 1,2,3,4,5" {
-		t.Errorf("sleepCron = %q, want %q", sleep, "0 19 * * 1,2,3,4,5")
-	}
-	if wake != "0 7 * * 2,3,4,5,6" {
-		t.Errorf("wakeCron = %q, want %q", wake, "0 7 * * 2,3,4,5,6")
-	}
-}
-
-func TestCompileWindowsToCrons_SameDayWindow(t *testing.T) {
-	// 9am to 5pm same day (not overnight)
-	windows := []SleepWindow{{
-		DaysOfWeek: []int{1, 2, 3, 4, 5},
-		StartTime:  "09:00",
-		EndTime:    "17:00",
-	}}
-	sleep, wake, err := CompileWindowsToCrons(windows)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if sleep != "0 9 * * 1,2,3,4,5" {
-		t.Errorf("sleepCron = %q, want %q", sleep, "0 9 * * 1,2,3,4,5")
-	}
-	// Same-day window: wake on same days
-	if wake != "0 17 * * 1,2,3,4,5" {
-		t.Errorf("wakeCron = %q, want %q", wake, "0 17 * * 1,2,3,4,5")
-	}
-}
+// ─── ValidateWindows ─────────────────────────────────────────────────────────
 
 func TestValidateWindows_Empty(t *testing.T) {
 	err := ValidateWindows(nil)
@@ -159,63 +68,71 @@ func TestValidateWindows_SameStartEnd(t *testing.T) {
 	}
 }
 
-func TestValidateWindows_DifferentTimes(t *testing.T) {
+func TestValidateWindows_DifferentTimesAllowed(t *testing.T) {
 	err := ValidateWindows([]SleepWindow{
 		{DaysOfWeek: []int{1, 2}, StartTime: "19:00", EndTime: "07:00"},
 		{DaysOfWeek: []int{6}, StartTime: "22:00", EndTime: "08:00"},
 	})
-	if err == nil {
-		t.Error("expected error for different start/end times across windows")
+	if err != nil {
+		t.Errorf("different times across windows should be valid, got: %v", err)
 	}
 }
 
-func TestCronsToWindows_RoundTrip(t *testing.T) {
-	original := []SleepWindow{{
-		DaysOfWeek: []int{1, 2, 3, 4, 5},
-		StartTime:  "19:00",
-		EndTime:    "07:00",
-	}}
-	sleep, wake, err := CompileWindowsToCrons(original)
+func TestValidateWindows_AllDayValid(t *testing.T) {
+	err := ValidateWindows([]SleepWindow{{
+		DaysOfWeek: []int{0, 6},
+		AllDay:     true,
+	}})
 	if err != nil {
-		t.Fatalf("compile: %v", err)
+		t.Errorf("allDay window should be valid, got: %v", err)
 	}
+}
 
-	got, err := CronsToWindows(sleep, wake)
+func TestValidateWindows_AllDayNoDays(t *testing.T) {
+	err := ValidateWindows([]SleepWindow{{
+		AllDay: true,
+	}})
+	if err == nil {
+		t.Error("expected error for allDay with no days")
+	}
+}
+
+func TestValidateWindows_MixedAllDayAndTimed(t *testing.T) {
+	err := ValidateWindows([]SleepWindow{
+		{DaysOfWeek: []int{1, 2, 3, 4, 5}, StartTime: "19:00", EndTime: "07:00"},
+		{DaysOfWeek: []int{0, 6}, AllDay: true},
+	})
 	if err != nil {
-		t.Fatalf("reverse: %v", err)
+		t.Errorf("mixed allDay and timed windows should be valid, got: %v", err)
 	}
-	if got == nil {
-		t.Fatal("CronsToWindows returned nil")
+}
+
+// ─── CronsToWindows (migration helper) ──────────────────────────────────────
+
+func TestCronsToWindows_Overnight(t *testing.T) {
+	got, err := CronsToWindows("0 19 * * 1,2,3,4,5", "0 7 * * 2,3,4,5,6")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("got %d windows, want 1", len(got))
+	if got == nil || len(got) != 1 {
+		t.Fatalf("expected 1 window, got %v", got)
 	}
 	w := got[0]
 	if w.StartTime != "19:00" || w.EndTime != "07:00" {
 		t.Errorf("times = %s-%s, want 19:00-07:00", w.StartTime, w.EndTime)
 	}
 	if len(w.DaysOfWeek) != 5 {
-		t.Errorf("days = %v, want 5 days", w.DaysOfWeek)
+		t.Errorf("days = %v, want 5 weekdays", w.DaysOfWeek)
 	}
 }
 
-func TestCronsToWindows_SameDay_RoundTrip(t *testing.T) {
-	original := []SleepWindow{{
-		DaysOfWeek: []int{1, 2, 3, 4, 5},
-		StartTime:  "09:00",
-		EndTime:    "17:00",
-	}}
-	sleep, wake, err := CompileWindowsToCrons(original)
+func TestCronsToWindows_SameDay(t *testing.T) {
+	got, err := CronsToWindows("0 9 * * 1,2,3,4,5", "0 17 * * 1,2,3,4,5")
 	if err != nil {
-		t.Fatalf("compile: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-
-	got, err := CronsToWindows(sleep, wake)
-	if err != nil {
-		t.Fatalf("reverse: %v", err)
-	}
-	if got == nil {
-		t.Fatal("CronsToWindows returned nil")
+	if got == nil || len(got) != 1 {
+		t.Fatalf("expected 1 window, got %v", got)
 	}
 	w := got[0]
 	if w.StartTime != "09:00" || w.EndTime != "17:00" {
@@ -234,7 +151,6 @@ func TestCronsToWindows_EmptyCrons(t *testing.T) {
 }
 
 func TestCronsToWindows_ComplexCron(t *testing.T) {
-	// DOM field is not * — should bail.
 	got, err := CronsToWindows("0 19 1-15 * 1-5", "0 7 1-15 * 1-5")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -153,7 +153,7 @@ type WorkloadSnapshot struct {
 	CapturedAt time.Time `gorm:"index" json:"capturedAt"`
 }
 
-// PolicyOverride suppresses or inverts the normal cron schedule for a policy.
+// PolicyOverride suppresses or inverts the normal window-based schedule for a policy.
 type PolicyOverride struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`
 	PolicyID     uint       `gorm:"index" json:"policyId"`

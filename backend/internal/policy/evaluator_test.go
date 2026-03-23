@@ -31,7 +31,7 @@ func TestEvaluate(t *testing.T) {
 		windows []SleepWindow
 		tz      string
 		now     time.Time
-		want    WindowState
+		want    IntendedState
 	}{
 		{
 			name:    "empty windows returns awake",

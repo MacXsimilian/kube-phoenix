@@ -201,16 +201,13 @@ func (h *Handler) populateNextRun(resp *OverviewResponse) {
 		if !p.Enabled {
 			continue
 		}
-		ns, nw := h.policyScheduler.NextRuns(p.ID)
-		for _, t := range []*time.Time{ns, nw} {
-			if t == nil {
-				continue
-			}
-			if earliestTime == nil || t.Before(*earliestTime) {
-				earliestTime = t
+		nt := h.policyScheduler.NextTransition(p.ID)
+		if nt != nil {
+			if earliestTime == nil || nt.Before(*earliestTime) {
+				earliestTime = nt
 				resp.NextRun = &NextRunInfo{
 					Name:    p.Name,
-					NextRun: t.UTC().Format(time.RFC3339),
+					NextRun: nt.UTC().Format(time.RFC3339),
 				}
 			}
 		}
