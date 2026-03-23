@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -81,12 +81,12 @@ export default function UsersPage() {
     onError: (err: Error) => { setMutationError(err.message); setDeleteTarget(null) },
   })
 
-  // Permission guard — redirect if user lacks user.manage permission.
-  // Placed after all hooks to comply with React's rules of hooks.
-  if (me && !canManageUsers(me.permissions)) {
-    router.replace('/overview')
-    return null
-  }
+  useEffect(() => {
+    if (me && !canManageUsers(me.permissions)) router.replace('/overview')
+  }, [me, router])
+
+  // Permission guard — return null after all hooks.
+  if (me && !canManageUsers(me.permissions)) return null
 
   return (
     <Box sx={{ maxWidth: 960, mx: 'auto', p: { xs: 2, md: 4 } }}>
