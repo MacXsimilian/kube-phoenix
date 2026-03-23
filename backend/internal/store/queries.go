@@ -17,8 +17,8 @@ func (s *Store) GetGuardrails() (*Guardrails, error) {
 
 func (s *Store) UpdateGuardrails(updates map[string]interface{}) (*Guardrails, error) {
 	keys := make([]string, 0, len(updates))
-	for k := range updates {
-		keys = append(keys, k)
+	for key := range updates {
+		keys = append(keys, key)
 	}
 	if err := s.db.Model(&Guardrails{}).Where("id = 1").Select(keys).Updates(updates).Error; err != nil {
 		return nil, err

@@ -29,20 +29,20 @@ func (s *Store) UpdatePolicy(id uint, updates map[string]interface{}) (*Policy, 
 		"sleep_windows": true, "timezone": true,
 		"mode": true, "enabled": true, "timeout_minutes": true,
 	}
-	for k := range updates {
-		if !allowed[k] {
-			delete(updates, k)
+	for key := range updates {
+		if !allowed[key] {
+			delete(updates, key)
 		}
 	}
 	if len(updates) == 0 {
 		return s.GetPolicy(id)
 	}
 	keys := make([]string, 0, len(updates))
-	for k := range updates {
-		keys = append(keys, k)
+	for key := range updates {
+		keys = append(keys, key)
 	}
 	if err := s.db.Model(&Policy{}).Where("id = ?", id).Select(keys).Updates(updates).Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("update policy %d: %w", id, err)
 	}
 	return s.GetPolicy(id)
 }
@@ -55,7 +55,7 @@ func (s *Store) UpdatePolicyState(id uint, state string, nextTransition *time.Ti
 		"next_transition_at": nextTransition,
 	}
 	switch state {
-	case "sleeping":
+	case PolicyStateSleeping:
 		updates["last_sleep_at"] = now
 	case "awake":
 		updates["last_wake_at"] = now
@@ -65,7 +65,7 @@ func (s *Store) UpdatePolicyState(id uint, state string, nextTransition *time.Ti
 
 func (s *Store) SetPolicyTransitioning(id uint) error {
 	return s.db.Model(&Policy{}).Where("id = ?", id).
-		Update("current_state", "transitioning").Error
+		Update("current_state", PolicyStateTransitioning).Error
 }
 
 func (s *Store) DeletePolicy(id uint) error {
@@ -160,24 +160,24 @@ type PolicyExecutionPage struct {
 }
 
 func (s *Store) ListPolicyExecutions(f PolicyExecutionFilter) (*PolicyExecutionPage, error) {
-	q := s.db.Model(&PolicyExecution{}).Preload("Policy")
+	query := s.db.Model(&PolicyExecution{}).Preload("Policy")
 	if f.PolicyID != nil {
-		q = q.Where("policy_id = ?", *f.PolicyID)
+		query = query.Where("policy_id = ?", *f.PolicyID)
 	}
 	if f.Status != "" {
-		q = q.Where("status = ?", f.Status)
+		query = query.Where("status = ?", f.Status)
 	}
 	var total int64
-	if err := q.Count(&total).Error; err != nil {
-		return nil, err
+	if err := query.Count(&total).Error; err != nil {
+		return nil, fmt.Errorf("count policy executions: %w", err)
 	}
 	if f.PageSize <= 0 {
 		f.PageSize = 20
 	}
 	offset := f.Page * f.PageSize
 	var items []PolicyExecution
-	if err := q.Order("started_at desc").Limit(f.PageSize).Offset(offset).Find(&items).Error; err != nil {
-		return nil, err
+	if err := query.Order("started_at desc").Limit(f.PageSize).Offset(offset).Find(&items).Error; err != nil {
+		return nil, fmt.Errorf("list policy executions: %w", err)
 	}
 	return &PolicyExecutionPage{Items: items, Total: total}, nil
 }
@@ -199,7 +199,7 @@ func (s *Store) FinishPolicyExecution(id uint, status string, counts map[string]
 func (s *Store) MarkInterruptedPolicyExecutions() (int64, error) {
 	now := time.Now()
 	res := s.db.Model(&PolicyExecution{}).
-		Where("status = ?", "running").
+		Where("status = ?", ExecStatusRunning).
 		Updates(map[string]interface{}{
 			"status":      "interrupted",
 			"finished_at": now,
@@ -328,27 +328,27 @@ type ScheduledExceptionFilter struct {
 }
 
 func (s *Store) ListScheduledExceptions(f ScheduledExceptionFilter) ([]ScheduledException, error) {
-	q := s.db.Model(&ScheduledException{})
+	query := s.db.Model(&ScheduledException{})
 	if f.PolicyID != nil {
-		q = q.Where("policy_id = ?", *f.PolicyID)
+		query = query.Where("policy_id = ?", *f.PolicyID)
 	}
 	if f.Status != "" {
-		q = q.Where("status = ?", f.Status)
+		query = query.Where("status = ?", f.Status)
 	}
 	var items []ScheduledException
-	return items, q.Order("starts_at asc").Find(&items).Error
+	return items, query.Order("starts_at asc").Find(&items).Error
 }
 
 // ListPendingExceptions returns all pending or active exceptions that should
 // be evaluated. Called by the policy scheduler tick.
 func (s *Store) ListPendingExceptions() ([]ScheduledException, error) {
 	var items []ScheduledException
-	return items, s.db.Where("status IN ('pending','active')").Order("starts_at asc").Find(&items).Error
+	return items, s.db.Where("status IN (?,?)", ExceptionStatusPending, ExceptionStatusActive).Order("starts_at asc").Find(&items).Error
 }
 
 func (s *Store) UpdateScheduledExceptionStatus(id uint, status string) error {
 	updates := map[string]interface{}{"status": status}
-	if status == "cancelled" {
+	if status == ExceptionStatusCancelled {
 		now := time.Now()
 		updates["cancelled_at"] = now
 	}
@@ -362,17 +362,17 @@ func (s *Store) UpdateScheduledException(id uint, updates map[string]interface{}
 		"namespace_filter": true, "label_selector": true, "workload_targets": true,
 		"cancel_reason": true,
 	}
-	for k := range updates {
-		if !allowed[k] {
-			delete(updates, k)
+	for key := range updates {
+		if !allowed[key] {
+			delete(updates, key)
 		}
 	}
 	if len(updates) == 0 {
 		return s.GetScheduledException(id)
 	}
 	keys := make([]string, 0, len(updates))
-	for k := range updates {
-		keys = append(keys, k)
+	for key := range updates {
+		keys = append(keys, key)
 	}
 	if err := s.db.Model(&ScheduledException{}).Where("id = ?", id).Select(keys).Updates(updates).Error; err != nil {
 		return nil, fmt.Errorf("update exception: %w", err)

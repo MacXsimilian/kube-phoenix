@@ -33,17 +33,17 @@ func (s *Store) UpdateUser(id uint, updates map[string]interface{}) (*User, erro
 	allowed := map[string]bool{
 		"email": true, "role": true, "enabled": true,
 	}
-	for k := range updates {
-		if !allowed[k] {
-			delete(updates, k)
+	for key := range updates {
+		if !allowed[key] {
+			delete(updates, key)
 		}
 	}
 	if len(updates) == 0 {
 		return s.GetUserByID(id)
 	}
 	keys := make([]string, 0, len(updates))
-	for k := range updates {
-		keys = append(keys, k)
+	for key := range updates {
+		keys = append(keys, key)
 	}
 	if err := s.db.Model(&User{}).Where("id = ?", id).Select(keys).Updates(updates).Error; err != nil {
 		return nil, err

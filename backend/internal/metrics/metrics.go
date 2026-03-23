@@ -40,7 +40,6 @@ var (
 	})
 
 	// ActivePolicies tracks how many policies are enabled, by mode.
-	// Updated every time the scheduler reloads its cron entries.
 	ActivePolicies = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "kube_phoenix_active_policies",
 		Help: "Number of enabled policies, partitioned by mode.",
