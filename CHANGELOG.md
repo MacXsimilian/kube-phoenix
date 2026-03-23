@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.2...v0.3.3) (2026-03-23)
+
+
+### Features
+
+* **frontend:** dashboard mini-card preview in policy dialog ([#207](https://github.com/MacXsimilian/kube-phoenix/issues/207)) ([e4b8fac](https://github.com/MacXsimilian/kube-phoenix/commit/e4b8faceaeca0ec98bb2763b7eb494096f9a0f34))
+
 ## [0.3.2](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.1...v0.3.2) (2026-03-23)
 
 This release replaces the entire cron-based policy scheduling system with a direct window evaluator. Policies now store `SleepWindow[]` as the sole schedule source of truth — no more cron compilation, no "most recent fire" reverse-engineering, and no `robfig/cron` dependency. See [#205](https://github.com/MacXsimilian/kube-phoenix/pull/205) for the full PR.
