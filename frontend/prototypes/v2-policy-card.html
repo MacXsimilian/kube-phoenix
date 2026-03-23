@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>v2 — Policy Cards</title>
+<style>
+  :root {
+    --bg: #0F0F13;
+    --paper: #1A1A24;
+    --surface: #1E1E2A;
+    --primary: #7C3AED;
+    --primary-light: #9F67FF;
+    --primary-dim: rgba(124,58,237,0.12);
+    --sleep: #6366F1;
+    --sleep-bg: rgba(99,102,241,0.55);
+    --awake-bg: rgba(34,197,94,0.18);
+    --text: #E4E4E7;
+    --text-sec: #9999A8;
+    --text-muted: #555566;
+    --divider: rgba(255,255,255,0.06);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    background: var(--bg); color: var(--text);
+    display:flex; flex-direction:column; align-items:center;
+    padding:40px 16px; gap:12px; min-height:100vh;
+  }
+  h1 { font-size:20px; font-weight:700; margin-bottom:16px; color:var(--text-sec); }
+
+  /* Card */
+  .card {
+    width:100%; max-width:720px;
+    background:var(--paper); border:1px solid var(--divider);
+    border-radius:12px; padding:18px 20px;
+    transition:all 0.15s; cursor:default;
+  }
+  .card:hover { border-color:rgba(255,255,255,0.1); }
+
+  /* Card header */
+  .card-top {
+    display:flex; align-items:center; gap:10px; margin-bottom:6px;
+  }
+  .card-name { font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chip {
+    padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600;
+    text-transform:uppercase; letter-spacing:0.3px; white-space:nowrap;
+  }
+  .chip-sleeping { background:rgba(99,102,241,0.18); color:#a5b4fc; }
+  .chip-awake { background:rgba(34,197,94,0.18); color:#86efac; }
+  .chip-plan { background:rgba(96,165,250,0.15); color:#93c5fd; }
+  .chip-apply { background:rgba(245,158,11,0.15); color:#fcd34d; }
+  .chip-disabled { background:rgba(148,163,184,0.12); color:#94a3b8; }
+
+  .card-desc {
+    font-size:12px; color:var(--text-sec); margin-bottom:8px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+
+  /* Schedule row */
+  .sched-row {
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  }
+  .sched-icon { font-size:13px; color:#a5b4fc; }
+  .sched-text { font-size:12px; color:var(--text-sec); }
+
+  /* Mini timeline */
+  .mini-tl {
+    height:12px; width:180px; border-radius:6px;
+    background:rgba(34,197,94,0.1); overflow:hidden;
+    display:flex; flex-shrink:0;
+  }
+  .mini-seg { height:100%; }
+  .mini-seg.s { background:var(--sleep-bg); }
+  .mini-seg.a { background:var(--awake-bg); }
+
+  /* Next transition */
+  .next-info {
+    font-size:11px; color:var(--text-muted);
+    display:flex; align-items:center; gap:4px;
+  }
+  .next-info .dir { color:var(--text-sec); font-weight:500; }
+  .next-info .when { color:var(--text-muted); }
+
+  /* Timezone badge */
+  .tz { font-size:10px; color:var(--text-muted); }
+  .ns-chip {
+    padding:1px 6px; border-radius:8px; font-size:9px; font-weight:600;
+    background:var(--primary-dim); color:var(--primary-light);
+  }
+
+  /* Actions */
+  .card-actions {
+    display:flex; gap:4px; margin-left:auto; flex-shrink:0;
+  }
+  .act {
+    width:30px; height:30px; border-radius:7px;
+    border:1px solid var(--divider); background:none;
+    color:var(--text-muted); font-size:13px;
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:all 0.1s;
+  }
+  .act:hover { border-color:var(--primary); color:var(--primary-light); }
+  .act.sleep-btn { color:#a5b4fc; }
+  .act.sleep-btn:hover { background:rgba(99,102,241,0.08); }
+  .act.wake-btn { color:#fcd34d; }
+  .act.wake-btn:hover { background:rgba(245,158,11,0.08); }
+  .act.danger:hover { border-color:var(--error,#EF4444); color:#EF4444; }
+
+  /* Card layout */
+  .card-body {
+    display:flex; align-items:center; gap:14px;
+  }
+  .card-info { flex:1; min-width:0; }
+</style>
+</head>
+<body>
+
+<h1>Policy Cards</h1>
+
+<!-- Card 1: Sleeping, nights + weekends — team-based policy -->
+<div class="card">
+  <div class="card-body">
+    <div class="card-info">
+      <div class="card-top">
+        <span class="card-name">Platform team non-prod</span>
+        <span class="chip chip-sleeping">Sleeping</span>
+        <span class="chip chip-plan">Plan</span>
+      </div>
+      <div class="card-desc">Sleep platform-team namespaces outside business hours</div>
+      <div class="sched-row">
+        <span class="sched-icon">&#9789;</span>
+        <span class="sched-text">Mon–Fri 7 PM – 7 AM, Sat–Sun all day</span>
+        <div class="mini-tl" id="tl1"></div>
+        <span class="next-info">
+          <span class="dir">wake</span>
+          <span class="when">in 6h 23m</span>
+        </span>
+        <span class="tz">Europe/Berlin</span>
+        <span class="ns-chip">3 ns</span>
+      </div>
+    </div>
+    <div class="card-actions">
+      <button class="act" title="View">&#8599;</button>
+      <button class="act sleep-btn" title="Sleep now">&#9789;</button>
+      <button class="act wake-btn" title="Wake now">&#9788;</button>
+      <button class="act" title="Edit">&#9998;</button>
+      <button class="act danger" title="Delete">&#10005;</button>
+    </div>
+  </div>
+</div>
+
+<!-- Card 2: Awake, weekends only — namespace-based -->
+<div class="card">
+  <div class="card-body">
+    <div class="card-info">
+      <div class="card-top">
+        <span class="card-name">Weekend sleep — data-eng</span>
+        <span class="chip chip-awake">Awake</span>
+        <span class="chip chip-apply">Apply</span>
+      </div>
+      <div class="sched-row">
+        <span class="sched-icon">&#9789;</span>
+        <span class="sched-text">Sat–Sun all day</span>
+        <div class="mini-tl" id="tl2"></div>
+        <span class="next-info">
+          <span class="dir">sleep</span>
+          <span class="when">in 2d 14h</span>
+        </span>
+      </div>
+    </div>
+    <div class="card-actions">
+      <button class="act" title="View">&#8599;</button>
+      <button class="act sleep-btn" title="Sleep now">&#9789;</button>
+      <button class="act wake-btn" title="Wake now">&#9788;</button>
+      <button class="act" title="Edit">&#9998;</button>
+      <button class="act danger" title="Delete">&#10005;</button>
+    </div>
+  </div>
+</div>
+
+<!-- Card 3: Sleeping, all day every day, disabled — label-selector based -->
+<div class="card" style="opacity:0.6">
+  <div class="card-body">
+    <div class="card-info">
+      <div class="card-top">
+        <span class="card-name">Deprecated services (tier=legacy)</span>
+        <span class="chip chip-sleeping">Sleeping</span>
+        <span class="chip chip-plan">Plan</span>
+        <span class="chip chip-disabled">Disabled</span>
+      </div>
+      <div class="card-desc">Workloads labelled tier=legacy — permanent sleep until decommission</div>
+      <div class="sched-row">
+        <span class="sched-icon">&#9789;</span>
+        <span class="sched-text">Every day all day</span>
+        <div class="mini-tl" id="tl3"></div>
+        <span class="ns-chip">1 ns</span>
+      </div>
+    </div>
+    <div class="card-actions">
+      <button class="act" title="View">&#8599;</button>
+      <button class="act sleep-btn" title="Sleep now">&#9789;</button>
+      <button class="act wake-btn" title="Wake now">&#9788;</button>
+      <button class="act" title="Edit">&#9998;</button>
+      <button class="act danger" title="Delete">&#10005;</button>
+    </div>
+  </div>
+</div>
+
+<!-- Card 4: Business hours — namespace-based -->
+<div class="card">
+  <div class="card-body">
+    <div class="card-info">
+      <div class="card-top">
+        <span class="card-name">QA workloads</span>
+        <span class="chip chip-sleeping">Sleeping</span>
+        <span class="chip chip-apply">Apply</span>
+      </div>
+      <div class="sched-row">
+        <span class="sched-icon">&#9789;</span>
+        <span class="sched-text">Mon–Fri 5 PM – 9 AM, Sat–Sun all day</span>
+        <div class="mini-tl" id="tl4"></div>
+        <span class="next-info">
+          <span class="dir">wake</span>
+          <span class="when">in 11h 5m</span>
+        </span>
+        <span class="tz">America/New_York</span>
+      </div>
+    </div>
+    <div class="card-actions">
+      <button class="act" title="View">&#8599;</button>
+      <button class="act sleep-btn" title="Sleep now">&#9789;</button>
+      <button class="act wake-btn" title="Wake now">&#9788;</button>
+      <button class="act" title="Edit">&#9998;</button>
+      <button class="act danger" title="Delete">&#10005;</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function renderMiniTL(id, pattern) {
+  const el = document.getElementById(id);
+  el.innerHTML = pattern.map(s => `<div class="mini-seg ${s==='s'?'s':'a'}" style="flex:1"></div>`).join('');
+}
+// Card 1: Mon-Fri 19-7 + Sat-Sun allday — show today (simulate Wed)
+const p1 = Array(24).fill('a'); for(let h=0;h<7;h++) p1[h]='s'; for(let h=19;h<24;h++) p1[h]='s';
+renderMiniTL('tl1', p1);
+// Card 2: Weekends only
+renderMiniTL('tl2', Array(24).fill('a'));
+// Card 3: All day
+renderMiniTL('tl3', Array(24).fill('s'));
+// Card 4: Business hours 17-9
+const p4 = Array(24).fill('a'); for(let h=0;h<9;h++) p4[h]='s'; for(let h=17;h<24;h++) p4[h]='s';
+renderMiniTL('tl4', p4);
+</script>
+</body>
+</html>
