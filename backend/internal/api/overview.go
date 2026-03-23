@@ -139,27 +139,19 @@ func parseSavedReplicas(annotations map[string]string) *int32 {
 }
 
 func populateWorkloadCounts(resp *OverviewResponse, snap k8s.CachedSnapshot) {
-	deployItems := make([]replicaInfo, len(snap.Deployments))
-	for i, d := range snap.Deployments {
-		deployItems[i] = replicaInfo{Namespace: d.Namespace, Replicas: d.Spec.Replicas, Annotations: d.Annotations}
+	items := make([]replicaInfo, 0, len(snap.Deployments)+len(snap.StatefulSets))
+	for _, d := range snap.Deployments {
+		items = append(items, replicaInfo{Namespace: d.Namespace, Replicas: d.Spec.Replicas, Annotations: d.Annotations})
 	}
-	ssItems := make([]replicaInfo, len(snap.StatefulSets))
-	for i, ss := range snap.StatefulSets {
-		ssItems[i] = replicaInfo{Namespace: ss.Namespace, Replicas: ss.Spec.Replicas, Annotations: ss.Annotations}
+	for _, ss := range snap.StatefulSets {
+		items = append(items, replicaInfo{Namespace: ss.Namespace, Replicas: ss.Spec.Replicas, Annotations: ss.Annotations})
 	}
 
-	dRunning, dSleeping, dNs := countWorkloads(deployItems)
-	ssRunning, ssSleeping, ssNs := countWorkloads(ssItems)
+	running, sleeping, nsSleep := countWorkloads(items)
 
-	resp.RunningCount = dRunning + ssRunning
-	resp.SleepingCount = dSleeping + ssSleeping
+	resp.RunningCount = running
+	resp.SleepingCount = sleeping
 	resp.NodeCount = len(snap.Nodes)
-
-	// Merge namespace sleeping counts
-	nsSleep := dNs
-	for ns, count := range ssNs {
-		nsSleep[ns] += count
-	}
 
 	switch {
 	case resp.SleepingCount > 0 && resp.RunningCount == 0:

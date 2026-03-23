@@ -10,6 +10,7 @@ import (
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -114,6 +115,69 @@ type workloadEntry struct {
 	Annotate         func(ctx context.Context, ns, name, key, value string) error
 	Scale            func(ctx context.Context, ns, name string, replicas int32) error
 	RemoveAnnotation func(ctx context.Context, ns, name, key string) error
+}
+
+// deploymentToEntry converts a Deployment into a workloadEntry, populating the
+// function pointers from the k8s client. Fields that are unused by the caller
+// (e.g. Annotate for scale-up, RemoveAnnotation for scale-down) are left nil.
+func (r *Runner) deploymentToEntry(d appsv1.Deployment) workloadEntry {
+	replicas := int32(0)
+	if d.Spec.Replicas != nil {
+		replicas = *d.Spec.Replicas
+	}
+	return workloadEntry{
+		Kind: "Deployment", Namespace: d.Namespace, Name: d.Name,
+		Replicas: replicas, Annotations: d.Annotations,
+		Annotate: r.k8s.AnnotateDeployment, Scale: r.k8s.ScaleDeployment,
+		RemoveAnnotation: r.k8s.RemoveDeploymentAnnotation,
+	}
+}
+
+// statefulSetToEntry converts a StatefulSet into a workloadEntry.
+func (r *Runner) statefulSetToEntry(ss appsv1.StatefulSet) workloadEntry {
+	replicas := int32(0)
+	if ss.Spec.Replicas != nil {
+		replicas = *ss.Spec.Replicas
+	}
+	return workloadEntry{
+		Kind: "StatefulSet", Namespace: ss.Namespace, Name: ss.Name,
+		Replicas: replicas, Annotations: ss.Annotations,
+		Annotate: r.k8s.AnnotateStatefulSet, Scale: r.k8s.ScaleStatefulSet,
+		RemoveAnnotation: r.k8s.RemoveStatefulSetAnnotation,
+	}
+}
+
+// collectFilteredEntries converts Deployments and StatefulSets to workloadEntry
+// slices, filtering by skipNS and namespaceFilter. countSkipped controls whether
+// filtered-out items increment counts.Skipped (used by scale-down but not scale-up).
+func (r *Runner) collectFilteredEntries(
+	deployments []appsv1.Deployment,
+	statefulsets []appsv1.StatefulSet,
+	skipNS map[string]bool,
+	namespaceFilter string,
+	counts *Counts,
+	countSkipped bool,
+) []workloadEntry {
+	entries := make([]workloadEntry, 0, len(deployments)+len(statefulsets))
+	for _, d := range deployments {
+		if skipNS[d.Namespace] || !namespaceAllowed(d.Namespace, namespaceFilter) {
+			if countSkipped {
+				counts.Skipped++
+			}
+			continue
+		}
+		entries = append(entries, r.deploymentToEntry(d))
+	}
+	for _, ss := range statefulsets {
+		if skipNS[ss.Namespace] || !namespaceAllowed(ss.Namespace, namespaceFilter) {
+			if countSkipped {
+				counts.Skipped++
+			}
+			continue
+		}
+		entries = append(entries, r.statefulSetToEntry(ss))
+	}
+	return entries
 }
 
 // scaleDownWorkloads annotates current replicas then scales each workload to 0.

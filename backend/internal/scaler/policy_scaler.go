@@ -115,71 +115,37 @@ func (r *PolicyRunner) RunPolicySleep(
 
 	swp := sleepWorkloadParams{ctx: ctx, policy: policy, execID: execID, logCh: logCh, snapped: snappedSet}
 
-	// ── Deployments ────────────────────────────────────────────────────────
+	// ── Deployments & StatefulSets ────────────────────────────────────────
 	emit(logCh, "info", "Fetching Deployments...")
 	deps, err := r.base.k8s.ListDeploymentsBySelector(ctx, "", policy.LabelSelector)
 	if err != nil {
 		emit(logCh, "error", "Failed to list deployments: "+err.Error())
 		counts.Errors++
-	} else {
-		for _, d := range deps {
-			d := d
-			if skipNS[d.Namespace] || !namespaceAllowed(d.Namespace, policy.NamespaceFilter) {
-				counts.Skipped++
-				continue
-			}
-			replicas := int32(0)
-			if d.Spec.Replicas != nil {
-				replicas = *d.Spec.Replicas
-			}
-			scaled, errored := r.sleepWorkload(swp, "Deployment", d.Namespace, d.Name, replicas,
-				func() error {
-					return r.base.k8s.AnnotateDeployment(ctx, d.Namespace, d.Name, annotationKey, fmt.Sprintf("%d", replicas))
-				},
-				func() error { return r.base.k8s.ScaleDeployment(ctx, d.Namespace, d.Name, 0) },
-			)
-			switch {
-			case errored:
-				counts.Errors++
-			case scaled:
-				counts.Scaled++
-			default:
-				counts.Skipped++
-			}
-		}
 	}
 
-	// ── StatefulSets ───────────────────────────────────────────────────────
 	emit(logCh, "info", "Fetching StatefulSets...")
 	ssets, err := r.base.k8s.ListStatefulSetsBySelector(ctx, "", policy.LabelSelector)
 	if err != nil {
 		emit(logCh, "error", "Failed to list statefulsets: "+err.Error())
 		counts.Errors++
-	} else {
-		for _, ss := range ssets {
-			ss := ss
-			if skipNS[ss.Namespace] || !namespaceAllowed(ss.Namespace, policy.NamespaceFilter) {
-				counts.Skipped++
-				continue
-			}
-			replicas := int32(0)
-			if ss.Spec.Replicas != nil {
-				replicas = *ss.Spec.Replicas
-			}
-			scaled, errored := r.sleepWorkload(swp, "StatefulSet", ss.Namespace, ss.Name, replicas,
-				func() error {
-					return r.base.k8s.AnnotateStatefulSet(ctx, ss.Namespace, ss.Name, annotationKey, fmt.Sprintf("%d", replicas))
-				},
-				func() error { return r.base.k8s.ScaleStatefulSet(ctx, ss.Namespace, ss.Name, 0) },
-			)
-			switch {
-			case errored:
-				counts.Errors++
-			case scaled:
-				counts.Scaled++
-			default:
-				counts.Skipped++
-			}
+	}
+
+	entries := r.base.collectFilteredEntries(deps, ssets, skipNS, policy.NamespaceFilter, counts, true)
+	for _, e := range entries {
+		e := e
+		scaled, errored := r.sleepWorkload(swp, e.Kind, e.Namespace, e.Name, e.Replicas,
+			func() error {
+				return e.Annotate(ctx, e.Namespace, e.Name, annotationKey, fmt.Sprintf("%d", e.Replicas))
+			},
+			func() error { return e.Scale(ctx, e.Namespace, e.Name, 0) },
+		)
+		switch {
+		case errored:
+			counts.Errors++
+		case scaled:
+			counts.Scaled++
+		default:
+			counts.Skipped++
 		}
 	}
 
