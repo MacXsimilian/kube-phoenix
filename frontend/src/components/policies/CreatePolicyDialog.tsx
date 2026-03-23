@@ -16,9 +16,12 @@ import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
+import BedtimeIcon from '@mui/icons-material/Bedtime'
+import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import { createPolicy, updatePolicy } from '@/lib/api'
 import { TIMEZONES } from '@/lib/constants'
 import type { Policy, PolicyInput, SleepWindow } from '@/lib/types'
+import { windowsToText, computeWeeklyStats } from '@/lib/windowUtils'
 import WindowPicker from './WindowPicker'
 import WeeklyTimeline from './WeeklyTimeline'
 
@@ -179,13 +182,60 @@ export default function CreatePolicyDialog({
           onChange={w => set('editingWindows', w)}
         />
 
-        {/* Live preview */}
+        {/* Live preview — Dashboard Mini-Card */}
         {form.editingWindows.length > 0 && form.editingWindows.some(w => w.daysOfWeek.length > 0) && (
-          <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, p: 1.5, bgcolor: 'rgba(255,255,255,0.01)' }}>
-            <Typography variant="caption" color="text.disabled" fontWeight={600} letterSpacing={0.5} textTransform="uppercase" sx={{ mb: 0.5, display: 'block' }}>
-              Preview
-            </Typography>
-            <WeeklyTimeline windows={form.editingWindows} />
+          <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden', bgcolor: 'rgba(255,255,255,0.01)' }}>
+            {/* Card header */}
+            <Box sx={{
+              px: 2, py: 1.25,
+              borderBottom: '1px solid', borderColor: 'divider',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              bgcolor: 'rgba(255,255,255,0.02)',
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="caption" fontWeight={700} letterSpacing={0.5} textTransform="uppercase" color="text.secondary" sx={{ fontSize: '0.68rem' }}>
+                  Schedule Preview
+                </Typography>
+              </Box>
+              <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11 }}>
+                {form.timezone ?? 'UTC'}
+              </Typography>
+            </Box>
+
+            {/* Timeline grid */}
+            <Box sx={{ px: 2, pt: 1.5, pb: 1 }}>
+              <WeeklyTimeline windows={form.editingWindows} timezone={form.timezone} />
+            </Box>
+
+            {/* Stats footer */}
+            {(() => {
+              const activeWindows = form.editingWindows.filter(w => w.daysOfWeek.length > 0)
+              const { sleepHours, awakeHours } = computeWeeklyStats(activeWindows)
+              return (
+                <Box sx={{
+                  px: 2, py: 1.25,
+                  borderTop: '1px solid', borderColor: 'divider',
+                  display: 'flex', alignItems: 'center', gap: 2.5,
+                  bgcolor: 'rgba(255,255,255,0.015)',
+                }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                    <BedtimeIcon sx={{ fontSize: 13, color: '#A78BFA' }} />
+                    <Typography variant="caption" sx={{ color: '#A78BFA', fontWeight: 600, fontSize: 12 }}>
+                      {sleepHours}h sleep
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                    <WbSunnyIcon sx={{ fontSize: 13, color: '#86EFAC' }} />
+                    <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 600, fontSize: 12 }}>
+                      {awakeHours}h awake
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.disabled" sx={{ ml: 'auto', fontSize: 11 }}>
+                    {windowsToText(activeWindows)}
+                  </Typography>
+                </Box>
+              )
+            })()}
           </Box>
         )}
 

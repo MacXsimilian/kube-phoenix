@@ -91,6 +91,34 @@ export function timeToHours(time: string): number {
 }
 
 /**
+ * Compute total weekly sleep and awake hours from sleep windows.
+ */
+export function computeWeeklyStats(windows: SleepWindow[]): { sleepHours: number; awakeHours: number } {
+  const totalWeekHours = 7 * 24
+  let sleepMinutes = 0
+
+  for (const w of windows) {
+    if (w.daysOfWeek.length === 0) continue
+    let minutesPerDay: number
+    if (w.allDay) {
+      minutesPerDay = 24 * 60
+    } else {
+      const [sh, sm] = w.startTime.split(':').map(Number)
+      const [eh, em] = w.endTime.split(':').map(Number)
+      const startMin = sh * 60 + sm
+      const endMin = eh * 60 + em
+      minutesPerDay = endMin <= startMin
+        ? (24 * 60 - startMin) + endMin // overnight
+        : endMin - startMin
+    }
+    sleepMinutes += minutesPerDay * w.daysOfWeek.length
+  }
+
+  const sleepHours = Math.round(sleepMinutes / 60)
+  return { sleepHours, awakeHours: totalWeekHours - sleepHours }
+}
+
+/**
  * Returns the current day-of-week (0=Sun) and fractional hour,
  * optionally converted to the given IANA timezone.
  */
