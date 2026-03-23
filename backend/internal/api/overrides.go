@@ -15,7 +15,7 @@ import (
 func (h *Handler) listPolicyOverrides(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 	overrides, err := h.store.ListPolicyOverrides(id)
@@ -29,7 +29,7 @@ func (h *Handler) listPolicyOverrides(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) createPolicyOverride(w http.ResponseWriter, r *http.Request) {
 	policyID, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 	if _, err := h.store.GetPolicy(policyID); err != nil {
@@ -45,7 +45,7 @@ func (h *Handler) createPolicyOverride(w http.ResponseWriter, r *http.Request) {
 		Reason         string     `json:"reason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, "invalid body", http.StatusBadRequest)
+		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
 	}
 
@@ -95,15 +95,13 @@ func (h *Handler) createPolicyOverride(w http.ResponseWriter, r *http.Request) {
 	slog.Info("policy override created", "policyID", policyID, "type", body.OverrideType)
 	h.audit(r, "policy.override.create", "policy", &policyID, nil, override)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(override)
+	jsonCreated(w, override)
 }
 
 func (h *Handler) deletePolicyOverride(w http.ResponseWriter, r *http.Request) {
 	policyID, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 	overrideID, err := parseID(r, "overrideId")
@@ -116,14 +114,14 @@ func (h *Handler) deletePolicyOverride(w http.ResponseWriter, r *http.Request) {
 	existing, err := h.store.GetPolicyOverride(overrideID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, "not found", http.StatusNotFound)
+			jsonError(w, ErrNotFound, http.StatusNotFound)
 		} else {
 			jsonInternalError(w, err, "get override failed")
 		}
 		return
 	}
 	if existing.PolicyID != policyID {
-		jsonError(w, "not found", http.StatusNotFound)
+		jsonError(w, ErrNotFound, http.StatusNotFound)
 		return
 	}
 

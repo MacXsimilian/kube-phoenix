@@ -16,6 +16,7 @@ var staticFiles embed.FS
 // SPAHandler returns an http.Handler that serves the embedded Next.js static
 // export with a proper SPA fallback: unknown paths fall back to index.html.
 func SPAHandler() http.Handler {
+	// fs.Sub on an embedded filesystem should never fail; panic is acceptable at init time.
 	fsys, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		panic("web: failed to sub static FS: " + err.Error())

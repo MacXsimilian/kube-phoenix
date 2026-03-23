@@ -3,6 +3,7 @@ package scaler
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
@@ -107,7 +108,10 @@ func (r *PolicyRunner) RunPolicySleep(
 
 	emit(logCh, "info", fmt.Sprintf("Policy sleep — namespace filter: %q  label selector: %q", policy.NamespaceFilter, policy.LabelSelector))
 
-	openSnaps, _ := r.store.GetOpenSnapshots(policy.ID)
+	openSnaps, err := r.store.GetOpenSnapshots(policy.ID)
+	if err != nil {
+		slog.Warn("failed to fetch open snapshots", "policyID", policy.ID, "err", err)
+	}
 	snappedSet := make(map[string]bool, len(openSnaps))
 	for _, s := range openSnaps {
 		snappedSet[s.Kind+"/"+s.Namespace+"/"+s.Name] = true

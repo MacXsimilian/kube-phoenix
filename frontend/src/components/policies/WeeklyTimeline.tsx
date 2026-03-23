@@ -4,6 +4,7 @@ import React from 'react'
 import Box from '@mui/material/Box'
 import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
 import { timeToHours, isOvernight, nowInTimezone, DOW_MAP, computeTimeRangeBlocks } from '@/lib/windowUtils'
+import { TIMELINE_COLORS } from '@/lib/colors'
 import LegendItem from './LegendItem'
 
 const ROW_H = 24
@@ -32,23 +33,23 @@ interface Block {
 
 function windowBlocks(windows: SleepWindow[]): Block[] {
   const blocks: Block[] = []
-  for (const w of windows) {
-    for (const dow of w.daysOfWeek) {
+  for (const sleepWindow of windows) {
+    for (const dow of sleepWindow.daysOfWeek) {
       const row = DOW_MAP.indexOf(dow)
       if (row === -1) continue
 
-      if (w.allDay) {
-        blocks.push({ row, x1: hourToX(0), x2: hourToX(24), color: '#7C3AED', opacity: 0.45 })
+      if (sleepWindow.allDay) {
+        blocks.push({ row, x1: hourToX(0), x2: hourToX(24), color: TIMELINE_COLORS.sleep, opacity: 0.45 })
       } else {
-        const startH = timeToHours(w.startTime)
-        const endH = timeToHours(w.endTime)
-        const overnight = isOvernight(w)
+        const startH = timeToHours(sleepWindow.startTime)
+        const endH = timeToHours(sleepWindow.endTime)
+        const overnight = isOvernight(sleepWindow)
         if (overnight) {
-          blocks.push({ row, x1: hourToX(startH), x2: hourToX(24), color: '#7C3AED', opacity: 0.45 })
+          blocks.push({ row, x1: hourToX(startH), x2: hourToX(24), color: TIMELINE_COLORS.sleep, opacity: 0.45 })
           const nextRow = (row + 1) % 7
-          blocks.push({ row: nextRow, x1: hourToX(0), x2: hourToX(endH), color: '#7C3AED', opacity: 0.45 })
+          blocks.push({ row: nextRow, x1: hourToX(0), x2: hourToX(endH), color: TIMELINE_COLORS.sleep, opacity: 0.45 })
         } else {
-          blocks.push({ row, x1: hourToX(startH), x2: hourToX(endH), color: '#7C3AED', opacity: 0.45 })
+          blocks.push({ row, x1: hourToX(startH), x2: hourToX(endH), color: TIMELINE_COLORS.sleep, opacity: 0.45 })
         }
       }
     }
@@ -71,7 +72,7 @@ function overrideBlocks(overrides: PolicyOverride[], tz?: string): Block[] {
   const blocks: Block[] = []
   for (const ov of overrides) {
     if (!ov.startsAt || !ov.endsAt) continue
-    const color = ov.overrideType === 'force_sleep' ? '#ef4444' : '#f59e0b'
+    const color = ov.overrideType === 'force_sleep' ? TIMELINE_COLORS.exception : TIMELINE_COLORS.override
     blocks.push(...timeRangeToBlocks(ov.startsAt, ov.endsAt, color, 0.35, tz))
   }
   return blocks
@@ -82,7 +83,7 @@ function exceptionBlocks(exceptions: ScheduledException[], tz?: string): Block[]
   const blocks: Block[] = []
   for (const ex of exceptions) {
     if (ex.status === 'cancelled' || ex.status === 'completed') continue
-    const color = ex.exceptionType === 'force_sleep' ? '#ef4444' : '#22c55e'
+    const color = ex.exceptionType === 'force_sleep' ? TIMELINE_COLORS.exception : TIMELINE_COLORS.awake
     blocks.push(...timeRangeToBlocks(ex.startsAt, ex.endsAt, color, 0.3, tz))
   }
   return blocks
@@ -204,7 +205,7 @@ export default function WeeklyTimeline({
             y1={16}
             x2={nowX}
             y2={TOTAL_H}
-            stroke="#f87171"
+            stroke={TIMELINE_COLORS.exceptionBg}
             strokeWidth={1.5}
             opacity={0.7}
           />
@@ -213,16 +214,16 @@ export default function WeeklyTimeline({
 
       {/* Legend */}
       <Box sx={{ display: 'flex', gap: 2, mt: 0.75 }}>
-        <LegendItem color="#7C3AED" label="Sleep" />
-        <LegendItem color="#22C55E" label="Awake" />
+        <LegendItem color={TIMELINE_COLORS.sleep} label="Sleep" />
+        <LegendItem color={TIMELINE_COLORS.awake} label="Awake" />
         {overrides && overrides.some(o => o.overrideType === 'stay_awake') && (
-          <LegendItem color="#f59e0b" label="Stay awake" />
+          <LegendItem color={TIMELINE_COLORS.override} label="Stay awake" />
         )}
         {overrides && overrides.some(o => o.overrideType === 'force_sleep') && (
-          <LegendItem color="#ef4444" label="Force sleep" />
+          <LegendItem color={TIMELINE_COLORS.exception} label="Force sleep" />
         )}
         {exceptions && exceptions.some(e => e.exceptionType === 'stay_awake') && (
-          <LegendItem color="#22c55e" label="Exception" />
+          <LegendItem color={TIMELINE_COLORS.awake} label="Exception" />
         )}
       </Box>
     </Box>

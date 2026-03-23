@@ -1,160 +1,175 @@
-# Configuration
+# Configuration Reference
 
-## Environment variables
+## Environment Variables
 
-| Variable              | Required | Description                                                                                                                                                                               |
-| :-------------------- | :------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`        | Yes      | PostgreSQL DSN — e.g. `host=localhost user=kube_phoenix password=kube_phoenix dbname=kube_phoenix port=5432 sslmode=disable`                                                              |
-| `ADMIN_USER`          | No       | Username for the seeded admin account (first startup only). Unset = auth disabled (dev mode).                                                                                             |
-| `ADMIN_PASSWORD`      | No       | Password for the seeded admin account (first startup only).                                                                                                                               |
-| `SESSION_IDLE_TIMEOUT`| No       | Sliding-window session timeout (default `8h`). Extended on each request.                                                                                                                  |
-| `SESSION_MAX_LIFETIME`| No       | Absolute session hard cap (default `24h`). Session dies regardless of activity.                                                                                                           |
-| `AUDIT_RETENTION_DAYS`| No       | Auto-delete audit log entries older than this many days (default `90`, `0` = keep forever).                                                                                               |
-| `COOKIE_SECURE`       | No       | Set to `false` for HTTP-only dev environments (default `true`).                                                                                                                           |
-| `CORS_ALLOWED_ORIGIN` | No       | Allowed CORS origin (e.g. `https://kube-phoenix.example.com`). Unset = same-origin only. In dev mode: CORS allows all origins (`*`).                                                     |
-| `KUBECONFIG`          | No       | Path to kubeconfig file. Used as fallback when in-cluster config is unavailable (e.g. running locally).                                                                                   |
-| `OIDC_ISSUER_URL`     | No       | Keycloak realm URL (e.g. `https://keycloak.example.com/realms/your-realm`). Enables OIDC SSO when set.                                                                                   |
-| `OIDC_CLIENT_ID`      | No       | Keycloak client ID (e.g. `kube-phoenix`).                                                                                                                                                 |
-| `OIDC_CLIENT_SECRET`  | No       | Keycloak client secret (leave empty for PKCE-only public clients).                                                                                                                        |
-| `OIDC_REDIRECT_URL`   | No       | Callback URL (e.g. `https://kube-phoenix.example.com/api/auth/oidc/callback`).                                                                                                            |
-| `OIDC_GROUPS_CLAIM`   | No       | ID token claim name containing AD groups (default `groups`).                                                                                                                              |
-| `OIDC_ROLE_ADMIN_GROUPS`   | No  | Comma-separated AD group names that map to the `admin` role.                                                                                                                              |
-| `OIDC_ROLE_OPERATOR_GROUPS`| No  | Comma-separated AD group names that map to the `operator` role. Unmatched users default to `viewer`.                                                                                      |
-| `OIDC_SKIP_TLS_VERIFY`    | No  | Set to `true` to skip TLS certificate verification for the OIDC provider (e.g. self-signed certs). **Not recommended for production.**                                                    |
+### Backend Runtime
 
-### CLI flags
+| Variable | Default | Required | Description |
+| :------- | :------ | :------- | :---------- |
+| `DATABASE_URL` | -- | Yes | PostgreSQL DSN (e.g., `host=localhost user=kube_phoenix password=secret dbname=kube_phoenix port=5432 sslmode=disable`) |
+| `ADMIN_USER` | -- | No | Username for the seeded admin account (first startup only). When unset, authentication is disabled (dev mode). |
+| `ADMIN_PASSWORD` | -- | No | Password for the seeded admin account (first startup only) |
+| `SESSION_IDLE_TIMEOUT` | `8h` | No | Sliding-window session timeout, extended on each request |
+| `SESSION_MAX_LIFETIME` | `24h` | No | Absolute session hard cap, regardless of activity |
+| `AUDIT_RETENTION_DAYS` | `90` | No | Auto-delete audit entries older than this many days (`0` = keep forever) |
+| `COOKIE_SECURE` | `true` | No | Set to `false` for HTTP-only dev environments |
+| `CORS_ALLOWED_ORIGIN` | -- | No | Allowed CORS origin (e.g., `https://kube-phoenix.example.com`). Unset = same-origin only. In dev mode, CORS allows all origins. |
+| `KUBECONFIG` | -- | No | Path to kubeconfig file. Fallback when in-cluster config is unavailable. |
 
-| Flag    | Default | Description          |
-| :------ | :------ | :------------------- |
-| `-port` | `8080`  | Server listen port   |
+### OIDC Variables
 
-### Frontend build-time variables
+| Variable | Default | Required | Description |
+| :------- | :------ | :------- | :---------- |
+| `OIDC_ISSUER_URL` | -- | No | Keycloak realm URL. Enables OIDC SSO when set. |
+| `OIDC_CLIENT_ID` | -- | No | Keycloak client ID |
+| `OIDC_CLIENT_SECRET` | -- | No | Keycloak client secret (leave empty for PKCE-only public clients) |
+| `OIDC_REDIRECT_URL` | -- | No | Callback URL (e.g., `https://kube-phoenix.example.com/api/auth/oidc/callback`) |
+| `OIDC_GROUPS_CLAIM` | `groups` | No | ID token claim name containing AD groups |
+| `OIDC_ROLE_ADMIN_GROUPS` | -- | No | Comma-separated AD group names mapped to the `admin` role |
+| `OIDC_ROLE_OPERATOR_GROUPS` | -- | No | Comma-separated AD group names mapped to the `operator` role. Unmatched users default to `viewer`. |
+| `OIDC_SKIP_TLS_VERIFY` | `false` | No | Skip TLS verification for the OIDC provider (dev only) |
 
-These are Next.js build-time variables, not backend runtime variables.
+### CLI Flags
 
-| Variable                 | Default | Description                                          |
-| :----------------------- | :------ | :--------------------------------------------------- |
-| `NEXT_PUBLIC_API_URL`    | `""`    | API base URL for dev mode (empty = same-origin)      |
-| `NEXT_PUBLIC_APP_VERSION`| `""`    | Version string shown in About modal (set in Docker build) |
+| Flag | Default | Description |
+| :--- | :------ | :---------- |
+| `-port` | `8080` | Server listen port |
+
+### Frontend Build-Time Variables
+
+These are Next.js build-time variables baked into the static export, not backend runtime variables.
+
+| Variable | Default | Description |
+| :------- | :------ | :---------- |
+| `NEXT_PUBLIC_API_URL` | `""` | API base URL for dev mode (empty = same-origin) |
+| `NEXT_PUBLIC_APP_VERSION` | `""` | Version string shown in the About modal |
 
 ## Authentication
 
-kube-phoenix uses session-based authentication with HTTP-only cookies. Sessions are stored in PostgreSQL with dual expiry (idle timeout + absolute hard cap).
+kube-phoenix uses session-based authentication with HTTP-only cookies. Sessions are stored in PostgreSQL with dual expiry: a sliding idle timeout and an absolute hard cap.
 
-Set `ADMIN_USER` and `ADMIN_PASSWORD` to seed the first admin account on startup. When neither is set the application runs without authentication (dev mode).
+### Authentication Modes
 
-### Auth methods
+**Local login.** Username and password via `POST /api/auth/login`. Passwords are bcrypt-hashed. Rate-limited to 10 attempts per IP and 5 per username per 15-minute window.
 
-- **Local login** — username/password via `POST /api/auth/login`. Passwords are bcrypt-hashed. Rate-limited: 10 attempts per IP / 5 per username per 15-minute window.
-- **Keycloak OIDC** — set `OIDC_ISSUER_URL` to enable SSO. Uses Authorization Code flow with PKCE (S256). AD groups from the ID token are mapped to roles (admin/operator/viewer) via `OIDC_ROLE_ADMIN_GROUPS` / `OIDC_ROLE_OPERATOR_GROUPS`. Unmatched users default to viewer. OIDC users are auto-provisioned on first login. The standard claims `preferred_username`, `email`, `given_name`, and `family_name` are synced to the user profile on every login.
+**Keycloak OIDC.** Set `OIDC_ISSUER_URL` to enable SSO. Uses Authorization Code flow with PKCE (S256). AD groups from the ID token are mapped to application roles via `OIDC_ROLE_ADMIN_GROUPS` and `OIDC_ROLE_OPERATOR_GROUPS`. Unmatched users default to `viewer`. OIDC users are auto-provisioned on first login.
 
-  **Keycloak client setup:**
-  1. Create an **OpenID Connect** client with **Client ID** `kube-phoenix` (or your preferred name).
-  2. Set **Client authentication** to `On` (confidential client).
-  3. Enable **Standard flow** only. Disable Direct access grants, Implicit flow, and Device Authorization Grant.
-  4. Set **Valid redirect URIs** to `https://<your-domain>/api/auth/oidc/callback`.
-  5. Set **Web origins** to `https://<your-domain>`.
-  6. Under the **Advanced** tab, set **Proof Key for Code Exchange Code Challenge Method** to `S256`.
-  7. Copy the **Client secret** from the **Credentials** tab → set as `OIDC_CLIENT_SECRET`.
-  8. Set **Valid post logout redirect URIs** to `https://<your-domain>/`. This is required for the Sign Out button to fully terminate the Keycloak SSO session and redirect the browser back to the login page.
-  9. To include AD groups in the ID token: create a **Client scope** named `groups`, add a **Group Membership** mapper with **Token Claim Name** = `groups`, **Add to ID token** = `On`, **Full group path** = `Off`. Add this scope to the client as a **Default** scope.
+When neither `ADMIN_USER` nor `ADMIN_PASSWORD` is set, the application runs without authentication (dev mode).
 
-  **TLS options for OIDC discovery/token exchange:**
-  - **Custom CA certificate (recommended):** set `OIDC_SKIP_TLS_VERIFY` to `false` (default) and mount a CA bundle. In the Helm chart, set `oidc.caConfigMap` to the name of a ConfigMap containing the CA cert and `oidc.caCertKey` to the key name (default `cacert.pem`). This sets `SSL_CERT_FILE` so Go's TLS stack trusts the internal CA.
-  - **Skip TLS verification (dev only):** set `OIDC_SKIP_TLS_VERIFY=true` to bypass certificate verification entirely. Useful for dev environments with self-signed certificates. **Not recommended for production.** When enabled, the custom CA cert mount is ignored.
+### Keycloak Client Setup
 
-### Roles
+1. Create an **OpenID Connect** client with Client ID `kube-phoenix` (or your preferred name).
+2. Set **Client authentication** to `On` (confidential client).
+3. Enable **Standard flow** only. Disable Direct access grants, Implicit flow, and Device Authorization Grant.
+4. Set **Valid redirect URIs** to `https://<your-domain>/api/auth/oidc/callback`.
+5. Set **Web origins** to `https://<your-domain>`.
+6. Under the **Advanced** tab, set **Proof Key for Code Exchange Code Challenge Method** to `S256`.
+7. Copy the **Client secret** from the **Credentials** tab and set it as `OIDC_CLIENT_SECRET`.
+8. Set **Valid post logout redirect URIs** to `https://<your-domain>/`. Required for the Sign Out button to fully terminate the Keycloak session.
+9. To include AD groups in the ID token: create a **Client scope** named `groups`, add a **Group Membership** mapper with **Token Claim Name** = `groups`, **Add to ID token** = `On`, **Full group path** = `Off`. Add this scope to the client as a **Default** scope.
 
-| Role | Permissions |
-|---|---|
-| **admin** | Full access: manage users, edit policies/guardrails, trigger, reset DB, view audit |
-| **operator** | Edit policies/guardrails, trigger executions, view audit |
-| **viewer** | Read-only: view overview, policies, and history |
+### OIDC TLS Options
 
-### Security
+**Custom CA certificate (recommended):** Mount a CA bundle via ConfigMap. In the Helm chart, set `oidc.caConfigMap` to the ConfigMap name and `oidc.caCertKey` to the key (default `cacert.pem`). This sets `SSL_CERT_FILE` so the Go TLS stack trusts the internal CA.
 
-- Session tokens are stored in HTTP-only, Secure, SameSite=Strict cookies (immune to XSS)
-- CSRF protection via double-submit cookie pattern (`__kp_csrf` cookie + `X-CSRF-Token` header)
-- WebSocket auth uses cookies automatically on same-origin upgrade (no query param needed)
+**Skip TLS verification (dev only):** Set `OIDC_SKIP_TLS_VERIFY=true` to bypass certificate verification entirely. When enabled, the custom CA cert mount is ignored.
 
-## Policies
+> **Warning:** Do not use `OIDC_SKIP_TLS_VERIFY=true` in production. Use a proper CA certificate instead.
 
-A **Policy** is the recommended way to configure sleep/wake scheduling. Unlike the legacy Schedule model (two separate `scale_down` / `scale_up` entries), a policy declares both the sleep and wake crons in one place.
+### Session Security
 
-### Policy fields
+- Session tokens are stored in HTTP-only, Secure, SameSite=Strict cookies (immune to XSS).
+- CSRF protection uses the double-submit cookie pattern: `__kp_csrf` cookie + `X-CSRF-Token` header on all mutating requests (POST, PUT, DELETE).
+- WebSocket connections authenticate via cookies automatically on same-origin upgrades.
 
-| Field | Description |
-| :---- | :---------- |
-| **Name** | Human-readable label (max 255 chars) |
-| **Description** | Optional longer description (max 1024 chars) |
-| **Sleep Cron** | 5-field cron for when workloads should scale to 0. Optional if Wake Cron is set. |
-| **Wake Cron** | 5-field cron for when workloads should be restored. Optional if Sleep Cron is set. |
-| **Timezone** | IANA timezone — e.g. `Europe/Budapest`. Defaults to `UTC`. |
-| **Mode** | `plan` — dry-run, logs only; `apply` — executes for real |
-| **Enabled** | Whether the policy fires on its cron schedule. Manual triggers always work regardless. |
-| **Namespace Filter** | Comma-separated namespace names. Leave empty to target all namespaces. Each name must be a valid Kubernetes DNS label: lowercase alphanumeric and hyphens only, must start and end with alphanumeric, max 63 characters. |
-| **Label Selector** | Standard Kubernetes label selector syntax (e.g. `app=api,tier!=db`). Evaluated via `k8s.io/apimachinery/pkg/labels`. |
-| **Timeout Minutes** | Max execution duration in minutes (0–1440). Defaults to 30. |
+## RBAC Roles and Permissions
 
-### Policy state
+| Capability | admin | operator | viewer |
+| :--------- | :---: | :------: | :----: |
+| View overview, cluster state, history | Yes | Yes | Yes |
+| View policies and guardrails | Yes | Yes | Yes |
+| View audit logs | Yes | Yes | Yes |
+| Create, edit, delete policies | Yes | Yes | No |
+| Edit guardrails | Yes | Yes | No |
+| Trigger Sleep Now / Wake Now | Yes | Yes | No |
+| Manage overrides and exceptions | Yes | Yes | No |
+| Manage users | Yes | No | No |
+| Reset database | Yes | No | No |
 
-A policy tracks its `currentState`:
+## Policy Configuration
+
+A **Policy** declares when workloads should sleep and wake. Unlike legacy per-schedule entries, a policy combines both sleep and wake timing in one resource.
+
+### Policy Fields
+
+| Field | Type | Description |
+| :---- | :--- | :---------- |
+| Name | string | Human-readable label (max 255 characters) |
+| Description | string | Optional longer description (max 1024 characters) |
+| Sleep Cron | cron | 5-field cron expression for scaling workloads to zero. Optional if Wake Cron is set. |
+| Wake Cron | cron | 5-field cron expression for restoring workloads. Optional if Sleep Cron is set. |
+| Timezone | string | IANA timezone (e.g., `Europe/Budapest`). Defaults to `UTC`. |
+| Mode | enum | `plan` (dry-run, logs only) or `apply` (executes scaling operations) |
+| Enabled | bool | Whether the policy fires on schedule. Manual triggers work regardless. |
+| Namespace Filter | string | Comma-separated namespace names. Empty = all namespaces. |
+| Label Selector | string | Standard Kubernetes label selector syntax (e.g., `app=api,tier!=db`) |
+| Timeout Minutes | int | Max execution duration, 0--1440. Defaults to 30. |
+
+### Policy States
 
 | State | Meaning |
-|---|---|
+| :---- | :------ |
 | `awake` | Workloads are running normally |
-| `sleeping` | Workloads are scaled to 0 |
-| `transitioning` | A sleep or wake run is currently in progress |
-| `unknown` | State has not been determined yet (fresh policy or after a restart) |
-
-On startup, the intended state at `now` is computed from the cron schedule and override stack. If it differs from `currentState`, a **recovery execution** is queued automatically.
+| `sleeping` | Workloads are scaled to zero |
+| `transitioning` | A sleep or wake execution is in progress |
+| `unknown` | State not yet determined (new policy or indeterminate recovery) |
 
 ### Overrides
 
-Overrides take precedence over the normal cron schedule for a policy:
+Overrides take precedence over the normal cron schedule.
 
 | Type | Description |
-|---|---|
-| `stay_awake` | Windowed override — keep workloads running between `startsAt` and `endsAt`, even during a normal sleep window |
-| `force_sleep` | Windowed override — keep workloads at 0 between `startsAt` and `endsAt`, even during a normal wake window |
+| :--- | :---------- |
+| `stay_awake` | Keep workloads running between `startsAt` and `endsAt`, even during a sleep window |
+| `force_sleep` | Keep workloads at zero between `startsAt` and `endsAt`, even during a wake window |
 | `skip_sleep` | Skip exactly one sleep cron tick (identified by `targetCronTime`) |
 | `skip_wake` | Skip exactly one wake cron tick (identified by `targetCronTime`) |
 
-Precedence order (highest to lowest): `force_sleep` > `stay_awake` > skip overrides > cron schedule.
+**Precedence (highest to lowest):** `force_sleep` > `stay_awake` > skip overrides > cron schedule.
 
 ### Scheduled Exceptions
 
-Exceptions are one-time windows — useful for release weekends or on-call periods — that can be scheduled in advance.
+Exceptions are one-time windows for planned events such as release weekends or on-call periods.
 
 | Field | Description |
-|---|---|
-| **Exception Type** | `stay_awake` or `force_sleep` |
-| **Starts At / Ends At** | The window boundaries (must be in the future at creation) |
-| **Ticket Ref** | External ticket reference (e.g. `JIRA-1234`, `GH#567`) |
-| **Reason** | Free-text reason |
-| **Sleep on End** | If true (default), immediately trigger a sleep run when the window ends |
-| **Namespace Filter / Label Selector** | Optional overrides; defaults to the policy's own targeting |
+| :---- | :---------- |
+| Exception Type | `stay_awake` or `force_sleep` |
+| Starts At / Ends At | Window boundaries (must be in the future at creation) |
+| Ticket Ref | External ticket reference (e.g., `JIRA-1234`, `GH#567`) |
+| Reason | Free-text reason |
+| Sleep on End | If true (default), triggers a sleep run when the window ends |
+| Namespace Filter / Label Selector | Optional overrides; defaults to the policy's own targeting |
 
-**Lifecycle:** `pending` → `active` (when `startsAt` is reached) → `completed` (when `endsAt` is reached). Deleting a pending or active exception cancels it; if active and `sleepOnEnd` is true, a sleep run fires immediately.
+**Lifecycle:** `pending` -> `active` (when `startsAt` is reached) -> `completed` (when `endsAt` is reached). Deleting an active exception with `sleepOnEnd=true` triggers an immediate sleep run.
 
-The exception tick loop runs every minute and transitions exceptions between states automatically.
+## Recovery and State Transitions
 
----
+On startup, kube-phoenix evaluates each policy's cron schedule and override stack to compute the **intended state** at the current time. If this differs from the persisted `currentState`, a recovery execution is queued automatically.
 
-## Recovery & state transitions
+Key behaviors:
 
-On startup, kube-phoenix evaluates each policy's cron schedule and override stack to compute the **intended state** at the current time. If this differs from the policy's `currentState`, a recovery execution is queued automatically.
+- A fresh policy (no cron expressions) starts with `currentState: unknown` and stays there until a manual trigger or cron tick fires.
+- If recovery cannot determine the intended state, the state remains `unknown`. Use **Sleep Now** or **Wake Now** to set a known state.
+- Recovery runs respect the current mode (`plan` or `apply`). Verify guardrails and namespace filters before switching to `apply` mode.
 
-- A fresh policy (or one with no cron expressions) starts with `currentState: unknown` and stays there until a manual trigger or a cron tick fires.
-- If recovery cannot determine the intended state (no `sleepCron` or `wakeCron` configured, or no past fire times), the state remains `unknown`. Use **Sleep Now** or **Wake Now** to set a known state.
-- Verify guardrails and namespace filters before switching a policy from `plan` to `apply` mode — recovery runs respect the current mode.
+## Guardrails
 
-See [Troubleshooting](troubleshooting.md#a-policy-shows-unknown-currentstate-after-startup) for more detail on `unknown` states.
+Guardrails protect critical resources from being touched by the scaler. Configure them via the UI or the `PUT /api/guardrails` endpoint.
 
----
+| Guardrail | Description |
+| :-------- | :---------- |
+| Skip Namespaces | Namespaces excluded from all sleep operations (e.g., `kube-system`, `monitoring`) |
+| Skip Node Labels | Nodes with these labels are never cordoned, drained, or deleted |
+| Skip Node Taints | Nodes with these taints are never cordoned, drained, or deleted |
 
-## See also
-
-- [Deployment](deployment.md) — Helm installation and values reference
-- [Troubleshooting](troubleshooting.md) — common issues and fixes
-- [API Reference](api.md) — endpoint documentation
+> **Tip:** Guardrails are evaluated at execution time, not at policy creation time. Adding a namespace to Skip Namespaces immediately protects it from all future executions.

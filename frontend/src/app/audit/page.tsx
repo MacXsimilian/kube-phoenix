@@ -120,8 +120,8 @@ export default function AuditLogPage() {
   }, [user, router])
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedUserFilter(userFilter), 300)
-    return () => clearTimeout(t)
+    const debounceTimer = setTimeout(() => setDebouncedUserFilter(userFilter), 300)
+    return () => clearTimeout(debounceTimer)
   }, [userFilter])
 
   const { data, isLoading } = useQuery({

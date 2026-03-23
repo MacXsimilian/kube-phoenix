@@ -148,7 +148,8 @@ type WorkloadSnapshot struct {
 	// Edge case flags
 	WasAlreadyZero      bool `json:"wasAlreadyZero"`      // was at 0 before we touched it
 	WasDeletedAtWake    bool `json:"wasDeletedAtWake"`    // workload gone when we tried to restore
-	WasExternallyScaled bool `json:"wasExternallyScaled"` // someone changed replicas while sleeping
+	// ExternallyScaled indicates the workload was scaled by an external actor during the sleep period.
+	WasExternallyScaled bool `json:"wasExternallyScaled"`
 
 	CapturedAt time.Time `gorm:"index" json:"capturedAt"`
 }

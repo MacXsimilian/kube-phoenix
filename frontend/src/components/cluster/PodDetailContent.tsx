@@ -27,9 +27,9 @@ import PodLogViewer from './PodLogViewer'
 import type { PodContainer, PodCondition, PodEvent } from '@/lib/types'
 
 function resourceCell(req: number, limit: number, fmt: (n: number) => string) {
-  const r = req > 0 ? fmt(req) : '—'
-  const l = limit > 0 ? fmt(limit) : '∞'
-  return `${r} / ${l}`
+  const requestFormatted = req > 0 ? fmt(req) : '—'
+  const limitFormatted = limit > 0 ? fmt(limit) : '∞'
+  return `${requestFormatted} / ${limitFormatted}`
 }
 
 const CONDITION_ORDER = ['Ready', 'ContainersReady', 'Initialized', 'PodScheduled']
@@ -52,7 +52,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-function ContainersSection({ containers, isDark, colors }: { containers: PodContainer[]; isDark: boolean; colors: ReturnType<typeof useColors> }) {
+function ContainersSection({ containers }: { containers: PodContainer[] }) {
+  const colors = useColors()
   return (
     <Box>
       <SectionLabel>Containers</SectionLabel>
@@ -106,7 +107,8 @@ function ContainersSection({ containers, isDark, colors }: { containers: PodCont
   )
 }
 
-function ConditionsSection({ conditions, isDark }: { conditions: PodCondition[]; isDark: boolean }) {
+function ConditionsSection({ conditions }: { conditions: PodCondition[] }) {
+  const isDark = useTheme().palette.mode === 'dark'
   const ordered = [...conditions].sort(
     (a, b) => CONDITION_ORDER.indexOf(a.type) - CONDITION_ORDER.indexOf(b.type)
   )
@@ -115,13 +117,13 @@ function ConditionsSection({ conditions, isDark }: { conditions: PodCondition[];
       <SectionLabel>Conditions</SectionLabel>
       <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
         {ordered.map((c) => {
-          const s = conditionColor(c.status, isDark)
+          const statusStyle = conditionColor(c.status, isDark)
           return (
             <Chip
               key={c.type}
               label={`${c.type}: ${c.status}`}
               size="small"
-              sx={{ height: 20, fontSize: 11, bgcolor: s.bgcolor, color: s.color }}
+              sx={{ height: 20, fontSize: 11, bgcolor: statusStyle.bgcolor, color: statusStyle.color }}
             />
           )
         })}
@@ -130,7 +132,9 @@ function ConditionsSection({ conditions, isDark }: { conditions: PodCondition[];
   )
 }
 
-function EventsSection({ events, isDark, colors }: { events: PodEvent[]; isDark: boolean; colors: ReturnType<typeof useColors> }) {
+function EventsSection({ events }: { events: PodEvent[] }) {
+  const isDark = useTheme().palette.mode === 'dark'
+  const colors = useColors()
   if (!events?.length) return null
   return (
     <Box>
@@ -196,7 +200,6 @@ function CollapsibleKVSection({ title, entries }: { title: string; entries: [str
 // ── main component ────────────────────────────────────────────────────────────
 
 export default function PodDetailContent({ namespace, podName }: { namespace: string; podName: string }) {
-  const isDark = useTheme().palette.mode === 'dark'
   const colors = useColors()
   const [view, setView] = useState<'detail' | 'logs'>('detail')
   const [containers, setContainers] = useState<PodContainer[]>([])
@@ -292,19 +295,19 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
 
       <Divider />
 
-      <ContainersSection containers={pod.containers ?? []} isDark={isDark} colors={colors} />
+      <ContainersSection containers={pod.containers ?? []} />
 
       {(pod.conditions ?? []).length > 0 && (
         <>
           <Divider />
-          <ConditionsSection conditions={pod.conditions ?? []} isDark={isDark} />
+          <ConditionsSection conditions={pod.conditions ?? []} />
         </>
       )}
 
       {(pod.events ?? []).length > 0 && (
         <>
           <Divider />
-          <EventsSection events={pod.events ?? []} isDark={isDark} colors={colors} />
+          <EventsSection events={pod.events ?? []} />
         </>
       )}
 

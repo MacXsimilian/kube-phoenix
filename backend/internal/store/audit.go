@@ -24,25 +24,25 @@ type AuditLogPage struct {
 }
 
 func (s *Store) ListAuditLogs(f AuditLogFilter) (*AuditLogPage, error) {
-	q := s.db.Model(&AuditLog{})
+	query := s.db.Model(&AuditLog{})
 	if f.UserID != nil {
-		q = q.Where("user_id = ?", *f.UserID)
+		query = query.Where("user_id = ?", *f.UserID)
 	}
 	if f.Username != "" {
-		q = q.Where("username = ?", f.Username)
+		query = query.Where("username = ?", f.Username)
 	}
 	if f.Action != "" {
-		q = q.Where("action = ?", f.Action)
+		query = query.Where("action = ?", f.Action)
 	}
 	if f.From != nil {
-		q = q.Where("timestamp >= ?", *f.From)
+		query = query.Where("timestamp >= ?", *f.From)
 	}
 	if f.To != nil {
-		q = q.Where("timestamp <= ?", *f.To)
+		query = query.Where("timestamp <= ?", *f.To)
 	}
 
 	var total int64
-	if err := q.Count(&total).Error; err != nil {
+	if err := query.Count(&total).Error; err != nil {
 		return nil, err
 	}
 
@@ -55,7 +55,7 @@ func (s *Store) ListAuditLogs(f AuditLogFilter) (*AuditLogPage, error) {
 	offset := f.Page * f.PageSize
 
 	var items []AuditLog
-	if err := q.Order("timestamp desc").Limit(f.PageSize).Offset(offset).Find(&items).Error; err != nil {
+	if err := query.Order("timestamp desc").Limit(f.PageSize).Offset(offset).Find(&items).Error; err != nil {
 		return nil, err
 	}
 	return &AuditLogPage{Items: items, Total: total}, nil

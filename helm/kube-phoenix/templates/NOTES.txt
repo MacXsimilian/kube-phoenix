@@ -5,11 +5,13 @@ kube-phoenix {{ .Chart.AppVersion }} has been deployed.
   Release   : {{ .Release.Name }}
   Namespace : {{ include "kube-phoenix.namespace" . }}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+================================================================================
+  ACCESS
+================================================================================
 
 {{- if .Values.ingress.enabled }}
 
-  Access the UI at:
+  The UI is available at:
   {{- if .Values.ingress.tls }}
     https://{{ .Values.ingress.host }}
   {{- else }}
@@ -18,13 +20,13 @@ kube-phoenix {{ .Chart.AppVersion }} has been deployed.
 
 {{- else if .Values.targetGroupBinding.enabled }}
 
-  The app is registered in your ALB target group.
+  The service is registered with your ALB target group.
   Access it via the ALB hostname or your DNS record.
 
 {{- else }}
 
   No Ingress or TargetGroupBinding is enabled.
-  Access the UI via port-forward:
+  Use port-forward to access the UI:
 
     kubectl port-forward -n {{ include "kube-phoenix.namespace" . }} \
       svc/{{ include "kube-phoenix.fullname" . }} 8080:{{ .Values.service.port }}
@@ -33,48 +35,98 @@ kube-phoenix {{ .Chart.AppVersion }} has been deployed.
 
 {{- end }}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+================================================================================
+  CREDENTIALS
+================================================================================
 
 {{- if .Values.secret.existingSecret }}
-  Credentials loaded from existing Secret: {{ .Values.secret.existingSecret }}
-{{- else }}
-  Credentials
-    User    : {{ .Values.secret.adminUser }}
-    Password: (see Secret "{{ include "kube-phoenix.fullname" . }}")
 
-  ⚠  If you are using the default password, change it before exposing this service:
-       helm upgrade {{ .Release.Name }} ... --set secret.adminPassword=<new-password>
-     Prefer existingSecret to avoid storing credentials in values files committed to git.
+  Credentials loaded from existing Secret: {{ .Values.secret.existingSecret }}
+
+{{- else }}
+
+  Username : {{ .Values.secret.adminUser }}
+  Password : stored in Secret "{{ include "kube-phoenix.fullname" . }}"
+
+  WARNING: If you are using the default password, change it immediately
+  before exposing this service to any network:
+
+    helm upgrade {{ .Release.Name }} {{ .Chart.Name }} \
+      --set secret.adminPassword=<new-password>
+
+  For production, use an existing Secret to avoid storing credentials in
+  values files:
+
+    helm upgrade {{ .Release.Name }} {{ .Chart.Name }} \
+      --set secret.existingSecret=my-kp-secret
+
+  The Secret must contain keys: DATABASE_URL, ADMIN_USER, ADMIN_PASSWORD.
+
 {{- end }}
 
 {{- if .Values.oidc.enabled }}
 
-  OIDC / Keycloak SSO is enabled:
-    Issuer: {{ .Values.oidc.issuerURL }}
-    Client: {{ .Values.oidc.clientID }}
-    Login screen will show "Login with SSO" button.
-    AD group → role mapping:
-      admin:    {{ .Values.oidc.roleAdminGroups | default "(none)" }}
-      operator: {{ .Values.oidc.roleOperatorGroups | default "(none)" }}
-      viewer:   (default for unmatched users)
+================================================================================
+  OIDC / SSO
+================================================================================
+
+  Issuer  : {{ .Values.oidc.issuerURL }}
+  Client  : {{ .Values.oidc.clientID }}
+
+  The login screen will show a "Login with SSO" button.
+
+  AD group to role mapping:
+    admin    : {{ .Values.oidc.roleAdminGroups | default "(none)" }}
+    operator : {{ .Values.oidc.roleOperatorGroups | default "(none)" }}
+    viewer   : (default for unmatched users)
 
 {{- end }}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+================================================================================
+  DATABASE
+================================================================================
 
-  Database
 {{- if .Values.postgresql.enabled }}
-    In-cluster PostgreSQL: {{ include "kube-phoenix.postgresqlHost" . }}:5432
+
+  In-cluster PostgreSQL: {{ include "kube-phoenix.postgresqlHost" . }}:5432
+  Data is stored on a PersistentVolumeClaim ({{ .Values.postgresql.persistence.size }}).
+
+  NOTE: The in-cluster PostgreSQL is suitable for development and small
+  deployments. For production, use a managed database (e.g. Amazon RDS)
+  with automated backups and set postgresql.enabled=false.
+
 {{- else if .Values.externalDatabase.url }}
-    External database (custom url)
+
+  External database (custom DSN)
+
 {{- else }}
-    External database: {{ .Values.externalDatabase.host }}:{{ .Values.externalDatabase.port }}
+
+  External database: {{ .Values.externalDatabase.host }}:{{ .Values.externalDatabase.port }}
+
 {{- end }}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+================================================================================
+  IMPORTANT
+================================================================================
 
-  All schedules are seeded DISABLED in PLAN MODE — nothing will scale
-  until you explicitly enable a schedule and switch it to apply mode.
+  All policies are created DISABLED in PLAN MODE. Nothing will scale until
+  you explicitly enable a policy and switch its mode to "apply".
 
-  Logs   : kubectl logs -n {{ include "kube-phoenix.namespace" . }} deploy/{{ include "kube-phoenix.fullname" . }} -f
-  Status : kubectl get all -n {{ include "kube-phoenix.namespace" . }}
+================================================================================
+  NEXT STEPS
+================================================================================
+
+  1. Open the UI and log in with the credentials above.
+  2. Review the Cluster State page to verify kube-phoenix can see your workloads.
+  3. Configure Guardrails to protect namespaces and nodes that must not be scaled.
+  4. Create a policy with sleep windows. It will start in plan mode (dry-run).
+  5. Review plan-mode execution logs to verify the intended behavior.
+  6. Switch the policy to apply mode when ready.
+
+  Useful commands:
+
+    Logs   : kubectl logs -n {{ include "kube-phoenix.namespace" . }} deploy/{{ include "kube-phoenix.fullname" . }} -f
+    Status : kubectl get all -n {{ include "kube-phoenix.namespace" . }}
+
+  Documentation: https://github.com/MacXsimilian/kube-phoenix
+  API Reference: Access /api/docs/ in the UI for the interactive Swagger explorer.

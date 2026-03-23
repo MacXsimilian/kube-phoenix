@@ -5,6 +5,7 @@ import Box from '@mui/material/Box'
 import Tooltip from '@mui/material/Tooltip'
 import type { SleepWindow } from '@/lib/types'
 import { timeToHours, isOvernight, windowsToText, nowInTimezone } from '@/lib/windowUtils'
+import { TIMELINE_COLORS } from '@/lib/colors'
 
 const W = 280
 const H = 16
@@ -64,7 +65,7 @@ export default function MiniTimeline({
       <Box sx={{ display: 'inline-flex', verticalAlign: 'middle' }}>
         <svg width={width} height={height} viewBox={`0 0 ${W} ${H}`} style={{ borderRadius: 4 }}>
           {/* Background — awake */}
-          <rect x={0} y={0} width={W} height={H} rx={3} fill="rgba(34,197,94,0.18)" />
+          <rect x={0} y={0} width={W} height={H} rx={3} fill={TIMELINE_COLORS.awakeBg} />
 
           {/* Sleep blocks */}
           {blocks.map((b, i) => (
@@ -74,7 +75,7 @@ export default function MiniTimeline({
               y={0}
               width={Math.max(b.w, 1)}
               height={H}
-              fill="rgba(124,58,237,0.50)"
+              fill={TIMELINE_COLORS.sleepBg}
               rx={b.x === 0 ? 3 : 0}
             />
           ))}
@@ -93,7 +94,7 @@ export default function MiniTimeline({
           ))}
 
           {/* Current time */}
-          <line x1={nowX} y1={0} x2={nowX} y2={H} stroke="#f87171" strokeWidth={1.5} />
+          <line x1={nowX} y1={0} x2={nowX} y2={H} stroke={TIMELINE_COLORS.exceptionBg} strokeWidth={1.5} />
         </svg>
       </Box>
     </Tooltip>

@@ -61,3 +61,5 @@ export const LOG_LEVEL_COLORS_LIGHT: Record<LogLine['level'], string> = {
   error: '#B91C1C',
   warn: '#92400E',
 }
+
+export const TYPE_LABEL_FALLBACK = { label: 'Unknown', color: '#94A3B8', bg: 'rgba(148,163,184,0.15)' }

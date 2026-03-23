@@ -320,7 +320,7 @@ func (c *Client) ListPodsOnNode(ctx context.Context, nodeName string) ([]corev1.
 func (c *Client) ListAllReplicaSets(ctx context.Context) ([]appsv1.ReplicaSet, error) {
 	list, err := c.cs.AppsV1().ReplicaSets("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list replicasets: %w", err)
 	}
 	return list.Items, nil
 }
@@ -328,7 +328,7 @@ func (c *Client) ListAllReplicaSets(ctx context.Context) ([]appsv1.ReplicaSet, e
 func (c *Client) ListNamespaces(ctx context.Context) ([]corev1.Namespace, error) {
 	list, err := c.cs.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list namespaces: %w", err)
 	}
 	return list.Items, nil
 }
@@ -411,7 +411,7 @@ func (c *Client) GetPodMetrics(ctx context.Context, namespace, name string) (map
 		AbsPath(fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods/%s", namespace, name)).
 		DoRaw(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fetch pod metrics %s/%s: %w", namespace, name, err)
 	}
 
 	var resp struct {
@@ -424,7 +424,7 @@ func (c *Client) GetPodMetrics(ctx context.Context, namespace, name string) (map
 		} `json:"containers"`
 	}
 	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse pod metrics %s/%s: %w", namespace, name, err)
 	}
 
 	result := make(map[string]ContainerMetrics)

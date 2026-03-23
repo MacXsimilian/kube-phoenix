@@ -55,12 +55,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetch(`${BASE}/api/auth/oidc/config`, { credentials: 'include' })
       .then(res => res.ok ? res.json() : null)
       .then(data => { if (data?.enabled) setOidcEnabled(true) })
+      // OIDC is optional — silent failure is acceptable; log only in dev for debugging.
       .catch((err) => { if (process.env.NODE_ENV === 'development') console.warn('[kp] OIDC config fetch failed:', err) })
 
     fetchMe()
-      .then(u => {
-        if (u) {
-          setUser(u)
+      .then(currentUser => {
+        if (currentUser) {
+          setUser(currentUser)
         } else {
           // Probe if backend requires auth at all (dev mode check).
           fetch(`${BASE}/api/policies`, { credentials: 'include' })
@@ -95,9 +96,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user || user.id === 0) return
     intervalRef.current = setInterval(async () => {
-      const u = await fetchMe()
-      if (u) {
-        setUser(u)
+      const currentUser = await fetchMe()
+      if (currentUser) {
+        setUser(currentUser)
       } else {
         // Session expired or user disabled — log out.
         setUser(null)
@@ -166,11 +167,4 @@ export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth must be used within AuthProvider')
   return ctx
-}
-
-/** Convenience hook that returns the current user (throws if not authenticated). */
-export function useUser(): User {
-  const { user } = useAuth()
-  if (!user) throw new Error('useUser called without authenticated user')
-  return user
 }

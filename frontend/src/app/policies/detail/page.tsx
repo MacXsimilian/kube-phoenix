@@ -40,7 +40,7 @@ export default function PolicyDetailPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { user } = useAuth()
-  const qc = useQueryClient()
+  const queryClient = useQueryClient()
   const policyId = Number(searchParams.get('id'))
 
   const [editOpen, setEditOpen] = useState(false)
@@ -181,7 +181,7 @@ export default function PolicyDetailPage() {
         overrides={overrides}
         canEdit={canEdit}
         onRefetch={refetchOverrides}
-        onInvalidateExceptions={() => qc.invalidateQueries({ queryKey: ['exceptions', policyId] })}
+        onInvalidateExceptions={() => queryClient.invalidateQueries({ queryKey: ['exceptions', policyId] })}
         onNotify={(msg, severity) => setSnack({ msg, severity })}
       />
 

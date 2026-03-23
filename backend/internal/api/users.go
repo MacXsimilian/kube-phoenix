@@ -33,7 +33,7 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 		Role     string `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, "invalid body", http.StatusBadRequest)
+		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
 	}
 	if body.Username == "" || body.Password == "" {
@@ -76,9 +76,7 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.audit(r, "user.create", "user", &user.ID, nil, map[string]interface{}{"username": user.Username, "role": user.Role})
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(user)
+	jsonCreated(w, user)
 }
 
 // ─── Update user ─────────────────────────────────────────────────────────────
@@ -86,7 +84,7 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 
@@ -102,7 +100,7 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 
 	var body map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, "invalid body", http.StatusBadRequest)
+		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
 	}
 
@@ -156,7 +154,7 @@ func validateUserUpdate(body map[string]interface{}, target *store.User, caller 
 func (h *Handler) deleteUser(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 

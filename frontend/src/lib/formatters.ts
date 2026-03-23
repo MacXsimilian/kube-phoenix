@@ -16,31 +16,31 @@ export function fmtMem(bytes: number): string {
 /** Format an ISO timestamp as a short age string: "5m", "3h", "2d" */
 export function podAge(iso: string): string {
   if (!iso) return '—'
-  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (s < 3600) return `${Math.floor(s / 60)}m`
-  if (s < 86400) return `${Math.floor(s / 3600)}h`
-  return `${Math.floor(s / 86400)}d`
+  const ageSeconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (ageSeconds < 3600) return `${Math.floor(ageSeconds / 60)}m`
+  if (ageSeconds < 86400) return `${Math.floor(ageSeconds / 3600)}h`
+  return `${Math.floor(ageSeconds / 86400)}d`
 }
 
 /** Format a millisecond timestamp as "just now", "5s ago", "3m ago" */
 export function sinceMs(ms: number): string {
-  const s = Math.floor((Date.now() - ms) / 1000)
-  if (s < 10) return 'just now'
-  if (s < 60) return `${s}s ago`
-  return `${Math.floor(s / 60)}m ago`
+  const elapsedSeconds = Math.floor((Date.now() - ms) / 1000)
+  if (elapsedSeconds < 10) return 'just now'
+  if (elapsedSeconds < 60) return `${elapsedSeconds}s ago`
+  return `${Math.floor(elapsedSeconds / 60)}m ago`
 }
 
 /** Format an ISO timestamp as a countdown: "now", "in 5m", "in 2h 30m", "in 5d 8h" */
 export function timeUntil(iso: string): string {
   const diff = new Date(iso).getTime() - Date.now()
   if (diff <= 0) return 'now'
-  const m = Math.floor(diff / 60000)
-  if (m < 60) return `in ${m}m`
-  const h = Math.floor(m / 60)
-  if (h < 24) return m % 60 > 0 ? `in ${h}h ${m % 60}m` : `in ${h}h`
-  const d = Math.floor(h / 24)
-  const remH = h % 24
-  return remH > 0 ? `in ${d}d ${remH}h` : `in ${d}d`
+  const minutesDiff = Math.floor(diff / 60000)
+  if (minutesDiff < 60) return `in ${minutesDiff}m`
+  const hoursDiff = Math.floor(minutesDiff / 60)
+  if (hoursDiff < 24) return minutesDiff % 60 > 0 ? `in ${hoursDiff}h ${minutesDiff % 60}m` : `in ${hoursDiff}h`
+  const daysDiff = Math.floor(hoursDiff / 24)
+  const remH = hoursDiff % 24
+  return remH > 0 ? `in ${daysDiff}d ${remH}h` : `in ${daysDiff}d`
 }
 
 /** Calculate a percentage, returning 0 when total is zero */
@@ -64,10 +64,10 @@ export function fmtDt(iso: string | null | undefined): string {
 /** Format an ISO timestamp as a relative past time: "just now", "5m ago", "2h ago", "3d ago" */
 export function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
-  const m = Math.floor(diff / 60000)
-  if (m < 1) return 'just now'
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
+  const minutesDiff = Math.floor(diff / 60000)
+  if (minutesDiff < 1) return 'just now'
+  if (minutesDiff < 60) return `${minutesDiff}m ago`
+  const hoursDiff = Math.floor(minutesDiff / 60)
+  if (hoursDiff < 24) return `${hoursDiff}h ago`
+  return `${Math.floor(hoursDiff / 24)}d ago`
 }

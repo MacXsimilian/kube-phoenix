@@ -1,12 +1,11 @@
 import type { Guardrails, Workload, Node, NodePod, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecution, PolicyExecutionPage, LogLine, WorkloadSnapshot, PolicyOverride, ScheduledException, ScheduledExceptionInput } from './types'
 import { getCSRFToken } from './auth'
+import { REQUEST_TIMEOUT_MS } from './constants'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
 
 // Mutation methods that require a CSRF token.
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'DELETE', 'PATCH'])
-
-const REQUEST_TIMEOUT_MS = 30_000
 
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const method = options?.method?.toUpperCase() ?? 'GET'

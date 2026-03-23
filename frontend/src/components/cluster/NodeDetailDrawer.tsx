@@ -27,24 +27,26 @@ import { nodeStatusMap } from '@/components/cluster/statusColors'
 import { useTheme } from '@mui/material/styles'
 import { useColors } from '@/lib/colors'
 import { useDrawerResize } from '@/lib/useDrawerResize'
+import { NODE_PODS_REFETCH_MS } from '@/lib/constants'
 import type { Node, NodePod } from '@/lib/types'
 import PodDetailContent from './PodDetailContent'
 import PodRow from './PodRow'
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
-function MiniBar({ used, total, label, isDark }: { used: number; total: number; label: string; isDark: boolean }) {
-  const p = pct(used, total)
-  const color = pctColor(p, isDark)
+function MiniBar({ used, total, label }: { used: number; total: number; label: string }) {
+  const isDark = useTheme().palette.mode === 'dark'
+  const percentUsed = pct(used, total)
+  const color = pctColor(percentUsed, isDark)
   return (
     <Tooltip title={label} arrow>
       <Box sx={{ minWidth: 80 }}>
         <Typography variant="caption" sx={{ color, fontWeight: 600, display: 'block', mb: 0.25, fontSize: 11 }}>
-          {p}%
+          {percentUsed}%
         </Typography>
         <LinearProgress
           variant="determinate"
-          value={Math.min(p, 100)}
+          value={Math.min(percentUsed, 100)}
           aria-label={label}
           sx={{ height: 5, borderRadius: 1, bgcolor: 'action.hover', '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 1 } }}
         />
@@ -71,7 +73,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
     queryKey: ['node-pods', node?.name],
     queryFn: () => getNodePods(node!.name),
     enabled: node != null,
-    refetchInterval: 15_000,
+    refetchInterval: NODE_PODS_REFETCH_MS,
   })
 
   const filtered = useMemo(
@@ -85,14 +87,14 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
 
   const grouped = useMemo(() => {
     const map = new Map<string, NodePod[]>()
-    for (const p of filtered) {
-      if (!map.has(p.namespace)) map.set(p.namespace, [])
-      map.get(p.namespace)!.push(p)
+    for (const pod of filtered) {
+      if (!map.has(pod.namespace)) map.set(pod.namespace, [])
+      map.get(pod.namespace)!.push(pod)
     }
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b))
   }, [filtered])
 
-  const sc = node ? nodeStatusMap(isDark)[node.status] : null
+  const statusColor = node ? nodeStatusMap(isDark)[node.status] : null
 
   return (
     <Drawer
@@ -176,7 +178,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                       </>
                     )}
                     <Typography variant="caption" color="text.disabled">·</Typography>
-                    {sc && <Chip label={sc.label} size="small" sx={{ height: 18, fontSize: 10, bgcolor: sc.bgcolor, color: sc.color }} />}
+                    {statusColor && <Chip label={statusColor.label} size="small" sx={{ height: 18, fontSize: 10, bgcolor: statusColor.bgcolor, color: statusColor.color }} />}
                     {node.cordoned && (
                       <Chip label="Cordoned" size="small" sx={{ height: 18, fontSize: 10, bgcolor: colors.errorBg, color: colors.errorLight }} />
                     )}
@@ -196,13 +198,11 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                   used={node.cpuRequested}
                   total={node.cpuAllocatable}
                   label={`CPU: ${fmtCpu(node.cpuRequested)} / ${fmtCpu(node.cpuAllocatable)} reserved`}
-                  isDark={isDark}
                 />
                 <MiniBar
                   used={node.memRequested}
                   total={node.memAllocatable}
                   label={`MEM: ${fmtMem(node.memRequested)} / ${fmtMem(node.memAllocatable)} reserved`}
-                  isDark={isDark}
                 />
                 <Box>
                   <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', mb: 0.25, fontSize: 11 }}>PODS</Typography>
@@ -289,7 +289,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                         </TableCell>
                       </TableRow>
                       {nsPods.map((pod) => (
-                        <PodRow key={pod.name} pod={pod} onClick={() => setSelectedPod(pod)} isDark={isDark} colors={colors} showOwner />
+                        <PodRow key={pod.name} pod={pod} onClick={() => setSelectedPod(pod)} showOwner />
                       ))}
                     </React.Fragment>
                   ))}

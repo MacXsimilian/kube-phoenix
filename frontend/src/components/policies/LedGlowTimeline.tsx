@@ -4,6 +4,7 @@ import React from 'react'
 import Box from '@mui/material/Box'
 import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
 import { timeToHours, isOvernight, nowInTimezone, DOW_MAP, computeTimeRangeBlocks } from '@/lib/windowUtils'
+import { TIMELINE_COLORS } from '@/lib/colors'
 import LegendItem from './LegendItem'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -33,22 +34,22 @@ interface Segment {
 
 function windowSegments(windows: SleepWindow[]): Segment[] {
   const segs: Segment[] = []
-  for (const w of windows) {
-    for (const dow of w.daysOfWeek) {
+  for (const sleepWindow of windows) {
+    for (const dow of sleepWindow.daysOfWeek) {
       const row = DOW_MAP.indexOf(dow)
       if (row === -1) continue
 
-      if (w.allDay) {
-        segs.push({ row, x1: hourToX(0), x2: hourToX(24), color: 'rgba(124,58,237,0.55)', glow: '#7C3AED' })
+      if (sleepWindow.allDay) {
+        segs.push({ row, x1: hourToX(0), x2: hourToX(24), color: TIMELINE_COLORS.sleepGlow, glow: TIMELINE_COLORS.sleep })
       } else {
-        const startH = timeToHours(w.startTime)
-        const endH = timeToHours(w.endTime)
-        if (isOvernight(w)) {
-          segs.push({ row, x1: hourToX(startH), x2: hourToX(24), color: 'rgba(124,58,237,0.55)', glow: '#7C3AED' })
+        const startH = timeToHours(sleepWindow.startTime)
+        const endH = timeToHours(sleepWindow.endTime)
+        if (isOvernight(sleepWindow)) {
+          segs.push({ row, x1: hourToX(startH), x2: hourToX(24), color: TIMELINE_COLORS.sleepGlow, glow: TIMELINE_COLORS.sleep })
           const nextRow = (row + 1) % 7
-          segs.push({ row: nextRow, x1: hourToX(0), x2: hourToX(endH), color: 'rgba(124,58,237,0.55)', glow: '#7C3AED' })
+          segs.push({ row: nextRow, x1: hourToX(0), x2: hourToX(endH), color: TIMELINE_COLORS.sleepGlow, glow: TIMELINE_COLORS.sleep })
         } else {
-          segs.push({ row, x1: hourToX(startH), x2: hourToX(endH), color: 'rgba(124,58,237,0.55)', glow: '#7C3AED' })
+          segs.push({ row, x1: hourToX(startH), x2: hourToX(endH), color: TIMELINE_COLORS.sleepGlow, glow: TIMELINE_COLORS.sleep })
         }
       }
     }
@@ -197,7 +198,7 @@ export default function LedGlowTimeline({
         {allSegs.map((seg, i) => {
           const y = stripY(seg.row)
           const w = Math.max(seg.x2 - seg.x1, 2)
-          const filterId = seg.glow === '#7C3AED' ? 'led-glow-purple'
+          const filterId = seg.glow === TIMELINE_COLORS.sleep ? 'led-glow-purple'
             : seg.glow === '#F59E0B' ? 'led-glow-orange'
             : seg.glow === '#EF4444' ? 'led-glow-red'
             : 'led-glow-green'
@@ -223,7 +224,7 @@ export default function LedGlowTimeline({
               y1={12}
               x2={nowX}
               y2={TOTAL_H}
-              stroke="#f87171"
+              stroke={TIMELINE_COLORS.exceptionBg}
               strokeWidth={1}
               opacity={0.5}
             />
@@ -231,7 +232,7 @@ export default function LedGlowTimeline({
               cx={nowX}
               cy={stripY(todayRow) + STRIP_H / 2}
               r={4}
-              fill="#f87171"
+              fill={TIMELINE_COLORS.exceptionBg}
               opacity={0.9}
             />
           </>
@@ -240,16 +241,16 @@ export default function LedGlowTimeline({
 
       {/* Legend */}
       <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
-        <LegendItem color="#7C3AED" label="Sleep" variant="led" />
-        <LegendItem color="#22C55E" label="Awake" variant="led" />
+        <LegendItem color={TIMELINE_COLORS.sleep} label="Sleep" variant="led" />
+        <LegendItem color={TIMELINE_COLORS.awake} label="Awake" variant="led" />
         {overrides && overrides.some(o => o.overrideType === 'stay_awake') && (
-          <LegendItem color="#F59E0B" label="Stay awake" variant="led" />
+          <LegendItem color={TIMELINE_COLORS.override} label="Stay awake" variant="led" />
         )}
         {overrides && overrides.some(o => o.overrideType === 'force_sleep') && (
-          <LegendItem color="#EF4444" label="Force sleep" variant="led" />
+          <LegendItem color={TIMELINE_COLORS.exception} label="Force sleep" variant="led" />
         )}
         {exceptions && exceptions.some(e => e.exceptionType === 'stay_awake') && (
-          <LegendItem color="#22C55E" label="Exception" variant="led" />
+          <LegendItem color={TIMELINE_COLORS.awake} label="Exception" variant="led" />
         )}
       </Box>
     </Box>

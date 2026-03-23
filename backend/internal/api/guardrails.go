@@ -22,7 +22,7 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 
 	var body map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, "invalid body", http.StatusBadRequest)
+		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
 	}
 

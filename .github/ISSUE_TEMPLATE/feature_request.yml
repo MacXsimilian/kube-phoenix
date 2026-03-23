@@ -1,0 +1,52 @@
+name: Feature Request
+description: Suggest a feature for kube-phoenix
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a feature. Please describe the problem you are trying to solve and your proposed approach.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem does this feature solve? Why is it needed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How should this feature work? Include API changes, CLI flags, UI behavior, or configuration examples if relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you consider, and why did you rule them out?
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Any other information, mockups, or references that would help.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Willingness to contribute
+      description: Would you be willing to submit a PR for this feature?
+      options:
+        - "Yes, I would like to implement this"
+        - "I can help with testing or review"
+        - "No, just suggesting"
+    validations:
+      required: true

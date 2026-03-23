@@ -53,7 +53,7 @@ export default function CreatePolicyDialog({
   onNotify?: (msg: string, severity: 'success' | 'error') => void
   existing?: Policy
 }) {
-  const qc = useQueryClient()
+  const queryClient = useQueryClient()
   const isEdit = !!existing
 
   const [form, setForm] = useState(DEFAULTS)
@@ -111,7 +111,7 @@ export default function CreatePolicyDialog({
       return isEdit ? updatePolicy(existing!.id, payload) : createPolicy(payload)
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['policies'] })
+      queryClient.invalidateQueries({ queryKey: ['policies'] })
       onNotify?.(isEdit ? 'Policy updated' : 'Policy created', 'success')
       onClose()
     },

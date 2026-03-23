@@ -27,3 +27,31 @@ export const TIMEZONES = [
   'Australia/Sydney', 'Australia/Melbourne', 'Australia/Perth',
   'Pacific/Auckland',
 ]
+
+// ── Polling & timeout intervals (ms) ──
+export const REQUEST_TIMEOUT_MS = 30_000
+export const DEFAULT_STALE_TIME_MS = 30_000
+export const WORKLOADS_REFETCH_MS = 30_000
+export const ACTIVITY_FEED_STALE_MS = 14_000
+export const ACTIVITY_FEED_REFETCH_MS = 15_000
+export const NODE_PODS_REFETCH_MS = 15_000
+export const WORKLOAD_PODS_REFETCH_MS = 15_000
+export const WS_RECONNECT_DELAY_MS = 3_000
+export const SNACKBAR_AUTO_HIDE_MS = 2_000
+
+// ── Drawer constraints ──
+export const DRAWER_MIN_WIDTH = 360
+export const DRAWER_MAX_WIDTH_RATIO = 0.9
+
+// ── Log viewer ──
+export const LOG_INITIAL_TAIL = 500
+export const LOG_LOAD_INCREMENT = 2_000
+export const LOG_MAX_LINES = 10_000
+
+// ── Policy ──
+export const MAX_TIMEOUT_MINUTES = 1_440   // 24 hours
+
+// ── Time units ──
+export const MINUTES_PER_HOUR = 60
+export const MINUTES_PER_DAY = 24 * 60
+export const HOURS_PER_WEEK = 7 * 24

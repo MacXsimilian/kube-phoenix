@@ -1,0 +1,18 @@
+# Global owner
+* @MacXsimilian
+
+# Backend
+/backend/ @MacXsimilian
+
+# Frontend
+/frontend/ @MacXsimilian
+
+# Helm chart
+/helm/ @MacXsimilian
+
+# Documentation
+/*.md @MacXsimilian
+/docs/ @MacXsimilian
+
+# CI/CD
+/.github/ @MacXsimilian

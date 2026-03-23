@@ -12,27 +12,27 @@ import (
 )
 
 func (h *Handler) listPolicyExecutions(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	f := store.PolicyExecutionFilter{}
+	query := r.URL.Query()
+	filter := store.PolicyExecutionFilter{}
 
-	if pid := q.Get("policy_id"); pid != "" {
+	if pid := query.Get("policy_id"); pid != "" {
 		id, err := strconv.ParseUint(pid, 10, 64)
 		if err == nil {
 			uid := uint(id)
-			f.PolicyID = &uid
+			filter.PolicyID = &uid
 		}
 	}
-	if s := q.Get("status"); s != "" {
-		f.Status = s
+	if s := query.Get("status"); s != "" {
+		filter.Status = s
 	}
-	if p := q.Get("page"); p != "" {
+	if p := query.Get("page"); p != "" {
 		page, _ := strconv.Atoi(p)
 		if page < 0 {
 			page = 0
 		}
-		f.Page = page
+		filter.Page = page
 	}
-	if ps := q.Get("page_size"); ps != "" {
+	if ps := query.Get("page_size"); ps != "" {
 		pageSize, _ := strconv.Atoi(ps)
 		if pageSize > 100 {
 			pageSize = 100
@@ -40,10 +40,10 @@ func (h *Handler) listPolicyExecutions(w http.ResponseWriter, r *http.Request) {
 		if pageSize < 1 {
 			pageSize = 20
 		}
-		f.PageSize = pageSize
+		filter.PageSize = pageSize
 	}
 
-	page, err := h.store.ListPolicyExecutions(f)
+	page, err := h.store.ListPolicyExecutions(filter)
 	if err != nil {
 		jsonInternalError(w, err, "list policy executions failed")
 		return
@@ -54,13 +54,13 @@ func (h *Handler) listPolicyExecutions(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) getPolicyExecution(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 	exec, err := h.store.GetPolicyExecution(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, "not found", http.StatusNotFound)
+			jsonError(w, ErrNotFound, http.StatusNotFound)
 		} else {
 			jsonInternalError(w, err, "get policy execution failed")
 		}
@@ -72,7 +72,7 @@ func (h *Handler) getPolicyExecution(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) getPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 	lines, err := h.store.GetPolicyLogLines(id)
@@ -86,7 +86,7 @@ func (h *Handler) getPolicyExecutionLogs(w http.ResponseWriter, r *http.Request)
 func (h *Handler) getPolicyExecutionSnapshots(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 	snaps, err := h.store.GetSnapshotsForExecution(id)
@@ -100,13 +100,13 @@ func (h *Handler) getPolicyExecutionSnapshots(w http.ResponseWriter, r *http.Req
 func (h *Handler) getPolicySnapshots(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		jsonError(w, "invalid id", http.StatusBadRequest)
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
-	q := r.URL.Query()
+	query := r.URL.Query()
 	var snaps []store.WorkloadSnapshot
 	var snapsErr error
-	if q.Get("open") == "true" {
+	if query.Get("open") == "true" {
 		snaps, snapsErr = h.store.GetOpenSnapshots(id)
 	} else {
 		snaps, snapsErr = h.store.GetSnapshotsForPolicy(id)
@@ -123,13 +123,13 @@ func (h *Handler) getPolicySnapshots(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		http.Error(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
 
 	exec, err := h.store.GetPolicyExecution(id)
 	if err != nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		http.Error(w, ErrNotFound, http.StatusNotFound)
 		return
 	}
 
@@ -156,7 +156,7 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if exec.Status != "running" {
+	if exec.Status != store.ExecStatusRunning {
 		return
 	}
 
@@ -164,7 +164,7 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 	defer h.policyScheduler.Broker.Unsubscribe(id, sub)
 
 	// Re-check: may have finished between GetPolicyExecution and Subscribe
-	if fresh, err := h.store.GetPolicyExecution(id); err == nil && fresh.Status != "running" {
+	if fresh, err := h.store.GetPolicyExecution(id); err == nil && fresh.Status != store.ExecStatusRunning {
 		wsDrainChannel(conn, sub)
 		return
 	}

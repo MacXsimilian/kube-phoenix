@@ -62,7 +62,6 @@ export default function AccountSettings({ user }: { user: User }) {
         </CardContent>
       </Card>
 
-      {/* Password change dialog */}
       <Dialog open={pwDialogOpen} onClose={() => setPwDialogOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Change Password</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>

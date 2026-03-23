@@ -28,9 +28,9 @@ import MiniTimeline from './MiniTimeline'
 
 function fmtNext(iso: string | null | undefined): string {
   if (!iso) return '—'
-  const d = new Date(iso)
+  const dateObj = new Date(iso)
   const now = new Date()
-  const diff = d.getTime() - now.getTime()
+  const diff = dateObj.getTime() - now.getTime()
   if (diff < 0) return 'now'
   const mins = Math.floor(diff / 60000)
   if (mins < 60) return `in ${mins}m`
@@ -52,7 +52,7 @@ export default function PolicyCard({
   canEdit?: boolean
   canTrigger?: boolean
 }) {
-  const qc = useQueryClient()
+  const queryClient = useQueryClient()
   const router = useRouter()
   const [deleteDialog, setDeleteDialog] = useState(false)
   const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
@@ -60,7 +60,7 @@ export default function PolicyCard({
   const deleteMut = useMutation({
     mutationFn: () => deletePolicy(policy.id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['policies'] })
+      queryClient.invalidateQueries({ queryKey: ['policies'] })
       onNotify?.(`"${policy.name}" deleted`, 'success')
     },
     onError: (err: unknown) => {
@@ -71,9 +71,9 @@ export default function PolicyCard({
   const sleepMut = useMutation({
     mutationFn: () => triggerPolicySleep(policy.id),
     onSuccess: ({ executionId }) => {
-      qc.invalidateQueries({ queryKey: ['policies'] })
-      qc.invalidateQueries({ queryKey: ['policy-executions'] })
-      qc.invalidateQueries({ queryKey: ['policy-executions', policy.id] })
+      queryClient.invalidateQueries({ queryKey: ['policies'] })
+      queryClient.invalidateQueries({ queryKey: ['policy-executions'] })
+      queryClient.invalidateQueries({ queryKey: ['policy-executions', policy.id] })
       router.push(`/policies/detail/?id=${policy.id}&exec=${executionId}`)
     },
     onError: (err: unknown) => {
@@ -84,9 +84,9 @@ export default function PolicyCard({
   const wakeMut = useMutation({
     mutationFn: () => triggerPolicyWake(policy.id),
     onSuccess: ({ executionId }) => {
-      qc.invalidateQueries({ queryKey: ['policies'] })
-      qc.invalidateQueries({ queryKey: ['policy-executions'] })
-      qc.invalidateQueries({ queryKey: ['policy-executions', policy.id] })
+      queryClient.invalidateQueries({ queryKey: ['policies'] })
+      queryClient.invalidateQueries({ queryKey: ['policy-executions'] })
+      queryClient.invalidateQueries({ queryKey: ['policy-executions', policy.id] })
       router.push(`/policies/detail/?id=${policy.id}&exec=${executionId}`)
     },
     onError: (err: unknown) => {

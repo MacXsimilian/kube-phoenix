@@ -21,7 +21,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, "invalid body", http.StatusBadRequest)
+		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
 	}
 	if body.Username == "" || body.Password == "" {
@@ -170,7 +170,7 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 		NewPassword     string `json:"newPassword"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, "invalid body", http.StatusBadRequest)
+		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
 	}
 	if body.NewPassword == "" || len(body.NewPassword) < 8 {

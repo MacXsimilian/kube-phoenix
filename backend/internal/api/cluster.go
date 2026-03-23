@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/stringutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -317,7 +318,7 @@ func buildNodeResponse(nodes []corev1.Node, allPods []corev1.Pod, g *store.Guard
 	criticalNodes := map[string]bool{}
 	cpuRequested := map[string]int64{}
 	memRequested := map[string]int64{}
-	skipNsNode := splitCSVLocal(g.SkipNsNode)
+	skipNsNode := stringutil.SplitCSVSet(g.SkipNsNode)
 
 	for _, pod := range allPods {
 		if !isDaemonOwned(pod.OwnerReferences) {
@@ -644,13 +645,13 @@ func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {
 
 // parsePodLogParams extracts and sanitises pod log query parameters.
 func parsePodLogParams(r *http.Request) (container string, tailLines int64, previous, follow bool) {
-	q := r.URL.Query()
-	container = q.Get("container")
-	previous = q.Get("previous") == "true"
-	follow = q.Get("follow") == "true"
+	query := r.URL.Query()
+	container = query.Get("container")
+	previous = query.Get("previous") == "true"
+	follow = query.Get("follow") == "true"
 
 	tailLines = 500
-	if v := q.Get("tailLines"); v != "" {
+	if v := query.Get("tailLines"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 && n <= 10000 {
 			tailLines = n
 		}

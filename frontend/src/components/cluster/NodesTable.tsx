@@ -34,18 +34,19 @@ import NodeDetailDrawer from './NodeDetailDrawer'
 type SortCol = 'name' | 'age' | 'instanceType' | 'zone' | 'pods' | 'cpu' | 'mem' | 'status'
 type SortDir = 'asc' | 'desc'
 
-function ResourceBar({ used, total, usedLabel, totalLabel, isDark }: { used: number; total: number; usedLabel: string; totalLabel: string; isDark: boolean }) {
-  const p = pct(used, total)
-  const color = pctColor(p, isDark)
+function ResourceBar({ used, total, usedLabel, totalLabel }: { used: number; total: number; usedLabel: string; totalLabel: string }) {
+  const isDark = useTheme().palette.mode === 'dark'
+  const percentUsed = pct(used, total)
+  const color = pctColor(percentUsed, isDark)
   return (
     <Tooltip title={`${usedLabel} / ${totalLabel} reserved`} arrow>
       <Box sx={{ minWidth: 72 }}>
         <Typography variant="caption" sx={{ fontSize: 11, color, fontWeight: 600, display: 'block', mb: 0.25 }}>
-          {p}%
+          {percentUsed}%
         </Typography>
         <LinearProgress
           variant="determinate"
-          value={Math.min(p, 100)}
+          value={Math.min(percentUsed, 100)}
           sx={{
             height: 5,
             borderRadius: 1,
@@ -108,19 +109,17 @@ function NodeRow({
   groupByZone,
   isSelected,
   onSelect,
-  isDark,
-  colors,
 }: {
   node: Node
   groupByZone: boolean
   isSelected: boolean
   onSelect: (n: Node | null) => void
-  isDark: boolean
-  colors: ReturnType<typeof useColors>
 }) {
-  const sc = nodeStatusMap(isDark)[node.status]
+  const isDark = useTheme().palette.mode === 'dark'
+  const colors = useColors()
+  const statusColor = nodeStatusMap(isDark)[node.status]
   const statusChip = (
-    <Chip label={sc.label} size="small" sx={{ height: 20, fontSize: 11, bgcolor: sc.bgcolor, color: sc.color }} />
+    <Chip label={statusColor.label} size="small" sx={{ height: 20, fontSize: 11, bgcolor: statusColor.bgcolor, color: statusColor.color }} />
   )
   return (
     <TableRow
@@ -139,7 +138,6 @@ function NodeRow({
           total={node.cpuAllocatable}
           usedLabel={fmtCpu(node.cpuRequested)}
           totalLabel={fmtCpu(node.cpuAllocatable)}
-          isDark={isDark}
         />
       </TableCell>
       <TableCell>
@@ -148,7 +146,6 @@ function NodeRow({
           total={node.memAllocatable}
           usedLabel={fmtMem(node.memRequested)}
           totalLabel={fmtMem(node.memAllocatable)}
-          isDark={isDark}
         />
       </TableCell>
       <TableCell>
@@ -203,17 +200,17 @@ export default function NodesTable() {
   const zoneGroups = useMemo<[string, ZoneStats][]>(() => {
     if (!groupByZone) return []
     const map = new Map<string, ZoneStats>()
-    for (const n of sorted) {
-      const z = n.zone || '(unknown)'
-      if (!map.has(z)) map.set(z, { nodes: [], totalPods: 0, cpuAllocatable: 0, cpuRequested: 0, memAllocatable: 0, memRequested: 0, cordoned: 0 })
-      const s = map.get(z)!
-      s.nodes.push(n)
-      s.totalPods += n.podCount
-      s.cpuAllocatable += n.cpuAllocatable
-      s.cpuRequested += n.cpuRequested
-      s.memAllocatable += n.memAllocatable
-      s.memRequested += n.memRequested
-      if (n.cordoned) s.cordoned++
+    for (const node of sorted) {
+      const zoneKey = node.zone || '(unknown)'
+      if (!map.has(zoneKey)) map.set(zoneKey, { nodes: [], totalPods: 0, cpuAllocatable: 0, cpuRequested: 0, memAllocatable: 0, memRequested: 0, cordoned: 0 })
+      const zoneStats = map.get(zoneKey)!
+      zoneStats.nodes.push(node)
+      zoneStats.totalPods += node.podCount
+      zoneStats.cpuAllocatable += node.cpuAllocatable
+      zoneStats.cpuRequested += node.cpuRequested
+      zoneStats.memAllocatable += node.memAllocatable
+      zoneStats.memRequested += node.memRequested
+      if (node.cordoned) zoneStats.cordoned++
     }
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b))
   }, [sorted, groupByZone])
@@ -320,8 +317,6 @@ export default function NodesTable() {
                           groupByZone={groupByZone}
                           isSelected={selectedNode?.name === node.name}
                           onSelect={setSelectedNode}
-                          isDark={isDark}
-                          colors={colors}
                         />
                       ))}
                     </React.Fragment>
@@ -335,8 +330,6 @@ export default function NodesTable() {
                     groupByZone={groupByZone}
                     isSelected={selectedNode?.name === node.name}
                     onSelect={setSelectedNode}
-                    isDark={isDark}
-                    colors={colors}
                   />
                 ))
               )}

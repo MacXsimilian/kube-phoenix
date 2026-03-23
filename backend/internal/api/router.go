@@ -22,6 +22,13 @@ import (
 	swguiv5 "github.com/swaggest/swgui/v5"
 )
 
+// Rate limit settings for login endpoints.
+const (
+	rateLimitPerIP       = 10
+	rateLimitPerUser     = 5
+	rateLimitWindow      = 15 * time.Minute
+)
+
 type Handler struct {
 	store           *store.Store
 	k8s             *k8s.Client
@@ -64,8 +71,8 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 		k8s:             k8sClient,
 		policyScheduler: policySched,
 		cache:           cache,
-		ipLimiter:       auth.NewRateLimiter(10, 15*time.Minute),
-		userLimiter:     auth.NewRateLimiter(5, 15*time.Minute),
+		ipLimiter:       auth.NewRateLimiter(rateLimitPerIP, rateLimitWindow),
+		userLimiter:     auth.NewRateLimiter(rateLimitPerUser, rateLimitWindow),
 		idleTimeout:     idleTimeout,
 		maxLifetime:     maxLifetime,
 		auditWriter:     aw,
@@ -206,23 +213,23 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 // ─── Audit log endpoint (thin handler, store does the work) ──────────────────
 
 func (h *Handler) listAuditLogs(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
+	query := r.URL.Query()
 	filter := store.AuditLogFilter{
-		Username: q.Get("user"),
-		Action:   q.Get("action"),
+		Username: query.Get("user"),
+		Action:   query.Get("action"),
 	}
-	if v := q.Get("page"); v != "" {
+	if v := query.Get("page"); v != "" {
 		filter.Page, _ = strconv.Atoi(v)
 	}
-	if v := q.Get("pageSize"); v != "" {
+	if v := query.Get("pageSize"); v != "" {
 		filter.PageSize, _ = strconv.Atoi(v)
 	}
-	if v := q.Get("from"); v != "" {
+	if v := query.Get("from"); v != "" {
 		if t, err := time.Parse(time.RFC3339, v); err == nil {
 			filter.From = &t
 		}
 	}
-	if v := q.Get("to"); v != "" {
+	if v := query.Get("to"); v != "" {
 		if t, err := time.Parse(time.RFC3339, v); err == nil {
 			filter.To = &t
 		}

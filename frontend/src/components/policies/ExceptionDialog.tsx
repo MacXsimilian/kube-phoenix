@@ -22,9 +22,9 @@ import type { ScheduledException, ScheduledExceptionInput } from '@/lib/types'
 function toLocalDatetimeInput(iso: string | undefined): string {
   if (!iso) return ''
   // Convert ISO to local datetime-local input value (YYYY-MM-DDTHH:mm)
-  const d = new Date(iso)
+  const dateObj = new Date(iso)
   const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}T${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`
 }
 
 function toISO(localDT: string): string {
@@ -56,7 +56,7 @@ export default function ExceptionDialog({
   existing?: ScheduledException
   defaultPolicyId?: number
 }) {
-  const qc = useQueryClient()
+  const queryClient = useQueryClient()
   const isEdit = !!existing
 
   const [form, setForm] = useState<ScheduledExceptionInput & { startsAtLocal: string; endsAtLocal: string }>({
@@ -130,7 +130,7 @@ export default function ExceptionDialog({
       return isEdit ? updateException(existing!.id, payload) : createException(payload)
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['exceptions'] })
+      queryClient.invalidateQueries({ queryKey: ['exceptions'] })
       onNotify?.(isEdit ? 'Exception updated' : 'Exception created', 'success')
       onClose()
     },

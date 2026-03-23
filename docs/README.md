@@ -1,18 +1,30 @@
 # kube-phoenix Documentation
 
-| Document | Description |
-| :------- | :---------- |
-| [Deployment](deployment.md) | Helm installation, upgrades, and cluster setup |
-| [Configuration](configuration.md) | Environment variables, authentication, and policy setup |
-| [API Reference](api.md) | REST, SSE, and WebSocket endpoint reference |
-| [Troubleshooting](troubleshooting.md) | Common issues and resolution steps |
-
-## Additional resources
+## Getting Started
 
 | Document | Description |
 | :------- | :---------- |
-| [README](../README.md) | Project overview and quick start |
-| [Architecture](../ARCHITECTURE.md) | System design and internals |
-| [Contributing](../CONTRIBUTING.md) | Development setup and contribution guide |
+| [Deployment Guide](deployment.md) | Install kube-phoenix with Helm, configure for production, and upgrade |
+| [Configuration Reference](configuration.md) | Environment variables, authentication, RBAC, policies, and guardrails |
+
+## Operations
+
+| Document | Description |
+| :------- | :---------- |
+| [Troubleshooting](troubleshooting.md) | Diagnose common issues organized by symptom |
+
+## Reference
+
+| Document | Description |
+| :------- | :---------- |
+| [API Reference](api.md) | REST, SSE, and WebSocket endpoints with authentication details |
+| [OpenAPI Spec](../openapi.yaml) | Machine-readable OpenAPI 3.1 definition (also served at `/api/docs/openapi.yaml`) |
+| [Helm Values](../helm/kube-phoenix/values.yaml) | Full Helm values file with inline comments |
+
+## Development
+
+| Document | Description |
+| :------- | :---------- |
+| [Architecture](../ARCHITECTURE.md) | System design, data flows, and internals |
+| [Contributing](../CONTRIBUTING.md) | Development setup, branching strategy, and PR checklist |
 | [Changelog](../CHANGELOG.md) | Release history |
-| [OpenAPI spec](../openapi.yaml) | Machine-readable API definition (served at `/api/docs/`) |
