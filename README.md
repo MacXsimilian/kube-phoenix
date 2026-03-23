@@ -83,27 +83,6 @@ See [docs/deployment.md](docs/deployment.md) for production setup with external 
 
 ---
 
-## Screenshots
-
-<!-- TODO: Add screenshots of the overview dashboard, policy detail page, and cluster state view. -->
-
----
-
-## Roadmap
-
-| Feature | Status |
-| :-- | :-- |
-| Policy model with overrides, exceptions, DB snapshots, recovery | Done |
-| Multi-user RBAC (admin / operator / viewer) | Done |
-| Keycloak OIDC with AD group mapping | Done |
-| Scheduled exceptions with ticket references | Done |
-| OpenAPI 3.1 spec and Swagger UI | Done |
-| Slack / email notifications | Planned |
-| Multi-cluster support | Planned |
-| Emergency wake button | Planned |
-
----
-
 ## Community and Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, branching conventions, and the PR checklist.
