@@ -102,7 +102,7 @@ type Policy struct {
 type PolicyExecution struct {
 	ID         uint       `gorm:"primaryKey" json:"id"`
 	PolicyID   uint       `gorm:"index" json:"policyId"`
-	Policy     Policy     `gorm:"foreignKey:PolicyID" json:"policy"`
+	Policy     Policy     `gorm:"foreignKey:PolicyID;constraint:OnDelete:CASCADE" json:"policy"`
 	Direction  string     `gorm:"size:10;index" json:"direction"` // "sleep" | "wake"
 	Trigger    string     `gorm:"size:30" json:"trigger"`         // scheduled|manual_sleep|manual_wake|recovery|skip_applied|override_start|override_end|exception_start|exception_end
 	StartedAt  time.Time  `gorm:"index" json:"startedAt"`

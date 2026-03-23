@@ -69,14 +69,34 @@ func (s *Store) SetPolicyTransitioning(id uint) error {
 }
 
 func (s *Store) DeletePolicy(id uint) error {
-	result := s.db.Delete(&Policy{}, id)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		// Check the policy exists first.
+		var count int64
+		if err := tx.Model(&Policy{}).Where("id = ?", id).Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		// Delete related records that reference this policy.
+		// PolicyLogLines cascade from PolicyExecution, so we only need to
+		// delete executions, snapshots, overrides, and exceptions.
+		for _, model := range []interface{}{
+			&WorkloadSnapshot{},
+			&PolicyOverride{},
+			&ScheduledException{},
+		} {
+			if err := tx.Where("policy_id = ?", id).Delete(model).Error; err != nil {
+				return err
+			}
+		}
+		// Delete executions (log lines cascade via ON DELETE CASCADE).
+		if err := tx.Where("policy_id = ?", id).Delete(&PolicyExecution{}).Error; err != nil {
+			return err
+		}
+		// Delete the policy itself.
+		return tx.Delete(&Policy{}, id).Error
+	})
 }
 
 // HasApplyPolicyOverlap returns true when another enabled apply-mode policy
