@@ -20,6 +20,11 @@ function fmtDt(iso: string | null | undefined) {
   return new Date(iso).toLocaleString()
 }
 
+const EXCEPTION_TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+  stay_awake:  { label: 'Stay Awake',  color: '#FCD34D', bg: 'rgba(245,158,11,0.15)' },
+  force_sleep: { label: 'Force Sleep', color: '#FCA5A5', bg: 'rgba(239,68,68,0.15)' },
+}
+
 function StatusChip({ status }: { status: string }) {
   const s = EXECUTION_STATUS_COLORS[status] ?? EXECUTION_STATUS_FALLBACK
   return (
@@ -71,7 +76,12 @@ export default function ExceptionsSection({
           <TableBody>
             {exceptions.map(ex => (
               <TableRow key={ex.id}>
-                <TableCell><Chip label={ex.exceptionType} size="small" sx={{ fontSize: 10 }} /></TableCell>
+                <TableCell>
+                  {(() => {
+                    const t = EXCEPTION_TYPE_LABELS[ex.exceptionType] ?? { label: ex.exceptionType, color: '#94A3B8', bg: 'rgba(148,163,184,0.15)' }
+                    return <Chip label={t.label} size="small" sx={{ fontSize: 10, color: t.color, bgcolor: t.bg }} />
+                  })()}
+                </TableCell>
                 <TableCell>{fmtDt(ex.startsAt)} \u2192 {fmtDt(ex.endsAt)}</TableCell>
                 <TableCell>{ex.ticketRef || '\u2014'}</TableCell>
                 <TableCell><StatusChip status={ex.status} /></TableCell>
