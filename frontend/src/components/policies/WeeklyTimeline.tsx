@@ -15,6 +15,14 @@ const TOTAL_H = 7 * ROW_H + 20 // 7 rows + header
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const DOW_MAP = [1, 2, 3, 4, 5, 6, 0] // index to JS day-of-week
 
+/** Convert current time to the given IANA timezone without external libraries. */
+function nowInTimezone(tz?: string): Date {
+  if (!tz) return new Date()
+  const now = new Date()
+  const str = now.toLocaleString('en-US', { timeZone: tz })
+  return new Date(str)
+}
+
 function hourToX(h: number): number {
   return LABEL_W + (h / 24) * BAR_W
 }
@@ -34,22 +42,23 @@ interface Block {
 function windowBlocks(windows: SleepWindow[]): Block[] {
   const blocks: Block[] = []
   for (const w of windows) {
-    const startH = timeToHours(w.startTime)
-    const endH = timeToHours(w.endTime)
-    const overnight = isOvernight(w)
-
     for (const dow of w.daysOfWeek) {
       const row = DOW_MAP.indexOf(dow)
       if (row === -1) continue
 
-      if (overnight) {
-        // Same day: startH → 24
-        blocks.push({ row, x1: hourToX(startH), x2: hourToX(24), color: '#6366f1', opacity: 0.3 })
-        // Next day: 0 → endH
-        const nextRow = (row + 1) % 7
-        blocks.push({ row: nextRow, x1: hourToX(0), x2: hourToX(endH), color: '#6366f1', opacity: 0.3 })
+      if (w.allDay) {
+        blocks.push({ row, x1: hourToX(0), x2: hourToX(24), color: '#6366f1', opacity: 0.3 })
       } else {
-        blocks.push({ row, x1: hourToX(startH), x2: hourToX(endH), color: '#6366f1', opacity: 0.3 })
+        const startH = timeToHours(w.startTime)
+        const endH = timeToHours(w.endTime)
+        const overnight = isOvernight(w)
+        if (overnight) {
+          blocks.push({ row, x1: hourToX(startH), x2: hourToX(24), color: '#6366f1', opacity: 0.3 })
+          const nextRow = (row + 1) % 7
+          blocks.push({ row: nextRow, x1: hourToX(0), x2: hourToX(endH), color: '#6366f1', opacity: 0.3 })
+        } else {
+          blocks.push({ row, x1: hourToX(startH), x2: hourToX(endH), color: '#6366f1', opacity: 0.3 })
+        }
       }
     }
   }
@@ -65,12 +74,25 @@ function overrideBlocks(overrides: PolicyOverride[]): Block[] {
     const end = new Date(ov.endsAt)
     const color = ov.overrideType === 'force_sleep' ? '#ef4444' : '#f59e0b'
 
-    // For simplicity, mark the start day's row
-    const row = DOW_MAP.indexOf(start.getDay())
-    if (row === -1) continue
-    const sh = start.getHours() + start.getMinutes() / 60
-    const eh = end.getDay() === start.getDay() ? end.getHours() + end.getMinutes() / 60 : 24
-    blocks.push({ row, x1: hourToX(sh), x2: hourToX(eh), color, opacity: 0.35 })
+    // Iterate through each day the override spans
+    const cursor = new Date(start)
+    cursor.setHours(0, 0, 0, 0)
+    const endDay = new Date(end)
+    endDay.setHours(0, 0, 0, 0)
+
+    while (cursor <= endDay) {
+      const row = DOW_MAP.indexOf(cursor.getDay())
+      if (row !== -1) {
+        const isSameAsStart = cursor.getTime() === new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
+        const isSameAsEnd = cursor.getTime() === endDay.getTime()
+        const sh = isSameAsStart ? start.getHours() + start.getMinutes() / 60 : 0
+        const eh = isSameAsEnd ? end.getHours() + end.getMinutes() / 60 : 24
+        if (eh > sh) {
+          blocks.push({ row, x1: hourToX(sh), x2: hourToX(eh), color, opacity: 0.35 })
+        }
+      }
+      cursor.setDate(cursor.getDate() + 1)
+    }
   }
   return blocks
 }
@@ -84,11 +106,25 @@ function exceptionBlocks(exceptions: ScheduledException[]): Block[] {
     const end = new Date(ex.endsAt)
     const color = ex.exceptionType === 'force_sleep' ? '#ef4444' : '#22c55e'
 
-    const row = DOW_MAP.indexOf(start.getDay())
-    if (row === -1) continue
-    const sh = start.getHours() + start.getMinutes() / 60
-    const eh = end.getDay() === start.getDay() ? end.getHours() + end.getMinutes() / 60 : 24
-    blocks.push({ row, x1: hourToX(sh), x2: hourToX(eh), color, opacity: 0.3 })
+    // Iterate through each day the exception spans
+    const cursor = new Date(start)
+    cursor.setHours(0, 0, 0, 0)
+    const endDay = new Date(end)
+    endDay.setHours(0, 0, 0, 0)
+
+    while (cursor <= endDay) {
+      const row = DOW_MAP.indexOf(cursor.getDay())
+      if (row !== -1) {
+        const isSameAsStart = cursor.getTime() === new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
+        const isSameAsEnd = cursor.getTime() === endDay.getTime()
+        const sh = isSameAsStart ? start.getHours() + start.getMinutes() / 60 : 0
+        const eh = isSameAsEnd ? end.getHours() + end.getMinutes() / 60 : 24
+        if (eh > sh) {
+          blocks.push({ row, x1: hourToX(sh), x2: hourToX(eh), color, opacity: 0.3 })
+        }
+      }
+      cursor.setDate(cursor.getDate() + 1)
+    }
   }
   return blocks
 }
@@ -97,14 +133,16 @@ export default function WeeklyTimeline({
   windows,
   overrides,
   exceptions,
+  timezone,
 }: {
   windows: SleepWindow[]
   overrides?: PolicyOverride[]
   exceptions?: ScheduledException[]
+  timezone?: string
 }) {
   if (!windows || windows.length === 0) return null
 
-  const now = new Date()
+  const now = nowInTimezone(timezone)
   const todayRow = DOW_MAP.indexOf(now.getDay())
   const nowH = now.getHours() + now.getMinutes() / 60
   const nowX = hourToX(nowH)
@@ -146,7 +184,7 @@ export default function WeeklyTimeline({
                 width={BAR_W}
                 height={ROW_H - 2}
                 rx={3}
-                fill={isToday ? 'rgba(148,163,184,0.08)' : 'rgba(148,163,184,0.03)'}
+                fill={isToday ? 'rgba(34,197,94,0.1)' : 'rgba(34,197,94,0.05)'}
               />
               {/* Day label */}
               <text

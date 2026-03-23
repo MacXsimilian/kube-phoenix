@@ -14,6 +14,14 @@ function hourToX(hour: number): number {
   return (hour / 24) * W
 }
 
+/** Convert current time to the given IANA timezone without external libraries. */
+function nowInTimezone(tz?: string): Date {
+  if (!tz) return new Date()
+  const now = new Date()
+  const str = now.toLocaleString('en-US', { timeZone: tz })
+  return new Date(str)
+}
+
 /**
  * Small 24h bar showing sleep windows as indigo blocks and a current-time marker.
  */
@@ -21,14 +29,16 @@ export default function MiniTimeline({
   windows,
   width = W,
   height = H,
+  timezone,
 }: {
   windows: SleepWindow[]
   width?: number
   height?: number
+  timezone?: string
 }) {
   if (!windows || windows.length === 0) return null
 
-  const now = new Date()
+  const now = nowInTimezone(timezone)
   const todayDow = now.getDay() // 0=Sun
   const currentHour = now.getHours() + now.getMinutes() / 60
 
@@ -36,13 +46,14 @@ export default function MiniTimeline({
   const blocks: { x: number; w: number }[] = []
   for (const win of windows) {
     if (!win.daysOfWeek.includes(todayDow)) continue
-    const startH = timeToHours(win.startTime)
-    const endH = timeToHours(win.endTime)
-
-    if (isOvernight(win)) {
-      // Sleep starts today and ends tomorrow — draw from startH to 24
+    if (win.allDay) {
+      blocks.push({ x: 0, w: W })
+    } else if (isOvernight(win)) {
+      const startH = timeToHours(win.startTime)
       blocks.push({ x: hourToX(startH), w: hourToX(24) - hourToX(startH) })
     } else {
+      const startH = timeToHours(win.startTime)
+      const endH = timeToHours(win.endTime)
       blocks.push({ x: hourToX(startH), w: hourToX(endH) - hourToX(startH) })
     }
   }
@@ -65,7 +76,7 @@ export default function MiniTimeline({
       <Box sx={{ display: 'inline-flex', verticalAlign: 'middle' }}>
         <svg width={width} height={height} viewBox={`0 0 ${W} ${H}`} style={{ borderRadius: 4 }}>
           {/* Background — awake */}
-          <rect x={0} y={0} width={W} height={H} rx={3} fill="rgba(148,163,184,0.08)" />
+          <rect x={0} y={0} width={W} height={H} rx={3} fill="rgba(34,197,94,0.1)" />
 
           {/* Sleep blocks */}
           {blocks.map((b, i) => (

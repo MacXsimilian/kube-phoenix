@@ -15,8 +15,10 @@ export function formatTime(time: string): string {
 
 /**
  * Returns true if the window crosses midnight (end <= start).
+ * AllDay windows do not cross midnight — they cover the full day.
  */
 export function isOvernight(w: SleepWindow): boolean {
+  if (w.allDay) return false
   const [sh, sm] = w.startTime.split(':').map(Number)
   const [eh, em] = w.endTime.split(':').map(Number)
   return eh * 60 + em <= sh * 60 + sm
@@ -75,10 +77,7 @@ export function windowsToText(windows: SleepWindow[]): string {
   return windows
     .map(w => {
       const days = formatDayRange(w.daysOfWeek)
-      const isAllDay =
-        (w.startTime === '00:00' && w.endTime === '23:59') ||
-        (w.startTime === '00:00' && w.endTime === '23:00')
-      if (isAllDay) return `${days} all day`
+      if (w.allDay) return `${days} all day`
       return `${days} ${formatTime(w.startTime)} \u2013 ${formatTime(w.endTime)}`
     })
     .join(', ')

@@ -168,14 +168,19 @@ export default function PolicyDetailPage() {
           size="small"
           sx={{ bgcolor: stateStyle.bg, color: stateStyle.color }}
         />
-        <Chip
-          label={policy.mode.toUpperCase()}
-          size="small"
-          sx={{
-            bgcolor: policy.mode === 'apply' ? 'rgba(245,158,11,0.18)' : 'rgba(59,130,246,0.18)',
-            color: policy.mode === 'apply' ? 'warning.main' : 'info.main',
-          }}
-        />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+          <Chip
+            label={policy.mode.toUpperCase()}
+            size="small"
+            sx={{
+              bgcolor: policy.mode === 'apply' ? 'rgba(245,158,11,0.18)' : 'rgba(59,130,246,0.18)',
+              color: policy.mode === 'apply' ? 'warning.main' : 'info.main',
+            }}
+          />
+          <Typography variant="caption" color="text.disabled">
+            {policy.mode === 'apply' ? 'Actively scales workloads' : 'Simulates scaling without making changes'}
+          </Typography>
+        </Box>
         {canEdit && (
           <Button startIcon={<EditOutlinedIcon />} size="small" onClick={() => setEditOpen(true)}>
             Edit
@@ -205,43 +210,23 @@ export default function PolicyDetailPage() {
               windows={policy.sleepWindows}
               overrides={overrides}
               exceptions={exceptions}
+              timezone={policy.timezone}
             />
           </Box>
-        ) : (
-          <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap', mb: 1 }}>
-            {policy.sleepCron && (
-              <Box>
-                <Typography variant="caption" color="text.disabled">Sleep</Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <BedtimeIcon sx={{ fontSize: 14, color: '#a5b4fc' }} />
-                  <Typography variant="body2" fontFamily="monospace">{policy.sleepCron}</Typography>
-                </Box>
-              </Box>
-            )}
-            {policy.wakeCron && (
-              <Box>
-                <Typography variant="caption" color="text.disabled">Wake</Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <WbSunnyIcon sx={{ fontSize: 14, color: '#fcd34d' }} />
-                  <Typography variant="body2" fontFamily="monospace">{policy.wakeCron}</Typography>
-                </Box>
-              </Box>
-            )}
-          </Box>
-        )}
+        ) : null}
 
         {/* Metadata row */}
-        <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {policy.nextSleepAt && (
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+          {policy.currentState === 'awake' && policy.nextTransitionAt && (
             <Box>
               <Typography variant="caption" color="text.disabled">Next sleep</Typography>
-              <Typography variant="body2">{fmtDt(policy.nextSleepAt)}</Typography>
+              <Typography variant="body2">{fmtDt(policy.nextTransitionAt)}</Typography>
             </Box>
           )}
-          {policy.nextWakeAt && (
+          {policy.currentState === 'sleeping' && policy.nextTransitionAt && (
             <Box>
               <Typography variant="caption" color="text.disabled">Next wake</Typography>
-              <Typography variant="body2">{fmtDt(policy.nextWakeAt)}</Typography>
+              <Typography variant="body2">{fmtDt(policy.nextTransitionAt)}</Typography>
             </Box>
           )}
           {!(policy.sleepWindows && policy.sleepWindows.length > 0) && (
