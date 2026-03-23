@@ -19,6 +19,7 @@ import MenuItem from '@mui/material/MenuItem'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { deletePolicyOverride, createPolicyOverride } from '@/lib/api'
+import { fmtDt } from '@/lib/formatters'
 import type { PolicyOverride } from '@/lib/types'
 
 const OVERRIDE_TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
@@ -26,11 +27,6 @@ const OVERRIDE_TYPE_LABELS: Record<string, { label: string; color: string; bg: s
   force_sleep: { label: 'Force Sleep', color: '#FCA5A5', bg: 'rgba(239,68,68,0.15)' },
   skip_sleep:  { label: 'Skip Sleep',  color: '#A5B4FC', bg: 'rgba(99,102,241,0.15)' },
   skip_wake:   { label: 'Skip Wake',   color: '#A5B4FC', bg: 'rgba(99,102,241,0.15)' },
-}
-
-function fmtDt(iso: string | null | undefined) {
-  if (!iso) return '\u2014'
-  return new Date(iso).toLocaleString()
 }
 
 export default function OverridesSection({

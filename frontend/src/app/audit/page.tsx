@@ -109,17 +109,15 @@ export default function AuditLogPage() {
   const { user } = useAuth()
   const router = useRouter()
 
-  // Permission guard.
-  if (user && !canViewAudit(user.permissions)) {
-    router.replace('/overview')
-    return null
-  }
-
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(25)
   const [userFilter, setUserFilter] = useState('')
   const [debouncedUserFilter, setDebouncedUserFilter] = useState('')
   const [actionFilter, setActionFilter] = useState('')
+
+  useEffect(() => {
+    if (user && !canViewAudit(user.permissions)) router.replace('/overview')
+  }, [user, router])
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedUserFilter(userFilter), 300)
@@ -130,6 +128,9 @@ export default function AuditLogPage() {
     queryKey: ['audit-logs', page, pageSize, debouncedUserFilter, actionFilter],
     queryFn: () => getAuditLogs({ user: debouncedUserFilter || undefined, action: actionFilter || undefined, page, pageSize }),
   })
+
+  // Permission guard — return null after all hooks.
+  if (user && !canViewAudit(user.permissions)) return null
 
   return (
     <Box sx={{ maxWidth: 1100, mx: 'auto', p: { xs: 2, md: 4 } }}>

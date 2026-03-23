@@ -20,19 +20,8 @@ import { getPolicyExecutions } from '@/lib/api'
 import type { PolicyExecution } from '@/lib/types'
 import { timeAgo } from '@/lib/formatters'
 import { useColors } from '@/lib/colors'
+import StatusChip from '@/components/shared/StatusChip'
 import LogViewer from '@/components/history/LogViewer'
-
-function StatusChip({ status }: { status: PolicyExecution['status'] }) {
-  const map: Record<string, { label: string; color: 'info' | 'success' | 'error' | 'warning' | 'default' }> = {
-    running: { label: 'Running', color: 'info' },
-    success: { label: 'Success', color: 'success' },
-    failed: { label: 'Failed', color: 'error' },
-    interrupted: { label: 'Interrupted', color: 'warning' },
-    skipped: { label: 'Skipped', color: 'default' },
-  }
-  const { label, color } = map[status] ?? { label: status, color: 'default' as const }
-  return <Chip label={label} color={color} size="small" sx={{ height: 20, fontSize: 11 }} />
-}
 
 export default function ActivityFeed() {
   const router = useRouter()

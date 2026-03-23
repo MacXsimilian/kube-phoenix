@@ -12,28 +12,13 @@ import TableCell from '@mui/material/TableCell'
 import IconButton from '@mui/material/IconButton'
 import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
-import { EXECUTION_STATUS_COLORS, EXECUTION_STATUS_FALLBACK } from '@/lib/statusColors'
+import StatusChip from '@/components/shared/StatusChip'
+import { fmtDt } from '@/lib/formatters'
 import type { ScheduledException } from '@/lib/types'
-
-function fmtDt(iso: string | null | undefined) {
-  if (!iso) return '\u2014'
-  return new Date(iso).toLocaleString()
-}
 
 const EXCEPTION_TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
   stay_awake:  { label: 'Stay Awake',  color: '#FCD34D', bg: 'rgba(245,158,11,0.15)' },
   force_sleep: { label: 'Force Sleep', color: '#FCA5A5', bg: 'rgba(239,68,68,0.15)' },
-}
-
-function StatusChip({ status }: { status: string }) {
-  const s = EXECUTION_STATUS_COLORS[status] ?? EXECUTION_STATUS_FALLBACK
-  return (
-    <Chip
-      label={status}
-      size="small"
-      sx={{ height: 18, fontSize: 10, bgcolor: s.bg, color: s.color }}
-    />
-  )
 }
 
 export default function ExceptionsSection({

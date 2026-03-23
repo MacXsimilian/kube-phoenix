@@ -11,24 +11,9 @@ import TableCell from '@mui/material/TableCell'
 import CircularProgress from '@mui/material/CircularProgress'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
-import { EXECUTION_STATUS_COLORS, EXECUTION_STATUS_FALLBACK } from '@/lib/statusColors'
+import StatusChip from '@/components/shared/StatusChip'
+import { fmtDt } from '@/lib/formatters'
 import type { PolicyExecution, PolicyExecutionPage } from '@/lib/types'
-
-function fmtDt(iso: string | null | undefined) {
-  if (!iso) return '\u2014'
-  return new Date(iso).toLocaleString()
-}
-
-function StatusChip({ status }: { status: string }) {
-  const s = EXECUTION_STATUS_COLORS[status] ?? EXECUTION_STATUS_FALLBACK
-  return (
-    <Chip
-      label={status}
-      size="small"
-      sx={{ height: 18, fontSize: 10, bgcolor: s.bg, color: s.color }}
-    />
-  )
-}
 
 export default function ExecutionHistoryTable({
   executions,

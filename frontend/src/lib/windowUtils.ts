@@ -133,3 +133,52 @@ export function nowInTimezone(tz?: string): { dayOfWeek: number; fractionalHour:
     fractionalHour: now.getHours() + now.getMinutes() / 60,
   }
 }
+
+// ── Shared timeline math ─────────────────────────────────────────────────────
+
+/** Day-of-week index mapping: array index -> JS getDay() value */
+export const DOW_MAP = [1, 2, 3, 4, 5, 6, 0] // Mon..Sun
+
+/** Convert an ISO timestamp to a Date in the given IANA timezone. */
+export function toTimezone(iso: string, tz?: string): Date {
+  const d = new Date(iso)
+  if (!tz) return d
+  return new Date(d.toLocaleString('en-US', { timeZone: tz }))
+}
+
+/** A day-row + fractional-hour range, independent of visual layout. */
+export interface TimeBlock {
+  row: number       // 0=Mon .. 6=Sun (index into DOW_MAP)
+  startHour: number // fractional hour 0–24
+  endHour: number   // fractional hour 0–24
+}
+
+/**
+ * Split an absolute time range (ISO start/end) into per-day TimeBlocks,
+ * one per calendar day the range touches.
+ */
+export function computeTimeRangeBlocks(startISO: string, endISO: string, tz?: string): TimeBlock[] {
+  const blocks: TimeBlock[] = []
+  const start = toTimezone(startISO, tz)
+  const end = toTimezone(endISO, tz)
+
+  const cursor = new Date(start)
+  cursor.setHours(0, 0, 0, 0)
+  const endDay = new Date(end)
+  endDay.setHours(0, 0, 0, 0)
+
+  while (cursor <= endDay) {
+    const row = DOW_MAP.indexOf(cursor.getDay())
+    if (row !== -1) {
+      const isSameAsStart = cursor.getTime() === new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
+      const isSameAsEnd = cursor.getTime() === endDay.getTime()
+      const sh = isSameAsStart ? start.getHours() + start.getMinutes() / 60 : 0
+      const eh = isSameAsEnd ? end.getHours() + end.getMinutes() / 60 : 24
+      if (eh > sh) {
+        blocks.push({ row, startHour: sh, endHour: eh })
+      }
+    }
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return blocks
+}

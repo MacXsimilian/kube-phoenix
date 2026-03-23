@@ -62,8 +62,6 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
   const [prevLoading, setPrevLoading] = useState(false)
   const [prevError, setPrevError] = useState<string | null>(null)
 
-  // (autoScroll is now a state variable declared above)
-
   const selectedContainer = containers.find((c) => c.name === container)
   const hasPreviousInstance = !!selectedContainer?.lastState
 

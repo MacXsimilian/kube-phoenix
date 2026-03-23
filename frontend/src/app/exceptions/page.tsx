@@ -25,17 +25,8 @@ import type { ScheduledException } from '@/lib/types'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules } from '@/lib/rbac'
-
-function fmtDt(iso: string) {
-  return new Date(iso).toLocaleString()
-}
-
-const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
-  pending:   { bg: 'rgba(59,130,246,0.18)',  color: '#93c5fd' },
-  active:    { bg: 'rgba(34,197,94,0.18)',   color: '#86efac' },
-  completed: { bg: 'rgba(148,163,184,0.15)', color: '#94a3b8' },
-  cancelled: { bg: 'rgba(239,68,68,0.18)',   color: '#fca5a5' },
-}
+import { fmtDt } from '@/lib/formatters'
+import { EXECUTION_STATUS_COLORS, EXECUTION_STATUS_FALLBACK } from '@/lib/statusColors'
 
 const STATUS_TABS = ['all', 'pending', 'active', 'completed', 'cancelled']
 
@@ -132,7 +123,7 @@ export default function ExceptionsPage() {
           </TableHead>
           <TableBody>
             {exceptions.map(ex => {
-              const sc = STATUS_COLORS[ex.status] ?? STATUS_COLORS.completed
+              const sc = EXECUTION_STATUS_COLORS[ex.status] ?? EXECUTION_STATUS_FALLBACK
               return (
                 <TableRow key={ex.id} hover>
                   <TableCell>
@@ -158,7 +149,7 @@ export default function ExceptionsPage() {
                   <TableCell>
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
                       {canEdit && ex.status === 'pending' && (
-                        <IconButton size="small" onClick={() => { setEditing(ex); setDialogOpen(true) }}>
+                        <IconButton size="small" onClick={() => { setEditing(ex); setDialogOpen(true) }} aria-label="Edit exception">
                           <EditOutlinedIcon fontSize="small" />
                         </IconButton>
                       )}
