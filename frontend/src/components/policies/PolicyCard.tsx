@@ -23,14 +23,8 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import { deletePolicy, triggerPolicySleep, triggerPolicyWake } from '@/lib/api'
 import type { Policy } from '@/lib/types'
 import { windowsToText } from '@/lib/windowUtils'
+import { STATE_COLORS } from '@/lib/statusColors'
 import MiniTimeline from './MiniTimeline'
-
-const STATE_COLORS: Record<string, { bg: string; color: string; label: string }> = {
-  sleeping:      { bg: 'rgba(99,102,241,0.18)',  color: '#a5b4fc', label: 'Sleeping' },
-  awake:         { bg: 'rgba(34,197,94,0.18)',   color: '#86efac', label: 'Awake' },
-  transitioning: { bg: 'rgba(245,158,11,0.18)',  color: '#fcd34d', label: 'Transitioning' },
-  unknown:       { bg: 'rgba(148,163,184,0.15)', color: '#94a3b8', label: 'Unknown' },
-}
 
 function fmtNext(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -145,7 +139,7 @@ export default function PolicyCard({
               </Typography>
             )}
             {/* Schedule display */}
-            <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mt: 0.5, alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 0.5, alignItems: 'center' }}>
               {policy.sleepWindows && policy.sleepWindows.length > 0 ? (
                 <>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -154,10 +148,10 @@ export default function PolicyCard({
                       {windowsToText(policy.sleepWindows)}
                     </Typography>
                   </Box>
-                  <MiniTimeline windows={policy.sleepWindows} width={200} height={14} timezone={policy.timezone} />
+                  <MiniTimeline windows={policy.sleepWindows} width={200} height={14} />
                 </>
               ) : null}
-              {/* Next transition — hidden for transitioning/unknown */}
+              {/* Next transition — state-aware */}
               {policy.currentState === 'sleeping' && policy.nextTransitionAt && (
                 <Typography variant="caption" color="text.disabled">
                   wake {fmtNext(policy.nextTransitionAt)}
@@ -176,15 +170,7 @@ export default function PolicyCard({
                   <Chip
                     label={`${policy.namespaceFilter.split(',').length} ns`}
                     size="small"
-                    sx={{
-                      height: 18,
-                      fontSize: 10,
-                      fontWeight: 600,
-                      letterSpacing: 0.3,
-                      bgcolor: 'rgba(124,58,237,0.14)',
-                      color: '#c4b5fd',
-                      border: '1px solid rgba(124,58,237,0.25)',
-                    }}
+                    sx={{ height: 16, fontSize: 10, bgcolor: 'rgba(124,58,237,0.12)', color: 'primary.light' }}
                   />
                 </Tooltip>
               )}
