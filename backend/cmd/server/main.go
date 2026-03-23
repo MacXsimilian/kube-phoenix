@@ -20,6 +20,14 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
+const (
+	httpReadTimeout        = 15 * time.Second
+	httpIdleTimeout        = 60 * time.Second
+	shutdownTimeout        = 30 * time.Second
+	sessionCleanupInterval = 15 * time.Minute
+	auditRetentionInterval = 24 * time.Hour
+)
+
 func main() {
 	// Structured JSON logging — compatible with Kubernetes log aggregators.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
@@ -95,9 +103,9 @@ func main() {
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
 		Handler:      router,
-		ReadTimeout:  15 * time.Second,
+		ReadTimeout:  httpReadTimeout,
 		WriteTimeout: 0, // disabled for WebSocket streaming
-		IdleTimeout:  60 * time.Second,
+		IdleTimeout:  httpIdleTimeout,
 	}
 
 	go func() {
@@ -117,7 +125,7 @@ func main() {
 	tickerWg.Wait()
 	slog.Info("background tickers stopped")
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown error", "err", err)
@@ -130,7 +138,7 @@ func startMaintenanceTickers(ctx context.Context, st *store.Store, retentionDays
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		runTicker(ctx, 15*time.Minute, "session-cleanup", func() {
+		runTicker(ctx, sessionCleanupInterval, "session-cleanup", func() {
 			deleted, err := st.CleanExpiredSessions()
 			if err != nil {
 				slog.Error("session-cleanup failed", "err", err)
@@ -150,7 +158,7 @@ func startMaintenanceTickers(ctx context.Context, st *store.Store, retentionDays
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			runTicker(ctx, 24*time.Hour, "audit-retention", func() {
+			runTicker(ctx, auditRetentionInterval, "audit-retention", func() {
 				deleted, err := st.CleanOldAuditLogs(time.Duration(retentionDays) * 24 * time.Hour)
 				if err != nil {
 					slog.Error("audit-retention failed", "err", err)

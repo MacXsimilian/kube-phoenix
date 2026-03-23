@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/macxsimilian/kube-phoenix/backend/internal/stringutil"
 )
 
 func jsonOK(w http.ResponseWriter, v interface{}) {
@@ -15,6 +14,12 @@ func jsonOK(w http.ResponseWriter, v interface{}) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		slog.Error("json encode response", "err", err)
 	}
+}
+
+func jsonCreated(w http.ResponseWriter, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 func jsonError(w http.ResponseWriter, msg string, code int) {
@@ -35,6 +40,9 @@ func parseID(r *http.Request, param string) (uint, error) {
 	return uint(id), err
 }
 
-func splitCSVLocal(s string) map[string]bool {
-	return stringutil.SplitCSVSet(s)
+func (h *Handler) reloadScheduler(policyID uint) {
+	if err := h.policyScheduler.Reload(); err != nil {
+		slog.Error("policy scheduler reload failed", "policyID", policyID, "err", err)
+	}
 }
+

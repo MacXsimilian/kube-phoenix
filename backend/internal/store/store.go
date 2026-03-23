@@ -11,6 +11,12 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+const (
+	dbMaxOpenConns    = 10
+	dbMaxIdleConns    = 5
+	dbConnMaxLifetime = 5 * time.Minute
+)
+
 type Store struct {
 	db *gorm.DB
 }
@@ -31,9 +37,9 @@ func New(dsn string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	sqlDB.SetMaxOpenConns(10)
-	sqlDB.SetMaxIdleConns(5)
-	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+	sqlDB.SetMaxOpenConns(dbMaxOpenConns)
+	sqlDB.SetMaxIdleConns(dbMaxIdleConns)
+	sqlDB.SetConnMaxLifetime(dbConnMaxLifetime)
 
 	// Drop legacy unique index on username alone (replaced by composite username+source).
 	db.Exec("DROP INDEX IF EXISTS idx_users_username")
