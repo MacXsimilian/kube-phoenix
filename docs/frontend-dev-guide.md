@@ -904,7 +904,7 @@ sx={{ bgcolor: stateStyle.bg, color: stateStyle.color }}
 - **Resize handle:** `display: { xs: 'none', md: 'block' }` -- hidden on mobile
 - **Sidebar:** Temporary drawer on mobile (`xs`), permanent on desktop (`md`)
 - **Grid layouts:** `<Grid size={{ xs: 12, md: 6 }}>` -- full width on mobile, half on desktop
-- **Page max-width:** Settings, Users, Audit pages use `maxWidth: 720-1100` with `mx: 'auto'`
+- **Page max-width:** Settings page uses `maxWidth: 720` with `mx: 'auto'` (form-centric layout). All other pages fill the available width provided by AppShell padding
 
 ### Typography and Spacing
 
