@@ -246,6 +246,13 @@ export interface ScheduledExceptionInput {
   workloadTargets?: WorkloadTarget[]
 }
 
+// ─── Shared UI types ─────────────────────────────────────────────────────────
+
+export interface SnackMessage {
+  msg: string
+  severity: 'success' | 'error'
+}
+
 // ─── User management ─────────────────────────────────────────────────────────
 
 export type Role = 'admin' | 'operator' | 'viewer'

@@ -193,7 +193,10 @@ more WebSocket clients.
 - Dashboard with cluster status, next-run countdown, and activity feed.
 - Cluster state explorer with workload, node, and pod detail drawers.
 - Policy management with sleep window picker, weekly timeline visualization,
-  plan/apply mode toggle, overrides, and scheduled exceptions.
+  plan/apply mode toggle, overrides, and scheduled exceptions. Policy cards
+  use a wide timeline card layout (gradient header bar, LED status dot,
+  70/30 split with sparkline timeline). The policy detail page uses full-width
+  horizontal bands (hero, timeline, overrides+exceptions, execution history).
 - Live execution log viewer via WebSocket, with auto-scroll and level coloring.
 - Live pod log viewer via chunked HTTP streaming from the Kubernetes API.
 - User management (admin), audit log viewer, guardrails editor.
@@ -443,7 +446,7 @@ kube-phoenix/
 │   ├── src/
 │   │   ├── app/                     # Next.js pages (overview, cluster, policies, ...)
 │   │   ├── components/              # React components by domain
-│   │   ├── lib/                     # API client, auth, types, query client, utilities
+│   │   ├── lib/                     # API client, auth, types, query client, utilities, shared hooks
 │   │   └── theme/                   # MUI theme (dark + light mode)
 │   ├── next.config.mjs              # Static export, trailing slash
 │   └── package.json

@@ -112,7 +112,7 @@ frontend/
     lib/
       api.ts                    # Centralized fetch wrapper + all API functions
       auth.tsx                  # AuthContext provider, login/logout, session management
-      types.ts                  # TypeScript interfaces for all backend models
+      types.ts                  # TypeScript interfaces for all backend models + shared UI types (SnackMessage)
       colors.ts                 # Semantic color palette, useColors() hook, TIMELINE_COLORS
       statusColors.ts           # Color maps for states, executions, modes, types, log levels
       constants.ts              # Polling intervals, drawer constraints, log limits, timezones
@@ -121,6 +121,7 @@ frontend/
       rbac.ts                   # Permission checking helpers
       themeMode.tsx             # ThemeModeProvider context (light/dark/system + localStorage)
       queryClient.ts            # TanStack QueryClient singleton with default options
+      usePolicyTriggers.ts      # Shared sleep/wake mutation hook (invalidation + navigation)
       useDrawerResize.ts        # Mouse/touch drag resize hook for side drawers
     theme/
       theme.ts                  # MUI theme factory (createAppTheme) for dark and light modes
@@ -135,7 +136,7 @@ frontend/
 - Components: PascalCase filenames matching the default export (`PolicyCard.tsx` exports `PolicyCard`)
 - Utility modules: camelCase (`formatters.ts`, `windowUtils.ts`)
 - Color/constant modules: camelCase (`statusColors.ts`, `constants.ts`)
-- Hooks: `use` prefix (`useDrawerResize.ts`, `useColors()`)
+- Hooks: `use` prefix (`useDrawerResize.ts`, `usePolicyTriggers.ts`, `useColors()`)
 
 **URL mapping:** Next.js App Router with `trailingSlash: true` means `src/app/policies/page.tsx` maps to `/policies/`. The policy detail page at `src/app/policies/detail/page.tsx` maps to `/policies/detail/?id=N` (uses query params, not dynamic segments, because the static export does not support dynamic routes).
 
@@ -555,7 +556,25 @@ All functions take an `isDark` boolean and return objects with `{ bgcolor, color
 2. **Create:** "New Policy" button opens `CreatePolicyDialog` with empty defaults. The dialog uses a `useMutation` wrapping `createPolicy()`, then invalidates `['policies']` on success.
 3. **Edit:** "Edit" button on `PolicyCard` opens `CreatePolicyDialog` with `existing={policy}`. The dialog detects edit mode via `!!existing` and calls `updatePolicy()` instead.
 4. **Delete:** "Delete" button on `PolicyCard` opens a confirmation dialog, then calls `deletePolicy()`.
-5. **Trigger sleep/wake:** Moon/sun buttons on `PolicyCard` call `triggerPolicySleep/Wake()`, invalidate relevant query keys, and navigate to the policy detail page with the new execution ID.
+5. **Trigger sleep/wake:** Both `PolicyCard` and the detail page use the shared `usePolicyTriggers(policyId, onNotify)` hook, which encapsulates the `triggerPolicySleep/Wake()` mutations, query invalidation, and navigation to the execution detail view.
+
+#### PolicyCard Layout
+
+`PolicyCard` uses a wide timeline card design:
+- **Gradient header bar** (3px): state-colored gradient from `CARD_HEADER_GRADIENTS`
+- **LED status dot** with glow, pulse animation for transitioning state, from shared `LED_COLORS`
+- **70/30 column layout**: left column has policy name, status/mode chips, schedule text, and a 48px `MiniTimeline`; right column shows State, Next transition, and Timezone with a border-left separator
+- **Vertical action buttons** on the far right edge: view, sleep, wake, edit, delete
+
+#### Policy Detail Page (Full-Width Horizontal Bands)
+
+The detail page (`src/app/policies/detail/page.tsx`) uses a full-width horizontal band layout. Each band bleeds edge-to-edge within the content area using negative margins (`BLEED_MARGIN_X`) to negate `AppShell`'s padding, then re-applies padding (`BLEED_PADDING_X`) to keep content aligned. The sidebar is never overlaid -- on mobile, the sidebar is already a hamburger menu so bands take full viewport width.
+
+Bands (top to bottom):
+1. **Hero band** -- state-colored gradient background (`HERO_HEADER_GRADIENTS`), back button, 64px state icon, policy name + description, large state label, mode/enabled chips, action buttons (Sleep Now, Wake Now, Edit, Exception)
+2. **Timeline band** -- `LedGlowTimeline` filling the left, weekly stats (Sleep/Week, Awake/Week, Next Transition with countdown) on the right
+3. **Overrides + Exceptions band** -- subtle alternating background, side-by-side `OverridesSection` and `ExceptionsSection` (wraps on mobile)
+4. **Execution History band** -- `ExecutionHistoryTable` at full width
 
 #### WindowPicker
 
@@ -596,16 +615,17 @@ All three timeline components use raw SVG for rendering. They share timeline mat
 - Used on the policy detail page
 
 **MiniTimeline** (`MiniTimeline.tsx`):
-- Sparkline-style 24h waveform showing today's sleep/awake state
-- Awake = line at top with green gradient fill, Sleep = line at bottom with purple gradient fill
+- Sparkline-style 24h waveform showing today's sleep/awake state (default 48px tall)
+- Sleep = line drops down with purple gradient fill above, Awake = line rises with green gradient fill below
 - Smooth step transitions between states at 15-minute resolution
 - SVG waveform stretches to fill the container width (no fixed pixel width)
-- Now-marker and hour labels are CSS-positioned (absolute/flex) to avoid SVG distortion when the container resizes
-- Hour labels rendered as a CSS flex row beneath the waveform (0, 3, 6, ... 24)
+- SVG tick marks at hour positions (0, 3, 6, 9, 12, 15, 18, 21, 24); CSS-positioned labels beneath to avoid SVG distortion
+- Now-marker (red dot + vertical line) positioned via CSS percentage, updates in real-time every 30 seconds via `setInterval`
 - Timezone-aware via the policy's timezone
+- Sleep ranges memoized with `useMemo` to avoid recalculation on unrelated re-renders
 - Gradient SVG IDs use `useId()` for uniqueness across multiple policy cards
 - Wrapped in a Tooltip showing the full `windowsToText()` description
-- Used on `PolicyCard` as a full-width timeline row beneath the header
+- Used on `PolicyCard` as a full-width timeline row beneath the schedule text
 
 **Shared timeline math:**
 
@@ -746,7 +766,7 @@ Data is loaded from the API as CSV strings and split with `fromCsv()`. On save, 
 | `fmtMem(bytes)` | `number -> string` | Format bytes: `1.5 GiB` -> `"1.5G"`, `512 MiB` -> `"512M"` | Same as fmtCpu |
 | `podAge(iso)` | `string -> string` | ISO to short age: `"5m"`, `"3h"`, `"2d"` | NodesTable, PodDetailContent, PodRow |
 | `sinceMs(ms)` | `number -> string` | Millisecond timestamp to relative: `"just now"`, `"5s ago"`, `"3m ago"` | WorkloadsTable, NodesTable, drawers (for `dataUpdatedAt`) |
-| `timeUntil(iso)` | `string -> string` | ISO to countdown: `"now"`, `"in 5m"`, `"in 2h 30m"`, `"in 5d 8h"` | ClusterStatusCard (next run) |
+| `timeUntil(iso)` | `string -> string` | ISO to countdown: `"now"`, `"in 5m"`, `"in 2h 30m"`, `"in 5d 8h"` | ClusterStatusCard, PolicyCard, PolicyDetailPage |
 | `pct(used, total)` | `(number, number) -> number` | Safe percentage: returns 0 when total is 0 | NodesTable, NodeDetailDrawer |
 | `pctColor(p, isDark)` | `(number, boolean) -> string` | Color by percentage threshold: green < 65%, amber 65-84%, red >= 85% | NodesTable, NodeDetailDrawer |
 | `fmtDt(iso)` | `string \| null -> string` | ISO to locale string, or em-dash for null | PolicyDetailPage, ExceptionsSection, OverridesSection, ExceptionsPage |
@@ -763,6 +783,7 @@ Data is loaded from the API as CSV strings and split with `fromCsv()`. On save, 
 | `formatDayRange(days)` | `[1,2,3,4,5]` -> `"Mon-Fri"`, `[0,6]` -> `"Sat-Sun"`, `[1,3,5]` -> `"Mon, Wed, Fri"` |
 | `windowsToText(windows)` | Full human-readable summary: `"Mon-Fri 7 PM - 7 AM, Sat-Sun all day"` |
 | `timeToHours(time)` | `"19:30"` -> `19.5` (fractional hours for timeline rendering) |
+| `hasSleepWindows(windows)` | Type guard: returns `true` if the array is non-null and non-empty (narrows `SleepWindow[] \| null` to `SleepWindow[]`) |
 | `computeWeeklyStats(windows)` | Returns `{ sleepHours, awakeHours }` per 168-hour week |
 | `nowInTimezone(tz?)` | Returns `{ dayOfWeek, fractionalHour }` in the given IANA timezone |
 | `toTimezone(iso, tz?)` | Converts ISO timestamp to a Date in the given timezone |
@@ -795,6 +816,10 @@ Data is loaded from the API as CSV strings and split with `fromCsv()`. On save, 
 | `EXECUTION_STATUS_FALLBACK` | `{ bg, color }` | Default for unknown status strings |
 | `MODE_COLORS` | `Record<string, { bg, color }>` | Plan (blue) and Apply (amber) mode chips |
 | `SMALL_CHIP_SX` | `{ height: 18, fontSize: 10 }` | Shared sx for small chips (mode, type badges) |
+| `CARD_HEADER_GRADIENTS` | `Record<string, string>` | Horizontal gradient for PolicyCard top edge (3px bar) |
+| `HERO_HEADER_GRADIENTS` | `Record<string, string>` | Vertical gradient for detail page hero band background |
+| `LED_COLORS` | `Record<string, { bg, glow }>` | LED dot colors per policy state (bg color + glow shadow) |
+| `SUBTLE_BORDER` | `string` | Subtle separator color (`rgba(255,255,255,0.04)`) for full-width bands |
 | `TYPE_LABELS` | `Record<string, { label, color, bg }>` | Override/exception types (stay_awake, force_sleep, skip_sleep, skip_wake) |
 | `TYPE_LABEL_FALLBACK` | `{ label, color, bg }` | Default for unknown type strings |
 | `ACTION_LABELS` | `Record<string, string>` | Human-readable labels for audit log actions (e.g. `policy.update` → "Policy Update") |
@@ -831,6 +856,10 @@ Data is loaded from the API as CSV strings and split with `fromCsv()`. On save, 
 
 A thin permission-checking layer. `hasPerm(permissions, perm)` checks if a string exists in the permissions array. Six convenience wrappers are exported for common checks. See [RBAC](#rbac) in Architecture Patterns.
 
+### lib/usePolicyTriggers.ts
+
+A custom hook that encapsulates sleep/wake trigger mutations for a policy. Returns `{ sleepMut, wakeMut, isBusy }`. On success, it invalidates the `policies`, `policy`, `policy-executions` query keys and navigates to the execution detail view. On error, it calls the provided `onNotify` callback. Used by both `PolicyCard` and `PolicyDetailPage` to avoid duplicating mutation setup, query invalidation, and error handling.
+
 ### lib/useDrawerResize.ts
 
 See [useDrawerResize Hook](#usedrawerresize-hook) in the Cluster Views section.
@@ -849,14 +878,17 @@ Query keys follow a consistent pattern: `['resource-type', ...identifiers, ...fi
 
 ### Cache Invalidation After Mutations
 
-Every `useMutation` has an `onSuccess` handler that invalidates related query keys. Some mutations invalidate multiple keys:
+Every `useMutation` has an `onSuccess` handler that invalidates related query keys. Some mutations invalidate multiple keys. The shared `usePolicyTriggers(policyId, onNotify)` hook encapsulates sleep/wake trigger mutations and invalidates four query families on success:
 
 ```typescript
-// PolicyCard sleep trigger invalidates three query families:
+// usePolicyTriggers invalidates these on successful sleep/wake trigger:
 queryClient.invalidateQueries({ queryKey: ['policies'] })
+queryClient.invalidateQueries({ queryKey: ['policy', policyId] })
 queryClient.invalidateQueries({ queryKey: ['policy-executions'] })
-queryClient.invalidateQueries({ queryKey: ['policy-executions', policy.id] })
+queryClient.invalidateQueries({ queryKey: ['policy-executions', policyId] })
 ```
+
+Both `PolicyCard` and `PolicyDetailPage` consume this hook rather than duplicating the mutation logic.
 
 The exception is the SSE-driven overview, where `useClusterStream()` bypasses the normal fetch cycle and pushes data directly into the cache with `queryClient.setQueryData()`.
 
