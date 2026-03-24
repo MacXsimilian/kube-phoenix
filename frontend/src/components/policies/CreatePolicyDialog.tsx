@@ -139,7 +139,7 @@ export default function CreatePolicyDialog({
       slotProps={{ paper: { sx: { bgcolor: 'background.paper' } } }}
     >
       <DialogTitle fontWeight={700}>{isEdit ? 'Edit Policy' : 'New Policy'}</DialogTitle>
-      <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
+      <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '20px !important' }}>
         {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
 
         <TextField

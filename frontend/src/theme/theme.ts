@@ -61,6 +61,14 @@ export function createAppTheme(mode: 'light' | 'dark') {
           },
         },
       },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: { borderRadius: 8 },
+          notchedOutline: {
+            '& legend': { fontSize: '0.78em' },
+          },
+        },
+      },
       MuiTableCell: {
         styleOverrides: {
           root: {
