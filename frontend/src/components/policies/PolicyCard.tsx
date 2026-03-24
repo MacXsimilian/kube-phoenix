@@ -148,7 +148,7 @@ export default function PolicyCard({
                       {windowsToText(policy.sleepWindows)}
                     </Typography>
                   </Box>
-                  <MiniTimeline windows={policy.sleepWindows} width={200} height={14} />
+                  <MiniTimeline windows={policy.sleepWindows} width={200} height={28} timezone={policy.timezone} />
                 </>
               ) : null}
               {/* Next transition — state-aware */}
