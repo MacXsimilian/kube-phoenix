@@ -22,32 +22,66 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import { deletePolicy, triggerPolicySleep, triggerPolicyWake } from '@/lib/api'
 import type { Policy } from '@/lib/types'
-import { windowsToText, computeWeeklyStats } from '@/lib/windowUtils'
-import { STATE_COLORS, MODE_COLORS } from '@/lib/statusColors'
+import { windowsToText } from '@/lib/windowUtils'
+import { STATE_COLORS, MODE_COLORS, SMALL_CHIP_SX } from '@/lib/statusColors'
 import MiniTimeline from './MiniTimeline'
 
-function fmtNext(iso: string | null | undefined): string {
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const MS_PER_MINUTE = 60_000
+const DISABLED_OPACITY = 0.45
+
+const HEADER_GRADIENTS: Record<string, string> = {
+  sleeping:      'linear-gradient(90deg, #7C3AED 0%, #a5b4fc 50%, rgba(165,180,252,0.15) 100%)',
+  awake:         'linear-gradient(90deg, #22C55E 0%, #86efac 50%, rgba(134,239,172,0.15) 100%)',
+  transitioning: 'linear-gradient(90deg, #F59E0B 0%, #fcd34d 50%, rgba(252,211,77,0.15) 100%)',
+  unknown:       'linear-gradient(90deg, #475569 0%, #64748b 40%, rgba(100,116,139,0.1) 100%)',
+}
+
+const LED_COLORS: Record<string, { bg: string; glow: string }> = {
+  sleeping:      { bg: '#a5b4fc', glow: 'rgba(165,180,252,0.5)' },
+  awake:         { bg: '#86efac', glow: 'rgba(134,239,172,0.5)' },
+  transitioning: { bg: '#fcd34d', glow: 'rgba(252,211,77,0.5)' },
+  unknown:       { bg: '#64748b', glow: 'none' },
+}
+
+const ACTION_BTN_SX = {
+  width: 32,
+  height: 32,
+  borderRadius: '8px',
+  border: '1px solid rgba(255,255,255,0.07)',
+  bgcolor: 'rgba(255,255,255,0.03)',
+  color: '#94a3b8',
+  '&:hover': { bgcolor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.12)' },
+} as const
+
+const STAT_LABEL_SX = { fontSize: 11, color: '#64748b', lineHeight: 1.3 } as const
+const STAT_VALUE_SX = { fontSize: 13, lineHeight: 1.3 } as const
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatRelativeTime(iso: string | null | undefined): string {
   if (!iso) return '—'
   const dateObj = new Date(iso)
-  const now = new Date()
-  const diff = dateObj.getTime() - now.getTime()
+  if (isNaN(dateObj.getTime())) return '—'
+  const diff = dateObj.getTime() - Date.now()
   if (diff < 0) return 'now'
-  const mins = Math.floor(diff / 60000)
+  const mins = Math.floor(diff / MS_PER_MINUTE)
   if (mins < 60) return `in ${mins}m`
   const hrs = Math.floor(mins / 60)
   if (hrs < 24) return `in ${hrs}h`
   return `in ${Math.floor(hrs / 24)}d`
 }
 
-function nextTransitionLabel(policy: Policy): string | null {
-  if (!policy.nextTransitionAt) return null
-  if (policy.currentState === 'sleeping') return `Wake ${fmtNext(policy.nextTransitionAt)}`
-  if (policy.currentState === 'awake') return `Sleep ${fmtNext(policy.nextTransitionAt)}`
-  return null
+function nextTransitionLabel(policy: Policy): string {
+  if (!policy.nextTransitionAt) return '—'
+  const relative = formatRelativeTime(policy.nextTransitionAt)
+  if (policy.currentState === 'sleeping') return `Wake ${relative}`
+  if (policy.currentState === 'awake') return `Sleep ${relative}`
+  return relative
 }
 
-const STAT_CAPTION_SX = { fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 } as const
-const STAT_VALUE_SX = { fontSize: 12, mt: 0.25 } as const
+// ── Component ────────────────────────────────────────────────────────────────
 
 export default function PolicyCard({
   policy,
@@ -66,8 +100,18 @@ export default function PolicyCard({
   const router = useRouter()
   const [deleteDialog, setDeleteDialog] = useState(false)
   const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
-  const transitionLabel = nextTransitionLabel(policy)
-  const weeklyStats = policy.sleepWindows ? computeWeeklyStats(policy.sleepWindows) : null
+  const led = LED_COLORS[policy.currentState] ?? LED_COLORS.unknown
+
+  function onTriggerSuccess({ executionId }: { executionId: number }) {
+    queryClient.invalidateQueries({ queryKey: ['policies'] })
+    queryClient.invalidateQueries({ queryKey: ['policy-executions'] })
+    queryClient.invalidateQueries({ queryKey: ['policy-executions', policy.id] })
+    router.push(`/policies/detail/?id=${policy.id}&exec=${executionId}`)
+  }
+
+  function onTriggerError(err: unknown, fallback: string) {
+    onNotify?.(err instanceof Error ? err.message : fallback, 'error')
+  }
 
   const deleteMut = useMutation({
     mutationFn: () => deletePolicy(policy.id),
@@ -75,190 +119,219 @@ export default function PolicyCard({
       queryClient.invalidateQueries({ queryKey: ['policies'] })
       onNotify?.(`"${policy.name}" deleted`, 'success')
     },
-    onError: (err: unknown) => {
-      onNotify?.(err instanceof Error ? err.message : 'Delete failed', 'error')
-    },
+    onError: (err: unknown) => onTriggerError(err, 'Delete failed'),
   })
 
   const sleepMut = useMutation({
     mutationFn: () => triggerPolicySleep(policy.id),
-    onSuccess: ({ executionId }) => {
-      queryClient.invalidateQueries({ queryKey: ['policies'] })
-      queryClient.invalidateQueries({ queryKey: ['policy-executions'] })
-      queryClient.invalidateQueries({ queryKey: ['policy-executions', policy.id] })
-      router.push(`/policies/detail/?id=${policy.id}&exec=${executionId}`)
-    },
-    onError: (err: unknown) => {
-      onNotify?.(err instanceof Error ? err.message : 'Trigger sleep failed', 'error')
-    },
+    onSuccess: onTriggerSuccess,
+    onError: (err: unknown) => onTriggerError(err, 'Trigger sleep failed'),
   })
 
   const wakeMut = useMutation({
     mutationFn: () => triggerPolicyWake(policy.id),
-    onSuccess: ({ executionId }) => {
-      queryClient.invalidateQueries({ queryKey: ['policies'] })
-      queryClient.invalidateQueries({ queryKey: ['policy-executions'] })
-      queryClient.invalidateQueries({ queryKey: ['policy-executions', policy.id] })
-      router.push(`/policies/detail/?id=${policy.id}&exec=${executionId}`)
-    },
-    onError: (err: unknown) => {
-      onNotify?.(err instanceof Error ? err.message : 'Trigger wake failed', 'error')
-    },
+    onSuccess: onTriggerSuccess,
+    onError: (err: unknown) => onTriggerError(err, 'Trigger wake failed'),
   })
 
   const isBusy = sleepMut.isPending || wakeMut.isPending
+  const isDisabled = !policy.enabled
+  const hasWindows = policy.sleepWindows && policy.sleepWindows.length > 0
 
   return (
     <>
       <Paper
         sx={{
-          p: 2.5,
           border: '1px solid',
           borderColor: 'divider',
-          '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' },
-          transition: 'background-color 0.15s',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          opacity: isDisabled ? DISABLED_OPACITY : 1,
+          '&:hover': {
+            borderColor: 'rgba(124,58,237,0.3)',
+            boxShadow: '0 0 0 1px rgba(124,58,237,0.08), 0 4px 24px rgba(0,0,0,0.3)',
+          },
+          transition: 'border-color 0.2s, box-shadow 0.2s, opacity 0.2s',
+          p: 0,
         }}
       >
-        {/* Row 1: Header — name, badges, actions */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-          <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Typography variant="body1" fontWeight={600} noWrap>
-              {policy.name}
-            </Typography>
-            <Chip
-              label={stateStyle.label}
-              size="small"
-              sx={{ height: 18, fontSize: 10, bgcolor: stateStyle.bg, color: stateStyle.color }}
-            />
-            <Chip
-              label={policy.mode.toUpperCase()}
-              size="small"
+        {/* Gradient header bar */}
+        <Box
+          sx={{
+            height: 3,
+            background: HEADER_GRADIENTS[policy.currentState] ?? HEADER_GRADIENTS.unknown,
+            flexShrink: 0,
+          }}
+        />
+
+        <Box sx={{ display: 'flex', alignItems: 'stretch' }}>
+          {/* Main content — left 70% + right 30% stats */}
+          <Box sx={{ flex: 1, minWidth: 0, p: '14px 20px', display: 'flex', gap: 2 }}>
+            {/* Left column: name, chips, schedule, timeline */}
+            <Box sx={{ flex: 70, minWidth: 0 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
+                <Box
+                  sx={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    flexShrink: 0,
+                    bgcolor: led.bg,
+                    boxShadow: led.glow !== 'none' ? `0 0 8px ${led.glow}` : undefined,
+                    ...(policy.currentState === 'transitioning' && {
+                      animation: 'led-pulse 1.5s ease-in-out infinite',
+                      '@keyframes led-pulse': {
+                        '0%, 100%': { boxShadow: '0 0 4px rgba(252,211,77,0.4)' },
+                        '50%': { boxShadow: '0 0 14px rgba(252,211,77,0.75), 0 0 28px rgba(252,211,77,0.25)' },
+                      },
+                    }),
+                  }}
+                />
+                <Typography variant="body1" fontWeight={600} noWrap sx={{ fontSize: 15, color: 'text.primary' }}>
+                  {policy.name}
+                </Typography>
+                <Chip
+                  label={stateStyle.label}
+                  size="small"
+                  sx={{ ...SMALL_CHIP_SX, bgcolor: stateStyle.bg, color: stateStyle.color }}
+                />
+                <Chip
+                  label={policy.mode.toUpperCase()}
+                  size="small"
+                  sx={{
+                    ...SMALL_CHIP_SX,
+                    bgcolor: (MODE_COLORS[policy.mode] ?? MODE_COLORS.plan).bg,
+                    color: (MODE_COLORS[policy.mode] ?? MODE_COLORS.plan).color,
+                  }}
+                />
+                {isDisabled && (
+                  <Chip label="Disabled" size="small" sx={{ ...SMALL_CHIP_SX, bgcolor: 'action.selected' }} />
+                )}
+                {policy.namespaceFilter && (
+                  <Chip
+                    label={`${policy.namespaceFilter.split(',').length} ns`}
+                    size="small"
+                    sx={{ ...SMALL_CHIP_SX, color: '#94a3b8', bgcolor: 'rgba(255,255,255,0.06)' }}
+                  />
+                )}
+              </Box>
+
+              {hasWindows && (
+                <Typography variant="body2" sx={{ fontSize: 12, color: '#94a3b8', mb: 1 }}>
+                  {windowsToText(policy.sleepWindows!)}
+                </Typography>
+              )}
+
+              {hasWindows && (
+                <MiniTimeline windows={policy.sleepWindows!} height={48} timezone={policy.timezone} />
+              )}
+            </Box>
+
+            {/* Right column: State / Next / TZ */}
+            <Box
               sx={{
-                height: 18,
-                fontSize: 10,
-                bgcolor: (MODE_COLORS[policy.mode] ?? MODE_COLORS.plan).bg,
-                color: (MODE_COLORS[policy.mode] ?? MODE_COLORS.plan).color,
+                minWidth: 120,
+                flexShrink: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                gap: 0.75,
+                pl: 2,
+                borderLeft: '1px solid rgba(255,255,255,0.06)',
               }}
-            />
-            {!policy.enabled && (
-              <Chip label="Disabled" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'action.selected' }} />
-            )}
-            {policy.description && (
-              <Typography variant="body2" color="text.secondary" noWrap sx={{ ml: 1 }}>
-                {policy.description}
-              </Typography>
-            )}
+            >
+              <Box>
+                <Typography sx={STAT_LABEL_SX}>State</Typography>
+                <Typography sx={{ ...STAT_VALUE_SX, color: stateStyle.color, fontWeight: 600 }}>
+                  {stateStyle.label}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography sx={STAT_LABEL_SX}>Next</Typography>
+                <Typography sx={{ ...STAT_VALUE_SX, color: 'text.primary' }}>
+                  {nextTransitionLabel(policy)}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography sx={STAT_LABEL_SX}>TZ</Typography>
+                <Typography sx={{ ...STAT_VALUE_SX, color: 'text.primary' }}>
+                  {policy.timezone || 'UTC'}
+                </Typography>
+              </Box>
+            </Box>
           </Box>
 
-          {/* Actions */}
-          <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0, alignItems: 'center' }}>
-            <Tooltip title="View details">
-              <IconButton size="small" onClick={() => router.push(`/policies/detail/?id=${policy.id}`)} aria-label="View policy">
-                <OpenInNewIcon fontSize="small" />
+          {/* Vertical action buttons */}
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              gap: 0.5,
+              p: 1.5,
+              borderLeft: '1px solid',
+              borderColor: 'rgba(255,255,255,0.05)',
+              flexShrink: 0,
+            }}
+          >
+            <Tooltip title="View details" placement="left">
+              <IconButton
+                size="small"
+                onClick={() => router.push(`/policies/detail/?id=${policy.id}`)}
+                aria-label="View policy"
+                sx={ACTION_BTN_SX}
+              >
+                <OpenInNewIcon sx={{ fontSize: 14 }} />
               </IconButton>
             </Tooltip>
-            <Tooltip title={canTrigger ? 'Sleep Now' : 'No permission'}>
+            <Tooltip title={canTrigger ? 'Sleep Now' : 'No permission'} placement="left">
               <span>
                 <IconButton
                   size="small"
                   onClick={() => sleepMut.mutate()}
                   disabled={!canTrigger || isBusy}
                   aria-label="Trigger sleep"
-                  sx={{ color: '#a5b4fc' }}
+                  sx={{ ...ACTION_BTN_SX, color: '#a5b4fc', '&:hover': { bgcolor: 'rgba(99,102,241,0.15)' } }}
                 >
-                  {sleepMut.isPending ? <CircularProgress size={14} /> : <BedtimeIcon fontSize="small" />}
+                  {sleepMut.isPending ? <CircularProgress size={14} /> : <BedtimeIcon sx={{ fontSize: 14 }} />}
                 </IconButton>
               </span>
             </Tooltip>
-            <Tooltip title={canTrigger ? 'Wake Now' : 'No permission'}>
+            <Tooltip title={canTrigger ? 'Wake Now' : 'No permission'} placement="left">
               <span>
                 <IconButton
                   size="small"
                   onClick={() => wakeMut.mutate()}
                   disabled={!canTrigger || isBusy}
                   aria-label="Trigger wake"
-                  sx={{ color: '#fcd34d' }}
+                  sx={{ ...ACTION_BTN_SX, color: '#fcd34d', '&:hover': { bgcolor: 'rgba(245,158,11,0.15)' } }}
                 >
-                  {wakeMut.isPending ? <CircularProgress size={14} /> : <WbSunnyIcon fontSize="small" />}
+                  {wakeMut.isPending ? <CircularProgress size={14} /> : <WbSunnyIcon sx={{ fontSize: 14 }} />}
                 </IconButton>
               </span>
             </Tooltip>
-            <Tooltip title={canEdit ? 'Edit' : 'No permission'}>
+            <Tooltip title={canEdit ? 'Edit' : 'No permission'} placement="left">
               <span>
-                <IconButton size="small" onClick={onEdit} disabled={!canEdit} aria-label="Edit policy">
-                  <EditOutlinedIcon fontSize="small" />
+                <IconButton size="small" onClick={onEdit} disabled={!canEdit} aria-label="Edit policy" sx={ACTION_BTN_SX}>
+                  <EditOutlinedIcon sx={{ fontSize: 14 }} />
                 </IconButton>
               </span>
             </Tooltip>
-            <Tooltip title={canEdit ? 'Delete' : 'No permission'}>
+            <Tooltip title={canEdit ? 'Delete' : 'No permission'} placement="left">
               <span>
                 <IconButton
                   size="small"
-                  color="error"
                   onClick={() => setDeleteDialog(true)}
                   disabled={!canEdit}
                   aria-label="Delete policy"
+                  sx={{ ...ACTION_BTN_SX, color: '#f87171', '&:hover': { bgcolor: 'rgba(248,113,113,0.12)' } }}
                 >
-                  <DeleteOutlineIcon fontSize="small" />
+                  <DeleteOutlineIcon sx={{ fontSize: 14 }} />
                 </IconButton>
               </span>
             </Tooltip>
           </Box>
         </Box>
-
-        {/* Row 2: Full-width timeline + stats panel */}
-        {policy.sleepWindows && policy.sleepWindows.length > 0 && (
-          <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start' }}>
-            {/* Timeline — fills available width */}
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <MiniTimeline windows={policy.sleepWindows} height={36} timezone={policy.timezone} />
-            </Box>
-
-            {/* Stats summary panel */}
-            <Box sx={{ flexShrink: 0, display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'flex-start', pt: 0.25 }}>
-              <Box>
-                <Typography variant="caption" color="text.disabled" sx={STAT_CAPTION_SX}>Schedule</Typography>
-                <Typography variant="body2" color="text.secondary" sx={STAT_VALUE_SX}>
-                  {windowsToText(policy.sleepWindows)}
-                </Typography>
-              </Box>
-              {weeklyStats && (
-                <Box>
-                  <Typography variant="caption" color="text.disabled" sx={STAT_CAPTION_SX}>Weekly</Typography>
-                  <Typography variant="body2" color="text.secondary" sx={STAT_VALUE_SX}>
-                    {weeklyStats.sleepHours}h sleep · {weeklyStats.awakeHours}h awake
-                  </Typography>
-                </Box>
-              )}
-              {transitionLabel && (
-                <Box>
-                  <Typography variant="caption" color="text.disabled" sx={STAT_CAPTION_SX}>Next</Typography>
-                  <Typography variant="body2" color="text.secondary" sx={STAT_VALUE_SX}>
-                    {transitionLabel}
-                  </Typography>
-                </Box>
-              )}
-              {policy.timezone && policy.timezone !== 'UTC' && (
-                <Box>
-                  <Typography variant="caption" color="text.disabled" sx={STAT_CAPTION_SX}>Timezone</Typography>
-                  <Typography variant="body2" color="text.secondary" sx={STAT_VALUE_SX}>
-                    {policy.timezone}
-                  </Typography>
-                </Box>
-              )}
-              {policy.namespaceFilter && (
-                <Box>
-                  <Typography variant="caption" color="text.disabled" sx={STAT_CAPTION_SX}>Namespaces</Typography>
-                  <Tooltip title={policy.namespaceFilter}>
-                    <Typography variant="body2" color="text.secondary" sx={STAT_VALUE_SX}>
-                      {policy.namespaceFilter.split(',').length} ns
-                    </Typography>
-                  </Tooltip>
-                </Box>
-              )}
-            </Box>
-          </Box>
-        )}
       </Paper>
 
       <Dialog
