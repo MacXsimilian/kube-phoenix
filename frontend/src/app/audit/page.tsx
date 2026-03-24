@@ -26,29 +26,9 @@ import { useAuth } from '@/lib/auth'
 import { canViewAudit } from '@/lib/rbac'
 import { useRouter } from 'next/navigation'
 import type { AuditLogEntry } from '@/lib/types'
-import { formatActionLabel } from '@/lib/statusColors'
+import { formatActionLabel, actionColor, ACTION_LABELS } from '@/lib/statusColors'
 
-const ACTIONS = [
-  '',
-  'policy.create', 'policy.update', 'policy.delete', 'policy.sleep', 'policy.wake',
-  'policy.override.create', 'policy.override.delete',
-  'exception.create', 'exception.update', 'exception.delete',
-  'guardrail.update',
-  'user.create', 'user.update', 'user.delete',
-  'auth.login', 'auth.logout', 'auth.password_change',
-  'admin.reset_db',
-]
-
-const ACTION_COLORS: Record<string, 'error' | 'warning' | 'info' | 'success' | 'default'> = {
-  'policy.create': 'success', 'policy.update': 'info', 'policy.delete': 'error',
-  'policy.sleep': 'warning', 'policy.wake': 'warning',
-  'policy.override.create': 'success', 'policy.override.delete': 'error',
-  'exception.create': 'success', 'exception.update': 'info', 'exception.delete': 'error',
-  'guardrail.update': 'info',
-  'user.create': 'success', 'user.update': 'info', 'user.delete': 'error',
-  'auth.login': 'success', 'auth.logout': 'default', 'auth.password_change': 'warning',
-  'admin.reset_db': 'error',
-}
+const ACTIONS = ['', ...Object.keys(ACTION_LABELS)]
 
 function DiffView({ label, json }: { label: string; json?: string }) {
   if (!json || json === 'null') return null
@@ -87,7 +67,7 @@ function AuditRow({ entry }: { entry: AuditLogEntry }) {
           <Typography variant="body2" fontWeight={600}>{entry.username}</Typography>
         </TableCell>
         <TableCell>
-          <Chip label={formatActionLabel(entry.action)} size="small" color={ACTION_COLORS[entry.action] ?? 'info'} variant="outlined" />
+          <Chip label={formatActionLabel(entry.action)} size="small" color={actionColor(entry.action)} variant="outlined" />
         </TableCell>
         <TableCell>
           {entry.resourceType && (

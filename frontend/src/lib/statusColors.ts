@@ -80,3 +80,13 @@ export const ACTION_LABELS: Record<string, string> = {
 export function formatActionLabel(action: string): string {
   return ACTION_LABELS[action] ?? action.replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
+
+export function actionColor(action: string): 'error' | 'warning' | 'info' | 'success' | 'default' {
+  if (action === 'admin.reset_db') return 'error'
+  if (action.endsWith('.delete')) return 'error'
+  if (action.endsWith('.create')) return 'success'
+  if (action === 'auth.login') return 'success'
+  if (action === 'auth.logout') return 'default'
+  if (action.endsWith('.sleep') || action.endsWith('.wake') || action === 'auth.password_change') return 'warning'
+  return 'info'
+}
