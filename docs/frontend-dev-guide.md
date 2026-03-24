@@ -93,7 +93,7 @@ frontend/
         OverridesSection.tsx    # Override table + inline create form in policy detail
         WeeklyTimeline.tsx      # SVG 7-day bar chart timeline
         LedGlowTimeline.tsx     # SVG 7-day LED-strip timeline with glow filters
-        MiniTimeline.tsx        # Compact single-day 24h bar for policy cards
+        MiniTimeline.tsx        # Full-width single-day 24h sparkline for policy cards
         WindowPicker.tsx        # Sleep window editor with day buttons + time selectors
         LegendItem.tsx          # Shared timeline legend dot + label
         ExecutionHistoryTable.tsx # Execution table embedded in policy detail
@@ -599,11 +599,13 @@ All three timeline components use raw SVG for rendering. They share timeline mat
 - Sparkline-style 24h waveform showing today's sleep/awake state
 - Awake = line at top with green gradient fill, Sleep = line at bottom with purple gradient fill
 - Smooth step transitions between states at 15-minute resolution
-- Now-marker with vertical line and circle dot at current position
+- SVG waveform stretches to fill the container width (no fixed pixel width)
+- Now-marker and hour labels are CSS-positioned (absolute/flex) to avoid SVG distortion when the container resizes
+- Hour labels rendered as a CSS flex row beneath the waveform (0, 3, 6, ... 24)
 - Timezone-aware via the policy's timezone
 - Gradient SVG IDs use `useId()` for uniqueness across multiple policy cards
 - Wrapped in a Tooltip showing the full `windowsToText()` description
-- Used on `PolicyCard` in the policy list (200×28px)
+- Used on `PolicyCard` as a full-width timeline row beneath the header
 
 **Shared timeline math:**
 

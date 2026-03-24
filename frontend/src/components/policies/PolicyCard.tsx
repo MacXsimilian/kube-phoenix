@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import Paper from '@mui/material/Paper'
@@ -22,7 +22,7 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import { deletePolicy, triggerPolicySleep, triggerPolicyWake } from '@/lib/api'
 import type { Policy } from '@/lib/types'
-import { windowsToText } from '@/lib/windowUtils'
+import { windowsToText, computeWeeklyStats } from '@/lib/windowUtils'
 import { STATE_COLORS, MODE_COLORS } from '@/lib/statusColors'
 import MiniTimeline from './MiniTimeline'
 
@@ -38,6 +38,16 @@ function fmtNext(iso: string | null | undefined): string {
   if (hrs < 24) return `in ${hrs}h`
   return `in ${Math.floor(hrs / 24)}d`
 }
+
+function nextTransitionLabel(policy: Policy): string | null {
+  if (!policy.nextTransitionAt) return null
+  if (policy.currentState === 'sleeping') return `Wake ${fmtNext(policy.nextTransitionAt)}`
+  if (policy.currentState === 'awake') return `Sleep ${fmtNext(policy.nextTransitionAt)}`
+  return null
+}
+
+const STAT_CAPTION_SX = { fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 } as const
+const STAT_VALUE_SX = { fontSize: 12, mt: 0.25 } as const
 
 export default function PolicyCard({
   policy,
@@ -56,6 +66,8 @@ export default function PolicyCard({
   const router = useRouter()
   const [deleteDialog, setDeleteDialog] = useState(false)
   const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
+  const transitionLabel = nextTransitionLabel(policy)
+  const weeklyStats = policy.sleepWindows ? computeWeeklyStats(policy.sleepWindows) : null
 
   const deleteMut = useMutation({
     mutationFn: () => deletePolicy(policy.id),
@@ -107,74 +119,35 @@ export default function PolicyCard({
           transition: 'background-color 0.15s',
         }}
       >
-        {/* Header row */}
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
-              <Typography variant="body1" fontWeight={600} noWrap>
-                {policy.name}
-              </Typography>
-              <Chip
-                label={stateStyle.label}
-                size="small"
-                sx={{ height: 18, fontSize: 10, bgcolor: stateStyle.bg, color: stateStyle.color }}
-              />
-              <Chip
-                label={policy.mode.toUpperCase()}
-                size="small"
-                sx={{
-                  height: 18,
-                  fontSize: 10,
-                  bgcolor: (MODE_COLORS[policy.mode] ?? MODE_COLORS.plan).bg,
-                  color: (MODE_COLORS[policy.mode] ?? MODE_COLORS.plan).color,
-                }}
-              />
-              {!policy.enabled && (
-                <Chip label="Disabled" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'action.selected' }} />
-              )}
-            </Box>
+        {/* Row 1: Header — name, badges, actions */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Typography variant="body1" fontWeight={600} noWrap>
+              {policy.name}
+            </Typography>
+            <Chip
+              label={stateStyle.label}
+              size="small"
+              sx={{ height: 18, fontSize: 10, bgcolor: stateStyle.bg, color: stateStyle.color }}
+            />
+            <Chip
+              label={policy.mode.toUpperCase()}
+              size="small"
+              sx={{
+                height: 18,
+                fontSize: 10,
+                bgcolor: (MODE_COLORS[policy.mode] ?? MODE_COLORS.plan).bg,
+                color: (MODE_COLORS[policy.mode] ?? MODE_COLORS.plan).color,
+              }}
+            />
+            {!policy.enabled && (
+              <Chip label="Disabled" size="small" sx={{ height: 18, fontSize: 10, bgcolor: 'action.selected' }} />
+            )}
             {policy.description && (
-              <Typography variant="body2" color="text.secondary" noWrap sx={{ mb: 0.5 }}>
+              <Typography variant="body2" color="text.secondary" noWrap sx={{ ml: 1 }}>
                 {policy.description}
               </Typography>
             )}
-            {/* Schedule display */}
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 0.5, alignItems: 'center' }}>
-              {policy.sleepWindows && policy.sleepWindows.length > 0 ? (
-                <>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <BedtimeIcon sx={{ fontSize: 13, color: '#a5b4fc' }} />
-                    <Typography variant="caption" color="text.secondary">
-                      {windowsToText(policy.sleepWindows)}
-                    </Typography>
-                  </Box>
-                  <MiniTimeline windows={policy.sleepWindows} width={200} height={28} timezone={policy.timezone} />
-                </>
-              ) : null}
-              {/* Next transition — state-aware */}
-              {policy.currentState === 'sleeping' && policy.nextTransitionAt && (
-                <Typography variant="caption" color="text.disabled">
-                  wake {fmtNext(policy.nextTransitionAt)}
-                </Typography>
-              )}
-              {policy.currentState === 'awake' && policy.nextTransitionAt && (
-                <Typography variant="caption" color="text.disabled">
-                  sleep {fmtNext(policy.nextTransitionAt)}
-                </Typography>
-              )}
-              {policy.timezone && policy.timezone !== 'UTC' && (
-                <Typography variant="caption" color="text.disabled">{policy.timezone}</Typography>
-              )}
-              {policy.namespaceFilter && (
-                <Tooltip title={`Namespaces: ${policy.namespaceFilter}`}>
-                  <Chip
-                    label={`${policy.namespaceFilter.split(',').length} ns`}
-                    size="small"
-                    sx={{ height: 16, fontSize: 10, bgcolor: 'rgba(124,58,237,0.12)', color: 'primary.light' }}
-                  />
-                </Tooltip>
-              )}
-            </Box>
           </Box>
 
           {/* Actions */}
@@ -232,6 +205,60 @@ export default function PolicyCard({
             </Tooltip>
           </Box>
         </Box>
+
+        {/* Row 2: Full-width timeline + stats panel */}
+        {policy.sleepWindows && policy.sleepWindows.length > 0 && (
+          <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start' }}>
+            {/* Timeline — fills available width */}
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <MiniTimeline windows={policy.sleepWindows} height={36} timezone={policy.timezone} />
+            </Box>
+
+            {/* Stats summary panel */}
+            <Box sx={{ flexShrink: 0, display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'flex-start', pt: 0.25 }}>
+              <Box>
+                <Typography variant="caption" color="text.disabled" sx={STAT_CAPTION_SX}>Schedule</Typography>
+                <Typography variant="body2" color="text.secondary" sx={STAT_VALUE_SX}>
+                  {windowsToText(policy.sleepWindows)}
+                </Typography>
+              </Box>
+              {weeklyStats && (
+                <Box>
+                  <Typography variant="caption" color="text.disabled" sx={STAT_CAPTION_SX}>Weekly</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={STAT_VALUE_SX}>
+                    {weeklyStats.sleepHours}h sleep · {weeklyStats.awakeHours}h awake
+                  </Typography>
+                </Box>
+              )}
+              {transitionLabel && (
+                <Box>
+                  <Typography variant="caption" color="text.disabled" sx={STAT_CAPTION_SX}>Next</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={STAT_VALUE_SX}>
+                    {transitionLabel}
+                  </Typography>
+                </Box>
+              )}
+              {policy.timezone && policy.timezone !== 'UTC' && (
+                <Box>
+                  <Typography variant="caption" color="text.disabled" sx={STAT_CAPTION_SX}>Timezone</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={STAT_VALUE_SX}>
+                    {policy.timezone}
+                  </Typography>
+                </Box>
+              )}
+              {policy.namespaceFilter && (
+                <Box>
+                  <Typography variant="caption" color="text.disabled" sx={STAT_CAPTION_SX}>Namespaces</Typography>
+                  <Tooltip title={policy.namespaceFilter}>
+                    <Typography variant="body2" color="text.secondary" sx={STAT_VALUE_SX}>
+                      {policy.namespaceFilter.split(',').length} ns
+                    </Typography>
+                  </Tooltip>
+                </Box>
+              )}
+            </Box>
+          </Box>
+        )}
       </Paper>
 
       <Dialog
