@@ -178,18 +178,18 @@ before merging.
 
 ### CI (`ci.yml`)
 
-Triggered on PRs and pushes to `master` when relevant paths change.
+Triggered on PRs to `master` when relevant paths change (frontend, backend, Dockerfile, helm, workflows).
 
 | Job | What it checks |
 | :-- | :------------- |
 | Frontend build | `npm ci` and `npm run build` |
 | Backend build | `go vet`, `go test` with coverage, `go build`, golangci-lint, OpenAPI spec sync |
 | Helm lint | `helm lint helm/kube-phoenix` |
-| Go Report Card | Triggers rescan at goreportcard.com (push to `master` only) |
+| Docker build check | Dockerfile lint (hadolint) and build verification |
 
 ### Security (`security.yml`)
 
-Triggered on PRs, pushes to `master`, and weekly (Monday 06:00 UTC).
+Triggered on PRs to `master` (same path filters as CI) and weekly (Monday 06:00 UTC).
 
 | Job | What it checks |
 | :-- | :------------- |
