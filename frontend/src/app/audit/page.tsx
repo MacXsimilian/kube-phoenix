@@ -124,7 +124,7 @@ export default function AuditLogPage() {
   if (user && !canViewAudit(user.permissions)) return null
 
   return (
-    <Box sx={{ maxWidth: 1100, mx: 'auto', p: { xs: 2, md: 4 } }}>
+    <Box>
       <Typography variant="h5" fontWeight={700} gutterBottom>Audit Log</Typography>
       <Typography variant="body2" color="text.secondary" mb={3}>
         Track who did what and when.

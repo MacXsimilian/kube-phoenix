@@ -22,7 +22,7 @@ import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined'
 import PeopleOutlinedIcon from '@mui/icons-material/PeopleOutlined'
 import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined'
 import PolicyOutlinedIcon from '@mui/icons-material/PolicyOutlined'
-import EventNoteOutlinedIcon from '@mui/icons-material/EventNoteOutlined'
+import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined'
 import { useAuth } from '@/lib/auth'
 import { canManageUsers, canViewAudit } from '@/lib/rbac'
 
@@ -39,7 +39,7 @@ const NAV: NavItem[] = [
   { label: 'Cluster State', href: '/cluster', icon: <HubOutlinedIcon fontSize="small" /> },
   { label: 'Guardrails', href: '/guardrails', icon: <SecurityOutlinedIcon fontSize="small" /> },
   { label: 'Policies', href: '/policies', icon: <PolicyOutlinedIcon fontSize="small" /> },
-  { label: 'Exceptions', href: '/exceptions', icon: <EventNoteOutlinedIcon fontSize="small" /> },
+  { label: 'Exceptions', href: '/exceptions', icon: <FlagOutlinedIcon fontSize="small" /> },
   { label: 'History', href: '/history', icon: <HistoryOutlinedIcon fontSize="small" /> },
   { label: 'Users', href: '/users', icon: <PeopleOutlinedIcon fontSize="small" />, requirePerm: canManageUsers },
   { label: 'Audit Log', href: '/audit', icon: <AssignmentOutlinedIcon fontSize="small" />, requirePerm: canViewAudit },
