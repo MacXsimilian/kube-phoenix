@@ -105,6 +105,7 @@ export interface PodDetail {
 // ─── Policy model ─────────────────────────────────────────────────────────────
 
 export interface SleepWindow {
+  name?: string        // optional display name (e.g. "EU Maintenance")
   daysOfWeek: number[] // 0=Sun, 1=Mon, ..., 6=Sat
   startTime: string    // "HH:MM" 24h
   endTime: string      // "HH:MM" 24h

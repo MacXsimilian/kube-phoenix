@@ -15,6 +15,8 @@ import AddIcon from '@mui/icons-material/Add'
 import type { SleepWindow } from '@/lib/types'
 import { windowsToText, isOvernight } from '@/lib/windowUtils'
 
+const MAX_WINDOWS = 10
+
 const DAYS = [
   { value: 1, label: 'Mon' },
   { value: 2, label: 'Tue' },
@@ -24,6 +26,34 @@ const DAYS = [
   { value: 6, label: 'Sat' },
   { value: 0, label: 'Sun' },
 ]
+
+const DAY_NAMES_BY_VALUE = Object.fromEntries(DAYS.map(d => [d.value, d.label]))
+
+function deriveWindowPlaceholder(w: SleepWindow, idx: number): string {
+  if (w.daysOfWeek.length === 0) return `Window ${idx + 1}`
+
+  const sorted = [...w.daysOfWeek].sort((a, b) => a - b)
+  const isWeekdays = sorted.length === 5 && [1, 2, 3, 4, 5].every(d => sorted.includes(d))
+  const isWeekends = sorted.length === 2 && sorted[0] === 0 && sorted[1] === 6
+  const isDaily = sorted.length === 7
+
+  let dayPart: string
+  if (isDaily) dayPart = 'Daily'
+  else if (isWeekdays) dayPart = 'Weekday'
+  else if (isWeekends) dayPart = 'Weekend'
+  else dayPart = sorted.map(d => DAY_NAMES_BY_VALUE[d]).join(', ')
+
+  if (w.allDay) return isWeekdays ? 'Weekdays' : isWeekends ? 'Weekends' : dayPart
+
+  const startHour = parseInt(w.startTime.split(':')[0], 10)
+  let timePart: string
+  if (startHour >= 17 || startHour < 4) timePart = 'Nights'
+  else if (startHour >= 4 && startHour < 9) timePart = 'Mornings'
+  else if (startHour >= 9 && startHour < 13) timePart = 'Midday'
+  else timePart = 'Afternoons'
+
+  return `${dayPart} ${timePart}`
+}
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 const MINUTES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]
@@ -45,24 +75,24 @@ interface Preset {
 const PRESETS: Preset[] = [
   {
     label: 'Weekday nights',
-    windows: [{ daysOfWeek: [1, 2, 3, 4, 5], startTime: '19:00', endTime: '07:00', allDay: false }],
+    windows: [{ name: 'Weekday Nights', daysOfWeek: [1, 2, 3, 4, 5], startTime: '19:00', endTime: '07:00', allDay: false }],
   },
   {
     label: 'Weekends',
-    windows: [{ daysOfWeek: [0, 6], startTime: '00:00', endTime: '00:00', allDay: true }],
+    windows: [{ name: 'Weekends', daysOfWeek: [0, 6], startTime: '00:00', endTime: '00:00', allDay: true }],
   },
   {
     label: 'Nights + weekends',
     windows: [
-      { daysOfWeek: [1, 2, 3, 4, 5], startTime: '19:00', endTime: '07:00', allDay: false },
-      { daysOfWeek: [0, 6], startTime: '00:00', endTime: '00:00', allDay: true },
+      { name: 'Weekday Nights', daysOfWeek: [1, 2, 3, 4, 5], startTime: '19:00', endTime: '07:00', allDay: false },
+      { name: 'Weekends', daysOfWeek: [0, 6], startTime: '00:00', endTime: '00:00', allDay: true },
     ],
   },
   {
     label: 'Business hours',
     windows: [
-      { daysOfWeek: [1, 2, 3, 4, 5], startTime: '17:00', endTime: '09:00', allDay: false },
-      { daysOfWeek: [0, 6], startTime: '00:00', endTime: '00:00', allDay: true },
+      { name: 'After Hours', daysOfWeek: [1, 2, 3, 4, 5], startTime: '17:00', endTime: '09:00', allDay: false },
+      { name: 'Weekends', daysOfWeek: [0, 6], startTime: '00:00', endTime: '00:00', allDay: true },
     ],
   },
 ]
@@ -173,23 +203,34 @@ export default function WindowPicker({
                 justifyContent: 'space-between',
               }}
             >
-              <Typography
-                variant="caption"
+              <Box
+                component="input"
+                value={w.name ?? ''}
+                placeholder={windows.length === 1 ? 'Sleep Window' : deriveWindowPlaceholder(w, idx)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateWindow(idx, { name: e.target.value || undefined })}
                 sx={{
                   fontWeight: 700,
                   letterSpacing: '0.08em',
                   textTransform: 'uppercase',
                   color: 'text.secondary',
                   fontSize: '0.68rem',
+                  fontFamily: 'inherit',
+                  border: 'none',
+                  outline: 'none',
+                  bgcolor: 'transparent',
+                  p: 0,
+                  width: '100%',
+                  maxWidth: 220,
+                  '&::placeholder': { color: 'text.disabled', opacity: 1 },
+                  '&:hover': { color: 'text.primary' },
+                  '&:focus': { color: 'text.primary' },
                 }}
-              >
-                {windows.length === 1 ? 'Sleep Window' : `Window ${idx + 1}`}
-              </Typography>
+              />
               {windows.length > 1 && (
                 <IconButton
                   size="small"
                   onClick={() => removeWindow(idx)}
-                  aria-label={`Remove window ${idx + 1}`}
+                  aria-label={`Remove ${w.name || deriveWindowPlaceholder(w, idx)}`}
                   sx={{ ml: 0.5, p: 0.25 }}
                 >
                   <DeleteOutlineIcon sx={{ fontSize: 16 }} />
@@ -322,8 +363,8 @@ export default function WindowPicker({
         )
       })}
 
-      <Button size="small" startIcon={<AddIcon />} onClick={addWindow} sx={{ mt: 0.5, mb: 1 }}>
-        Add window
+      <Button size="small" startIcon={<AddIcon />} onClick={addWindow} disabled={windows.length >= MAX_WINDOWS} sx={{ mt: 0.5, mb: 1 }}>
+        {windows.length >= MAX_WINDOWS ? `Limit reached (${MAX_WINDOWS})` : 'Add window'}
       </Button>
 
       {/* Summary */}

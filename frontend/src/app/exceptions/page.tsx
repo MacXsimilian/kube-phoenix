@@ -26,7 +26,7 @@ import ExceptionDialog from '@/components/policies/ExceptionDialog'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules } from '@/lib/rbac'
 import { fmtDt } from '@/lib/formatters'
-import { EXECUTION_STATUS_COLORS, EXECUTION_STATUS_FALLBACK } from '@/lib/statusColors'
+import { EXECUTION_STATUS_COLORS, EXECUTION_STATUS_FALLBACK, TYPE_LABELS, TYPE_LABEL_FALLBACK } from '@/lib/statusColors'
 
 const STATUS_TABS = ['all', 'pending', 'active', 'completed', 'cancelled']
 
@@ -124,10 +124,11 @@ export default function ExceptionsPage() {
           <TableBody>
             {exceptions.map(ex => {
               const statusColor = EXECUTION_STATUS_COLORS[ex.status] ?? EXECUTION_STATUS_FALLBACK
+              const typeLabel = TYPE_LABELS[ex.exceptionType] ?? TYPE_LABEL_FALLBACK
               return (
                 <TableRow key={ex.id} hover>
                   <TableCell>
-                    <Chip label={ex.exceptionType} size="small" sx={{ fontSize: 10 }} />
+                    <Chip label={typeLabel.label} size="small" sx={{ fontSize: 10, color: typeLabel.color, bgcolor: typeLabel.bg }} />
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     {fmtDt(ex.startsAt)}<br />
