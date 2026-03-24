@@ -38,6 +38,19 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           target-branch: ${{ github.ref_name }}
 
+  # ── Go Report Card refresh (runs on every merge to master) ──────────────────
+  goreportcard:
+    name: Refresh Go Report Card
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Trigger rescan
+        run: |
+          curl -s -X POST https://goreportcard.com/checks \
+            -d "repo=github.com/macxsimilian/kube-phoenix/backend"
+
   docker:
     name: Docker release build & push
     runs-on: ubuntu-24.04

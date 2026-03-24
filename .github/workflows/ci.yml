@@ -1,15 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [master]
-    paths:
-      - "frontend/**"
-      - "backend/**"
-      - "openapi.yaml"
-      - "Dockerfile"
-      - "helm/**"
-      - ".github/workflows/**"
   pull_request:
     branches: [master]
     paths:
@@ -205,18 +196,4 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── Go Report Card refresh ───────────────────────────────────────────────────
-  goreportcard:
-    name: Refresh Go Report Card
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    needs: [backend]
-    permissions:
-      contents: read
-    steps:
-      - name: Trigger rescan
-        run: |
-          curl -s -X POST https://goreportcard.com/checks \
-            -d "repo=github.com/macxsimilian/kube-phoenix/backend"
 
