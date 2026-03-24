@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.11](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.10...v0.3.11) (2026-03-24)
+
+
+### Bug Fixes
+
+* **frontend:** replace Exceptions icon and fix page width consistency ([#230](https://github.com/MacXsimilian/kube-phoenix/issues/230)) ([78a66e8](https://github.com/MacXsimilian/kube-phoenix/commit/78a66e801ce97df73ea7785b4c4d3a357bc876bf))
+
 ## [0.3.10](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.9...v0.3.10) (2026-03-24)
 
 
