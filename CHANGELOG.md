@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.13](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.12...v0.3.13) (2026-03-24)
+
+
+### Features
+
+* **frontend:** rework PolicyCard to match V3 Wide Timeline prototype ([ebf5f5a](https://github.com/MacXsimilian/kube-phoenix/commit/ebf5f5aafd7e3928c408a8333b7e77453093ea54))
+* **frontend:** rework PolicyCard to V3 Wide Timeline prototype ([#235](https://github.com/MacXsimilian/kube-phoenix/issues/235)) ([ebf5f5a](https://github.com/MacXsimilian/kube-phoenix/commit/ebf5f5aafd7e3928c408a8333b7e77453093ea54))
+
 ## [0.3.12](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.11...v0.3.12) (2026-03-24)
 
 
