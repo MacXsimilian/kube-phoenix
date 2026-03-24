@@ -562,6 +562,10 @@ components:
       description: A recurring sleep window defined by days of the week and a time range.
       type: object
       properties:
+        name:
+          type: string
+          description: Optional display name for the window (e.g. "EU Maintenance").
+          example: "Weekday Nights"
         daysOfWeek:
           type: array
           items:
@@ -605,6 +609,7 @@ components:
         sleepWindows:
           type: ["array", "null"]
           description: Sleep windows defining when workloads should be sleeping.
+          maxItems: 10
           items:
             $ref: "#/components/schemas/SleepWindow"
         timezone:
@@ -668,6 +673,7 @@ components:
         sleepWindows:
           type: array
           description: Sleep windows defining when workloads should be sleeping.
+          maxItems: 10
           items:
             $ref: "#/components/schemas/SleepWindow"
         timezone:
@@ -702,6 +708,7 @@ components:
         sleepWindows:
           type: array
           description: Sleep windows — replaces all existing windows when provided.
+          maxItems: 10
           items:
             $ref: "#/components/schemas/SleepWindow"
         timezone:

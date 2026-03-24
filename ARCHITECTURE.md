@@ -241,7 +241,7 @@ erDiagram
     policies {
         bigint id PK
         varchar name
-        jsonb sleep_windows "SleepWindow array"
+        jsonb sleep_windows "SleepWindow array (max 10)"
         varchar timezone
         varchar mode "plan | apply"
         boolean enabled
@@ -488,7 +488,7 @@ and connection management.
 
 ### Why window-based scheduling (not cron)
 
-Sleep windows (`daysOfWeek` + `startTime` + `endTime` + `timezone`) are
+Sleep windows (`name` + `daysOfWeek` + `startTime` + `endTime` + `timezone`) are
 evaluated as time ranges. This model naturally handles overnight windows
 (e.g., 19:00-07:00), multi-day spans, and timezone-aware evaluation. Cron
 expressions describe points in time, not ranges, making them a poor fit for

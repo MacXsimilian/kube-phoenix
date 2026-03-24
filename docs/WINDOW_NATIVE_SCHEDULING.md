@@ -14,10 +14,11 @@ The previous cron-based system compiled sleep windows into `robfig/cron` express
 
 ```go
 type SleepWindow struct {
-    DaysOfWeek []int  `json:"daysOfWeek"` // 0=Sun, 1=Mon, ..., 6=Sat
-    StartTime  string `json:"startTime"`  // "HH:MM" 24h; ignored when AllDay=true
-    EndTime    string `json:"endTime"`    // "HH:MM" 24h; ignored when AllDay=true
-    AllDay     bool   `json:"allDay"`     // entire calendar day is sleeping
+    Name       string `json:"name,omitempty"` // optional display name (e.g. "EU Maintenance")
+    DaysOfWeek []int  `json:"daysOfWeek"`     // 0=Sun, 1=Mon, ..., 6=Sat
+    StartTime  string `json:"startTime"`      // "HH:MM" 24h; ignored when AllDay=true
+    EndTime    string `json:"endTime"`        // "HH:MM" 24h; ignored when AllDay=true
+    AllDay     bool   `json:"allDay"`         // entire calendar day is sleeping
 }
 ```
 
@@ -354,12 +355,14 @@ sequenceDiagram
   "labelSelector": "team=backend",
   "sleepWindows": [
     {
+      "name": "Weekday Nights",
       "daysOfWeek": [1, 2, 3, 4, 5],
       "startTime": "19:00",
       "endTime": "07:00",
       "allDay": false
     },
     {
+      "name": "Weekends",
       "daysOfWeek": [0, 6],
       "startTime": "00:00",
       "endTime": "00:00",
@@ -385,7 +388,8 @@ The response wraps the stored `Policy` with two computed fields:
 | Field | Rule |
 |-------|------|
 | `name` | Required, max 255 characters |
-| `sleepWindows` | Required, at least one window |
+| `sleepWindows` | Required, 1–10 windows |
+| `sleepWindows[].name` | Optional display name |
 | `sleepWindows[].daysOfWeek` | Non-empty, values 0-6, no duplicates |
 | `sleepWindows[].startTime` / `endTime` | `HH:MM` format (two-digit hour and minute), must differ |
 | `sleepWindows[].allDay` | When true, `startTime`/`endTime` are ignored |
@@ -412,12 +416,13 @@ The response wraps the stored `Policy` with two computed fields:
 The `WindowPicker` component provides the schedule editing UI:
 
 - **Preset buttons** — one-click templates for common patterns: "Weekday nights", "Weekends", "Nights + weekends", "Business hours".
-- **Per-window cards** — each window is an independent card with:
+- **Per-window cards** (max 10) — each window is an independent card with:
+  - An **inline-editable name** — click the header to set a custom name (e.g. "EU Maintenance"). When empty, a smart placeholder is auto-derived from the window's days and time range (e.g. "Weekday Nights").
   - An **all-day toggle** (MUI Switch) that hides time pickers when enabled.
   - **Sleep/Wake time pickers** — hour and minute dropdowns (5-minute granularity).
   - **Day-of-week buttons** — toggle individual days with visual press state.
   - **"next day" chip** — appears when a window is overnight (end <= start).
-- **Add/remove windows** — users can add multiple independent windows, each with its own days and times.
+- **Add/remove windows** — users can add up to 10 independent windows, each with its own name, days, and times. The "Add window" button disables at the limit.
 - **Summary text** — `windowsToText()` renders a human-readable description below the picker (e.g., "Mon-Fri 7 PM - 7 AM, Sat-Sun all day").
 - **Never-wake warning** — displayed when all 7 days are covered by all-day windows.
 
@@ -446,6 +451,7 @@ In the **CreatePolicyDialog**, the timeline is wrapped in a **dashboard mini-car
 
 ```typescript
 interface SleepWindow {
+  name?: string         // optional display name (e.g. "EU Maintenance")
   daysOfWeek: number[]  // 0=Sun, 1=Mon, ..., 6=Sat
   startTime: string     // "HH:MM" 24h
   endTime: string       // "HH:MM" 24h
