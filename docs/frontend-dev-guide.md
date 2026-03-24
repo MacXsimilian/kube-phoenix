@@ -596,13 +596,14 @@ All three timeline components use raw SVG for rendering. They share timeline mat
 - Used on the policy detail page
 
 **MiniTimeline** (`MiniTimeline.tsx`):
-- Single-row, 24h bar showing only today's sleep windows
-- Fixed width 280px, height 16px (configurable via props)
-- Renders sleep blocks for today and yesterday's overnight bleed-in
-- Hour markers at 6, 12, 18
-- Current time as a thin red vertical line
+- Sparkline-style 24h waveform showing today's sleep/awake state
+- Awake = line at top with green gradient fill, Sleep = line at bottom with purple gradient fill
+- Smooth step transitions between states at 15-minute resolution
+- Now-marker with vertical line and circle dot at current position
+- Timezone-aware via the policy's timezone
+- Gradient SVG IDs use `useId()` for uniqueness across multiple policy cards
 - Wrapped in a Tooltip showing the full `windowsToText()` description
-- Used on `PolicyCard` in the policy list
+- Used on `PolicyCard` in the policy list (200×28px)
 
 **Shared timeline math:**
 
@@ -626,7 +627,9 @@ The history page composes `ExecutionTable` and `LogViewer`. It supports deep-lin
 
 - Paginated table using `TablePagination` (10/20/50 rows per page)
 - Refetches every 10s to catch newly completed executions
-- Columns: Started (formatted date), Direction (sleep/wake icon), Mode chip, Status via `StatusChip`, Duration, Summary (icons for scaled/drained/deleted/errors)
+- **Filter dropdowns** for Status (running/success/failed/interrupted/skipped) and Direction (sleep/wake)
+- Columns: Started (`fmtDtShort` with year), Policy name (from preloaded relation), Direction (sleep/wake icon), Mode chip (using `MODE_COLORS`), Status via `StatusChip`, Duration (`fmtDuration`), Summary (icons for scaled/drained/deleted/errors)
+- Header styling extracted to `HEADER_SX` constant; chip sizing uses shared `SMALL_CHIP_SX`
 - Row click calls `onSelect(execution)`, which opens the `LogViewer` drawer
 
 #### LogViewer
@@ -745,6 +748,8 @@ Data is loaded from the API as CSV strings and split with `fromCsv()`. On save, 
 | `pct(used, total)` | `(number, number) -> number` | Safe percentage: returns 0 when total is 0 | NodesTable, NodeDetailDrawer |
 | `pctColor(p, isDark)` | `(number, boolean) -> string` | Color by percentage threshold: green < 65%, amber 65-84%, red >= 85% | NodesTable, NodeDetailDrawer |
 | `fmtDt(iso)` | `string \| null -> string` | ISO to locale string, or em-dash for null | PolicyDetailPage, ExceptionsSection, OverridesSection, ExceptionsPage |
+| `fmtDtShort(iso)` | `string \| null -> string` | ISO to short date with year: `"Mar 24, 2026, 2:15 PM"` | ExecutionTable, ExecutionHistoryTable |
+| `fmtDuration(start, end)` | `(string, string \| null) -> string` | Duration between two ISO timestamps: `"5s"`, `"2m 30s"`, or `"Running…"` | ExecutionTable, ExecutionHistoryTable |
 | `timeAgo(iso)` | `string -> string` | ISO to past relative: `"just now"`, `"5m ago"`, `"2h ago"`, `"3d ago"` | ActivityFeed |
 
 ### lib/windowUtils.ts
@@ -787,10 +792,12 @@ Data is loaded from the API as CSV strings and split with `fromCsv()`. On save, 
 | `EXECUTION_STATUS_COLORS` | `Record<string, { bg, color }>` | Execution and exception statuses (running, success, failed, interrupted, skipped, pending, active, completed, cancelled) |
 | `EXECUTION_STATUS_FALLBACK` | `{ bg, color }` | Default for unknown status strings |
 | `MODE_COLORS` | `Record<string, { bg, color }>` | Plan (blue) and Apply (amber) mode chips |
+| `SMALL_CHIP_SX` | `{ height: 18, fontSize: 10 }` | Shared sx for small chips (mode, type badges) |
 | `TYPE_LABELS` | `Record<string, { label, color, bg }>` | Override/exception types (stay_awake, force_sleep, skip_sleep, skip_wake) |
 | `TYPE_LABEL_FALLBACK` | `{ label, color, bg }` | Default for unknown type strings |
 | `ACTION_LABELS` | `Record<string, string>` | Human-readable labels for audit log actions (e.g. `policy.update` → "Policy Update") |
 | `formatActionLabel(action)` | `(string) → string` | Returns the label for an action key, with auto-formatting fallback for unknown actions |
+| `actionColor(action)` | `(string) → MUI color` | Derives semantic chip color from action verb suffix (`.create` → success, `.delete` → error, `.update` → info) |
 | `LOG_LEVEL_COLORS_DARK` | `Record<LogLine['level'], string>` | Log line text colors (dark mode) |
 | `LOG_LEVEL_COLORS_LIGHT` | `Record<LogLine['level'], string>` | Log line text colors (light mode) |
 

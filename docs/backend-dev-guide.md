@@ -1181,7 +1181,9 @@ List endpoints that support pagination use `page` and `pageSize` (or `page_size`
 - `pageSize` has endpoint-specific defaults (20 for executions, 50 for audit logs) and a max of 100.
 - Response includes `items` (array) and `total` (count before pagination).
 
-Example: `GET /api/policy-executions?policy_id=1&status=success&page=0&page_size=20`
+Example: `GET /api/policy-executions?policy_id=1&status=success&direction=sleep&page=0&page_size=20`
+
+Supported filters: `policy_id` (uint), `status` (running/success/failed/interrupted/skipped), `direction` (sleep/wake).
 
 ### Audit Logging
 

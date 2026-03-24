@@ -65,7 +65,19 @@ export function createAppTheme(mode: 'light' | 'dark') {
         styleOverrides: {
           root: { borderRadius: 8 },
           notchedOutline: {
-            '& legend': { fontSize: '0.78em' },
+            '& legend': { fontSize: '0.85em' },
+          },
+        },
+      },
+      MuiInputLabel: {
+        styleOverrides: {
+          outlined: {
+            '&.MuiInputLabel-shrink': {
+              transform: 'translate(14px, -9px) scale(0.75)',
+            },
+            '&.MuiInputLabel-sizeSmall.MuiInputLabel-shrink': {
+              transform: 'translate(14px, -9px) scale(0.75)',
+            },
           },
         },
       },

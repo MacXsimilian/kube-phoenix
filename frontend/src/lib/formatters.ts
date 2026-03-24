@@ -61,6 +61,25 @@ export function fmtDt(iso: string | null | undefined): string {
   return new Date(iso).toLocaleString()
 }
 
+/** Format an ISO date-time string as a short date: "Mar 24, 2026, 2:15 PM" */
+export function fmtDtShort(iso: string | null | undefined): string {
+  if (!iso) return '\u2014'
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
+/** Format execution duration from start/end ISO timestamps */
+export function fmtDuration(startedAt: string, finishedAt: string | null): string {
+  if (!finishedAt) return 'Running\u2026'
+  const seconds = Math.floor(
+    (new Date(finishedAt).getTime() - new Date(startedAt).getTime()) / 1000
+  )
+  if (seconds < 60) return `${seconds}s`
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+}
+
 /** Format an ISO timestamp as a relative past time: "just now", "5m ago", "2h ago", "3d ago" */
 export function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()

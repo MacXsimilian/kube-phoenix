@@ -148,10 +148,11 @@ func (s *Store) GetPolicyExecution(id uint) (*PolicyExecution, error) {
 }
 
 type PolicyExecutionFilter struct {
-	PolicyID *uint
-	Status   string
-	Page     int
-	PageSize int
+	PolicyID  *uint
+	Status    string
+	Direction string
+	Page      int
+	PageSize  int
 }
 
 type PolicyExecutionPage struct {
@@ -166,6 +167,9 @@ func (s *Store) ListPolicyExecutions(f PolicyExecutionFilter) (*PolicyExecutionP
 	}
 	if f.Status != "" {
 		query = query.Where("status = ?", f.Status)
+	}
+	if f.Direction != "" {
+		query = query.Where("direction = ?", f.Direction)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {

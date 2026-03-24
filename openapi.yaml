@@ -2009,6 +2009,12 @@ paths:
           in: query
           schema:
             type: string
+            enum: [running, success, failed, interrupted, skipped]
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [sleep, wake]
         - name: page
           in: query
           schema:
