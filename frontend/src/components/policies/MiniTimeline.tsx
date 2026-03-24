@@ -1,6 +1,6 @@
 'use client'
 
-import { useId } from 'react'
+import { useId, useState, useEffect, useMemo } from 'react'
 import Box from '@mui/material/Box'
 import Tooltip from '@mui/material/Tooltip'
 import type { SleepWindow } from '@/lib/types'
@@ -14,43 +14,64 @@ const VB_W = 400
 const WAVEFORM_STROKE = 1.5
 const NOW_DOT_R = 3.5
 const HOUR_TICKS = [0, 3, 6, 9, 12, 15, 18, 21, 24]
+const TICK_H = 3
+const UPDATE_INTERVAL_MS = 30_000
 
 /**
  * Sparkline-style 24h timeline showing sleep/awake as a waveform.
  * The waveform SVG stretches to fill the container width.
- * Hour labels are rendered as a CSS flex row to avoid SVG distortion.
+ * Hour tick marks are rendered inside the SVG; labels via CSS for crisp text.
+ * Now marker updates every 30 seconds.
  */
 export default function MiniTimeline({
   windows,
-  height = 36,
+  height = 48,
   timezone,
 }: {
   windows: SleepWindow[]
   height?: number
   timezone?: string
 }) {
-  if (!windows || windows.length === 0) return null
+  const uid = useId()
+  const gradIdAwake = `spark-awake-${uid}`
+  const gradIdSleep = `spark-sleep-${uid}`
 
-  const H = height
-  const { dayOfWeek: todayDow, fractionalHour: currentHour } = nowInTimezone(timezone)
+  // Real-time current hour — ticks every 30s
+  const [currentHour, setCurrentHour] = useState(() => nowInTimezone(timezone).fractionalHour)
+  const [todayDow, setTodayDow] = useState(() => nowInTimezone(timezone).dayOfWeek)
 
-  // Build sleeping ranges for today
-  const yesterdayDow = (todayDow + 6) % 7
-  const sleepRanges: { start: number; end: number }[] = []
-  for (const win of windows) {
-    if (win.daysOfWeek.includes(todayDow)) {
-      if (win.allDay) {
-        sleepRanges.push({ start: 0, end: 24 })
-      } else if (isOvernight(win)) {
-        sleepRanges.push({ start: timeToHours(win.startTime), end: 24 })
-      } else {
-        sleepRanges.push({ start: timeToHours(win.startTime), end: timeToHours(win.endTime) })
+  useEffect(() => {
+    const id = setInterval(() => {
+      const now = nowInTimezone(timezone)
+      setCurrentHour(now.fractionalHour)
+      setTodayDow(now.dayOfWeek)
+    }, UPDATE_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [timezone])
+
+  // Build sleeping ranges for today (memoized to avoid recalc on unrelated re-renders)
+  const sleepRanges = useMemo(() => {
+    if (!windows || windows.length === 0) return []
+    const yesterdayDow = (todayDow + 6) % 7
+    const ranges: { start: number; end: number }[] = []
+    for (const win of windows) {
+      if (win.daysOfWeek.includes(todayDow)) {
+        if (win.allDay) {
+          ranges.push({ start: 0, end: 24 })
+        } else if (isOvernight(win)) {
+          ranges.push({ start: timeToHours(win.startTime), end: 24 })
+        } else {
+          ranges.push({ start: timeToHours(win.startTime), end: timeToHours(win.endTime) })
+        }
+      }
+      if (win.daysOfWeek.includes(yesterdayDow) && isOvernight(win)) {
+        ranges.push({ start: 0, end: timeToHours(win.endTime) })
       }
     }
-    if (win.daysOfWeek.includes(yesterdayDow) && isOvernight(win)) {
-      sleepRanges.push({ start: 0, end: timeToHours(win.endTime) })
-    }
-  }
+    return ranges
+  }, [windows, todayDow])
+
+  if (!windows || windows.length === 0) return null
 
   function isSleeping(hr: number): boolean {
     return sleepRanges.some(r => hr >= r.start && hr < r.end)
@@ -60,11 +81,11 @@ export default function MiniTimeline({
   const points: { x: number; y: number }[] = []
   for (let hr = 0; hr <= 24; hr += STEP) {
     const x = (hr / 24) * VB_W
-    const y = isSleeping(hr) ? H - BOT_PAD : TOP_PAD
+    const y = isSleeping(hr) ? height - BOT_PAD : TOP_PAD
     points.push({ x, y })
   }
 
-  // Smooth transitions: insert intermediate points at state changes
+  // Insert intermediate points at state changes for sharp transitions
   const smoothed: { x: number; y: number }[] = []
   for (let i = 0; i < points.length; i++) {
     smoothed.push(points[i])
@@ -77,57 +98,69 @@ export default function MiniTimeline({
 
   const lineD = smoothed.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
   const areaAboveD = `${lineD} L${VB_W},0 L0,0 Z`
-  const areaBelowD = `${lineD} L${VB_W},${H} L0,${H} Z`
+  const areaBelowD = `${lineD} L${VB_W},${height} L0,${height} Z`
 
   const nowPct = (currentHour / 24) * 100
-  const nowX = (currentHour / 24) * VB_W
-  const nowY = isSleeping(currentHour) ? H - BOT_PAD : TOP_PAD
-
-  const uid = useId()
-  const gradIdAwake = `spark-awake-${uid}`
-  const gradIdSleep = `spark-sleep-${uid}`
+  const nowY = isSleeping(currentHour) ? height - BOT_PAD : TOP_PAD
+  const totalSvgH = height + TICK_H
 
   return (
     <Tooltip title={windowsToText(windows)} placement="top">
       <Box sx={{ width: '100%' }}>
-        {/* Waveform SVG — stretches horizontally, fixed height */}
+        {/* Waveform SVG with tick marks */}
         <Box sx={{ position: 'relative' }}>
           <svg
             width="100%"
-            height={H}
-            viewBox={`0 0 ${VB_W} ${H}`}
+            height={totalSvgH}
+            viewBox={`0 0 ${VB_W} ${totalSvgH}`}
             preserveAspectRatio="none"
             style={{ display: 'block', borderRadius: 4 }}
           >
             <defs>
               <linearGradient id={gradIdAwake} x1={0} x2={0} y1={0} y2={1}>
                 <stop offset="0%" stopColor={TIMELINE_COLORS.awake} stopOpacity={0.25} />
-                <stop offset="100%" stopColor={TIMELINE_COLORS.awake} stopOpacity={0.05} />
+                <stop offset="100%" stopColor={TIMELINE_COLORS.awake} stopOpacity={0.03} />
               </linearGradient>
               <linearGradient id={gradIdSleep} x1={0} x2={0} y1={0} y2={1}>
-                <stop offset="0%" stopColor={TIMELINE_COLORS.sleep} stopOpacity={0.1} />
-                <stop offset="100%" stopColor={TIMELINE_COLORS.sleep} stopOpacity={0.5} />
+                <stop offset="0%" stopColor={TIMELINE_COLORS.sleep} stopOpacity={0.08} />
+                <stop offset="100%" stopColor={TIMELINE_COLORS.sleep} stopOpacity={0.45} />
               </linearGradient>
             </defs>
 
-            <path d={areaAboveD} fill={`url(#${gradIdAwake})`} />
-            <path d={areaBelowD} fill={`url(#${gradIdSleep})`} />
+            <path d={areaAboveD} fill={`url(#${gradIdSleep})`} />
+            <path d={areaBelowD} fill={`url(#${gradIdAwake})`} />
             <path
               d={lineD}
               fill="none"
-              stroke="rgba(148,163,184,0.4)"
+              stroke="rgba(148,163,184,0.35)"
               strokeWidth={WAVEFORM_STROKE}
               vectorEffect="non-scaling-stroke"
             />
+
+            {/* Tick marks at hour positions */}
+            {HOUR_TICKS.map(h => {
+              const x = (h / 24) * VB_W
+              return (
+                <line
+                  key={h}
+                  x1={x}
+                  y1={height}
+                  x2={x}
+                  y2={height + TICK_H}
+                  stroke="#475569"
+                  strokeWidth={1}
+                />
+              )
+            })}
           </svg>
 
-          {/* Now marker — positioned with CSS % to avoid SVG distortion */}
+          {/* Now marker — positioned with CSS % for crisp rendering */}
           <Box
             sx={{
               position: 'absolute',
               left: `${nowPct}%`,
               top: 0,
-              bottom: 0,
+              height,
               width: 0,
               pointerEvents: 'none',
             }}
@@ -140,7 +173,7 @@ export default function MiniTimeline({
                 bottom: 0,
                 width: '1px',
                 bgcolor: TIMELINE_COLORS.exceptionBg,
-                opacity: 0.5,
+                opacity: 0.45,
               }}
             />
             <Box
@@ -152,28 +185,28 @@ export default function MiniTimeline({
                 height: NOW_DOT_R * 2,
                 borderRadius: '50%',
                 bgcolor: TIMELINE_COLORS.exceptionBg,
-                border: '1.5px solid rgba(15,15,19,0.8)',
+                border: '1.5px solid rgba(15,15,19,0.9)',
               }}
             />
           </Box>
         </Box>
 
-        {/* Hour labels — CSS flex, not SVG, so they don't distort */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.25, px: 0 }}>
-          {HOUR_TICKS.filter(h => h < 24).map(hr => (
+        {/* Hour labels — absolute positioned to match waveform coordinates */}
+        <Box sx={{ position: 'relative', height: 12, mt: 0.25 }}>
+          {HOUR_TICKS.map(hr => (
             <Box
               key={hr}
               sx={{
-                fontSize: 9,
-                color: 'rgba(148,163,184,0.5)',
-                fontFamily: 'Inter, sans-serif',
-                width: 0,
-                textAlign: 'center',
-                overflow: 'visible',
+                position: 'absolute',
+                left: `${(hr / 24) * 100}%`,
+                transform: 'translateX(-50%)',
+                fontSize: 7,
+                color: '#64748b',
+                fontFamily: "'SF Mono', SFMono-Regular, Menlo, Consolas, monospace",
                 whiteSpace: 'nowrap',
               }}
             >
-              {hr}h
+              {hr}
             </Box>
           ))}
         </Box>
