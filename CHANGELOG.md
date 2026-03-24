@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.7](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.6...v0.3.7) (2026-03-24)
+
+
+### Bug Fixes
+
+* **frontend:** UI polish — badge labels, window names, input clipping ([#220](https://github.com/MacXsimilian/kube-phoenix/issues/220)) ([c7f3f66](https://github.com/MacXsimilian/kube-phoenix/commit/c7f3f663859fc0182e7ff4b716705c387a4f1797))
+
 ## [0.3.6](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.5...v0.3.6) (2026-03-23)
 
 
