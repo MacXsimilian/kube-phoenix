@@ -29,15 +29,25 @@ import type { AuditLogEntry } from '@/lib/types'
 import { formatActionLabel } from '@/lib/statusColors'
 
 const ACTIONS = [
-  '', 'schedule.create', 'schedule.update', 'schedule.delete', 'schedule.reorder',
-  'guardrail.update', 'trigger.manual', 'admin.reset_db',
+  '',
+  'policy.create', 'policy.update', 'policy.delete', 'policy.sleep', 'policy.wake',
+  'policy.override.create', 'policy.override.delete',
+  'exception.create', 'exception.update', 'exception.delete',
+  'guardrail.update',
   'user.create', 'user.update', 'user.delete',
   'auth.login', 'auth.logout', 'auth.password_change',
+  'admin.reset_db',
 ]
 
 const ACTION_COLORS: Record<string, 'error' | 'warning' | 'info' | 'success' | 'default'> = {
-  'admin.reset_db': 'error', 'trigger.manual': 'warning',
-  'auth.login': 'success', 'auth.logout': 'default',
+  'policy.create': 'success', 'policy.update': 'info', 'policy.delete': 'error',
+  'policy.sleep': 'warning', 'policy.wake': 'warning',
+  'policy.override.create': 'success', 'policy.override.delete': 'error',
+  'exception.create': 'success', 'exception.update': 'info', 'exception.delete': 'error',
+  'guardrail.update': 'info',
+  'user.create': 'success', 'user.update': 'info', 'user.delete': 'error',
+  'auth.login': 'success', 'auth.logout': 'default', 'auth.password_change': 'warning',
+  'admin.reset_db': 'error',
 }
 
 function DiffView({ label, json }: { label: string; json?: string }) {
