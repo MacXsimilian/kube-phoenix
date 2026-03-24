@@ -15,16 +15,23 @@ import (
 // When AllDay is true, StartTime and EndTime are ignored and the entire
 // calendar day is treated as sleeping.
 type SleepWindow struct {
+	Name       string `json:"name,omitempty"`
 	DaysOfWeek []int  `json:"daysOfWeek"`
 	StartTime  string `json:"startTime"`
 	EndTime    string `json:"endTime"`
 	AllDay     bool   `json:"allDay"`
 }
 
+// MaxSleepWindows is the maximum number of sleep windows allowed per policy.
+const MaxSleepWindows = 10
+
 // ValidateWindows checks structural correctness of a set of sleep windows.
 func ValidateWindows(windows []SleepWindow) error {
 	if len(windows) == 0 {
 		return fmt.Errorf("at least one sleep window is required")
+	}
+	if len(windows) > MaxSleepWindows {
+		return fmt.Errorf("a policy may have at most %d sleep windows", MaxSleepWindows)
 	}
 	for i, w := range windows {
 		if err := validateWindow(w); err != nil {
