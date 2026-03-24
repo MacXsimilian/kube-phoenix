@@ -89,7 +89,7 @@ export default function UsersPage() {
   if (me && !canManageUsers(me.permissions)) return null
 
   return (
-    <Box sx={{ maxWidth: 960, mx: 'auto', p: { xs: 2, md: 4 } }}>
+    <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box>
           <Typography variant="h5" fontWeight={700}>Users</Typography>
