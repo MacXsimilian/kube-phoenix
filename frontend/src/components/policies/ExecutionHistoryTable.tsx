@@ -12,7 +12,8 @@ import CircularProgress from '@mui/material/CircularProgress'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import StatusChip from '@/components/shared/StatusChip'
-import { fmtDt } from '@/lib/formatters'
+import { fmtDtShort, fmtDuration } from '@/lib/formatters'
+import { MODE_COLORS } from '@/lib/statusColors'
 import type { PolicyExecution, PolicyExecutionPage } from '@/lib/types'
 
 export default function ExecutionHistoryTable({
@@ -47,15 +48,13 @@ export default function ExecutionHistoryTable({
           </TableHead>
           <TableBody>
             {executions.items.map(ex => {
-              const duration = ex.finishedAt
-                ? `${Math.round((new Date(ex.finishedAt).getTime() - new Date(ex.startedAt).getTime()) / 1000)}s`
-                : '\u2014'
               const counts = [
                 ex.countScaled > 0 && `${ex.countScaled} scaled`,
                 ex.countDrained > 0 && `${ex.countDrained} drained`,
                 ex.countProtected > 0 && `${ex.countProtected} protected`,
                 ex.countErrors > 0 && `${ex.countErrors} errors`,
               ].filter(Boolean).join(', ') || '0'
+              const modeStyle = MODE_COLORS[ex.mode]
               return (
                 <TableRow key={ex.id} hover sx={{ cursor: 'pointer' }} onClick={() => onRowClick(ex)}>
                   <TableCell>#{ex.id}</TableCell>
@@ -74,15 +73,14 @@ export default function ExecutionHistoryTable({
                       size="small"
                       sx={{
                         height: 18, fontSize: 10,
-                        bgcolor: ex.mode === 'apply' ? 'rgba(245,158,11,0.18)' : 'rgba(59,130,246,0.18)',
-                        color: ex.mode === 'apply' ? 'warning.main' : 'info.main',
+                        bgcolor: modeStyle?.bg, color: modeStyle?.color,
                       }}
                     />
                   </TableCell>
                   <TableCell><StatusChip status={ex.status} /></TableCell>
                   <TableCell>{counts}</TableCell>
-                  <TableCell>{fmtDt(ex.startedAt)}</TableCell>
-                  <TableCell>{duration}</TableCell>
+                  <TableCell>{fmtDtShort(ex.startedAt)}</TableCell>
+                  <TableCell>{fmtDuration(ex.startedAt, ex.finishedAt)}</TableCell>
                 </TableRow>
               )
             })}

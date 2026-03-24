@@ -16,6 +16,8 @@ import Box from '@mui/material/Box'
 import Skeleton from '@mui/material/Skeleton'
 import Typography from '@mui/material/Typography'
 import Tooltip from '@mui/material/Tooltip'
+import TextField from '@mui/material/TextField'
+import MenuItem from '@mui/material/MenuItem'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
@@ -24,23 +26,13 @@ import CloudOffIcon from '@mui/icons-material/CloudOff'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import { getPolicyExecutions } from '@/lib/api'
+import { fmtDtShort, fmtDuration } from '@/lib/formatters'
+import { MODE_COLORS } from '@/lib/statusColors'
 import StatusChip from '@/components/shared/StatusChip'
 import type { PolicyExecution } from '@/lib/types'
 
-function duration(exec: PolicyExecution): string {
-  if (!exec.finishedAt) return 'Running...'
-  const ms = new Date(exec.finishedAt).getTime() - new Date(exec.startedAt).getTime()
-  const durationSeconds = Math.floor(ms / 1000)
-  if (durationSeconds < 60) return `${durationSeconds}s`
-  return `${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s`
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
+const HEADER_SX = { fontWeight: 700, color: 'text.secondary', fontSize: 12 } as const
+const EXECUTIONS_REFETCH_MS = 10_000
 
 function SummaryCell({ exec }: { exec: PolicyExecution }) {
   const isWake = exec.direction === 'wake'
@@ -93,11 +85,18 @@ export default function PolicyExecutionTable({
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(20)
   const [autoOpened, setAutoOpened] = useState(false)
+  const [statusFilter, setStatusFilter] = useState('')
+  const [directionFilter, setDirectionFilter] = useState('')
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['policy-executions', page, rowsPerPage],
-    queryFn: () => getPolicyExecutions({ page, pageSize: rowsPerPage }),
-    refetchInterval: 10_000,
+    queryKey: ['policy-executions', page, rowsPerPage, statusFilter, directionFilter],
+    queryFn: () => getPolicyExecutions({
+      page,
+      pageSize: rowsPerPage,
+      status: statusFilter || undefined,
+      direction: directionFilter || undefined,
+    }),
+    refetchInterval: EXECUTIONS_REFETCH_MS,
   })
 
   useEffect(() => {
@@ -126,6 +125,32 @@ export default function PolicyExecutionTable({
           Could not load executions — showing last known data.
         </Alert>
       )}
+
+      {/* Filters */}
+      <Box sx={{ display: 'flex', gap: 2, p: 2, pb: 0, flexWrap: 'wrap' }}>
+        <TextField
+          label="Status" select size="small" value={statusFilter}
+          onChange={e => { setStatusFilter(e.target.value); setPage(0) }}
+          sx={{ minWidth: 140 }}
+        >
+          <MenuItem value="">All</MenuItem>
+          <MenuItem value="running">Running</MenuItem>
+          <MenuItem value="success">Success</MenuItem>
+          <MenuItem value="failed">Failed</MenuItem>
+          <MenuItem value="interrupted">Interrupted</MenuItem>
+          <MenuItem value="skipped">Skipped</MenuItem>
+        </TextField>
+        <TextField
+          label="Direction" select size="small" value={directionFilter}
+          onChange={e => { setDirectionFilter(e.target.value); setPage(0) }}
+          sx={{ minWidth: 140 }}
+        >
+          <MenuItem value="">All</MenuItem>
+          <MenuItem value="sleep">Sleep</MenuItem>
+          <MenuItem value="wake">Wake</MenuItem>
+        </TextField>
+      </Box>
+
       {isLoading ? (
         <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
           {[...Array(5)].map((_, i) => (
@@ -138,58 +163,66 @@ export default function PolicyExecutionTable({
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>STARTED</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>SCHEDULE</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>MODE</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>STATUS</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>DURATION</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>SUMMARY</TableCell>
+                  <TableCell sx={HEADER_SX}>STARTED</TableCell>
+                  <TableCell sx={HEADER_SX}>POLICY</TableCell>
+                  <TableCell sx={HEADER_SX}>DIRECTION</TableCell>
+                  <TableCell sx={HEADER_SX}>MODE</TableCell>
+                  <TableCell sx={HEADER_SX}>STATUS</TableCell>
+                  <TableCell sx={HEADER_SX}>DURATION</TableCell>
+                  <TableCell sx={HEADER_SX}>SUMMARY</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {!data?.items?.length ? (
                   <TableRow>
-                    <TableCell colSpan={6}>
+                    <TableCell colSpan={7}>
                       <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
                         {isError ? 'Could not load executions.' : 'No executions yet.'}
                       </Typography>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  data.items.map((exec) => (
-                    <TableRow
-                      key={exec.id}
-                      hover
-                      sx={{ cursor: 'pointer' }}
-                      onClick={() => onSelect(exec)}
-                    >
-                      <TableCell sx={{ fontSize: 13 }}>{formatDate(exec.startedAt)}</TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                          {exec.direction === 'sleep' ? (
-                            <BedtimeIcon sx={{ fontSize: 14, color: 'primary.main' }} />
-                          ) : (
-                            <WbSunnyIcon sx={{ fontSize: 14, color: 'warning.main' }} />
-                          )}
-                          <Typography variant="body2">{exec.direction === 'sleep' ? 'Sleep' : 'Wake'}</Typography>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={exec.mode.toUpperCase()}
-                          size="small"
-                          sx={{
-                            height: 18, fontSize: 10,
-                            bgcolor: exec.mode === 'apply' ? 'rgba(245,158,11,0.15)' : 'rgba(59,130,246,0.15)',
-                            color: exec.mode === 'apply' ? 'warning.main' : 'info.main',
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell><StatusChip status={exec.status} /></TableCell>
-                      <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{duration(exec)}</TableCell>
-                      <TableCell><SummaryCell exec={exec} /></TableCell>
-                    </TableRow>
-                  ))
+                  data.items.map((exec) => {
+                    const modeStyle = MODE_COLORS[exec.mode]
+                    return (
+                      <TableRow
+                        key={exec.id}
+                        hover
+                        sx={{ cursor: 'pointer' }}
+                        onClick={() => onSelect(exec)}
+                      >
+                        <TableCell sx={{ fontSize: 13 }}>{fmtDtShort(exec.startedAt)}</TableCell>
+                        <TableCell>
+                          <Typography variant="body2" noWrap sx={{ maxWidth: 160 }}>
+                            {exec.policy?.name ?? `Policy #${exec.policyId}`}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                            {exec.direction === 'sleep' ? (
+                              <BedtimeIcon sx={{ fontSize: 14, color: 'primary.main' }} />
+                            ) : (
+                              <WbSunnyIcon sx={{ fontSize: 14, color: 'warning.main' }} />
+                            )}
+                            <Typography variant="body2">{exec.direction === 'sleep' ? 'Sleep' : 'Wake'}</Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={exec.mode.toUpperCase()}
+                            size="small"
+                            sx={{
+                              height: 18, fontSize: 10,
+                              bgcolor: modeStyle?.bg, color: modeStyle?.color,
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell><StatusChip status={exec.status} /></TableCell>
+                        <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{fmtDuration(exec.startedAt, exec.finishedAt)}</TableCell>
+                        <TableCell><SummaryCell exec={exec} /></TableCell>
+                      </TableRow>
+                    )
+                  })
                 )}
               </TableBody>
             </Table>

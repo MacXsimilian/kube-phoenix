@@ -147,6 +147,7 @@ export interface PolicyInput {
 export interface PolicyExecution {
   id: number
   policyId: number
+  policy?: { name: string }
   direction: 'sleep' | 'wake'
   trigger: string
   startedAt: string
