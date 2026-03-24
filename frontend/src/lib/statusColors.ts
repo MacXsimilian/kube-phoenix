@@ -44,6 +44,8 @@ export const TYPE_LABELS: Record<string, { label: string; color: string; bg: str
   skip_wake:   { label: 'Skip Wake',   color: '#A5B4FC', bg: 'rgba(99,102,241,0.15)' },
 }
 
+export const TYPE_LABEL_FALLBACK = { label: 'Unknown', color: '#94A3B8', bg: 'rgba(148,163,184,0.15)' }
+
 // ── Log level colors ─────────────────────────────────────────────────────────
 
 export const LOG_LEVEL_COLORS_DARK: Record<LogLine['level'], string> = {
@@ -62,4 +64,21 @@ export const LOG_LEVEL_COLORS_LIGHT: Record<LogLine['level'], string> = {
   warn: '#92400E',
 }
 
-export const TYPE_LABEL_FALLBACK = { label: 'Unknown', color: '#94A3B8', bg: 'rgba(148,163,184,0.15)' }
+// ── Audit action labels ─────────────────────────────────────────────────────
+
+export const ACTION_LABELS: Record<string, string> = {
+  'policy.create': 'Policy Create', 'policy.update': 'Policy Update', 'policy.delete': 'Policy Delete',
+  'policy.sleep': 'Policy Sleep', 'policy.wake': 'Policy Wake',
+  'policy.override.create': 'Override Create', 'policy.override.delete': 'Override Delete',
+  'exception.create': 'Exception Create', 'exception.update': 'Exception Update', 'exception.delete': 'Exception Delete',
+  'schedule.create': 'Schedule Create', 'schedule.update': 'Schedule Update',
+  'schedule.delete': 'Schedule Delete', 'schedule.reorder': 'Schedule Reorder',
+  'guardrail.update': 'Guardrail Update', 'trigger.manual': 'Manual Trigger',
+  'admin.reset_db': 'Reset Database',
+  'user.create': 'User Create', 'user.update': 'User Update', 'user.delete': 'User Delete',
+  'auth.login': 'Login', 'auth.logout': 'Logout', 'auth.password_change': 'Password Change',
+}
+
+export function formatActionLabel(action: string): string {
+  return ACTION_LABELS[action] ?? action.replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}

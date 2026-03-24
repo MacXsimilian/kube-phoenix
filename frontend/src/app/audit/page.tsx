@@ -26,6 +26,7 @@ import { useAuth } from '@/lib/auth'
 import { canViewAudit } from '@/lib/rbac'
 import { useRouter } from 'next/navigation'
 import type { AuditLogEntry } from '@/lib/types'
+import { formatActionLabel } from '@/lib/statusColors'
 
 const ACTIONS = [
   '', 'schedule.create', 'schedule.update', 'schedule.delete', 'schedule.reorder',
@@ -76,7 +77,7 @@ function AuditRow({ entry }: { entry: AuditLogEntry }) {
           <Typography variant="body2" fontWeight={600}>{entry.username}</Typography>
         </TableCell>
         <TableCell>
-          <Chip label={entry.action} size="small" color={ACTION_COLORS[entry.action] ?? 'info'} variant="outlined" />
+          <Chip label={formatActionLabel(entry.action)} size="small" color={ACTION_COLORS[entry.action] ?? 'info'} variant="outlined" />
         </TableCell>
         <TableCell>
           {entry.resourceType && (
@@ -151,7 +152,7 @@ export default function AuditLogPage() {
           onChange={e => { setActionFilter(e.target.value); setPage(0) }}
           sx={{ minWidth: 200 }}
         >
-          {ACTIONS.map(a => <MenuItem key={a} value={a}>{a || 'All actions'}</MenuItem>)}
+          {ACTIONS.map(a => <MenuItem key={a} value={a}>{a ? formatActionLabel(a) : 'All actions'}</MenuItem>)}
         </TextField>
       </Box>
 
