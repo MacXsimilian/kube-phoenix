@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.12](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.11...v0.3.12) (2026-03-24)
+
+
+### Features
+
+* **frontend:** wide timeline policy cards, icon updates, clean code fixes ([#233](https://github.com/MacXsimilian/kube-phoenix/issues/233)) ([3367938](https://github.com/MacXsimilian/kube-phoenix/commit/336793846766d91b237305c415a089b16f2835c8))
+
 ## [0.3.11](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.10...v0.3.11) (2026-03-24)
 
 
