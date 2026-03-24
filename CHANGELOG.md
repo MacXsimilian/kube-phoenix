@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.8](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.7...v0.3.8) (2026-03-24)
+
+
+### Bug Fixes
+
+* **frontend:** sync audit log filters with backend actions ([#223](https://github.com/MacXsimilian/kube-phoenix/issues/223)) ([4d71794](https://github.com/MacXsimilian/kube-phoenix/commit/4d71794111bdae5e5b12c39eed472be91222d46b))
+
 ## [0.3.7](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.6...v0.3.7) (2026-03-24)
 
 
