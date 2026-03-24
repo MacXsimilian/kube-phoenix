@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useId } from 'react'
 import Box from '@mui/material/Box'
 import Tooltip from '@mui/material/Tooltip'
 import type { SleepWindow } from '@/lib/types'
@@ -35,6 +35,7 @@ export default function MiniTimeline({
   const { dayOfWeek: todayDow, fractionalHour: currentHour } = nowInTimezone(timezone)
 
   // Build a set of sleeping ranges for today
+  const yesterdayDow = (todayDow + 6) % 7
   const sleepRanges: { start: number; end: number }[] = []
   for (const win of windows) {
     if (win.daysOfWeek.includes(todayDow)) {
@@ -47,7 +48,6 @@ export default function MiniTimeline({
       }
     }
     // Yesterday's overnight window bleeding into today
-    const yesterdayDow = (todayDow + 6) % 7
     if (win.daysOfWeek.includes(yesterdayDow) && isOvernight(win)) {
       sleepRanges.push({ start: 0, end: timeToHours(win.endTime) })
     }
@@ -83,8 +83,9 @@ export default function MiniTimeline({
   const nowX = (currentHour / 24) * W
   const nowY = isSleeping(currentHour) ? H - BOT_PAD : TOP_PAD
 
-  const gradIdAwake = 'spark-awake-mini'
-  const gradIdSleep = 'spark-sleep-mini'
+  const uid = useId()
+  const gradIdAwake = `spark-awake-${uid}`
+  const gradIdSleep = `spark-sleep-${uid}`
 
   return (
     <Tooltip title={windowsToText(windows)} placement="top">

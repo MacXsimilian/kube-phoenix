@@ -13,7 +13,7 @@ import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import StatusChip from '@/components/shared/StatusChip'
 import { fmtDtShort, fmtDuration } from '@/lib/formatters'
-import { MODE_COLORS } from '@/lib/statusColors'
+import { MODE_COLORS, SMALL_CHIP_SX } from '@/lib/statusColors'
 import type { PolicyExecution, PolicyExecutionPage } from '@/lib/types'
 
 export default function ExecutionHistoryTable({
@@ -72,7 +72,7 @@ export default function ExecutionHistoryTable({
                       label={ex.mode?.toUpperCase() ?? '\u2014'}
                       size="small"
                       sx={{
-                        height: 18, fontSize: 10,
+                        ...SMALL_CHIP_SX,
                         bgcolor: modeStyle?.bg, color: modeStyle?.color,
                       }}
                     />

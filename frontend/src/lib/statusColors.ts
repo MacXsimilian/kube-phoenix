@@ -35,6 +35,8 @@ export const MODE_COLORS: Record<string, { bg: string; color: string }> = {
   plan:  { bg: 'rgba(59,130,246,0.18)',  color: '#93C5FD' },
 }
 
+export const SMALL_CHIP_SX = { height: 18, fontSize: 10 } as const
+
 // ── Exception / override type labels ─────────────────────────────────────────
 
 export const TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
