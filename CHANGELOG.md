@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.10](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.9...v0.3.10) (2026-03-24)
+
+
+### Bug Fixes
+
+* **frontend:** move history filters outside card to match cluster layout ([#228](https://github.com/MacXsimilian/kube-phoenix/issues/228)) ([9ef8a23](https://github.com/MacXsimilian/kube-phoenix/commit/9ef8a2390f118cb605c876fb6bb4cd5d98da55f8))
+
 ## [0.3.9](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.8...v0.3.9) (2026-03-24)
 
 
