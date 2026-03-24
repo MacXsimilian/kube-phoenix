@@ -241,13 +241,13 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 **Purpose:** Pure evaluation logic for sleep windows. No database or Kubernetes dependencies.
 
 **Key types:**
-- `SleepWindow` -- `{DaysOfWeek []int, StartTime string, EndTime string, AllDay bool}`. Days use 0=Sun...6=Sat. Times are `"HH:MM"` in 24-hour format.
+- `SleepWindow` -- `{Name string, DaysOfWeek []int, StartTime string, EndTime string, AllDay bool}`. `Name` is an optional display label. Days use 0=Sun...6=Sat. Times are `"HH:MM"` in 24-hour format.
 - `IntendedState` -- string enum: `"sleeping"` or `"awake"`.
 
 **Key functions:**
 - `Evaluate(windows, timezone, now)` -- returns `StateSleeping` if `now` falls inside any window, `StateAwake` otherwise. Handles same-day windows (e.g. 09:00-17:00) and overnight windows (e.g. 19:00-07:00) by checking both the evening portion (current day) and morning portion (previous day).
 - `NextTransition(windows, timezone, now)` -- scans all window boundary times within the next 8 days, finds the earliest one where the evaluated state differs from the current state. Returns `nil` if no transition found.
-- `ValidateWindows(windows)` -- structural validation: non-empty days, valid HH:MM format, no duplicate days, start != end.
+- `ValidateWindows(windows)` -- structural validation: 1–10 windows, non-empty days, valid HH:MM format, no duplicate days, start != end.
 - `CronsToWindows(sleepCron, wakeCron)` -- migration helper that reverse-parses legacy cron expressions into `SleepWindow` format.
 
 **Key internal functions:**

@@ -561,15 +561,16 @@ All functions take an `isDark` boolean and return objects with `{ bgcolor, color
 
 `src/components/policies/WindowPicker.tsx`
 
-The sleep window editor renders one card per `SleepWindow` with:
+The sleep window editor renders one card per `SleepWindow` (max 10) with:
 
-- **Presets:** "Weekday nights", "Weekends", "Nights + weekends", "Business hours" -- pill buttons that replace all windows
+- **Inline-editable name:** Click the header to set a custom name (e.g. "EU Maintenance"). When empty, a smart placeholder is auto-derived from the window's days and time range (e.g. "Weekday Nights", "Weekends")
+- **Presets:** "Weekday nights", "Weekends", "Nights + weekends", "Business hours" -- pill buttons that replace all windows (pre-named)
 - **All-day toggle:** Switch that sets `allDay: true` (hides time pickers)
 - **Time pickers:** Hour (0-23) and Minute (0/5/10/.../55) dropdowns for start (sleep) and end (wake) times
 - **Day buttons:** Seven day buttons (Mon-Sun) that toggle day inclusion. Active days have a purple border and background
 - **Overnight indicator:** Shows a "next day" chip when end time <= start time
 - **Never-wake warning:** Appears when all 7 days are set to all-day sleep
-- **Add/remove windows:** "Add window" button appends a new empty window; delete icon removes
+- **Add/remove windows:** "Add window" button appends a new empty window; delete icon removes. Disables at the 10-window limit
 
 The parent (`CreatePolicyDialog`) receives window changes via `onChange` and passes them to `WeeklyTimeline` for a live preview.
 
@@ -788,6 +789,8 @@ Data is loaded from the API as CSV strings and split with `fromCsv()`. On save, 
 | `MODE_COLORS` | `Record<string, { bg, color }>` | Plan (blue) and Apply (amber) mode chips |
 | `TYPE_LABELS` | `Record<string, { label, color, bg }>` | Override/exception types (stay_awake, force_sleep, skip_sleep, skip_wake) |
 | `TYPE_LABEL_FALLBACK` | `{ label, color, bg }` | Default for unknown type strings |
+| `ACTION_LABELS` | `Record<string, string>` | Human-readable labels for audit log actions (e.g. `policy.update` → "Policy Update") |
+| `formatActionLabel(action)` | `(string) → string` | Returns the label for an action key, with auto-formatting fallback for unknown actions |
 | `LOG_LEVEL_COLORS_DARK` | `Record<LogLine['level'], string>` | Log line text colors (dark mode) |
 | `LOG_LEVEL_COLORS_LIGHT` | `Record<LogLine['level'], string>` | Log line text colors (light mode) |
 
