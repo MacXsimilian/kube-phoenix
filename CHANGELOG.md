@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.14](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.13...v0.3.14) (2026-03-24)
+
+
+### Features
+
+* **frontend:** policy detail bands layout, shared hook, clean code ([#237](https://github.com/MacXsimilian/kube-phoenix/issues/237)) ([d98d6c7](https://github.com/MacXsimilian/kube-phoenix/commit/d98d6c75bf802a5f0b9a736b6e80e457fb09d700))
+
 ## [0.3.13](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.12...v0.3.13) (2026-03-24)
 
 
