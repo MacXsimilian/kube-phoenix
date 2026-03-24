@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.9](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.8...v0.3.9) (2026-03-24)
+
+
+### Features
+
+* history page filters, sparkline timeline, and input label fix ([#225](https://github.com/MacXsimilian/kube-phoenix/issues/225)) ([25d241e](https://github.com/MacXsimilian/kube-phoenix/commit/25d241e7c21d894315cbd893c4e102c76ba00882))
+
 ## [0.3.8](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.7...v0.3.8) (2026-03-24)
 
 
