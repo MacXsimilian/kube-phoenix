@@ -20,30 +20,17 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
-import { deletePolicy, triggerPolicySleep, triggerPolicyWake } from '@/lib/api'
-import type { Policy } from '@/lib/types'
-import { windowsToText } from '@/lib/windowUtils'
-import { STATE_COLORS, MODE_COLORS, SMALL_CHIP_SX } from '@/lib/statusColors'
+import { deletePolicy } from '@/lib/api'
+import type { Policy, SnackMessage } from '@/lib/types'
+import { windowsToText, hasSleepWindows } from '@/lib/windowUtils'
+import { STATE_COLORS, MODE_COLORS, SMALL_CHIP_SX, CARD_HEADER_GRADIENTS, LED_COLORS } from '@/lib/statusColors'
+import { timeUntil } from '@/lib/formatters'
+import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
 import MiniTimeline from './MiniTimeline'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const MS_PER_MINUTE = 60_000
 const DISABLED_OPACITY = 0.45
-
-const HEADER_GRADIENTS: Record<string, string> = {
-  sleeping:      'linear-gradient(90deg, #7C3AED 0%, #a5b4fc 50%, rgba(165,180,252,0.15) 100%)',
-  awake:         'linear-gradient(90deg, #22C55E 0%, #86efac 50%, rgba(134,239,172,0.15) 100%)',
-  transitioning: 'linear-gradient(90deg, #F59E0B 0%, #fcd34d 50%, rgba(252,211,77,0.15) 100%)',
-  unknown:       'linear-gradient(90deg, #475569 0%, #64748b 40%, rgba(100,116,139,0.1) 100%)',
-}
-
-const LED_COLORS: Record<string, { bg: string; glow: string }> = {
-  sleeping:      { bg: '#a5b4fc', glow: 'rgba(165,180,252,0.5)' },
-  awake:         { bg: '#86efac', glow: 'rgba(134,239,172,0.5)' },
-  transitioning: { bg: '#fcd34d', glow: 'rgba(252,211,77,0.5)' },
-  unknown:       { bg: '#64748b', glow: 'none' },
-}
 
 const ACTION_BTN_SX = {
   width: 32,
@@ -60,22 +47,9 @@ const STAT_VALUE_SX = { fontSize: 13, lineHeight: 1.3 } as const
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatRelativeTime(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const dateObj = new Date(iso)
-  if (isNaN(dateObj.getTime())) return '—'
-  const diff = dateObj.getTime() - Date.now()
-  if (diff < 0) return 'now'
-  const mins = Math.floor(diff / MS_PER_MINUTE)
-  if (mins < 60) return `in ${mins}m`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `in ${hrs}h`
-  return `in ${Math.floor(hrs / 24)}d`
-}
-
 function nextTransitionLabel(policy: Policy): string {
   if (!policy.nextTransitionAt) return '—'
-  const relative = formatRelativeTime(policy.nextTransitionAt)
+  const relative = timeUntil(policy.nextTransitionAt)
   if (policy.currentState === 'sleeping') return `Wake ${relative}`
   if (policy.currentState === 'awake') return `Sleep ${relative}`
   return relative
@@ -92,7 +66,7 @@ export default function PolicyCard({
 }: {
   policy: Policy
   onEdit: () => void
-  onNotify?: (msg: string, severity: 'success' | 'error') => void
+  onNotify?: (msg: string, severity: SnackMessage['severity']) => void
   canEdit?: boolean
   canTrigger?: boolean
 }) {
@@ -101,17 +75,7 @@ export default function PolicyCard({
   const [deleteDialog, setDeleteDialog] = useState(false)
   const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
   const led = LED_COLORS[policy.currentState] ?? LED_COLORS.unknown
-
-  function onTriggerSuccess({ executionId }: { executionId: number }) {
-    queryClient.invalidateQueries({ queryKey: ['policies'] })
-    queryClient.invalidateQueries({ queryKey: ['policy-executions'] })
-    queryClient.invalidateQueries({ queryKey: ['policy-executions', policy.id] })
-    router.push(`/policies/detail/?id=${policy.id}&exec=${executionId}`)
-  }
-
-  function onTriggerError(err: unknown, fallback: string) {
-    onNotify?.(err instanceof Error ? err.message : fallback, 'error')
-  }
+  const { sleepMut, wakeMut, isBusy } = usePolicyTriggers(policy.id, onNotify)
 
   const deleteMut = useMutation({
     mutationFn: () => deletePolicy(policy.id),
@@ -119,24 +83,13 @@ export default function PolicyCard({
       queryClient.invalidateQueries({ queryKey: ['policies'] })
       onNotify?.(`"${policy.name}" deleted`, 'success')
     },
-    onError: (err: unknown) => onTriggerError(err, 'Delete failed'),
+    onError: (err: unknown) => {
+      onNotify?.(err instanceof Error ? err.message : 'Delete failed', 'error')
+    },
   })
 
-  const sleepMut = useMutation({
-    mutationFn: () => triggerPolicySleep(policy.id),
-    onSuccess: onTriggerSuccess,
-    onError: (err: unknown) => onTriggerError(err, 'Trigger sleep failed'),
-  })
-
-  const wakeMut = useMutation({
-    mutationFn: () => triggerPolicyWake(policy.id),
-    onSuccess: onTriggerSuccess,
-    onError: (err: unknown) => onTriggerError(err, 'Trigger wake failed'),
-  })
-
-  const isBusy = sleepMut.isPending || wakeMut.isPending
   const isDisabled = !policy.enabled
-  const hasWindows = policy.sleepWindows && policy.sleepWindows.length > 0
+  const windows = policy.sleepWindows ?? []
 
   return (
     <>
@@ -159,7 +112,7 @@ export default function PolicyCard({
         <Box
           sx={{
             height: 3,
-            background: HEADER_GRADIENTS[policy.currentState] ?? HEADER_GRADIENTS.unknown,
+            background: CARD_HEADER_GRADIENTS[policy.currentState] ?? CARD_HEADER_GRADIENTS.unknown,
             flexShrink: 0,
           }}
         />
@@ -216,14 +169,14 @@ export default function PolicyCard({
                 )}
               </Box>
 
-              {hasWindows && (
+              {hasSleepWindows(windows) && (
                 <Typography variant="body2" sx={{ fontSize: 12, color: '#94a3b8', mb: 1 }}>
-                  {windowsToText(policy.sleepWindows!)}
+                  {windowsToText(windows)}
                 </Typography>
               )}
 
-              {hasWindows && (
-                <MiniTimeline windows={policy.sleepWindows!} height={48} timezone={policy.timezone} />
+              {hasSleepWindows(windows) && (
+                <MiniTimeline windows={windows} height={48} timezone={policy.timezone} />
               )}
             </Box>
 

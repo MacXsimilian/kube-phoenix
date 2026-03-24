@@ -91,6 +91,11 @@ export function timeToHours(time: string): number {
   return h + m / 60
 }
 
+/** Returns true if the policy has at least one sleep window configured. */
+export function hasSleepWindows(windows: SleepWindow[] | null | undefined): windows is SleepWindow[] {
+  return !!windows && windows.length > 0
+}
+
 /**
  * Compute total weekly sleep and awake hours from sleep windows.
  */
