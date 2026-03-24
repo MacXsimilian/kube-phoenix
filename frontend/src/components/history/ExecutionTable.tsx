@@ -110,30 +110,22 @@ export default function PolicyExecutionTable({
 
   if (isError && !data?.items?.length) {
     return (
-      <Paper>
-        <Alert severity="warning" sx={{ mx: 2, mt: 2, mb: 2 }}>
-          Could not load executions — showing last known data.
-        </Alert>
-      </Paper>
+      <Alert severity="warning">
+        Could not load executions.
+      </Alert>
     )
   }
 
   return (
-    <Paper>
-      {isError && (
-        <Alert severity="warning" sx={{ mx: 2, mt: 2 }}>
-          Could not load executions — showing last known data.
-        </Alert>
-      )}
-
-      {/* Filters */}
-      <Box sx={{ display: 'flex', gap: 2, p: 2, pb: 0, flexWrap: 'wrap' }}>
+    <>
+      {/* Filters — outside the card, matching the Cluster State layout */}
+      <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           label="Status" select size="small" value={statusFilter}
           onChange={e => { setStatusFilter(e.target.value); setPage(0) }}
           sx={{ minWidth: 140 }}
         >
-          <MenuItem value="">All</MenuItem>
+          <MenuItem value="">All Statuses</MenuItem>
           <MenuItem value="running">Running</MenuItem>
           <MenuItem value="success">Success</MenuItem>
           <MenuItem value="failed">Failed</MenuItem>
@@ -145,11 +137,18 @@ export default function PolicyExecutionTable({
           onChange={e => { setDirectionFilter(e.target.value); setPage(0) }}
           sx={{ minWidth: 140 }}
         >
-          <MenuItem value="">All</MenuItem>
+          <MenuItem value="">All Directions</MenuItem>
           <MenuItem value="sleep">Sleep</MenuItem>
           <MenuItem value="wake">Wake</MenuItem>
         </TextField>
       </Box>
+
+      <Paper>
+      {isError && (
+        <Alert severity="warning" sx={{ mx: 2, mt: 2 }}>
+          Could not load executions — showing last known data.
+        </Alert>
+      )}
 
       {isLoading ? (
         <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -239,5 +238,6 @@ export default function PolicyExecutionTable({
         </>
       )}
     </Paper>
+    </>
   )
 }
