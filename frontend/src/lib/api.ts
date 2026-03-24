@@ -277,12 +277,14 @@ export const triggerPolicyWake = (id: number): Promise<{ executionId: number }> 
 export const getPolicyExecutions = (params?: {
   policyId?: number
   status?: string
+  direction?: string
   page?: number
   pageSize?: number
 }): Promise<PolicyExecutionPage> => {
   const q = new URLSearchParams()
   if (params?.policyId) q.set('policy_id', String(params.policyId))
   if (params?.status) q.set('status', params.status)
+  if (params?.direction) q.set('direction', params.direction)
   if (params?.page !== undefined) q.set('page', String(params.page))
   if (params?.pageSize) q.set('page_size', String(params.pageSize))
   return req<PolicyExecutionPage>(`/api/policy-executions?${q}`)

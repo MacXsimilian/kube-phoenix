@@ -25,6 +25,9 @@ func (h *Handler) listPolicyExecutions(w http.ResponseWriter, r *http.Request) {
 	if s := query.Get("status"); s != "" {
 		filter.Status = s
 	}
+	if d := query.Get("direction"); d != "" {
+		filter.Direction = d
+	}
 	if p := query.Get("page"); p != "" {
 		page, _ := strconv.Atoi(p)
 		if page < 0 {
