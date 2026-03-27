@@ -230,7 +230,6 @@ erDiagram
     guardrails {
         bigint id PK "singleton row"
         text system_namespaces "CSV"
-        text skip_namespaces "CSV"
         text skip_ns_node "CSV"
         text skip_node_labels "CSV key=value"
         text skip_node_taints "CSV key=value:effect"

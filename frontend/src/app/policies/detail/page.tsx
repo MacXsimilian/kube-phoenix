@@ -41,6 +41,7 @@ import {
 } from '@/lib/statusColors'
 import { fmtDt, timeUntil } from '@/lib/formatters'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
+import ErrorBoundary from '@/components/ErrorBoundary'
 
 // ── Layout helpers ───────────────────────────────────────────────────────────
 
@@ -121,6 +122,7 @@ export default function PolicyDetailPage() {
   const weeklyStats = hasSleepWindows(sleepWindows) ? computeWeeklyStats(sleepWindows) : null
 
   return (
+    <ErrorBoundary>
     <Box>
       {/* ── Hero band ─────────────────────────────────────────────────── */}
       <Box
@@ -223,12 +225,12 @@ export default function PolicyDetailPage() {
             </span>
           </Tooltip>
           {canEdit && (
-            <Button size="small" startIcon={<EditOutlinedIcon />} onClick={() => setEditOpen(true)}>
+            <Button size="small" startIcon={<EditOutlinedIcon />} onClick={() => { setExceptionOpen(false); setEditOpen(true) }}>
               Edit Policy
             </Button>
           )}
           {canEdit && (
-            <Button size="small" startIcon={<AddIcon />} onClick={() => { setEditingException(undefined); setExceptionOpen(true) }}>
+            <Button size="small" startIcon={<AddIcon />} onClick={() => { setEditOpen(false); setEditingException(undefined); setExceptionOpen(true) }}>
               Exception
             </Button>
           )}
@@ -352,8 +354,8 @@ export default function PolicyDetailPage() {
             <ExceptionsSection
               exceptions={exceptions}
               canEdit={canEdit}
-              onAddException={() => { setEditingException(undefined); setExceptionOpen(true) }}
-              onEditException={(ex) => { setEditingException(ex); setExceptionOpen(true) }}
+              onAddException={() => { setEditOpen(false); setEditingException(undefined); setExceptionOpen(true) }}
+              onEditException={(ex) => { setEditOpen(false); setEditingException(ex); setExceptionOpen(true) }}
             />
           </Box>
         </Box>
@@ -398,5 +400,6 @@ export default function PolicyDetailPage() {
         ) : undefined}
       </Snackbar>
     </Box>
+    </ErrorBoundary>
   )
 }

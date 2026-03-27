@@ -79,6 +79,8 @@ func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, kind, namespace, nam
 	if err := scale(); err != nil {
 		emit(p.logCh, "error", fmt.Sprintf("Failed to scale %s: %s", wl, err))
 		if delErr := r.store.DeleteWorkloadSnapshot(snap.ID); delErr != nil {
+			slog.Error("orphaned snapshot: failed to delete after scale failure",
+				"snapshotID", snap.ID, "workload", wl, "err", delErr)
 			emit(p.logCh, "warn", fmt.Sprintf("Could not remove snapshot for %s: %s", wl, delErr))
 		}
 		return false, true
@@ -100,11 +102,11 @@ func (r *PolicyRunner) RunPolicySleep(
 ) (*Counts, error) {
 	counts := &Counts{}
 
-	g, err := r.store.GetGuardrails()
+	guardrails, err := r.store.GetGuardrails()
 	if err != nil {
 		return nil, fmt.Errorf("guardrails: %w", err)
 	}
-	skipNS := mergeCSV(g.SystemNamespaces, g.SkipNamespaces)
+	skipNS := splitCSV(guardrails.SystemNamespaces)
 
 	emit(logCh, "info", fmt.Sprintf("Policy sleep — namespace filter: %q  label selector: %q", policy.NamespaceFilter, policy.LabelSelector))
 
@@ -154,7 +156,7 @@ func (r *PolicyRunner) RunPolicySleep(
 	}
 
 	// ── Drain & Delete Nodes (same as scale_down) ──────────────────────────
-	r.base.drainNodes(ctx, policy.Mode, g, logCh, counts)
+	r.base.drainNodes(ctx, policy.Mode, guardrails, logCh, counts)
 
 	emit(logCh, "info", fmt.Sprintf("Sleep complete — scaled %d workloads, %d skipped, %d errors",
 		counts.Scaled, counts.Skipped, counts.Errors))

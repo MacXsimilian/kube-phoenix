@@ -26,6 +26,7 @@ import { windowsToText, hasSleepWindows } from '@/lib/windowUtils'
 import { STATE_COLORS, MODE_COLORS, SMALL_CHIP_SX, CARD_HEADER_GRADIENTS, LED_COLORS } from '@/lib/statusColors'
 import { timeUntil } from '@/lib/formatters'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
+import { useColors } from '@/lib/colors'
 import MiniTimeline from './MiniTimeline'
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -76,6 +77,7 @@ export default function PolicyCard({
   const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
   const led = LED_COLORS[policy.currentState] ?? LED_COLORS.unknown
   const { sleepMut, wakeMut, isBusy } = usePolicyTriggers(policy.id, onNotify)
+  const colors = useColors()
 
   const deleteMut = useMutation({
     mutationFn: () => deletePolicy(policy.id),
@@ -124,6 +126,8 @@ export default function PolicyCard({
             <Box sx={{ flex: 70, minWidth: 0 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
                 <Box
+                  title={policy.currentState}
+                  aria-label={policy.currentState}
                   sx={{
                     width: 10,
                     height: 10,
@@ -164,13 +168,13 @@ export default function PolicyCard({
                   <Chip
                     label={`${policy.namespaceFilter.split(',').length} ns`}
                     size="small"
-                    sx={{ ...SMALL_CHIP_SX, color: '#94a3b8', bgcolor: 'rgba(255,255,255,0.06)' }}
+                    sx={{ ...SMALL_CHIP_SX, color: colors.muted, bgcolor: 'rgba(255,255,255,0.06)' }}
                   />
                 )}
               </Box>
 
               {hasSleepWindows(windows) && (
-                <Typography variant="body2" sx={{ fontSize: 12, color: '#94a3b8', mb: 1 }}>
+                <Typography variant="body2" sx={{ fontSize: 12, color: colors.muted, mb: 1 }}>
                   {windowsToText(windows)}
                 </Typography>
               )}
@@ -277,7 +281,7 @@ export default function PolicyCard({
                   onClick={() => setDeleteDialog(true)}
                   disabled={!canEdit}
                   aria-label="Delete policy"
-                  sx={{ ...ACTION_BTN_SX, color: '#f87171', '&:hover': { bgcolor: 'rgba(248,113,113,0.12)' } }}
+                  sx={{ ...ACTION_BTN_SX, color: colors.errorLight, '&:hover': { bgcolor: colors.errorBg } }}
                 >
                   <DeleteOutlineIcon sx={{ fontSize: 14 }} />
                 </IconButton>

@@ -35,8 +35,7 @@ func (s *Store) SeedDefaults() error {
 	}
 	if gCount == 0 {
 		g := Guardrails{
-			SystemNamespaces:            "kube-system,kube-public,kube-node-lease,kube-phoenix",
-			SkipNamespaces:              "default,karpenter,vault,velero,istio-gateway,istio-system,kyverno,kyverno-notation-aws,victoriametrics,monitoring,gitlab",
+			SystemNamespaces:            "default,istio-gateway,istio-system,karpenter,kube-node-lease,kube-phoenix,kube-public,kube-system,kyverno,kyverno-notation-aws,monitoring,vault,velero,victoriametrics,gitlab",
 			SkipNsNode:                  "victoriametrics,karpenter",
 			SkipNodeLabels:              "karpenter.k8s.aws/ec2nodeclass=default",
 			SkipNodeTaints:              "karpenter-eks-base=true:NoSchedule",

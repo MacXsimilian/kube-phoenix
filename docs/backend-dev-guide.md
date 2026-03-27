@@ -120,7 +120,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 **Policy Engine (`policy_engine.go`):**
 - `IntendedState(windows, timezone, overrides, now)` -- override precedence: `force_sleep` > `stay_awake` > window evaluation.
 - `HasSkipOverride(overrides, direction, now)` -- checks for `skip_sleep`/`skip_wake` overrides; consumed (deleted) on match.
-- `ActiveException(exceptions, policyID, now)` -- finds the first active exception covering `now`.
+- ~~`ActiveException`~~ -- removed (was unused).
 
 **Broker (`broker.go`):**
 - `Subscribe(execID) chan PolicyLogLine` -- creates a buffered channel (capacity 256).
@@ -360,7 +360,6 @@ All models are defined in `backend/internal/store/models.go`. GORM's `AutoMigrat
 type Guardrails struct {
     ID               uint      // always 1
     SystemNamespaces string    // CSV: "kube-system,kube-public,..." -- protected by default
-    SkipNamespaces   string    // CSV: user-managed skip list
     SkipNsNode       string    // CSV: namespaces whose pods protect the node from draining
     SkipNodeLabels   string    // CSV key=value pairs: nodes with these labels are protected
     SkipNodeTaints               string    // CSV key=value:effect: nodes with these taints are protected
@@ -613,7 +612,7 @@ stateDiagram-v2
     transitioning --> unknown: execution failed
 ```
 
-The `transitioning` state is the concurrency guard. While a policy is `transitioning`, the evaluation ticker skips it, and manual triggers return 409 Conflict.
+The `transitioning` state is the concurrency guard. While a policy is `transitioning`, the evaluation ticker skips it, and manual triggers return 409 Conflict. A staleness timeout (10 minutes) automatically resets stuck `transitioning` policies to `unknown` so the scheduler can re-evaluate them.
 
 #### PolicyExecution.Status
 
@@ -867,9 +866,11 @@ The `transitioning` state prevents double execution:
 
 1. Before starting a run, the scheduler locks the mutex and checks `CurrentState`.
 2. If already `transitioning`, the run is rejected.
-3. The state is set to `transitioning` in the DB before unlocking.
+3. The state is set to `transitioning` in the DB and in-memory cache before unlocking. If the DB write fails, the run is aborted.
 4. The evaluation ticker also skips policies in `transitioning` state.
-5. After the execution completes, the state is set to the final value (`sleeping`, `awake`, or `unknown`).
+5. After the execution completes, the state is set to the final value (`sleeping`, `awake`, or `unknown`) in both the DB and in-memory cache.
+6. If `CreatePolicyExecution` fails after entering `transitioning`, the state is rolled back to `unknown`.
+7. A 10-minute staleness timeout resets stuck `transitioning` policies automatically.
 
 ---
 

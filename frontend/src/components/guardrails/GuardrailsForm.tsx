@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, KeyboardEvent } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Tooltip from '@mui/material/Tooltip'
 import Grid from '@mui/material/Grid'
@@ -26,39 +26,62 @@ import { getGuardrails, updateGuardrails } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { canEditGuardrails } from '@/lib/rbac'
 
-// ── Unprotected chip input ────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const AMBER = 'rgb(245,158,11)'
+const AMBER_06 = 'rgba(245,158,11,0.06)'
+const AMBER_12 = 'rgba(245,158,11,0.12)'
+const AMBER_40 = 'rgba(245,158,11,0.40)'
+const AMBER_03 = 'rgba(245,158,11,0.03)'
+
+// ── Chip input ────────────────────────────────────────────────────────────────
 
 function ChipInput({
+  id,
   label,
   hint,
   values,
   onChange,
+  onDelete,
   readOnly = false,
+  containerSx,
+  chipSx,
 }: {
-  label: string
+  id: string
+  label?: string
   hint?: string
   values: string[]
   onChange: (v: string[]) => void
+  onDelete?: (v: string) => void
   readOnly?: boolean
+  containerSx?: Record<string, unknown>
+  chipSx?: Record<string, unknown>
 }) {
   const [input, setInput] = useState('')
 
   const add = () => {
-    const trimmedInput = input.trim()
-    if (trimmedInput && !values.includes(trimmedInput)) onChange([...values, trimmedInput])
+    const trimmed = input.trim()
+    if (trimmed && !values.includes(trimmed)) onChange([...values, trimmed])
     setInput('')
   }
 
-  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') { e.preventDefault(); add() }
-    if (e.key === 'Backspace' && input === '' && values.length > 0) onChange(values.slice(0, -1))
+    if (e.key === 'Backspace' && input === '' && values.length > 0 && !onDelete) onChange(values.slice(0, -1))
+  }
+
+  const handleDelete = (v: string) => {
+    if (onDelete) onDelete(v)
+    else onChange(values.filter((x) => x !== v))
   }
 
   return (
     <Box>
-      <Typography component="label" htmlFor={`chip-input-${label}`} variant="body2" fontWeight={600} mb={1} display="block">
-        {label}
-      </Typography>
+      {label && (
+        <Typography component="label" htmlFor={id} variant="body2" fontWeight={600} mb={1} display="block">
+          {label}
+        </Typography>
+      )}
       {hint && (
         <Typography variant="caption" color="text.secondary" display="block" mb={1}>
           {hint}
@@ -70,18 +93,25 @@ function ChipInput({
           p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2,
           minHeight: 52, cursor: 'text',
           '&:focus-within': { borderColor: 'primary.main' },
+          ...containerSx,
         }}
-        onClick={() => document.getElementById(`chip-input-${label}`)?.focus()}
+        onClick={() => document.getElementById(id)?.focus()}
       >
         {values.map((v) => (
-          <Chip key={v} label={v} size="small" onDelete={readOnly ? undefined : () => onChange(values.filter((x) => x !== v))} sx={{ fontFamily: 'monospace', fontSize: 12 }} />
+          <Chip
+            key={v}
+            label={v}
+            size="small"
+            onDelete={readOnly ? undefined : () => handleDelete(v)}
+            sx={{ fontFamily: 'monospace', fontSize: 12, ...chipSx }}
+          />
         ))}
         {!readOnly && (
           <input
-            id={`chip-input-${label}`}
+            id={id}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKey}
+            onKeyDown={handleKey}
             onBlur={add}
             placeholder={values.length === 0 ? 'Type and press Enter...' : ''}
             style={{ background: 'transparent', border: 'none', outline: 'none', color: 'inherit', fontSize: 13, fontFamily: 'inherit', minWidth: 140, flex: 1 }}
@@ -92,7 +122,7 @@ function ChipInput({
   )
 }
 
-// ── Protected chip input — requires confirmation to delete ────────────────────
+// ── Protected chip input — composes ChipInput with confirmation dialog ───────
 
 function ProtectedChipInput({
   values,
@@ -103,18 +133,7 @@ function ProtectedChipInput({
   onChange: (v: string[]) => void
   readOnly?: boolean
 }) {
-  const [input, setInput] = useState('')
   const [pendingRemove, setPendingRemove] = useState<string | null>(null)
-
-  const add = () => {
-    const trimmedInput = input.trim()
-    if (trimmedInput && !values.includes(trimmedInput)) onChange([...values, trimmedInput])
-    setInput('')
-  }
-
-  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') { e.preventDefault(); add() }
-  }
 
   const confirmRemove = () => {
     if (pendingRemove) onChange(values.filter((x) => x !== pendingRemove))
@@ -123,7 +142,6 @@ function ProtectedChipInput({
 
   return (
     <>
-      {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1 }}>
         <ShieldOutlinedIcon sx={{ fontSize: 16, color: 'warning.main' }} />
         <Typography variant="body2" fontWeight={600}>System-Protected Namespaces</Typography>
@@ -132,50 +150,24 @@ function ProtectedChipInput({
         Always-on namespaces. Only remove an entry if you know what you're doing.
       </Typography>
 
-      {/* Chip container */}
-      <Box
-        sx={{
-          display: 'flex', flexWrap: 'wrap', gap: 0.75,
-          p: 1.5,
-          border: '1px solid',
-          borderColor: 'warning.main',
-          borderRadius: 2,
-          minHeight: 52,
-          cursor: 'text',
-          bgcolor: 'rgba(245,158,11,0.06)',
-          '&:focus-within': { borderColor: 'warning.main' },
+      <ChipInput
+        id="protected-chip-input"
+        values={values}
+        onChange={(v) => onChange([...v].sort())}
+        onDelete={(v) => setPendingRemove(v)}
+        readOnly={readOnly}
+        containerSx={{
+          borderColor: AMBER,
+          bgcolor: AMBER_06,
+          '&:focus-within': { borderColor: AMBER },
         }}
-        onClick={() => document.getElementById('protected-chip-input')?.focus()}
-      >
-        {values.map((v) => (
-          <Chip
-            key={v}
-            label={v}
-            size="small"
-            onDelete={readOnly ? undefined : () => setPendingRemove(v)}
-            sx={{
-              fontFamily: 'monospace',
-              fontSize: 12,
-              bgcolor: 'rgba(245,158,11,0.12)',
-              color: 'warning.main',
-              '& .MuiChip-deleteIcon': { color: 'warning.main', opacity: 0.6, '&:hover': { opacity: 1 } },
-            }}
-          />
-        ))}
-        {!readOnly && (
-          <input
-            id="protected-chip-input"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKey}
-            onBlur={add}
-            placeholder={values.length === 0 ? 'Type and press Enter to add...' : ''}
-            style={{ background: 'transparent', border: 'none', outline: 'none', color: 'inherit', fontSize: 13, fontFamily: 'inherit', minWidth: 160, flex: 1 }}
-          />
-        )}
-      </Box>
+        chipSx={{
+          bgcolor: AMBER_12,
+          color: 'warning.main',
+          '& .MuiChip-deleteIcon': { color: 'warning.main', opacity: 0.6, '&:hover': { opacity: 1 } },
+        }}
+      />
 
-      {/* Confirmation dialog */}
       <Dialog
         open={pendingRemove !== null}
         onClose={() => setPendingRemove(null)}
@@ -214,8 +206,8 @@ function ProtectedChipInput({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function csv(arr: string[]) { return arr.join(',') }
-function fromCsv(s: string) { return s.split(',').map((v) => v.trim()).filter(Boolean) }
+function joinCsv(arr: string[]) { return arr.join(',') }
+function parseCsv(s: string) { return s.split(',').map((v) => v.trim()).filter(Boolean) }
 
 // ── Main form ─────────────────────────────────────────────────────────────────
 
@@ -223,10 +215,9 @@ export default function GuardrailsForm() {
   const { user } = useAuth()
   const hasEdit = canEditGuardrails(user?.permissions)
   const queryClient = useQueryClient()
-  const { data: g, isLoading, isError: loadError } = useQuery({ queryKey: ['guardrails'], queryFn: getGuardrails })
+  const { data: guardrails, isLoading, isError: loadError } = useQuery({ queryKey: ['guardrails'], queryFn: getGuardrails })
 
   const [systemNs, setSystemNs] = useState<string[]>([])
-  const [skipNs, setSkipNs] = useState<string[]>([])
   const [skipNsNode, setSkipNsNode] = useState<string[]>([])
   const [skipLabels, setSkipLabels] = useState<string[]>([])
   const [skipTaints, setSkipTaints] = useState<string[]>([])
@@ -238,18 +229,17 @@ export default function GuardrailsForm() {
   const initialised = useRef(false)
 
   useEffect(() => {
-    if (g && !initialised.current) {
+    if (guardrails && !initialised.current) {
       initialised.current = true
-      setSystemNs(fromCsv(g.systemNamespaces))
-      setSkipNs(fromCsv(g.skipNamespaces))
-      setSkipNsNode(fromCsv(g.skipNsNode))
-      setSkipLabels(fromCsv(g.skipNodeLabels))
-      setSkipTaints(fromCsv(g.skipNodeTaints))
-      setEvalInterval(g.schedulerEvalInterval)
-      setAutoWake(g.schedulerAutoWake)
-      setReconcileWhileAwake(g.schedulerReconcileWhileAwake)
+      setSystemNs(parseCsv(guardrails.systemNamespaces).sort())
+      setSkipNsNode(parseCsv(guardrails.skipNsNode))
+      setSkipLabels(parseCsv(guardrails.skipNodeLabels))
+      setSkipTaints(parseCsv(guardrails.skipNodeTaints))
+      setEvalInterval(guardrails.schedulerEvalInterval)
+      setAutoWake(guardrails.schedulerAutoWake)
+      setReconcileWhileAwake(guardrails.schedulerReconcileWhileAwake)
     }
-  }, [g])
+  }, [guardrails])
 
   const evalIntervalError = /^\d+(ns|us|µs|ms|s|m|h)$/.test(evalInterval.trim())
     ? ''
@@ -259,11 +249,10 @@ export default function GuardrailsForm() {
     mutationFn: () => {
       if (evalIntervalError) return Promise.reject(new Error(evalIntervalError))
       return updateGuardrails({
-        systemNamespaces: csv(systemNs),
-        skipNamespaces: csv(skipNs),
-        skipNsNode: csv(skipNsNode),
-        skipNodeLabels: csv(skipLabels),
-        skipNodeTaints: csv(skipTaints),
+        systemNamespaces: joinCsv(systemNs),
+        skipNsNode: joinCsv(skipNsNode),
+        skipNodeLabels: joinCsv(skipLabels),
+        skipNodeTaints: joinCsv(skipTaints),
         schedulerEvalInterval: evalInterval.trim(),
         schedulerAutoWake: autoWake,
         schedulerReconcileWhileAwake: reconcileWhileAwake,
@@ -287,14 +276,14 @@ export default function GuardrailsForm() {
     )
   }
 
-  if (loadError && !g) {
+  if (loadError && !guardrails) {
     return <Alert severity="error">Could not load guardrails — please refresh the page.</Alert>
   }
 
   return (
     <>
       <Grid container spacing={3}>
-        {loadError && g && (
+        {loadError && guardrails && (
           <Grid size={12}>
             <Alert severity="warning" sx={{ mb: 1 }}>
               Could not refresh guardrails — showing last known values.
@@ -303,30 +292,9 @@ export default function GuardrailsForm() {
         )}
         {/* System-protected namespaces — full width, visually distinct */}
         <Grid size={12}>
-          <Card sx={{ border: '1px solid', borderColor: 'rgba(245,158,11,0.40)', bgcolor: 'rgba(245,158,11,0.03)' }}>
+          <Card sx={{ border: '1px solid', borderColor: AMBER_40, bgcolor: AMBER_03 }}>
             <CardContent sx={{ p: 3 }}>
               <ProtectedChipInput values={systemNs} onChange={setSystemNs} readOnly={!hasEdit} />
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Workload exclusions */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
-                Workload Exclusions
-              </Typography>
-              <Typography variant="body2" color="text.secondary" mb={2.5}>
-                Workloads in these namespaces are never scaled.
-              </Typography>
-              <ChipInput
-                label="Skip Namespaces"
-                hint="e.g. monitoring, staging"
-                values={skipNs}
-                onChange={setSkipNs}
-                readOnly={!hasEdit}
-              />
             </CardContent>
           </Card>
         </Grid>
@@ -343,6 +311,7 @@ export default function GuardrailsForm() {
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
                 <ChipInput
+                  id="chip-input-critical-ns"
                   label="Critical Namespaces (protect nodes)"
                   hint="Nodes running pods from these namespaces are never drained"
                   values={skipNsNode}
@@ -350,6 +319,7 @@ export default function GuardrailsForm() {
                   readOnly={!hasEdit}
                 />
                 <ChipInput
+                  id="chip-input-skip-labels"
                   label="Skip Node Labels"
                   hint="key=value format, e.g. karpenter.k8s.aws/ec2nodeclass=default"
                   values={skipLabels}
@@ -357,6 +327,7 @@ export default function GuardrailsForm() {
                   readOnly={!hasEdit}
                 />
                 <ChipInput
+                  id="chip-input-skip-taints"
                   label="Skip Node Taints"
                   hint="key=value:effect format, e.g. karpenter-eks-base=true:NoSchedule"
                   values={skipTaints}
@@ -369,8 +340,8 @@ export default function GuardrailsForm() {
         </Grid>
 
         {/* Scheduler */}
-        <Grid size={12}>
-          <Card>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card sx={{ height: '100%' }}>
             <CardContent sx={{ p: 3 }}>
               <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
                 Scheduler Behaviour

@@ -190,7 +190,7 @@ function AuditRow({ entry }: { entry: AuditLogEntry }) {
 
   return (
     <>
-      <TableRow sx={{ '& > *': { borderBottom: 'unset' } }}>
+      <TableRow>
         <TableCell sx={{ width: 40 }}>
           {hasDiff && (
             <IconButton size="small" onClick={() => setOpen(o => !o)} aria-expanded={open} aria-label="Show changes">

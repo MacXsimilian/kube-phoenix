@@ -501,7 +501,7 @@ The drawer content switches in-place using local `selectedPod` state. A back but
 `src/components/cluster/WorkloadsTable.tsx`
 
 - **Data:** `useQuery(['workloads'], getWorkloads, { refetchInterval: 30_000 })`
-- **Filters:** Search (text), Namespace (dropdown built from data), Status (dropdown), "Would be affected" toggle (cross-references guardrails skip namespaces)
+- **Filters:** Search (text), Namespace (dropdown built from data), Status (dropdown)
 - **Sorting:** Column headers toggle asc/desc/none via `TableSortLabel`
 - **Status from URL:** Reads `?status=` from search params to pre-filter (used when clicking chips on the overview dashboard)
 - **Row click:** Opens `WorkloadDetailDrawer`
@@ -576,7 +576,7 @@ Bands (top to bottom):
 1. **Hero band** -- state-colored gradient background (`HERO_HEADER_GRADIENTS`), back button, 64px state icon, policy name + description, large state label, mode/enabled chips, action buttons (Sleep Now, Wake Now, Edit, Exception)
 2. **Timeline band** -- `LedGlowTimeline` filling the left, weekly stats (Sleep/Week, Awake/Week, Next Transition with countdown) on the right
 3. **Overrides + Exceptions band** -- subtle alternating background, side-by-side `OverridesSection` and `ExceptionsSection` (wraps on mobile)
-4. **Execution History band** -- `ExecutionHistoryTable` at full width. Clicking a row opens the log viewer drawer inline (same behaviour as the History page), using `selectedExec` state and the `LogViewer` component.
+4. **Execution History band** -- `ExecutionHistoryTable` at full width with status filter dropdown. Clicking a row opens the log viewer drawer inline (same behaviour as the History page), using `selectedExec` state and the `LogViewer` component.
 
 #### WindowPicker
 
@@ -601,7 +601,7 @@ All three timeline components use raw SVG for rendering. They share timeline mat
 
 **WeeklyTimeline** (`WeeklyTimeline.tsx`):
 - 7 rows (Mon-Sun), 24h per row
-- Fixed dimensions: 480px bar width + 36px label width
+- Responsive SVG via `viewBox`; scales to container width
 - Green background for awake time, purple blocks for sleep windows
 - Override blocks in orange/red, exception blocks in green/red
 - Current time marker as a red vertical line spanning all rows
@@ -611,6 +611,7 @@ All three timeline components use raw SVG for rendering. They share timeline mat
 
 **LedGlowTimeline** (`LedGlowTimeline.tsx`):
 - Same 7-row layout but rendered as thin LED strips (6px height)
+- Responsive SVG via `viewBox`; scales to container width
 - SVG `<filter>` elements create glow effects (feGaussianBlur + feMerge)
 - Different glow filters for sleep (purple), override (orange), exception (red/green)
 - Current time marker with a circle indicator on today's row

@@ -58,6 +58,7 @@ export default function CreatePolicyDialog({
 
   const [form, setForm] = useState(DEFAULTS)
   const [error, setError] = useState('')
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     if (open) {
@@ -80,6 +81,7 @@ export default function CreatePolicyDialog({
         setForm(DEFAULTS)
       }
       setError('')
+      setTouched({})
     }
   }, [open, existing])
 
@@ -146,9 +148,12 @@ export default function CreatePolicyDialog({
           label="Name"
           value={form.name}
           onChange={e => set('name', e.target.value)}
+          onBlur={() => setTouched(t => ({ ...t, name: true }))}
           fullWidth
           size="small"
           required
+          error={touched.name && !form.name.trim()}
+          helperText={touched.name && !form.name.trim() ? 'Name is required' : undefined}
           inputProps={{ maxLength: 255 }}
         />
         <TextField
@@ -244,7 +249,7 @@ export default function CreatePolicyDialog({
           fullWidth
           size="small"
           placeholder="e.g. staging,dev  (empty = all)"
-          helperText="Comma-separated namespace names, or empty for all namespaces"
+          helperText="Comma-separated namespace list, e.g. default,staging"
         />
         <TextField
           label="Label Selector"
@@ -253,7 +258,7 @@ export default function CreatePolicyDialog({
           fullWidth
           size="small"
           placeholder="e.g. app=api,tier!=db"
-          helperText="Standard Kubernetes label selector syntax"
+          helperText="Kubernetes label selector, e.g. app=web,tier=frontend"
         />
 
         <Divider><Typography variant="caption" color="text.disabled">Settings</Typography></Divider>
@@ -277,7 +282,8 @@ export default function CreatePolicyDialog({
             onChange={e => set('timeoutMinutes', Number(e.target.value))}
             size="small"
             sx={{ minWidth: 160 }}
-            inputProps={{ min: 0, max: 1440 }}
+            inputProps={{ min: 1, max: 1440 }}
+            helperText="Execution timeout in minutes (1-1440)"
           />
           <FormControlLabel
             control={

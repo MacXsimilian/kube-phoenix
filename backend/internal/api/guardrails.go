@@ -11,12 +11,12 @@ import (
 )
 
 func (h *Handler) getGuardrails(w http.ResponseWriter, r *http.Request) {
-	g, err := h.store.GetGuardrails()
+	guardrails, err := h.store.GetGuardrails()
 	if err != nil {
 		jsonInternalError(w, err, "get guardrails failed")
 		return
 	}
-	jsonOK(w, g)
+	jsonOK(w, guardrails)
 }
 
 func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
@@ -31,7 +31,6 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 	// Map camelCase JSON keys to snake_case GORM column names.
 	fieldMap := map[string]string{
 		"systemNamespaces":             "system_namespaces",
-		"skipNamespaces":               "skip_namespaces",
 		"skipNsNode":                   "skip_ns_node",
 		"skipNodeLabels":               "skip_node_labels",
 		"skipNodeTaints":               "skip_node_taints",
@@ -51,25 +50,25 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	g, err := h.store.UpdateGuardrails(updates)
+	guardrails, err := h.store.UpdateGuardrails(updates)
 	if err != nil {
 		jsonInternalError(w, err, "update guardrails failed")
 		return
 	}
 	slog.Info("guardrails updated")
-	h.audit(r, "guardrail.update", "guardrail", nil, old, g)
+	h.audit(r, "guardrail.update", "guardrail", nil, old, guardrails)
 
 	if h.policyScheduler != nil {
 		if err := h.policyScheduler.UpdateSettings(scheduler.SchedulerConfig{
-			TickInterval:        g.ParseSchedulerEvalInterval(),
-			AutoWake:            g.SchedulerAutoWake,
-			ReconcileWhileAwake: g.SchedulerReconcileWhileAwake,
+			TickInterval:        guardrails.ParseSchedulerEvalInterval(),
+			AutoWake:            guardrails.SchedulerAutoWake,
+			ReconcileWhileAwake: guardrails.SchedulerReconcileWhileAwake,
 		}); err != nil {
 			slog.Error("scheduler settings update failed", "err", err)
 		}
 	}
 
-	jsonOK(w, g)
+	jsonOK(w, guardrails)
 }
 
 // validateGuardrailFields validates guardrail update fields. Returns an error message or "".

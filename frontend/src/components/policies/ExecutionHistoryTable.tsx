@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useMemo } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
@@ -8,6 +9,8 @@ import TableHead from '@mui/material/TableHead'
 import TableBody from '@mui/material/TableBody'
 import TableRow from '@mui/material/TableRow'
 import TableCell from '@mui/material/TableCell'
+import TextField from '@mui/material/TextField'
+import MenuItem from '@mui/material/MenuItem'
 import CircularProgress from '@mui/material/CircularProgress'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
@@ -15,6 +18,8 @@ import StatusChip from '@/components/shared/StatusChip'
 import { fmtDtShort, fmtDuration } from '@/lib/formatters'
 import { MODE_COLORS, SMALL_CHIP_SX } from '@/lib/statusColors'
 import type { PolicyExecution, PolicyExecutionPage } from '@/lib/types'
+
+const STATUS_OPTIONS = ['all', 'running', 'success', 'failed'] as const
 
 export default function ExecutionHistoryTable({
   executions,
@@ -25,14 +30,40 @@ export default function ExecutionHistoryTable({
   policyId: number
   onRowClick: (exec: PolicyExecution) => void
 }) {
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+
+  const filtered = useMemo(() => {
+    if (!executions) return undefined
+    if (statusFilter === 'all') return executions.items
+    return executions.items.filter(ex => ex.status === statusFilter)
+  }, [executions, statusFilter])
+
   return (
     <Box>
-      <Typography variant="subtitle1" fontWeight={600} mb={1}>Recent Executions</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+        <Typography variant="subtitle1" fontWeight={600}>Recent Executions</Typography>
+        <TextField
+          select
+          size="small"
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+          label="Status"
+          sx={{ minWidth: 120, '& .MuiInputBase-input': { fontSize: 13, py: 0.75 } }}
+        >
+          {STATUS_OPTIONS.map(opt => (
+            <MenuItem key={opt} value={opt}>
+              {opt.charAt(0).toUpperCase() + opt.slice(1)}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Box>
       {!executions && <CircularProgress size={20} />}
-      {executions && executions.items.length === 0 && (
-        <Typography variant="body2" color="text.secondary">No executions yet.</Typography>
+      {filtered && filtered.length === 0 && (
+        <Typography variant="body2" color="text.secondary">
+          {statusFilter === 'all' ? 'No executions yet.' : `No ${statusFilter} executions.`}
+        </Typography>
       )}
-      {executions && executions.items.length > 0 && (
+      {filtered && filtered.length > 0 && (
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -47,7 +78,7 @@ export default function ExecutionHistoryTable({
             </TableRow>
           </TableHead>
           <TableBody>
-            {executions.items.map(ex => {
+            {filtered.map(ex => {
               const counts = [
                 ex.countScaled > 0 && `${ex.countScaled} scaled`,
                 ex.countDrained > 0 && `${ex.countDrained} drained`,

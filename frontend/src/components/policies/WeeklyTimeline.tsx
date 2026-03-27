@@ -114,7 +114,7 @@ export default function WeeklyTimeline({
 
   return (
     <Box sx={{ overflowX: 'auto' }}>
-      <svg width={TOTAL_W} height={TOTAL_H} style={{ display: 'block' }}>
+      <svg width="100%" viewBox={`0 0 ${TOTAL_W} ${TOTAL_H}`} style={{ display: 'block' }}>
         {/* Hour labels */}
         {[0, 3, 6, 9, 12, 15, 18, 21].map(h => (
           <text

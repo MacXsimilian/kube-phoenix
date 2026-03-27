@@ -59,7 +59,6 @@ export const updateGuardrails = (data: Partial<Guardrails>): Promise<Guardrails>
     method: 'PUT',
     body: JSON.stringify({
       systemNamespaces: data.systemNamespaces,
-      skipNamespaces: data.skipNamespaces,
       skipNsNode: data.skipNsNode,
       skipNodeLabels: data.skipNodeLabels,
       skipNodeTaints: data.skipNodeTaints,

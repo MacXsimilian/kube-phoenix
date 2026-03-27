@@ -11,11 +11,11 @@ import (
 func (r *Runner) RunScaleUp(ctx context.Context, mode, namespaceFilter string, logCh chan<- LogLine) (*Counts, error) {
 	counts := &Counts{}
 
-	g, err := r.store.GetGuardrails()
+	guardrails, err := r.store.GetGuardrails()
 	if err != nil {
 		return nil, fmt.Errorf("guardrails: %w", err)
 	}
-	skipNS := mergeCSV(g.SystemNamespaces, g.SkipNamespaces)
+	skipNS := splitCSV(guardrails.SystemNamespaces)
 
 	// ── Restore Deployments & StatefulSets ───────────────────────────────
 	r.info(logCh, "Fetching Deployments...")
