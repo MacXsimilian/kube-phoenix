@@ -18,6 +18,13 @@ import (
 // PolicyBroker is an alias for Broker, used for policy executions.
 type PolicyBroker = Broker
 
+// SchedulerConfig holds the runtime-tunable settings for the policy evaluation loop.
+type SchedulerConfig struct {
+	TickInterval        time.Duration
+	AutoWake            bool
+	ReconcileWhileAwake bool
+}
+
 // cachedPolicy holds a parsed in-memory representation of a policy.
 type cachedPolicy struct {
 	policy  store.Policy
@@ -31,19 +38,22 @@ type PolicyScheduler struct {
 	store  *store.Store
 	runner *scaler.PolicyRunner
 	Broker *PolicyBroker
+	cfg    SchedulerConfig
 
-	mu       sync.Mutex
-	cancel   context.CancelFunc
-	policies map[uint]cachedPolicy
+	mu        sync.Mutex
+	cancel    context.CancelFunc
+	parentCtx context.Context
+	policies  map[uint]cachedPolicy
 }
 
 // NewPolicyScheduler creates a PolicyScheduler. Pass nil k8sClient in tests.
-func NewPolicyScheduler(st *store.Store, k8sClient *k8s.Client) *PolicyScheduler {
+func NewPolicyScheduler(st *store.Store, k8sClient *k8s.Client, cfg SchedulerConfig) *PolicyScheduler {
 	return &PolicyScheduler{
 		store:    st,
 		runner:   scaler.NewPolicyRunner(k8sClient, st),
 		Broker:   NewBroker(),
 		policies: map[uint]cachedPolicy{},
+		cfg:      cfg,
 	}
 }
 
@@ -51,20 +61,40 @@ func NewPolicyScheduler(st *store.Store, k8sClient *k8s.Client) *PolicyScheduler
 func (ps *PolicyScheduler) Start(ctx context.Context) error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
+	ps.parentCtx = ctx
 	ctx, ps.cancel = context.WithCancel(ctx)
 	if err := ps.reload(); err != nil {
 		return err
 	}
-	go ps.tickLoop(ctx)
+	interval := ps.cfg.TickInterval
+	go ps.tickLoop(ctx, interval)
 	slog.Info("policy scheduler started")
 	return nil
 }
 
 // Stop gracefully shuts down the ticker.
 func (ps *PolicyScheduler) Stop() {
-	if ps.cancel != nil {
-		ps.cancel()
+	ps.mu.Lock()
+	cancel := ps.cancel
+	ps.mu.Unlock()
+	if cancel != nil {
+		cancel()
 	}
+}
+
+// UpdateSettings applies new scheduler settings at runtime. If the eval
+// interval changes the ticker loop is restarted automatically.
+func (ps *PolicyScheduler) UpdateSettings(cfg SchedulerConfig) error {
+	ps.mu.Lock()
+	intervalChanged := ps.cfg.TickInterval != cfg.TickInterval
+	ps.cfg = cfg
+	parentCtx := ps.parentCtx
+	ps.mu.Unlock()
+
+	if intervalChanged && parentCtx != nil {
+		return ps.Restart(parentCtx)
+	}
+	return nil
 }
 
 // Reload re-reads all policies from the DB. Called after any policy CRUD.
@@ -202,13 +232,12 @@ func (ps *PolicyScheduler) TickExceptions(ctx context.Context) {
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
 const (
-	policyEvalTickInterval  = 30 * time.Second
 	defaultExecutionTimeout = 2 * time.Hour
 	execLogChannelBuffer    = 512
 )
 
-func (ps *PolicyScheduler) tickLoop(ctx context.Context) {
-	ticker := time.NewTicker(policyEvalTickInterval)
+func (ps *PolicyScheduler) tickLoop(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -226,17 +255,22 @@ func (ps *PolicyScheduler) evaluateAll() {
 	for _, cp := range ps.policies {
 		snapshot = append(snapshot, cp)
 	}
+	autoWake := ps.cfg.AutoWake
+	reconcileWhileAwake := ps.cfg.ReconcileWhileAwake
 	ps.mu.Unlock()
 
 	now := time.Now()
 	for _, cp := range snapshot {
-		ps.evaluatePolicy(cp, now)
+		ps.evaluatePolicy(cp, now, autoWake, reconcileWhileAwake)
 	}
 }
 
-func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, now time.Time) {
+func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, now time.Time, autoWake bool, reconcileWhileAwake bool) {
 	p := cp.policy
 	if !p.Enabled {
+		return
+	}
+	if !reconcileWhileAwake && p.CurrentState == store.PolicyStateAwake {
 		return
 	}
 
@@ -256,6 +290,9 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, now time.Time) {
 
 	direction := "sleep"
 	if intended == PolicyStateAwake {
+		if !autoWake {
+			return
+		}
 		direction = "wake"
 	}
 
@@ -439,7 +476,7 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 				newState = store.PolicyStateAwake
 			}
 		} else {
-			newState = "unknown"
+			newState = store.PolicyStateUnknown
 		}
 		_ = ps.store.UpdatePolicyState(p.ID, newState, nextTransition)
 

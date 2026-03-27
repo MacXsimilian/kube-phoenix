@@ -13,7 +13,24 @@ type Guardrails struct {
 	SkipNodeLabels   string `json:"skipNodeLabels"`   // comma-separated key=value
 	SkipNodeTaints   string `json:"skipNodeTaints"`   // comma-separated key=value:effect
 
+	// Scheduler behaviour — configurable via the UI.
+	SchedulerEvalInterval       string `gorm:"size:20;default:'30s'" json:"schedulerEvalInterval"`
+	SchedulerAutoWake           bool   `gorm:"default:true" json:"schedulerAutoWake"`
+	SchedulerReconcileWhileAwake bool  `gorm:"default:true" json:"schedulerReconcileWhileAwake"`
+
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+const defaultSchedulerEvalInterval = 30 * time.Second
+
+// ParseSchedulerEvalInterval parses SchedulerEvalInterval and falls back to
+// the default if the value is empty, invalid, or non-positive.
+func (g *Guardrails) ParseSchedulerEvalInterval() time.Duration {
+	d, err := time.ParseDuration(g.SchedulerEvalInterval)
+	if err != nil || d <= 0 {
+		return defaultSchedulerEvalInterval
+	}
+	return d
 }
 
 // ─── User management ─────────────────────────────────────────────────────────
