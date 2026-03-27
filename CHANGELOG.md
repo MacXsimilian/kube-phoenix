@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.16](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.15...v0.3.16) (2026-03-27)
+
+
+### Bug Fixes
+
+* **audit:** correct logout attribution, IP extraction, RBAC, and UI gaps ([#245](https://github.com/MacXsimilian/kube-phoenix/issues/245)) ([7c8056f](https://github.com/MacXsimilian/kube-phoenix/commit/7c8056f9a8f48472faa63427f949ac89e3c5ee39))
+
 ## [0.3.15](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.14...v0.3.15) (2026-03-27)
 
 
