@@ -9,8 +9,7 @@ import DialogActions from '@mui/material/DialogActions'
 import Box from '@mui/material/Box'
 import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
-import Switch from '@mui/material/Switch'
-import FormControlLabel from '@mui/material/FormControlLabel'
+import LabeledSwitch from '@/components/common/LabeledSwitch'
 import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
@@ -233,22 +232,11 @@ export default function ExceptionDialog({
           placeholder="e.g. app=api"
         />
 
-        <FormControlLabel
-          control={
-            <Switch
-              checked={form.sleepOnEnd ?? true}
-              onChange={e => set('sleepOnEnd', e.target.checked)}
-              size="small"
-            />
-          }
-          label={
-            <Box>
-              <Typography variant="body2">Sleep on end</Typography>
-              <Typography variant="caption" color="text.secondary">
-                When the exception window ends, put workloads to sleep immediately
-              </Typography>
-            </Box>
-          }
+        <LabeledSwitch
+          label="Sleep on end"
+          description="When the exception window ends, put workloads to sleep immediately"
+          checked={form.sleepOnEnd ?? true}
+          onChange={v => set('sleepOnEnd', v)}
         />
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
