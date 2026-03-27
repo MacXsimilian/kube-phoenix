@@ -25,7 +25,7 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import Tooltip from '@mui/material/Tooltip'
 import { getWorkloads, getGuardrails } from '@/lib/api'
 import type { Workload } from '@/lib/types'
-import { sinceMs } from '@/lib/formatters'
+import { formatTimeSinceMs } from '@/lib/formatters'
 import { useTheme } from '@mui/material/styles'
 import { statusColors } from '@/components/cluster/statusColors'
 import { useColors } from '@/lib/colors'
@@ -155,7 +155,7 @@ export default function WorkloadsTable() {
         <Box sx={{ flex: 1 }} />
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <Typography variant="caption" color="text.disabled">
-            {dataUpdatedAt ? `Updated ${sinceMs(dataUpdatedAt)}` : ''}
+            {dataUpdatedAt ? `Updated ${formatTimeSinceMs(dataUpdatedAt)}` : ''}
           </Typography>
           <Tooltip title="Refresh">
             <IconButton size="small" onClick={() => refetch()} aria-label="Refresh workloads">

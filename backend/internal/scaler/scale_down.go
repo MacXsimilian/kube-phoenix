@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	corev1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -41,7 +42,11 @@ func (r *Runner) RunScaleDown(ctx context.Context, mode, namespaceFilter string,
 		counts.Errors++
 	}
 
-	entries := r.collectFilteredEntries(deployments, statefulsets, skipNS, namespaceFilter, counts, true)
+	entries := r.collectFilteredEntries(deployments, statefulsets, filterOptions{
+		skipNamespaces:  skipNS,
+		namespaceFilter: namespaceFilter,
+		countSkipped:    true,
+	}, counts)
 	r.scaleDownWorkloads(ctx, mode, entries, logCh, counts)
 
 	// ── Drain & Delete Nodes ──────────────────────────────────────────────
@@ -50,7 +55,48 @@ func (r *Runner) RunScaleDown(ctx context.Context, mode, namespaceFilter string,
 	return counts, nil
 }
 
+// nodeWorkloadInfo holds per-node pod accounting derived from the pod list.
+type nodeWorkloadInfo struct {
+	// criticalNodes is the set of node names that host pods from skip-namespaces.
+	criticalNodes map[string]bool
+	// podCountPerNode counts non-DaemonSet pods per node (used to size drain timeout).
+	podCountPerNode map[string]int
+}
+
+// identifyNodeWorkloads scans allPods and returns per-node workload info.
+// Nodes hosting pods in skipNsNode are marked critical (protected from drain).
+func identifyNodeWorkloads(allPods []corev1.Pod, skipNsNode map[string]bool) nodeWorkloadInfo {
+	info := nodeWorkloadInfo{
+		criticalNodes:   make(map[string]bool),
+		podCountPerNode: make(map[string]int),
+	}
+	for _, pod := range allPods {
+		if skipNsNode[pod.Namespace] {
+			info.criticalNodes[pod.Spec.NodeName] = true
+		}
+		isDaemon := false
+		for _, ref := range pod.OwnerReferences {
+			if ref.Kind == "DaemonSet" {
+				isDaemon = true
+				break
+			}
+		}
+		if !isDaemon {
+			info.podCountPerNode[pod.Spec.NodeName]++
+		}
+	}
+	return info
+}
+
+// isNodeGuardrailProtected returns true when the node matches any label or taint
+// protection rule defined in the guardrails configuration.
+func isNodeGuardrailProtected(node corev1.Node, g *store.Guardrails) bool {
+	return isLabelProtected(node.Labels, g.SkipNodeLabels) || isTaintProtected(node.Spec.Taints, g.SkipNodeTaints)
+}
+
 // drainNodes handles node draining and deletion during scale-down.
+// It delegates pod-counting to identifyNodeWorkloads and protection checks to
+// isNodeGuardrailProtected, keeping this function as a thin orchestration loop.
 func (r *Runner) drainNodes(ctx context.Context, mode string, g *store.Guardrails, logCh chan<- LogLine, counts *Counts) {
 	r.info(logCh, "Fetching nodes...")
 	nodes, err := r.k8s.ListNodes(ctx)
@@ -68,40 +114,23 @@ func (r *Runner) drainNodes(ctx context.Context, mode string, g *store.Guardrail
 		return
 	}
 
-	skipNsNode := splitCSV(g.SkipNsNode)
-	criticalNodes := map[string]bool{}
-	podCountPerNode := map[string]int{}
-	for _, pod := range allPods {
-		if skipNsNode[pod.Namespace] {
-			criticalNodes[pod.Spec.NodeName] = true
-		}
-		isDaemon := false
-		for _, ref := range pod.OwnerReferences {
-			if ref.Kind == "DaemonSet" {
-				isDaemon = true
-				break
-			}
-		}
-		if !isDaemon {
-			podCountPerNode[pod.Spec.NodeName]++
-		}
-	}
+	workloadInfo := identifyNodeWorkloads(allPods, splitCSV(g.SkipNsNode))
 
 	for _, node := range nodes {
 		name := node.Name
 
-		if isLabelProtected(node.Labels, g.SkipNodeLabels) || isTaintProtected(node.Spec.Taints, g.SkipNodeTaints) {
+		if isNodeGuardrailProtected(node, g) {
 			r.info(logCh, fmt.Sprintf("Protected node %s (label/taint match)", name))
 			counts.Protected++
 			continue
 		}
-		if criticalNodes[name] {
+		if workloadInfo.criticalNodes[name] {
 			r.info(logCh, fmt.Sprintf("Protected node %s (running critical workload)", name))
 			counts.Protected++
 			continue
 		}
 
-		podCount := podCountPerNode[name]
+		podCount := workloadInfo.podCountPerNode[name]
 		drainTimeout := time.Duration(podCount*drainTimeoutPerPod+drainTimeoutBase) * time.Second
 		r.drainAndDeleteNode(ctx, mode, name, podCount, drainTimeout, logCh, counts)
 	}

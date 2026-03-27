@@ -31,9 +31,7 @@ func (b *Broker) Subscribe(execID uint) chan store.PolicyLogLine {
 	return ch
 }
 
-// Unsubscribe removes ch from the subscriber list and closes it.
-// Safe to call after Close — if the channel was already closed by Close,
-// it will not be closed again.
+// Unsubscribe removes the subscription. Safe to call after Close.
 func (b *Broker) Unsubscribe(execID uint, ch chan store.PolicyLogLine) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

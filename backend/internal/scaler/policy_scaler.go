@@ -35,12 +35,20 @@ type sleepWorkloadParams struct {
 	snapped map[string]bool
 }
 
+// workloadRef identifies a single Deployment or StatefulSet and its current replica count.
+type workloadRef struct {
+	kind      string
+	namespace string
+	name      string
+	replicas  int32
+}
+
 // sleepWorkload processes a single workload (Deployment or StatefulSet) during a policy sleep.
 // Returns: scaled (bool), error occurred (bool).
-func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, kind, namespace, name string, replicas int32, annotate func() error, scale func() error) (scaled bool, errored bool) {
-	wl := formatWorkload(kind, namespace, name)
+func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, ref workloadRef, annotate func() error, scale func() error) (scaled bool, errored bool) {
+	wl := formatWorkload(ref.kind, ref.namespace, ref.name)
 
-	if p.snapped[kind+"/"+namespace+"/"+name] {
+	if p.snapped[ref.kind+"/"+ref.namespace+"/"+ref.name] {
 		emit(p.logCh, "info", fmt.Sprintf("Snapshot already exists for %s (skipping double-sleep)", wl))
 		return false, false
 	}
@@ -48,15 +56,15 @@ func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, kind, namespace, nam
 	snap := &store.WorkloadSnapshot{
 		PolicyID:         p.policy.ID,
 		SleepExecutionID: p.execID,
-		Kind:             kind,
-		Namespace:        namespace,
-		Name:             name,
-		ReplicasBefore:   replicas,
-		WasAlreadyZero:   replicas == 0,
+		Kind:             ref.kind,
+		Namespace:        ref.namespace,
+		Name:             ref.name,
+		ReplicasBefore:   ref.replicas,
+		WasAlreadyZero:   ref.replicas == 0,
 		CapturedAt:       time.Now(),
 	}
 
-	if replicas == 0 {
+	if ref.replicas == 0 {
 		emit(p.logCh, "info", fmt.Sprintf("Already at 0 replicas: %s (snapshotted, not scaled)", wl))
 		if isApply(p.policy.Mode) {
 			_ = r.store.CreateWorkloadSnapshot(snap)
@@ -65,7 +73,7 @@ func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, kind, namespace, nam
 	}
 
 	if !isApply(p.policy.Mode) {
-		emit(p.logCh, "plan", fmt.Sprintf("Would sleep %s → 0 (currently %d replicas)", wl, replicas))
+		emit(p.logCh, "plan", fmt.Sprintf("Would sleep %s → 0 (currently %d replicas)", wl, ref.replicas))
 		return true, false
 	}
 
@@ -83,8 +91,36 @@ func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, kind, namespace, nam
 		}
 		return false, true
 	}
-	emit(p.logCh, "ok", fmt.Sprintf("Slept %s (was %d replicas)", wl, replicas))
+	emit(p.logCh, "ok", fmt.Sprintf("Slept %s (was %d replicas)", wl, ref.replicas))
 	return true, false
+}
+
+// processSleepWorkloads iterates the filtered workload entries and delegates each
+// one to sleepWorkload. It returns aggregate scaled, skipped, and error counts.
+func (r *PolicyRunner) processSleepWorkloads(ctx context.Context, entries []workloadEntry, swp sleepWorkloadParams) (scaled, skipped, errs int) {
+	for _, e := range entries {
+		e := e
+		didScale, errored := r.sleepWorkload(swp, workloadRef{
+			kind:      e.Kind,
+			namespace: e.Namespace,
+			name:      e.Name,
+			replicas:  e.Replicas,
+		},
+			func() error {
+				return e.Annotate(ctx, e.Namespace, e.Name, annotationKey, fmt.Sprintf("%d", e.Replicas))
+			},
+			func() error { return e.Scale(ctx, e.Namespace, e.Name, 0) },
+		)
+		switch {
+		case errored:
+			errs++
+		case didScale:
+			scaled++
+		default:
+			skipped++
+		}
+	}
+	return scaled, skipped, errs
 }
 
 // RunPolicySleep scales matching workloads to 0 and writes WorkloadSnapshot
@@ -134,24 +170,15 @@ func (r *PolicyRunner) RunPolicySleep(
 		counts.Errors++
 	}
 
-	entries := r.base.collectFilteredEntries(deps, ssets, skipNS, policy.NamespaceFilter, counts, true)
-	for _, e := range entries {
-		e := e
-		scaled, errored := r.sleepWorkload(swp, e.Kind, e.Namespace, e.Name, e.Replicas,
-			func() error {
-				return e.Annotate(ctx, e.Namespace, e.Name, annotationKey, fmt.Sprintf("%d", e.Replicas))
-			},
-			func() error { return e.Scale(ctx, e.Namespace, e.Name, 0) },
-		)
-		switch {
-		case errored:
-			counts.Errors++
-		case scaled:
-			counts.Scaled++
-		default:
-			counts.Skipped++
-		}
-	}
+	entries := r.base.collectFilteredEntries(deps, ssets, filterOptions{
+		skipNamespaces:  skipNS,
+		namespaceFilter: policy.NamespaceFilter,
+		countSkipped:    true,
+	}, counts)
+	scaled, skipped, errs := r.processSleepWorkloads(ctx, entries, swp)
+	counts.Scaled += scaled
+	counts.Skipped += skipped
+	counts.Errors += errs
 
 	// ── Drain & Delete Nodes (same as scale_down) ──────────────────────────
 	r.base.drainNodes(ctx, policy.Mode, g, logCh, counts)

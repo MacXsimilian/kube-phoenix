@@ -39,7 +39,7 @@ import {
   STATE_COLORS, MODE_COLORS, SMALL_CHIP_SX,
   HERO_HEADER_GRADIENTS, SUBTLE_BORDER,
 } from '@/lib/statusColors'
-import { fmtDt, timeUntil } from '@/lib/formatters'
+import { formatDateTime, formatCountdown } from '@/lib/formatters'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
 
 // ── Layout helpers ───────────────────────────────────────────────────────────
@@ -283,9 +283,9 @@ export default function PolicyDetailPage() {
                   <Typography variant="h6" fontWeight={700} sx={{
                     color: policy.currentState === 'sleeping' ? STATE_COLORS.awake.color : STATE_COLORS.sleeping.color,
                   }}>
-                    {fmtDt(policy.nextTransitionAt)}
+                    {formatDateTime(policy.nextTransitionAt)}
                   </Typography>
-                  <Typography variant="caption" color="text.disabled">{timeUntil(policy.nextTransitionAt)}</Typography>
+                  <Typography variant="caption" color="text.disabled">{formatCountdown(policy.nextTransitionAt)}</Typography>
                 </Box>
               )}
             </Box>

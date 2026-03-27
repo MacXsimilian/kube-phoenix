@@ -29,6 +29,7 @@ export const TIMEZONES = [
 ]
 
 // ── Polling & timeout intervals (ms) ──
+export const ME_POLL_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
 export const REQUEST_TIMEOUT_MS = 30_000
 export const DEFAULT_STALE_TIME_MS = 30_000
 export const WORKLOADS_REFETCH_MS = 30_000

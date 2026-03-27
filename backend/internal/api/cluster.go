@@ -28,7 +28,7 @@ type WorkloadResponse struct {
 	CurrentReplicas int32  `json:"currentReplicas"`
 	SavedReplicas   *int32 `json:"savedReplicas"`
 	ReadyReplicas   int32  `json:"readyReplicas"`
-	Status          string `json:"status"` // "running" | "sleeping" | "partial"
+	Status          string `json:"status"` // see workloadStatus constants: "running", "sleeping", "partial"
 }
 
 type NodeResponse struct {
@@ -36,7 +36,7 @@ type NodeResponse struct {
 	InstanceType     string `json:"instanceType"`
 	Zone             string `json:"zone"`
 	PodCount         int    `json:"podCount"`
-	Status           string `json:"status"` // "active" | "protected" | "would-drain"
+	Status           string `json:"status"` // see nodeProtectionStatus return values: "would-drain", "protected"
 	ProtectionReason string `json:"protectionReason"`
 	CpuAllocatable   int64  `json:"cpuAllocatable"` // millicores
 	CpuRequested     int64  `json:"cpuRequested"`   // millicores
@@ -45,6 +45,9 @@ type NodeResponse struct {
 	CreatedAt        string `json:"createdAt"`      // RFC3339
 	Cordoned         bool   `json:"cordoned"`
 }
+
+// maxPodLogTailLines is the upper bound on the number of log lines a client may request.
+const maxPodLogTailLines = 10_000
 
 // validK8sName reports whether s is a valid Kubernetes resource name.
 var validK8sName = regexp.MustCompile(`^[a-z0-9][a-z0-9\-\.]{0,252}[a-z0-9]$|^[a-z0-9]$`)
@@ -378,7 +381,7 @@ type NodePodResponse struct {
 	Namespace       string `json:"namespace"`
 	OwnerKind       string `json:"ownerKind"`
 	OwnerName       string `json:"ownerName"`
-	Status          string `json:"status"` // Running | Pending | Failed | Succeeded | Unknown
+	Status          string `json:"status"` // reflects pod phase: Running, Pending, Failed, Succeeded, Unknown
 	ReadyContainers int    `json:"readyContainers"`
 	TotalContainers int    `json:"totalContainers"`
 	CPURequest      int64  `json:"cpuRequest"` // millicores
@@ -406,7 +409,11 @@ func (h *Handler) getNodePods(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	podMetrics, _ := h.k8s.GetAllPodMetrics(ctx)
+	podMetrics, err := h.k8s.GetAllPodMetrics(ctx)
+	if err != nil {
+		slog.Warn("pod metrics unavailable", "err", err)
+		podMetrics = map[string]k8s.ContainerMetrics{}
+	}
 	rsOwner := h.fetchRSOwnerMap(ctx, "getNodePods")
 
 	result := filterAndBuildPodResponses(pods, podMetrics, rsOwner, nil)
@@ -431,11 +438,11 @@ type ContainerDetailResponse struct {
 
 type PodConditionResponse struct {
 	Type   string `json:"type"`
-	Status string `json:"status"` // "True" | "False" | "Unknown"
+	Status string `json:"status"` // reflects corev1.ConditionStatus: True, False, Unknown
 }
 
 type PodEventResponse struct {
-	Type     string `json:"type"` // "Normal" | "Warning"
+	Type     string `json:"type"` // reflects corev1.EventType: Normal, Warning
 	Reason   string `json:"reason"`
 	Message  string `json:"message"`
 	Count    int32  `json:"count"`
@@ -600,9 +607,9 @@ func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	container, tailLines, previous, follow := parsePodLogParams(r)
+	opts := parsePodLogParams(r)
 
-	stream, err := h.k8s.GetPodLogs(r.Context(), namespace, name, container, tailLines, previous, follow)
+	stream, err := h.k8s.GetPodLogs(r.Context(), namespace, name, opts.container, opts.tailLines, opts.previous, opts.follow)
 	if err != nil {
 		jsonInternalError(w, err, "get pod logs failed")
 		return
@@ -612,7 +619,7 @@ func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
-	if !follow {
+	if !opts.follow {
 		if _, err := io.Copy(w, stream); err != nil {
 			slog.Warn("getPodLogs: stream copy error", "err", err)
 		}
@@ -643,25 +650,34 @@ func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// parsePodLogParams extracts and sanitises pod log query parameters.
-func parsePodLogParams(r *http.Request) (container string, tailLines int64, previous, follow bool) {
-	query := r.URL.Query()
-	container = query.Get("container")
-	previous = query.Get("previous") == "true"
-	follow = query.Get("follow") == "true"
+// podLogOptions holds the parsed query parameters for a pod log request.
+type podLogOptions struct {
+	container string
+	tailLines int64
+	previous  bool
+	follow    bool
+}
 
-	tailLines = 500
+// parsePodLogParams extracts and sanitises pod log query parameters.
+func parsePodLogParams(r *http.Request) podLogOptions {
+	query := r.URL.Query()
+	opts := podLogOptions{
+		container: query.Get("container"),
+		previous:  query.Get("previous") == "true",
+		follow:    query.Get("follow") == "true",
+		tailLines: 500,
+	}
 	if v := query.Get("tailLines"); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 && n <= 10000 {
-			tailLines = n
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 && n <= maxPodLogTailLines {
+			opts.tailLines = n
 		}
 	}
 
 	// Cannot stream previous (terminated) container logs.
-	if previous {
-		follow = false
+	if opts.previous {
+		opts.follow = false
 	}
-	return
+	return opts
 }
 
 // ── Workload pods ─────────────────────────────────────────────────────────────
@@ -692,7 +708,11 @@ func (h *Handler) getWorkloadPods(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	podMetrics, _ := h.k8s.GetAllPodMetrics(ctx)
+	podMetrics, err := h.k8s.GetAllPodMetrics(ctx)
+	if err != nil {
+		slog.Warn("pod metrics unavailable", "err", err)
+		podMetrics = map[string]k8s.ContainerMetrics{}
+	}
 	rsOwner := h.fetchRSOwnerMap(ctx, "getWorkloadPods")
 
 	result := filterAndBuildPodResponses(pods, podMetrics, rsOwner, &podFilter{Kind: kind, Name: name})

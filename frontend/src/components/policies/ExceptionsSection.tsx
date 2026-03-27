@@ -13,7 +13,7 @@ import IconButton from '@mui/material/IconButton'
 import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import StatusChip from '@/components/shared/StatusChip'
-import { fmtDt } from '@/lib/formatters'
+import { formatDateTime } from '@/lib/formatters'
 import { TYPE_LABELS, TYPE_LABEL_FALLBACK } from '@/lib/statusColors'
 import type { ScheduledException } from '@/lib/types'
 
@@ -63,7 +63,7 @@ export default function ExceptionsSection({
                     return <Chip label={typeLabel.label} size="small" sx={{ fontSize: 10, color: typeLabel.color, bgcolor: typeLabel.bg }} />
                   })()}
                 </TableCell>
-                <TableCell>{fmtDt(ex.startsAt)} \u2192 {fmtDt(ex.endsAt)}</TableCell>
+                <TableCell>{formatDateTime(ex.startsAt)} \u2192 {formatDateTime(ex.endsAt)}</TableCell>
                 <TableCell>{ex.ticketRef || '\u2014'}</TableCell>
                 <TableCell><StatusChip status={ex.status} /></TableCell>
                 <TableCell>{ex.sleepOnEnd ? 'Yes' : 'No'}</TableCell>

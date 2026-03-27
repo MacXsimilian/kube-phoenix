@@ -8,14 +8,17 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"time"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/auth"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
-	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
-	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"golang.org/x/oauth2"
+)
+
+const (
+	oidcStateCookieName    = "__kp_oidc_state"
+	oidcVerifierCookieName = "__kp_oidc_verifier"
+	oidcCookiePath         = "/api/auth/oidc"
 )
 
 // errMissingIDToken is returned when the token response contains no id_token field.
@@ -74,18 +77,18 @@ func (h *Handler) oidcLogin(w http.ResponseWriter, r *http.Request) {
 	// Store state and PKCE verifier in short-lived HTTP-only cookies.
 	secure := os.Getenv("COOKIE_SECURE") != "false"
 	http.SetCookie(w, &http.Cookie{
-		Name:     "__kp_oidc_state",
+		Name:     oidcStateCookieName,
 		Value:    state,
-		Path:     "/api/auth/oidc",
+		Path:     oidcCookiePath,
 		MaxAge:   300, // 5 minutes
 		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode, // Lax required for cross-site redirect
 	})
 	http.SetCookie(w, &http.Cookie{
-		Name:     "__kp_oidc_verifier",
+		Name:     oidcVerifierCookieName,
 		Value:    verifier,
-		Path:     "/api/auth/oidc",
+		Path:     oidcCookiePath,
 		MaxAge:   300,
 		HttpOnly: true,
 		Secure:   secure,
@@ -154,7 +157,7 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	metrics.AuthAttemptsTotal.WithLabelValues("success", "oidc").Inc()
 	_ = h.store.UpdateLastLogin(user.ID)
 
-	if err := h.createOIDCSession(w, r, user); err != nil {
+	if err := h.createSessionCookies(w, r, user); err != nil {
 		jsonInternalError(w, err, "create session failed")
 		return
 	}
@@ -166,7 +169,7 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 // oidcValidateAndClearCookies validates the OIDC state and PKCE verifier cookies,
 // clears them, and returns the PKCE verifier value.
 func (h *Handler) oidcValidateAndClearCookies(w http.ResponseWriter, r *http.Request) (string, bool) {
-	stateCookie, err := r.Cookie("__kp_oidc_state")
+	stateCookie, err := r.Cookie(oidcStateCookieName)
 	if err != nil || stateCookie.Value == "" {
 		slog.Warn("oidc: missing state cookie")
 		jsonError(w, "invalid OIDC state", http.StatusBadRequest)
@@ -178,15 +181,15 @@ func (h *Handler) oidcValidateAndClearCookies(w http.ResponseWriter, r *http.Req
 		return "", false
 	}
 
-	verifierCookie, err := r.Cookie("__kp_oidc_verifier")
+	verifierCookie, err := r.Cookie(oidcVerifierCookieName)
 	if err != nil || verifierCookie.Value == "" {
 		slog.Warn("oidc: missing PKCE verifier cookie")
 		jsonError(w, "invalid OIDC state", http.StatusBadRequest)
 		return "", false
 	}
 
-	http.SetCookie(w, &http.Cookie{Name: "__kp_oidc_state", Value: "", Path: "/api/auth/oidc", MaxAge: -1})
-	http.SetCookie(w, &http.Cookie{Name: "__kp_oidc_verifier", Value: "", Path: "/api/auth/oidc", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: oidcStateCookieName, Value: "", Path: oidcCookiePath, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: oidcVerifierCookieName, Value: "", Path: oidcCookiePath, MaxAge: -1})
 	return verifierCookie.Value, true
 }
 
@@ -237,7 +240,9 @@ func oidcExtractClaims(idToken *gooidc.IDToken, groupsClaim string) (oidcClaims,
 		if err := idToken.Claims(&extra); err == nil {
 			if data, ok := extra[groupsClaim]; ok {
 				var g []string
-				if json.Unmarshal(data, &g) == nil {
+				if err := json.Unmarshal(data, &g); err != nil {
+					slog.Warn("oidc: malformed groups claim", "err", err)
+				} else {
 					groups = g
 				}
 			}
@@ -254,41 +259,3 @@ func oidcExtractClaims(idToken *gooidc.IDToken, groupsClaim string) (oidcClaims,
 	}, true
 }
 
-// createOIDCSession creates a kube-phoenix session and sets the session + CSRF cookies.
-func (h *Handler) createOIDCSession(w http.ResponseWriter, r *http.Request, user *store.User) error {
-	sessToken, err := store.GenerateToken()
-	if err != nil {
-		return err
-	}
-
-	now := time.Now()
-	sess := &store.Session{
-		Token:        sessToken,
-		UserID:       user.ID,
-		IPAddress:    r.RemoteAddr,
-		UserAgent:    r.UserAgent(),
-		ExpiresAt:    now.Add(h.idleTimeout),
-		MaxExpiresAt: now.Add(h.maxLifetime),
-		CreatedAt:    now,
-	}
-	if err := h.store.CreateSession(sess); err != nil {
-		return err
-	}
-
-	secure := os.Getenv("COOKIE_SECURE") != "false"
-	http.SetCookie(w, &http.Cookie{
-		Name:     "__kp_session",
-		Value:    sessToken,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   secure,
-		SameSite: http.SameSiteStrictMode,
-	})
-
-	csrfToken, err := authmw.GenerateCSRFToken()
-	if err != nil {
-		return err
-	}
-	authmw.SetCSRFCookie(w, csrfToken, secure)
-	return nil
-}

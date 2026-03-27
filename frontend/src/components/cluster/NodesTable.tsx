@@ -25,7 +25,7 @@ import IconButton from '@mui/material/IconButton'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodes } from '@/lib/api'
 import type { Node } from '@/lib/types'
-import { fmtCpu, fmtMem, podAge, sinceMs, pct, pctColor } from '@/lib/formatters'
+import { formatCpu, formatMem, formatPodAge, formatTimeSinceMs, calculatePercentage, getPercentageColor } from '@/lib/formatters'
 import { nodeStatusMap } from '@/components/cluster/statusColors'
 import { useTheme } from '@mui/material/styles'
 import { useColors } from '@/lib/colors'
@@ -36,8 +36,8 @@ type SortDir = 'asc' | 'desc'
 
 function ResourceBar({ used, total, usedLabel, totalLabel }: { used: number; total: number; usedLabel: string; totalLabel: string }) {
   const isDark = useTheme().palette.mode === 'dark'
-  const percentUsed = pct(used, total)
-  const color = pctColor(percentUsed, isDark)
+  const percentUsed = calculatePercentage(used, total)
+  const color = getPercentageColor(percentUsed, isDark)
   return (
     <Tooltip title={`${usedLabel} / ${totalLabel} reserved`} arrow>
       <Box sx={{ minWidth: 72 }}>
@@ -68,8 +68,8 @@ function sortNodes(nodes: Node[], col: SortCol, dir: SortDir): Node[] {
       case 'instanceType': cmp = (a.instanceType || '').localeCompare(b.instanceType || ''); break
       case 'zone': cmp = (a.zone || '').localeCompare(b.zone || ''); break
       case 'pods': cmp = a.podCount - b.podCount; break
-      case 'cpu': cmp = pct(a.cpuRequested, a.cpuAllocatable) - pct(b.cpuRequested, b.cpuAllocatable); break
-      case 'mem': cmp = pct(a.memRequested, a.memAllocatable) - pct(b.memRequested, b.memAllocatable); break
+      case 'cpu': cmp = calculatePercentage(a.cpuRequested, a.cpuAllocatable) - calculatePercentage(b.cpuRequested, b.cpuAllocatable); break
+      case 'mem': cmp = calculatePercentage(a.memRequested, a.memAllocatable) - calculatePercentage(b.memRequested, b.memAllocatable); break
       case 'status': cmp = a.status.localeCompare(b.status); break
     }
     return dir === 'asc' ? cmp : -cmp
@@ -128,7 +128,7 @@ function NodeRow({
       sx={{ cursor: 'pointer', ...(isSelected ? { bgcolor: 'rgba(124,58,237,0.08)' } : {}) }}
     >
       <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>{node.name}</TableCell>
-      <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{podAge(node.createdAt)}</TableCell>
+      <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{formatPodAge(node.createdAt)}</TableCell>
       <TableCell sx={{ fontSize: 13 }}>{node.instanceType || '—'}</TableCell>
       {!groupByZone && <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{node.zone || '—'}</TableCell>}
       <TableCell sx={{ fontSize: 13 }}>{node.podCount}</TableCell>
@@ -136,16 +136,16 @@ function NodeRow({
         <ResourceBar
           used={node.cpuRequested}
           total={node.cpuAllocatable}
-          usedLabel={fmtCpu(node.cpuRequested)}
-          totalLabel={fmtCpu(node.cpuAllocatable)}
+          usedLabel={formatCpu(node.cpuRequested)}
+          totalLabel={formatCpu(node.cpuAllocatable)}
         />
       </TableCell>
       <TableCell>
         <ResourceBar
           used={node.memRequested}
           total={node.memAllocatable}
-          usedLabel={fmtMem(node.memRequested)}
-          totalLabel={fmtMem(node.memAllocatable)}
+          usedLabel={formatMem(node.memRequested)}
+          totalLabel={formatMem(node.memAllocatable)}
         />
       </TableCell>
       <TableCell>
@@ -238,7 +238,7 @@ export default function NodesTable() {
         <Box sx={{ flex: 1 }} />
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <Typography variant="caption" color="text.disabled">
-            {dataUpdatedAt ? `Updated ${sinceMs(dataUpdatedAt)}` : ''}
+            {dataUpdatedAt ? `Updated ${formatTimeSinceMs(dataUpdatedAt)}` : ''}
           </Typography>
           <Tooltip title="Refresh">
             <IconButton size="small" onClick={() => refetch()} aria-label="Refresh nodes">
@@ -282,8 +282,8 @@ export default function NodesTable() {
                 </TableRow>
               ) : groupByZone ? (
                 zoneGroups.map(([zone, stats]) => {
-                  const cpuZonePct = pct(stats.cpuRequested, stats.cpuAllocatable)
-                  const memZonePct = pct(stats.memRequested, stats.memAllocatable)
+                  const cpuZonePct = calculatePercentage(stats.cpuRequested, stats.cpuAllocatable)
+                  const memZonePct = calculatePercentage(stats.memRequested, stats.memAllocatable)
                   return (
                     <React.Fragment key={zone}>
                       <TableRow sx={{ bgcolor: 'rgba(124,58,237,0.06)' }}>
@@ -297,12 +297,12 @@ export default function NodesTable() {
                             <Chip
                               label={`CPU ${cpuZonePct}%`}
                               size="small"
-                              sx={{ height: 18, fontSize: 10, bgcolor: `${pctColor(cpuZonePct, isDark)}22`, color: pctColor(cpuZonePct, isDark) }}
+                              sx={{ height: 18, fontSize: 10, bgcolor: `${getPercentageColor(cpuZonePct, isDark)}22`, color: getPercentageColor(cpuZonePct, isDark) }}
                             />
                             <Chip
                               label={`MEM ${memZonePct}%`}
                               size="small"
-                              sx={{ height: 18, fontSize: 10, bgcolor: `${pctColor(memZonePct, isDark)}22`, color: pctColor(memZonePct, isDark) }}
+                              sx={{ height: 18, fontSize: 10, bgcolor: `${getPercentageColor(memZonePct, isDark)}22`, color: getPercentageColor(memZonePct, isDark) }}
                             />
                             {stats.cordoned > 0 && (
                               <Chip label={`${stats.cordoned} cordoned`} size="small" sx={{ height: 18, fontSize: 10, bgcolor: colors.errorBg, color: colors.errorLight }} />

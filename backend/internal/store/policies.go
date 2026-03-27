@@ -57,7 +57,7 @@ func (s *Store) UpdatePolicyState(id uint, state string, nextTransition *time.Ti
 	switch state {
 	case PolicyStateSleeping:
 		updates["last_sleep_at"] = now
-	case "awake":
+	case PolicyStateAwake:
 		updates["last_wake_at"] = now
 	}
 	return s.db.Model(&Policy{}).Where("id = ?", id).Updates(updates).Error

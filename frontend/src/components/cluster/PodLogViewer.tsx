@@ -39,6 +39,19 @@ interface PodLogViewerProps {
   onBack: () => void
 }
 
+/**
+ * PodLogViewer — displays live-streaming and historical logs for a selected pod container.
+ *
+ * Features:
+ * - Streams logs via fetch/ReadableStream with live "LIVE" / "ENDED" status indicators
+ * - Supports current (live) and previous (terminated) container instance logs
+ * - Per-line search with match count, prev/next navigation, and highlight for current match
+ * - Container selector rendered only for multi-container pods
+ * - Auto-scroll that disengages on manual upward scroll and re-engages at bottom
+ * - "Load older logs" button increments tail window up to a MAX_LINES cap
+ * - Copy-to-clipboard and .log file download actions
+ * - Aborts in-flight streams on container change or mode switch to avoid stale data
+ */
 export default function PodLogViewer({ namespace, podName, containers, onBack }: PodLogViewerProps) {
   const colors = useColors()
   const [container, setContainer] = useState(containers[0]?.name ?? '')

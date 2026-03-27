@@ -22,7 +22,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodePods } from '@/lib/api'
-import { fmtCpu, fmtMem, sinceMs, pct, pctColor } from '@/lib/formatters'
+import { formatCpu, formatMem, formatTimeSinceMs, calculatePercentage, getPercentageColor } from '@/lib/formatters'
 import { nodeStatusMap } from '@/components/cluster/statusColors'
 import { useTheme } from '@mui/material/styles'
 import { useColors } from '@/lib/colors'
@@ -36,8 +36,8 @@ import PodRow from './PodRow'
 
 function MiniBar({ used, total, label }: { used: number; total: number; label: string }) {
   const isDark = useTheme().palette.mode === 'dark'
-  const percentUsed = pct(used, total)
-  const color = pctColor(percentUsed, isDark)
+  const percentUsed = calculatePercentage(used, total)
+  const color = getPercentageColor(percentUsed, isDark)
   return (
     <Tooltip title={label} arrow>
       <Box sx={{ minWidth: 80 }}>
@@ -197,12 +197,12 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
                 <MiniBar
                   used={node.cpuRequested}
                   total={node.cpuAllocatable}
-                  label={`CPU: ${fmtCpu(node.cpuRequested)} / ${fmtCpu(node.cpuAllocatable)} reserved`}
+                  label={`CPU: ${formatCpu(node.cpuRequested)} / ${formatCpu(node.cpuAllocatable)} reserved`}
                 />
                 <MiniBar
                   used={node.memRequested}
                   total={node.memAllocatable}
-                  label={`MEM: ${fmtMem(node.memRequested)} / ${fmtMem(node.memAllocatable)} reserved`}
+                  label={`MEM: ${formatMem(node.memRequested)} / ${formatMem(node.memAllocatable)} reserved`}
                 />
                 <Box>
                   <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', mb: 0.25, fontSize: 11 }}>PODS</Typography>
@@ -232,7 +232,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
               slotProps={{ htmlInput: { sx: { fontSize: 13, py: 0.75 } } }}
             />
             <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap', fontSize: 11 }}>
-              {dataUpdatedAt ? sinceMs(dataUpdatedAt) : ''}
+              {dataUpdatedAt ? formatTimeSinceMs(dataUpdatedAt) : ''}
             </Typography>
             <Tooltip title="Refresh">
               <IconButton size="small" onClick={() => refetch()} aria-label="Refresh pod list">

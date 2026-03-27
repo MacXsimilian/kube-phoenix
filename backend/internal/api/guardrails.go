@@ -80,6 +80,7 @@ func validateGuardrailFields(body map[string]interface{}) string {
 			return msg
 		}
 	}
+
 	if v, ok := body["skipNodeTaints"]; ok {
 		for _, entry := range strings.Split(fmt.Sprintf("%v", v), ",") {
 			entry = strings.TrimSpace(entry)

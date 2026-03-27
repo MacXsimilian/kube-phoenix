@@ -4,7 +4,7 @@ import TableRow from '@mui/material/TableRow'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import { useTheme } from '@mui/material/styles'
-import { fmtCpu, fmtMem, podAge } from '@/lib/formatters'
+import { formatCpu, formatMem, formatPodAge } from '@/lib/formatters'
 import { getPodStatusStyle } from '@/components/cluster/statusColors'
 import { useColors } from '@/lib/colors'
 
@@ -80,17 +80,17 @@ export default function PodRow({
       </TableCell>
       <TableCell sx={{ py: 0.75 }}>
         <Typography sx={{ fontSize: 12, fontFamily: 'monospace', color: 'text.secondary' }}>
-          {pod.cpuUsage > 0 ? fmtCpu(pod.cpuUsage) : '—'}
+          {pod.cpuUsage > 0 ? formatCpu(pod.cpuUsage) : '—'}
         </Typography>
       </TableCell>
       <TableCell sx={{ py: 0.75 }}>
         <Typography sx={{ fontSize: 12, fontFamily: 'monospace', color: 'text.secondary' }}>
-          {pod.memUsage > 0 ? fmtMem(pod.memUsage) : '—'}
+          {pod.memUsage > 0 ? formatMem(pod.memUsage) : '—'}
         </Typography>
       </TableCell>
       <TableCell sx={{ py: 0.75 }}>
         <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
-          {podAge(pod.startedAt)}
+          {formatPodAge(pod.startedAt)}
         </Typography>
       </TableCell>
     </TableRow>

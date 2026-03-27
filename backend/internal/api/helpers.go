@@ -42,6 +42,12 @@ func parseID(r *http.Request, param string) (uint, error) {
 	return uint(id), err
 }
 
+// parseIDFromString parses a uint ID from a raw string (e.g. a query parameter).
+func parseIDFromString(s string) (uint, error) {
+	id, err := strconv.ParseUint(s, 10, 64)
+	return uint(id), err
+}
+
 func (h *Handler) reloadScheduler(policyID uint) {
 	if err := h.policyScheduler.Reload(); err != nil {
 		slog.Error("policy scheduler reload failed", "policyID", policyID, "err", err)

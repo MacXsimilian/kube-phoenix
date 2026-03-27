@@ -14,7 +14,7 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
     ...options?.headers as Record<string, string>,
   }
 
-  // Attach CSRF token on mutation requests.
+  // Mutation methods require a CSRF token to prevent cross-site request forgery.
   if (MUTATION_METHODS.has(method)) {
     headers['X-CSRF-Token'] = getCSRFToken()
   }
@@ -34,15 +34,23 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error('Session expired')
   }
 
-  // 403 → permission denied — surface the backend message clearly.
+  // 403 → permission denied — show a generic user-facing message.
   if (res.status === 403) {
-    const body = await res.json().catch(() => null)
-    throw new Error(body?.error || 'You do not have permission to perform this action')
+    if (process.env.NODE_ENV === 'development') {
+      const ct = res.headers.get('content-type') ?? ''
+      const body = ct.includes('application/json')
+        ? await res.clone().json().catch(() => null)
+        : null
+      if (body?.error) console.warn('[kp] 403 detail:', body.error)
+    }
+    throw new Error('You do not have permission to perform this action.')
   }
 
   if (!res.ok) {
     const body = await res.json().catch(() => null)
-    throw new Error(body?.error || body?.message || `HTTP ${res.status}`)
+    const msg = body?.error || body?.message
+    if (res.status >= 500) throw new Error(msg || 'Server error. Please try again later.')
+    throw new Error(msg || `HTTP ${res.status}`)
   }
   // 204 No Content
   if (res.status === 204) return undefined as T
@@ -138,18 +146,22 @@ export function streamPodLogs(
           const decoder = new TextDecoder()
           let buf = ''
 
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-            buf += decoder.decode(value, { stream: true })
-            const parts = buf.split('\n')
-            buf = parts.pop() ?? ''
-            for (const line of parts) {
-              if (line) onLine(line)
+          try {
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              buf += decoder.decode(value, { stream: true })
+              const parts = buf.split('\n')
+              buf = parts.pop() ?? ''
+              for (const line of parts) {
+                if (line) onLine(line)
+              }
             }
+            if (buf) onLine(buf)
+            onDone()
+          } finally {
+            reader.cancel()
           }
-          if (buf) onLine(buf)
-          onDone()
         })
         .catch((err) => {
           if (signal?.aborted) return
@@ -182,17 +194,21 @@ export async function* resetDatabaseStream(): AsyncGenerator<ResetEvent> {
   const decoder = new TextDecoder()
   let buf = ''
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buf += decoder.decode(value, { stream: true })
-    const lines = buf.split('\n')
-    buf = lines.pop() ?? ''
-    for (const line of lines) {
-      if (line.trim()) {
-        try { yield JSON.parse(line) } catch { if (process.env.NODE_ENV === 'development') console.warn('[kp] skipping malformed JSON line:', line) }
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
+      for (const line of lines) {
+        if (line.trim()) {
+          try { yield JSON.parse(line) } catch { if (process.env.NODE_ENV === 'development') console.warn('[kp] skipping malformed JSON line:', line) }
+        }
       }
     }
+  } finally {
+    reader.cancel()
   }
 }
 

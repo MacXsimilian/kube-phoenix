@@ -19,7 +19,7 @@ import MenuItem from '@mui/material/MenuItem'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { deletePolicyOverride, createPolicyOverride } from '@/lib/api'
-import { fmtDt } from '@/lib/formatters'
+import { formatDateTime } from '@/lib/formatters'
 import { TYPE_LABELS, TYPE_LABEL_FALLBACK } from '@/lib/statusColors'
 import type { PolicyOverride } from '@/lib/types'
 
@@ -104,7 +104,7 @@ export default function OverridesSection({
                     })()}
                   </TableCell>
                   <TableCell>
-                    {ov.startsAt ? `${fmtDt(ov.startsAt)} \u2192 ${fmtDt(ov.endsAt)}` : fmtDt(ov.targetCronTime)}
+                    {ov.startsAt ? `${formatDateTime(ov.startsAt)} \u2192 ${formatDateTime(ov.endsAt)}` : formatDateTime(ov.targetCronTime)}
                   </TableCell>
                   <TableCell>{ov.reason || '\u2014'}</TableCell>
                   <TableCell>{ov.createdBy}</TableCell>

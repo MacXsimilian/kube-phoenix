@@ -48,6 +48,7 @@ func (h *Handler) resetDB(w http.ResponseWriter, r *http.Request) {
 		slog.Info("admin: reset "+typ, "msg", msg)
 	}
 
+	// TODO: extract shared fetchAndFilterWorkloads helper — duplicated in scaler/scale_down.go
 	emit("step", "Stopping policy scheduler...")
 	h.policyScheduler.Stop()
 

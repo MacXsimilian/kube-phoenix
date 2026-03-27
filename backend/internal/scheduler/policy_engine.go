@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/policy"
@@ -15,6 +16,16 @@ const (
 	PolicyStateAwake    PolicyState = "awake"
 	PolicyStateUnknown  PolicyState = "unknown"
 )
+
+// PolicyTransitioningError is returned when a scale operation is attempted on a
+// policy that is already mid-transition. Callers should use errors.As to detect it.
+type PolicyTransitioningError struct {
+	PolicyID uint
+}
+
+func (e PolicyTransitioningError) Error() string {
+	return fmt.Sprintf("policy %d is already transitioning", e.PolicyID)
+}
 
 // hasActiveWindowedOverride checks if any override of the given type is active at now.
 func hasActiveWindowedOverride(overrides []store.PolicyOverride, overrideType string, now time.Time) bool {
@@ -52,11 +63,11 @@ func IntendedState(windows []policy.SleepWindow, timezone string, overrides []st
 	return PolicyStateAwake
 }
 
-// HasSkipOverride returns true if there is a skip_sleep or skip_wake override
-// that is still valid. In the window-native model, skip overrides use a
-// ValidUntil-style check: the override is consumed if the direction matches
-// and the override hasn't expired.
-func HasSkipOverride(overrides []store.PolicyOverride, direction string, now time.Time) *store.PolicyOverride {
+// FindSkipOverride returns the first active skip_sleep or skip_wake override
+// for the given direction, or nil if none exists. In the window-native model,
+// skip overrides use a ValidUntil-style check: the override is consumed if the
+// direction matches and the override hasn't expired.
+func FindSkipOverride(overrides []store.PolicyOverride, direction string, now time.Time) *store.PolicyOverride {
 	wantType := "skip_sleep"
 	if direction == "wake" {
 		wantType = "skip_wake"
@@ -74,6 +85,32 @@ func HasSkipOverride(overrides []store.PolicyOverride, direction string, now tim
 		return o
 	}
 	return nil
+}
+
+// recoveryAction describes what corrective execution, if any, a policy needs
+// during startup recovery.
+type recoveryAction string
+
+const (
+	recoveryNone  recoveryAction = ""
+	recoverySleep recoveryAction = "sleep"
+	recoveryWake  recoveryAction = "wake"
+)
+
+// determineRecoveryAction evaluates the policy's intended vs current state and
+// returns the direction of the corrective execution required, or recoveryNone
+// when no action is needed.
+func determineRecoveryAction(p store.Policy, intended PolicyState) recoveryAction {
+	if intended == PolicyStateUnknown {
+		return recoveryNone
+	}
+	if p.CurrentState == string(intended) {
+		return recoveryNone
+	}
+	if intended == PolicyStateAwake {
+		return recoveryWake
+	}
+	return recoverySleep
 }
 
 // ActiveException returns the first ScheduledException that is currently active

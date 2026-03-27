@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/policy"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"gorm.io/gorm"
 )
@@ -158,8 +159,8 @@ func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
 	jsonCreated(w, h.policyResp(p))
 }
 
-// policyFieldMap maps JSON field names to database column names.
-var policyFieldMap = map[string]string{
+// allowedPolicyUpdateFields maps JSON field names to database column names.
+var allowedPolicyUpdateFields = map[string]string{
 	"name":            "name",
 	"description":     "description",
 	"namespaceFilter": "namespace_filter",
@@ -170,6 +171,38 @@ var policyFieldMap = map[string]string{
 	"timeoutMinutes":  "timeout_minutes",
 }
 
+// buildPolicyUpdates maps recognised JSON fields from body into database column
+// names using allowedPolicyUpdateFields. The caller is responsible for further validation.
+func buildPolicyUpdates(body map[string]interface{}) map[string]interface{} {
+	updates := map[string]interface{}{}
+	for jsonKey, dbCol := range allowedPolicyUpdateFields {
+		if v, ok := body[jsonKey]; ok {
+			updates[dbCol] = v
+		}
+	}
+	return updates
+}
+
+// validatePolicyWindows re-marshals rawWindows, checks the slice is non-empty,
+// and delegates format/time validation to policy.ValidateWindows.
+func validatePolicyWindows(rawWindows interface{}) (string, error) {
+	windowsJSON, err := json.Marshal(rawWindows)
+	if err != nil {
+		return "", fmt.Errorf("invalid sleepWindows")
+	}
+	var windows []policy.SleepWindow
+	if err := json.Unmarshal(windowsJSON, &windows); err != nil {
+		return "", fmt.Errorf("invalid sleepWindows format")
+	}
+	if len(windows) == 0 {
+		return "", fmt.Errorf("sleepWindows must not be empty")
+	}
+	if err := policy.ValidateWindows(windows); err != nil {
+		return "", err
+	}
+	return string(windowsJSON), nil
+}
+
 // applySleepWindowUpdates validates sleep windows from the request body and
 // merges them into the update map.
 func applySleepWindowUpdates(body map[string]interface{}, updates map[string]interface{}) string {
@@ -177,21 +210,11 @@ func applySleepWindowUpdates(body map[string]interface{}, updates map[string]int
 	if !ok {
 		return ""
 	}
-	windowsJSON, err := json.Marshal(rawWindows)
+	windowsJSON, err := validatePolicyWindows(rawWindows)
 	if err != nil {
-		return "invalid sleepWindows"
-	}
-	var windows []policy.SleepWindow
-	if err := json.Unmarshal(windowsJSON, &windows); err != nil {
-		return "invalid sleepWindows format"
-	}
-	if len(windows) == 0 {
-		return "sleepWindows must not be empty"
-	}
-	if err := policy.ValidateWindows(windows); err != nil {
 		return err.Error()
 	}
-	updates["sleep_windows"] = string(windowsJSON)
+	updates["sleep_windows"] = windowsJSON
 	return ""
 }
 
@@ -213,12 +236,7 @@ func (h *Handler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updates := map[string]interface{}{}
-	for jsonKey, dbCol := range policyFieldMap {
-		if v, ok := body[jsonKey]; ok {
-			updates[dbCol] = v
-		}
-	}
+	updates := buildPolicyUpdates(body)
 
 	if msg := applySleepWindowUpdates(body, updates); msg != "" {
 		jsonError(w, msg, http.StatusBadRequest)
@@ -314,8 +332,9 @@ func (h *Handler) triggerPolicySleep(w http.ResponseWriter, r *http.Request) {
 	}
 	execID, err := h.policyScheduler.RunSleepNow(id, "manual_sleep")
 	if err != nil {
-		if err.Error() == fmt.Sprintf("policy %d is already transitioning", id) {
-			jsonError(w, "policy is already executing — wait for current run to finish", http.StatusConflict)
+		var pte scheduler.PolicyTransitioningError
+		if errors.As(err, &pte) {
+			jsonError(w, "policy is already executing, try again shortly", http.StatusConflict)
 			return
 		}
 		jsonInternalError(w, err, "trigger policy sleep failed")
@@ -338,8 +357,9 @@ func (h *Handler) triggerPolicyWake(w http.ResponseWriter, r *http.Request) {
 	}
 	execID, err := h.policyScheduler.RunWakeNow(id, "manual_wake")
 	if err != nil {
-		if err.Error() == fmt.Sprintf("policy %d is already transitioning", id) {
-			jsonError(w, "policy is already executing — wait for current run to finish", http.StatusConflict)
+		var pte scheduler.PolicyTransitioningError
+		if errors.As(err, &pte) {
+			jsonError(w, "policy is already executing, try again shortly", http.StatusConflict)
 			return
 		}
 		jsonInternalError(w, err, "trigger policy wake failed")

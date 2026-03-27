@@ -26,19 +26,18 @@ func Evaluate(windows []SleepWindow, timezone string, now time.Time) IntendedSta
 		return StateAwake
 	}
 	local := now.In(loc)
-	dow := int(local.Weekday()) // 0=Sun..6=Sat — matches our convention
+	dayOfWeek := int(local.Weekday()) // 0=Sun..6=Sat — matches our convention
 	minuteOfDay := local.Hour()*60 + local.Minute()
 
 	for _, w := range windows {
-		if windowContains(w, dow, minuteOfDay) {
+		if windowContains(w, dayOfWeek, minuteOfDay) {
 			return StateSleeping
 		}
 	}
 	return StateAwake
 }
 
-// windowContains checks if the current day-of-week and minute-of-day fall
-// inside the given window.
+// windowContains reports whether the given point in time falls within the window's schedule.
 func windowContains(w SleepWindow, currentDOW, currentMinutes int) bool {
 	if w.AllDay {
 		return dayInSet(currentDOW, w.DaysOfWeek)

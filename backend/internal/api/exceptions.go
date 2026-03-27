@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
@@ -268,7 +267,3 @@ func exceptionWithTargets(ex *store.ScheduledException) exceptionResponseShape {
 	}
 }
 
-func parseIDFromString(s string) (uint, error) {
-	id, err := strconv.ParseUint(s, 10, 64)
-	return uint(id), err
-}

@@ -69,7 +69,7 @@ func marshalOrNull(v interface{}) string {
 
 // audit enqueues an audit log entry. Non-blocking — drops the entry if the
 // buffer is full and increments the drop counter.
-func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID *uint, before, after any) {
+func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID *uint, beforeState, afterState any) {
 	user := authmw.UserFromContext(r.Context())
 	username := systemUser
 	var userID *uint
@@ -84,8 +84,8 @@ func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID
 		Action:       action,
 		ResourceType: resourceType,
 		ResourceID:   resourceID,
-		Before:       marshalOrNull(before),
-		After:        marshalOrNull(after),
+		Before:       marshalOrNull(beforeState),
+		After:        marshalOrNull(afterState),
 		IPAddress:    clientIP(r),
 		Timestamp:    time.Now(),
 	}

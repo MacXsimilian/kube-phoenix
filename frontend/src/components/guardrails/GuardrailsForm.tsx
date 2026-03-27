@@ -219,6 +219,20 @@ function fromCsv(s: string) { return s.split(',').map((v) => v.trim()).filter(Bo
 
 // ── Main form ─────────────────────────────────────────────────────────────────
 
+/**
+ * GuardrailsForm — settings form for cluster-wide sleep/wake guardrail configuration.
+ *
+ * Features:
+ * - Loads current guardrail values via React Query and seeds local state once on first fetch
+ * - System-protected namespaces rendered in a visually distinct ProtectedChipInput that requires
+ *   a confirmation dialog before any entry can be removed
+ * - Workload exclusions and node protection rules managed via standard ChipInput components
+ *   (Enter to add, Backspace to remove last, blur to commit)
+ * - Scheduler behaviour section exposes eval interval (Go duration string with validation),
+ *   auto-wake toggle, and reconcile-while-awake toggle
+ * - Save action is disabled when the user lacks the `edit:guardrails` RBAC permission
+ * - Persists via mutation and invalidates the `guardrails` query on success
+ */
 export default function GuardrailsForm() {
   const { user } = useAuth()
   const hasEdit = canEditGuardrails(user?.permissions)

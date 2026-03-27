@@ -78,6 +78,7 @@ func (c *ClusterCache) refresh(ctx context.Context) {
 		errs         [4]error
 		wg           sync.WaitGroup
 	)
+
 	wg.Add(4)
 	go func() { defer wg.Done(); nodes, errs[0] = c.client.ListNodes(ctx) }()
 	go func() { defer wg.Done(); pods, errs[1] = c.client.ListAllPods(ctx) }()

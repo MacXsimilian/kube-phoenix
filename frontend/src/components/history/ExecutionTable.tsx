@@ -26,7 +26,7 @@ import CloudOffIcon from '@mui/icons-material/CloudOff'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import { getPolicyExecutions } from '@/lib/api'
-import { fmtDtShort, fmtDuration } from '@/lib/formatters'
+import { formatDateTimeShort, formatDuration } from '@/lib/formatters'
 import { MODE_COLORS, SMALL_CHIP_SX } from '@/lib/statusColors'
 import StatusChip from '@/components/shared/StatusChip'
 import type { PolicyExecution } from '@/lib/types'
@@ -190,7 +190,7 @@ export default function PolicyExecutionTable({
                         sx={{ cursor: 'pointer' }}
                         onClick={() => onSelect(exec)}
                       >
-                        <TableCell sx={{ fontSize: 13 }}>{fmtDtShort(exec.startedAt)}</TableCell>
+                        <TableCell sx={{ fontSize: 13 }}>{formatDateTimeShort(exec.startedAt)}</TableCell>
                         <TableCell>
                           <Typography variant="body2" noWrap sx={{ maxWidth: 160 }}>
                             {exec.policy?.name ?? `Policy #${exec.policyId}`}
@@ -217,7 +217,7 @@ export default function PolicyExecutionTable({
                           />
                         </TableCell>
                         <TableCell><StatusChip status={exec.status} /></TableCell>
-                        <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{fmtDuration(exec.startedAt, exec.finishedAt)}</TableCell>
+                        <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{formatDuration(exec.startedAt, exec.finishedAt)}</TableCell>
                         <TableCell><SummaryCell exec={exec} /></TableCell>
                       </TableRow>
                     )

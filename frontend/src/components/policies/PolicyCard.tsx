@@ -24,7 +24,7 @@ import { deletePolicy } from '@/lib/api'
 import type { Policy, SnackMessage } from '@/lib/types'
 import { windowsToText, hasSleepWindows } from '@/lib/windowUtils'
 import { STATE_COLORS, MODE_COLORS, SMALL_CHIP_SX, CARD_HEADER_GRADIENTS, LED_COLORS } from '@/lib/statusColors'
-import { timeUntil } from '@/lib/formatters'
+import { formatCountdown } from '@/lib/formatters'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
 import MiniTimeline from './MiniTimeline'
 
@@ -49,7 +49,7 @@ const STAT_VALUE_SX = { fontSize: 13, lineHeight: 1.3 } as const
 
 function nextTransitionLabel(policy: Policy): string {
   if (!policy.nextTransitionAt) return '—'
-  const relative = timeUntil(policy.nextTransitionAt)
+  const relative = formatCountdown(policy.nextTransitionAt)
   if (policy.currentState === 'sleeping') return `Wake ${relative}`
   if (policy.currentState === 'awake') return `Sleep ${relative}`
   return relative

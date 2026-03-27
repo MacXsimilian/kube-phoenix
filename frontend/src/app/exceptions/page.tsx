@@ -30,7 +30,7 @@ import type { ScheduledException } from '@/lib/types'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules } from '@/lib/rbac'
-import { fmtDt } from '@/lib/formatters'
+import { formatDateTime } from '@/lib/formatters'
 import { EXECUTION_STATUS_COLORS, EXECUTION_STATUS_FALLBACK, TYPE_LABELS, TYPE_LABEL_FALLBACK } from '@/lib/statusColors'
 
 const STATUS_TABS = ['all', 'pending', 'active', 'completed', 'cancelled']
@@ -148,8 +148,8 @@ export default function ExceptionsPage() {
                     <Chip label={typeLabel.label} size="small" sx={{ fontSize: 10, color: typeLabel.color, bgcolor: typeLabel.bg }} />
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                    {fmtDt(ex.startsAt)}<br />
-                    <Typography variant="caption" color="text.disabled">→ {fmtDt(ex.endsAt)}</Typography>
+                    {formatDateTime(ex.startsAt)}<br />
+                    <Typography variant="caption" color="text.disabled">→ {formatDateTime(ex.endsAt)}</Typography>
                   </TableCell>
                   <TableCell>{ex.ticketRef || '—'}</TableCell>
                   <TableCell sx={{ maxWidth: 200 }}>

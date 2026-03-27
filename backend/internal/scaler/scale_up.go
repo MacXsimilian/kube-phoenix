@@ -32,7 +32,11 @@ func (r *Runner) RunScaleUp(ctx context.Context, mode, namespaceFilter string, l
 		counts.Errors++
 	}
 
-	entries := r.collectFilteredEntries(deployments, statefulsets, skipNS, namespaceFilter, counts, false)
+	entries := r.collectFilteredEntries(deployments, statefulsets, filterOptions{
+		skipNamespaces:  skipNS,
+		namespaceFilter: namespaceFilter,
+		countSkipped:    false,
+	}, counts)
 	r.restoreWorkloads(ctx, mode, entries, logCh, counts)
 
 	r.info(logCh, fmt.Sprintf("Wake complete — restored %d workloads, %d errors", counts.Scaled, counts.Errors))

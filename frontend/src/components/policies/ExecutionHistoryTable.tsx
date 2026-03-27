@@ -12,7 +12,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import StatusChip from '@/components/shared/StatusChip'
-import { fmtDtShort, fmtDuration } from '@/lib/formatters'
+import { formatDateTimeShort, formatDuration } from '@/lib/formatters'
 import { MODE_COLORS, SMALL_CHIP_SX } from '@/lib/statusColors'
 import type { PolicyExecution, PolicyExecutionPage } from '@/lib/types'
 
@@ -79,8 +79,8 @@ export default function ExecutionHistoryTable({
                   </TableCell>
                   <TableCell><StatusChip status={ex.status} /></TableCell>
                   <TableCell>{counts}</TableCell>
-                  <TableCell>{fmtDtShort(ex.startedAt)}</TableCell>
-                  <TableCell>{fmtDuration(ex.startedAt, ex.finishedAt)}</TableCell>
+                  <TableCell>{formatDateTimeShort(ex.startedAt)}</TableCell>
+                  <TableCell>{formatDuration(ex.startedAt, ex.finishedAt)}</TableCell>
                 </TableRow>
               )
             })}

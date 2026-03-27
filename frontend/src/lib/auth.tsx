@@ -2,11 +2,9 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, ReactNode } from 'react'
 import type { User } from './types'
+import { ME_POLL_INTERVAL_MS } from './constants'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
-
-// How often to re-fetch /api/auth/me to detect role changes or session expiry.
-const ME_POLL_INTERVAL = 5 * 60 * 1000 // 5 minutes
 
 interface AuthState {
   isAuthenticated: boolean
@@ -43,8 +41,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         return (await res.json()) as User
       }
+      if (res.status === 403 || res.status >= 500) {
+        console.warn('[kp] fetchMe unexpected status:', res.status)
+      } else if (res.status !== 401 && process.env.NODE_ENV === 'development') {
+        console.warn('[kp] fetchMe failed:', res.status)
+      }
       return null
-    } catch {
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') console.warn('[kp] fetchMe error:', err)
       return null
     }
   }, [])
@@ -64,6 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(currentUser)
         } else {
           // Probe if backend requires auth at all (dev mode check).
+          // If /api/auth/me fails but /api/policies succeeds, the backend is running without
+          // auth enforcement (dev mode). Synthesize a local dev user to allow UI development.
           fetch(`${BASE}/api/policies`, { credentials: 'include' })
             .then(res => {
               if (res.ok) {
@@ -103,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Session expired or user disabled — log out.
         setUser(null)
       }
-    }, ME_POLL_INTERVAL)
+    }, ME_POLL_INTERVAL_MS)
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
@@ -123,7 +129,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // After login, fetch full me (with permissions) — the login response has
     // the user but the /me endpoint is authoritative with permissions.
     const me = await fetchMe()
-    setUser(me ?? data.user)
+    if (!me) {
+      setUser(null)
+      throw new Error('Failed to load user permissions after login')
+    }
+    setUser(me)
   }, [fetchMe])
 
   const logout = useCallback(async () => {

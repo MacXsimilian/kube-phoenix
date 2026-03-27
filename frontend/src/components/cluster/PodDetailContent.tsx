@@ -21,7 +21,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import TerminalIcon from '@mui/icons-material/Terminal'
 import { useTheme } from '@mui/material/styles'
 import { getPodDetail } from '@/lib/api'
-import { fmtCpu, fmtMem, podAge } from '@/lib/formatters'
+import { formatCpu, formatMem, formatPodAge } from '@/lib/formatters'
 import { useColors } from '@/lib/colors'
 import PodLogViewer from './PodLogViewer'
 import type { PodContainer, PodCondition, PodEvent } from '@/lib/types'
@@ -86,10 +86,10 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
                 {c.restartCount}
               </TableCell>
               <TableCell sx={{ py: 0.75, fontFamily: 'monospace', color: 'text.secondary', whiteSpace: 'nowrap' }}>
-                {resourceCell(c.cpuRequest, c.cpuLimit, fmtCpu)}
+                {resourceCell(c.cpuRequest, c.cpuLimit, formatCpu)}
               </TableCell>
               <TableCell sx={{ py: 0.75, fontFamily: 'monospace', color: 'text.secondary', whiteSpace: 'nowrap' }}>
-                {resourceCell(c.memRequest, c.memLimit, fmtMem)}
+                {resourceCell(c.memRequest, c.memLimit, formatMem)}
               </TableCell>
               <TableCell sx={{ py: 0.75 }}>
                 {c.lastState ? (
@@ -158,7 +158,7 @@ function EventsSection({ events }: { events: PodEvent[] }) {
               <TableCell sx={{ py: 0.5, color: e.type === 'Warning' ? colors.errorLight : 'text.primary' }}>{e.message}</TableCell>
               <TableCell sx={{ py: 0.5, width: 40, textAlign: 'right', color: 'text.disabled', fontSize: 11 }}>×{e.count}</TableCell>
               <TableCell sx={{ py: 0.5, width: 60, textAlign: 'right', color: 'text.disabled', fontSize: 11, whiteSpace: 'nowrap' }}>
-                {podAge(e.lastSeen)}
+                {formatPodAge(e.lastSeen)}
               </TableCell>
             </TableRow>
           ))}
@@ -282,7 +282,7 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
           ['Instance Type', pod.nodeInstanceType || '—'],
           ['Pod IP', pod.podIP || '—'],
           ['Host IP', pod.hostIP || '—'],
-          ['Age', podAge(pod.startedAt)],
+          ['Age', formatPodAge(pod.startedAt)],
         ].map(([label, value]) => (
           <Box key={label}>
             <Typography variant="caption" color="text.disabled" sx={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block' }}>

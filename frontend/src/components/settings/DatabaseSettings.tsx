@@ -106,6 +106,18 @@ function ResetProgressDialog({
   )
 }
 
+/**
+ * DatabaseSettings — danger-zone settings panel for full database reset.
+ *
+ * Features:
+ * - Two-step confirmation flow: first dialog warns about irreversibility, second requires the
+ *   user to type the exact phrase "RESET DATABASE" before the action is enabled
+ * - Executes reset via a streaming async generator (resetDatabaseStream) and surfaces each
+ *   server-sent progress event in a live terminal-style ResetProgressDialog
+ * - Progress dialog is non-dismissable while the reset is in flight; Close button activates only on completion
+ * - On success, clears the entire React Query cache so all stale data is refetched
+ * - Visual styling (red border, warning icon) communicates the destructive nature of the section
+ */
 export default function DatabaseSettings() {
   const queryClient = useQueryClient()
   const [step1Open, setStep1Open] = useState(false)

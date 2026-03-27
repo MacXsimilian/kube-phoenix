@@ -46,18 +46,18 @@ func New(k8sClient *k8s.Client, st *store.Store) *Runner {
 }
 
 // emit sends a log line to the channel (non-blocking if full).
-func emit(ch chan<- LogLine, level, msg string) {
+func emit(logCh chan<- LogLine, level, msg string) {
 	select {
-	case ch <- LogLine{Level: level, Message: msg, Time: time.Now()}:
+	case logCh <- LogLine{Level: level, Message: msg, Time: time.Now()}:
 	default:
 		slog.Warn("scaler: log line dropped — channel full", "level", level)
 	}
 }
 
-func (r *Runner) info(ch chan<- LogLine, msg string)   { emit(ch, "info", msg) }
-func (r *Runner) ok(ch chan<- LogLine, msg string)     { emit(ch, "ok", msg) }
-func (r *Runner) plan(ch chan<- LogLine, msg string)   { emit(ch, "plan", msg) }
-func (r *Runner) errLog(ch chan<- LogLine, msg string) { emit(ch, "error", msg) }
+func (r *Runner) info(logCh chan<- LogLine, msg string)   { emit(logCh, "info", msg) }
+func (r *Runner) ok(logCh chan<- LogLine, msg string)     { emit(logCh, "ok", msg) }
+func (r *Runner) plan(logCh chan<- LogLine, msg string)   { emit(logCh, "plan", msg) }
+func (r *Runner) errLog(logCh chan<- LogLine, msg string) { emit(logCh, "error", msg) }
 
 // mergeCSV merges two comma-separated strings into a single trimmed set.
 func mergeCSV(a, b string) map[string]bool {
@@ -100,14 +100,18 @@ func formatWorkload(kind, ns, name string) string {
 
 // workloadEntry is a uniform representation of a Deployment or StatefulSet
 // used by the shared scale-down and scale-up helpers.
+// Annotate and Scale are set for scale-down. RemoveAnnotation is set for scale-up.
 type workloadEntry struct {
-	Kind             string
-	Namespace        string
-	Name             string
-	Replicas         int32
-	Annotations      map[string]string
-	Annotate         func(ctx context.Context, ns, name, key, value string) error
-	Scale            func(ctx context.Context, ns, name string, replicas int32) error
+	Kind        string
+	Namespace   string
+	Name        string
+	Replicas    int32
+	Annotations map[string]string
+	// Annotate saves the current replica count as a k8s annotation (scale-down).
+	Annotate func(ctx context.Context, ns, name, key, value string) error
+	// Scale sets the workload replica count (scale-down and scale-up).
+	Scale func(ctx context.Context, ns, name string, replicas int32) error
+	// RemoveAnnotation clears the saved replica annotation after a successful restore (scale-up).
 	RemoveAnnotation func(ctx context.Context, ns, name, key string) error
 }
 
@@ -141,21 +145,29 @@ func (r *Runner) statefulSetToEntry(ss appsv1.StatefulSet) workloadEntry {
 	}
 }
 
+// filterOptions controls namespace filtering behaviour in collectFilteredEntries.
+type filterOptions struct {
+	// skipNamespaces is the merged set of system and user-configured namespaces to skip.
+	skipNamespaces map[string]bool
+	// namespaceFilter is an optional comma-separated allow-list; empty means all namespaces.
+	namespaceFilter string
+	// countSkipped controls whether filtered-out workloads increment counts.Skipped.
+	// Set true for scale-down; false for scale-up.
+	countSkipped bool
+}
+
 // collectFilteredEntries converts Deployments and StatefulSets to workloadEntry
-// slices, filtering by skipNS and namespaceFilter. countSkipped controls whether
-// filtered-out items increment counts.Skipped (used by scale-down but not scale-up).
+// slices, applying the namespace filters described by opts.
 func (r *Runner) collectFilteredEntries(
 	deployments []appsv1.Deployment,
 	statefulsets []appsv1.StatefulSet,
-	skipNS map[string]bool,
-	namespaceFilter string,
+	opts filterOptions,
 	counts *Counts,
-	countSkipped bool,
 ) []workloadEntry {
 	entries := make([]workloadEntry, 0, len(deployments)+len(statefulsets))
 	for _, d := range deployments {
-		if skipNS[d.Namespace] || !namespaceAllowed(d.Namespace, namespaceFilter) {
-			if countSkipped {
+		if opts.skipNamespaces[d.Namespace] || !namespaceAllowed(d.Namespace, opts.namespaceFilter) {
+			if opts.countSkipped {
 				counts.Skipped++
 			}
 			continue
@@ -163,8 +175,8 @@ func (r *Runner) collectFilteredEntries(
 		entries = append(entries, r.deploymentToEntry(d))
 	}
 	for _, ss := range statefulsets {
-		if skipNS[ss.Namespace] || !namespaceAllowed(ss.Namespace, namespaceFilter) {
-			if countSkipped {
+		if opts.skipNamespaces[ss.Namespace] || !namespaceAllowed(ss.Namespace, opts.namespaceFilter) {
+			if opts.countSkipped {
 				counts.Skipped++
 			}
 			continue
@@ -175,6 +187,7 @@ func (r *Runner) collectFilteredEntries(
 }
 
 // scaleDownWorkloads annotates current replicas then scales each workload to 0.
+// counts is mutated in place as a side effect: Saved, Scaled, Skipped, and Errors are incremented.
 func (r *Runner) scaleDownWorkloads(ctx context.Context, mode string, entries []workloadEntry, logCh chan<- LogLine, counts *Counts) {
 	for _, e := range entries {
 		wl := formatWorkload(e.Kind, e.Namespace, e.Name)
@@ -187,7 +200,12 @@ func (r *Runner) scaleDownWorkloads(ctx context.Context, mode string, entries []
 			counts.Skipped++
 			continue
 		}
-		r.applyScale(ctx, mode, e, wl, 0, fmt.Sprintf("Scaled %s → 0", wl), fmt.Sprintf("Would scale %s → 0", wl), logCh, counts)
+		r.applyScale(ctx, scaleOptions{
+			mode:       mode,
+			target:     0,
+			successMsg: fmt.Sprintf("Scaled %s → 0", wl),
+			planMsg:    fmt.Sprintf("Would scale %s → 0", wl),
+		}, e, wl, logCh, counts)
 	}
 }
 
@@ -245,17 +263,29 @@ func (r *Runner) saveAnnotation(ctx context.Context, mode string, e workloadEntr
 	return true
 }
 
+// scaleOptions parameterises a single applyScale call.
+type scaleOptions struct {
+	// mode is the policy execution mode ("apply" or "plan").
+	mode string
+	// target is the desired replica count.
+	target int32
+	// successMsg is logged on a successful apply.
+	successMsg string
+	// planMsg is logged when running in plan (dry-run) mode.
+	planMsg string
+}
+
 // applyScale scales or plans a workload to the target replica count.
-func (r *Runner) applyScale(ctx context.Context, mode string, e workloadEntry, wl string, target int32, okMsg, planMsg string, logCh chan<- LogLine, counts *Counts) {
-	if isApply(mode) {
-		if err := e.Scale(ctx, e.Namespace, e.Name, target); err != nil {
+func (r *Runner) applyScale(ctx context.Context, opts scaleOptions, e workloadEntry, wl string, logCh chan<- LogLine, counts *Counts) {
+	if isApply(opts.mode) {
+		if err := e.Scale(ctx, e.Namespace, e.Name, opts.target); err != nil {
 			r.errLog(logCh, fmt.Sprintf("Failed to scale %s: %s", wl, err))
 			counts.Errors++
 			return
 		}
-		r.ok(logCh, okMsg)
+		r.ok(logCh, opts.successMsg)
 	} else {
-		r.plan(logCh, planMsg)
+		r.plan(logCh, opts.planMsg)
 	}
 	counts.Scaled++
 }

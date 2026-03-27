@@ -22,7 +22,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getWorkloadPods } from '@/lib/api'
-import { sinceMs } from '@/lib/formatters'
+import { formatTimeSinceMs } from '@/lib/formatters'
 import { statusColors } from '@/components/cluster/statusColors'
 import { useTheme } from '@mui/material/styles'
 import { useColors } from '@/lib/colors'
@@ -204,7 +204,7 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
                 slotProps={{ htmlInput: { sx: { fontSize: 13, py: 0.75 } } }}
               />
               <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap', fontSize: 11 }}>
-                {dataUpdatedAt ? sinceMs(dataUpdatedAt) : ''}
+                {dataUpdatedAt ? formatTimeSinceMs(dataUpdatedAt) : ''}
               </Typography>
               <Tooltip title="Refresh">
                 <IconButton size="small" onClick={() => refetch()} aria-label="Refresh pods">

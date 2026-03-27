@@ -297,6 +297,19 @@ function LogLineRow({ line }: { line: LogLine }) {
   )
 }
 
+/**
+ * LogViewer — right-side drawer that displays structured logs for a single policy execution.
+ *
+ * Features:
+ * - Streams live log lines via WebSocket while an execution is running, with 3 s auto-reconnect on error
+ * - Falls back to REST fetch (React Query) for completed/historical executions
+ * - Renders a collapsible PolicyExecutionSummary accordion parsed from log messages (workloads, nodes, errors)
+ * - Color-codes log lines by severity level (info / warn / error) using theme-aware palettes
+ * - "Jump to error" button cycles through error-level lines via scroll-into-view
+ * - Resizable drawer width via drag handle (desktop only), defaults to 640 px
+ * - Copy-to-clipboard action serialises all lines as plain text with timestamps
+ * - Auto-scrolls to the bottom as new lines arrive
+ */
 export default function LogViewer({
   execution,
   onClose,

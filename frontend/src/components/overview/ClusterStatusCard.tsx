@@ -18,7 +18,7 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import Skeleton from '@mui/material/Skeleton'
 import { getOverview, triggerPolicySleep, triggerPolicyWake, getPolicies } from '@/lib/api'
 import type { Overview } from '@/lib/types'
-import { timeUntil } from '@/lib/formatters'
+import { formatCountdown } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { canTriggerSchedules } from '@/lib/rbac'
@@ -317,7 +317,7 @@ export default function ClusterStatusCard() {
                 >
                   <AccessTimeIcon sx={{ fontSize: 13, color: 'primary.light' }} />
                   <Typography variant="caption" sx={{ color: 'primary.light', fontWeight: 500 }}>
-                    Next: {overview.nextRun.name} · {timeUntil(overview.nextRun.nextRun)}
+                    Next: {overview.nextRun.name} · {formatCountdown(overview.nextRun.nextRun)}
                   </Typography>
                 </Box>
               )}

@@ -18,7 +18,7 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import { getPolicyExecutions } from '@/lib/api'
 import type { PolicyExecution } from '@/lib/types'
-import { timeAgo } from '@/lib/formatters'
+import { formatTimeAgo } from '@/lib/formatters'
 import { useColors } from '@/lib/colors'
 import { ACTIVITY_FEED_STALE_MS, ACTIVITY_FEED_REFETCH_MS } from '@/lib/constants'
 import StatusChip from '@/components/shared/StatusChip'
@@ -122,7 +122,7 @@ export default function ActivityFeed() {
                 {exec.status === 'running' ? (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                     <Typography variant="caption" color="text.secondary">
-                      Started {timeAgo(exec.startedAt)}
+                      Started {formatTimeAgo(exec.startedAt)}
                     </Typography>
                     <Box sx={{
                       width: 7, height: 7, borderRadius: '50%', bgcolor: colors.cyan, flexShrink: 0,
@@ -138,7 +138,7 @@ export default function ActivityFeed() {
                         : `Scaled ${exec.countScaled} · Drained ${exec.countDrained}${exec.countErrors > 0 ? ` · Errors ${exec.countErrors}` : ''}`}
                     </Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0, ml: 1 }}>
-                      {timeAgo(exec.startedAt)}
+                      {formatTimeAgo(exec.startedAt)}
                     </Typography>
                   </Box>
                 )}

@@ -3,14 +3,31 @@ import { HOURS_PER_WEEK, MINUTES_PER_DAY, MINUTES_PER_HOUR } from './constants'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
+const MIN_DAYS_FOR_RANGE_NOTATION = 3
+const HOURS_PER_HALF_DAY = 12
+
+interface TimeRange {
+  startMin: number
+  endMin: number
+}
+
+function parseTimeRange(startTime: string, endTime: string): TimeRange {
+  const [sh, sm] = startTime.split(':').map(Number)
+  const [eh, em] = endTime.split(':').map(Number)
+  return {
+    startMin: sh * MINUTES_PER_HOUR + sm,
+    endMin: eh * MINUTES_PER_HOUR + em,
+  }
+}
+
 /**
  * Format a time string "HH:MM" to locale-friendly display.
  * e.g. "19:00" → "7:00 PM", "07:00" → "7:00 AM"
  */
 export function formatTime(time: string): string {
   const [h, m] = time.split(':').map(Number)
-  const suffix = h >= 12 ? 'PM' : 'AM'
-  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  const suffix = h >= HOURS_PER_HALF_DAY ? 'PM' : 'AM'
+  const hour12 = h === 0 ? HOURS_PER_HALF_DAY : h > HOURS_PER_HALF_DAY ? h - HOURS_PER_HALF_DAY : h
   return m === 0 ? `${hour12} ${suffix}` : `${hour12}:${String(m).padStart(2, '0')} ${suffix}`
 }
 
@@ -20,9 +37,8 @@ export function formatTime(time: string): string {
  */
 export function isOvernight(window: SleepWindow): boolean {
   if (window.allDay) return false
-  const [sh, sm] = window.startTime.split(':').map(Number)
-  const [eh, em] = window.endTime.split(':').map(Number)
-  return eh * MINUTES_PER_HOUR + em <= sh * MINUTES_PER_HOUR + sm
+  const { startMin, endMin } = parseTimeRange(window.startTime, window.endTime)
+  return endMin <= startMin
 }
 
 /**
@@ -38,8 +54,8 @@ export function formatDayRange(days: number[]): string {
   // Check for known compact patterns
   const weekdays = [1, 2, 3, 4, 5]
   const weekend = [0, 6]
-  if (arrEq(sorted, weekdays)) return 'Mon\u2013Fri'
-  if (arrEq(sorted, weekend)) return 'Sat\u2013Sun'
+  if (arrayEquals(sorted, weekdays)) return 'Mon\u2013Fri'
+  if (arrayEquals(sorted, weekend)) return 'Sat\u2013Sun'
 
   // Try to find consecutive runs
   const runs: number[][] = []
@@ -56,14 +72,14 @@ export function formatDayRange(days: number[]): string {
 
   return runs
     .map(r =>
-      r.length >= 3
+      r.length >= MIN_DAYS_FOR_RANGE_NOTATION
         ? `${DAY_NAMES[r[0]]}\u2013${DAY_NAMES[r[r.length - 1]]}`
         : r.map(d => DAY_NAMES[d]).join(', '),
     )
     .join(', ')
 }
 
-function arrEq(a: number[], b: number[]): boolean {
+function arrayEquals(a: number[], b: number[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i])
 }
 
@@ -108,10 +124,7 @@ export function computeWeeklyStats(windows: SleepWindow[]): { sleepHours: number
     if (window.allDay) {
       minutesPerDay = MINUTES_PER_DAY
     } else {
-      const [sh, sm] = window.startTime.split(':').map(Number)
-      const [eh, em] = window.endTime.split(':').map(Number)
-      const startMin = sh * MINUTES_PER_HOUR + sm
-      const endMin = eh * MINUTES_PER_HOUR + em
+      const { startMin, endMin } = parseTimeRange(window.startTime, window.endTime)
       minutesPerDay = endMin <= startMin
         ? (MINUTES_PER_DAY - startMin) + endMin // overnight
         : endMin - startMin
@@ -141,7 +154,9 @@ export function nowInTimezone(tz?: string): { dayOfWeek: number; fractionalHour:
 
 // ── Shared timeline math ─────────────────────────────────────────────────────
 
-/** Day-of-week index mapping: array index -> JS getDay() value */
+/**
+ * Maps JS Date.getDay() output (0 = Sun .. 6 = Sat) to UI week-row index (0 = Mon .. 6 = Sun).
+ */
 export const DOW_MAP = [1, 2, 3, 4, 5, 6, 0] // Mon..Sun
 
 /** Convert an ISO timestamp to a Date in the given IANA timezone. */
