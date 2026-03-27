@@ -27,7 +27,7 @@ kube-phoenix replaces ad-hoc cron scripts with a proper operator for scheduling 
 - **Startup recovery** -- On restart, the intended state is recomputed and any mismatch triggers automatic correction.
 - **Overrides and scheduled exceptions** -- Time-windowed overrides (`stay_awake`, `force_sleep`) and future exception windows with ticket references for release weekends or on-call periods.
 - **Live cluster visibility** -- Real-time view of deployments, stateful sets, nodes, pod metrics, Kubernetes events, and streaming container logs with search.
-- **Guardrails** -- Protect namespaces, node labels, and taints from ever being touched by the scaler.
+- **Guardrails** -- Protect namespaces, node labels, and taints from the scaler. Priority namespace scaling ensures critical workloads are processed first.
 - **RBAC and OIDC** -- Session-based auth with admin/operator/viewer roles. Optional Keycloak SSO with AD group-to-role mapping.
 - **Prometheus metrics** -- Built-in `/metrics` endpoint with counters for executions, workloads scaled, nodes drained, auth attempts, and more.
 

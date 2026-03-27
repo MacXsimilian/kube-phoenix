@@ -43,6 +43,7 @@ func (r *Runner) RunScaleDown(ctx context.Context, mode, namespaceFilter string,
 	}
 
 	entries := r.collectFilteredEntries(deployments, statefulsets, skipNS, namespaceFilter, counts, true)
+	entries = sortByPriorityNamespaces(entries, guardrails.ScalingPriorityNamespaces)
 	r.scaleDownWorkloads(ctx, mode, entries, logCh, counts)
 
 	// ── Drain & Delete Nodes ──────────────────────────────────────────────

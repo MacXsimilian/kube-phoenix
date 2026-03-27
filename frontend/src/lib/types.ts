@@ -4,6 +4,7 @@ export interface Guardrails {
   skipNsNode: string
   skipNodeLabels: string
   skipNodeTaints: string
+  scalingPriorityNamespaces: string
   schedulerEvalInterval: string
   schedulerAutoWake: boolean
   schedulerReconcileWhileAwake: boolean

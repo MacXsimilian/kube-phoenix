@@ -139,6 +139,10 @@ func (r *PolicyRunner) RunPolicySleep(
 	}
 
 	entries := r.base.collectFilteredEntries(deps, ssets, skipNS, policy.NamespaceFilter, counts, true)
+	entries = sortByPriorityNamespaces(entries, guardrails.ScalingPriorityNamespaces)
+	if _, hasPriority := parsePriorityList(guardrails.ScalingPriorityNamespaces); hasPriority {
+		emit(logCh, "info", fmt.Sprintf("Scaling priority namespaces first: %s", guardrails.ScalingPriorityNamespaces))
+	}
 	for _, e := range entries {
 		e := e
 		scaled, errored := r.sleepWorkload(swp, e)
@@ -219,7 +223,16 @@ func (r *PolicyRunner) RunPolicyWake(
 		return nil, fmt.Errorf("get open snapshots: %w", err)
 	}
 
+	guardrails, err := r.store.GetGuardrails()
+	if err != nil {
+		return nil, fmt.Errorf("guardrails: %w", err)
+	}
+	snaps = sortSnapshotsByPriority(snaps, guardrails.ScalingPriorityNamespaces)
+
 	emit(logCh, "info", fmt.Sprintf("Policy wake — restoring %d snapshotted workloads", len(snaps)))
+	if _, hasPriority := parsePriorityList(guardrails.ScalingPriorityNamespaces); hasPriority {
+		emit(logCh, "info", fmt.Sprintf("Scaling priority namespaces first: %s", guardrails.ScalingPriorityNamespaces))
+	}
 
 	for _, snap := range snaps {
 		snap := snap

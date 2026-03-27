@@ -257,3 +257,68 @@ func isLabelProtected(labels map[string]string, skipNodeLabels string) bool {
 func isTaintProtected(taints []corev1.Taint, skipNodeTaints string) bool {
 	return nodeutil.MatchTaint(taints, skipNodeTaints) != ""
 }
+
+// ── Priority namespace helpers ────────────────────────────────────────────────
+
+// parsePriorityList parses a comma-separated priority string into a rank map
+// (namespace → position index). Returns nil, false when the input yields no
+// valid namespaces.
+func parsePriorityList(csv string) (map[string]int, bool) {
+	if csv == "" {
+		return nil, false
+	}
+	rank := make(map[string]int)
+	idx := 0
+	for _, s := range strings.Split(csv, ",") {
+		ns := strings.TrimSpace(s)
+		if ns == "" {
+			continue
+		}
+		if _, exists := rank[ns]; !exists {
+			rank[ns] = idx
+			idx++
+		}
+	}
+	if len(rank) == 0 {
+		return nil, false
+	}
+	return rank, true
+}
+
+// sortByPriority reorders items so that those whose namespace appears in rank
+// come first (preserving priority list order). Non-priority items keep their
+// original relative order.
+func sortByPriority[T any](items []T, rank map[string]int, ns func(T) string) []T {
+	priority := make([]T, 0)
+	rest := make([]T, 0, len(items))
+	buckets := make(map[int][]T)
+	for _, item := range items {
+		if r, found := rank[ns(item)]; found {
+			buckets[r] = append(buckets[r], item)
+		} else {
+			rest = append(rest, item)
+		}
+	}
+	for i := 0; i < len(rank); i++ {
+		priority = append(priority, buckets[i]...)
+	}
+	return append(priority, rest...)
+}
+
+// sortByPriorityNamespaces reorders workload entries by priority namespace.
+func sortByPriorityNamespaces(entries []workloadEntry, priorityCSV string) []workloadEntry {
+	rank, ok := parsePriorityList(priorityCSV)
+	if !ok {
+		return entries
+	}
+	return sortByPriority(entries, rank, func(e workloadEntry) string { return e.Namespace })
+}
+
+// sortSnapshotsByPriority reorders WorkloadSnapshot slices by priority namespace.
+func sortSnapshotsByPriority(snaps []store.WorkloadSnapshot, priorityCSV string) []store.WorkloadSnapshot {
+	rank, ok := parsePriorityList(priorityCSV)
+	if !ok {
+		return snaps
+	}
+	return sortByPriority(snaps, rank, func(s store.WorkloadSnapshot) string { return s.Namespace })
+}

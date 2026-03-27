@@ -83,6 +83,10 @@ components:
           type: string
           example: "CriticalAddonsOnly=true:NoSchedule"
           description: Node taint key=value:effect entries. Matching nodes are never drained. Comma-separated.
+        scalingPriorityNamespaces:
+          type: string
+          example: "payments,checkout,api-gateway"
+          description: Ordered list of namespaces to scale first during sleep and wake. Comma-separated.
         updatedAt:
           type: string
           format: date-time
@@ -99,6 +103,8 @@ components:
         skipNodeLabels:
           type: string
         skipNodeTaints:
+          type: string
+        scalingPriorityNamespaces:
           type: string
 
     OverviewResponse:
