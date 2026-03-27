@@ -24,7 +24,8 @@ import DialogContentText from '@mui/material/DialogContentText'
 import DialogActions from '@mui/material/DialogActions'
 import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import Tooltip from '@mui/material/Tooltip'
+import CloseIcon from '@mui/icons-material/Close'
 import { getExceptions, deleteException } from '@/lib/api'
 import type { ScheduledException } from '@/lib/types'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
@@ -172,14 +173,16 @@ export default function ExceptionsPage() {
                         </IconButton>
                       )}
                       {canEdit && (ex.status === 'pending' || ex.status === 'active') && (
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => confirmDelete(ex)}
-                          aria-label="Cancel exception"
-                        >
-                          <DeleteOutlineIcon fontSize="small" />
-                        </IconButton>
+                        <Tooltip title="Cancel exception">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => confirmDelete(ex)}
+                            aria-label="Cancel exception"
+                          >
+                            <CloseIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       )}
                     </Box>
                   </TableCell>
