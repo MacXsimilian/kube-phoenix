@@ -108,7 +108,7 @@ function ProtectedChipInput({
 
   const add = () => {
     const trimmedInput = input.trim()
-    if (trimmedInput && !values.includes(trimmedInput)) onChange([...values, trimmedInput])
+    if (trimmedInput && !values.includes(trimmedInput)) onChange([...values, trimmedInput].sort())
     setInput('')
   }
 
@@ -226,7 +226,6 @@ export default function GuardrailsForm() {
   const { data: g, isLoading, isError: loadError } = useQuery({ queryKey: ['guardrails'], queryFn: getGuardrails })
 
   const [systemNs, setSystemNs] = useState<string[]>([])
-  const [skipNs, setSkipNs] = useState<string[]>([])
   const [skipNsNode, setSkipNsNode] = useState<string[]>([])
   const [skipLabels, setSkipLabels] = useState<string[]>([])
   const [skipTaints, setSkipTaints] = useState<string[]>([])
@@ -240,8 +239,7 @@ export default function GuardrailsForm() {
   useEffect(() => {
     if (g && !initialised.current) {
       initialised.current = true
-      setSystemNs(fromCsv(g.systemNamespaces))
-      setSkipNs(fromCsv(g.skipNamespaces))
+      setSystemNs(fromCsv(g.systemNamespaces).sort())
       setSkipNsNode(fromCsv(g.skipNsNode))
       setSkipLabels(fromCsv(g.skipNodeLabels))
       setSkipTaints(fromCsv(g.skipNodeTaints))
@@ -260,7 +258,6 @@ export default function GuardrailsForm() {
       if (evalIntervalError) return Promise.reject(new Error(evalIntervalError))
       return updateGuardrails({
         systemNamespaces: csv(systemNs),
-        skipNamespaces: csv(skipNs),
         skipNsNode: csv(skipNsNode),
         skipNodeLabels: csv(skipLabels),
         skipNodeTaints: csv(skipTaints),
@@ -310,27 +307,6 @@ export default function GuardrailsForm() {
           </Card>
         </Grid>
 
-        {/* Workload exclusions */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
-                Workload Exclusions
-              </Typography>
-              <Typography variant="body2" color="text.secondary" mb={2.5}>
-                Workloads in these namespaces are never scaled.
-              </Typography>
-              <ChipInput
-                label="Skip Namespaces"
-                hint="e.g. monitoring, staging"
-                values={skipNs}
-                onChange={setSkipNs}
-                readOnly={!hasEdit}
-              />
-            </CardContent>
-          </Card>
-        </Grid>
-
         {/* Node protection */}
         <Grid size={{ xs: 12, md: 6 }}>
           <Card sx={{ height: '100%' }}>
@@ -369,8 +345,8 @@ export default function GuardrailsForm() {
         </Grid>
 
         {/* Scheduler */}
-        <Grid size={12}>
-          <Card>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card sx={{ height: '100%' }}>
             <CardContent sx={{ p: 3 }}>
               <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
                 Scheduler Behaviour

@@ -71,10 +71,6 @@ components:
           type: string
           example: "kube-system,kube-public,kube-node-lease,kube-phoenix"
           description: Protected system namespaces — always skipped. Comma-separated.
-        skipNamespaces:
-          type: string
-          example: "monitoring,cert-manager"
-          description: User-managed skip list. Comma-separated.
         skipNsNode:
           type: string
           example: "kube-system"
@@ -97,8 +93,6 @@ components:
       type: object
       properties:
         systemNamespaces:
-          type: string
-        skipNamespaces:
           type: string
         skipNsNode:
           type: string

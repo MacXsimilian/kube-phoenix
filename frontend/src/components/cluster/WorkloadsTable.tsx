@@ -15,15 +15,13 @@ import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
 import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
-import FormControlLabel from '@mui/material/FormControlLabel'
-import Switch from '@mui/material/Switch'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import Tooltip from '@mui/material/Tooltip'
-import { getWorkloads, getGuardrails } from '@/lib/api'
+import { getWorkloads } from '@/lib/api'
 import type { Workload } from '@/lib/types'
 import { sinceMs } from '@/lib/formatters'
 import { useTheme } from '@mui/material/styles'
@@ -40,8 +38,6 @@ export default function WorkloadsTable() {
     refetchInterval: WORKLOADS_REFETCH_MS,
   })
 
-  const { data: guardrails } = useQuery({ queryKey: ['guardrails'], queryFn: getGuardrails })
-
   const [search, setSearch] = useState('')
   const [nsFilter, setNsFilter] = useState('all')
   const validStatuses = ['running', 'sleeping', 'partial']
@@ -55,7 +51,6 @@ export default function WorkloadsTable() {
   }, [searchParams])
   const [sortCol, setSortCol] = useState<'namespace' | 'name' | 'kind' | 'replicas' | 'status' | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [affectedOnly, setAffectedOnly] = useState(false)
   const [selectedWorkload, setSelectedWorkload] = useState<Workload | null>(null)
   const isDark = useTheme().palette.mode === 'dark'
   const colors = useColors()
@@ -76,21 +71,15 @@ export default function WorkloadsTable() {
     [workloads]
   )
 
-  const skipNs = useMemo(() => {
-    if (!guardrails?.skipNamespaces) return new Set<string>()
-    return new Set(guardrails.skipNamespaces.split(',').map((s) => s.trim()).filter(Boolean))
-  }, [guardrails])
-
   const filtered = useMemo(
     () =>
       workloads.filter((w) => {
         if (nsFilter !== 'all' && w.namespace !== nsFilter) return false
         if (statusFilter !== 'all' && w.status !== statusFilter) return false
         if (search && !w.name.toLowerCase().includes(search.toLowerCase())) return false
-        if (affectedOnly && (w.status !== 'running' || skipNs.has(w.namespace))) return false
         return true
       }),
-    [workloads, nsFilter, statusFilter, search, affectedOnly, skipNs]
+    [workloads, nsFilter, statusFilter, search]
   )
 
   const sorted = useMemo(() => {
@@ -147,11 +136,6 @@ export default function WorkloadsTable() {
             </MenuItem>
           ))}
         </TextField>
-        <FormControlLabel
-          control={<Switch checked={affectedOnly} onChange={(e) => setAffectedOnly(e.target.checked)} size="small" />}
-          label={<Typography variant="body2">Would be affected</Typography>}
-          sx={{ ml: 0.5 }}
-        />
         <Box sx={{ flex: 1 }} />
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <Typography variant="caption" color="text.disabled">
@@ -213,7 +197,7 @@ export default function WorkloadsTable() {
                 <TableRow>
                   <TableCell colSpan={5}>
                     <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-                      {affectedOnly ? 'No workloads would be affected by the next sleep run.' : 'No workloads match the current filters.'}
+                      No workloads match the current filters.
                     </Typography>
                   </TableCell>
                 </TableRow>

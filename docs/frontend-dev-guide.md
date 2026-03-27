@@ -501,7 +501,7 @@ The drawer content switches in-place using local `selectedPod` state. A back but
 `src/components/cluster/WorkloadsTable.tsx`
 
 - **Data:** `useQuery(['workloads'], getWorkloads, { refetchInterval: 30_000 })`
-- **Filters:** Search (text), Namespace (dropdown built from data), Status (dropdown), "Would be affected" toggle (cross-references guardrails skip namespaces)
+- **Filters:** Search (text), Namespace (dropdown built from data), Status (dropdown)
 - **Sorting:** Column headers toggle asc/desc/none via `TableSortLabel`
 - **Status from URL:** Reads `?status=` from search params to pre-filter (used when clicking chips on the overview dashboard)
 - **Row click:** Opens `WorkloadDetailDrawer`
