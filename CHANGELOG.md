@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.17](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.16...v0.3.17) (2026-03-27)
+
+
+### Bug Fixes
+
+* resolve scheduler guard bug, drain timeout, and error handling issues ([#249](https://github.com/MacXsimilian/kube-phoenix/issues/249)) ([f120b63](https://github.com/MacXsimilian/kube-phoenix/commit/f120b63fd2a982085e95eac34f35dcccf8503567))
+
 ## [0.3.16](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.15...v0.3.16) (2026-03-27)
 
 
