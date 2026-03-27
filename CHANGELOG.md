@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.19](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.18...v0.3.19) (2026-03-27)
+
+
+### Features
+
+* **guardrails:** add scaling priority namespaces ([#253](https://github.com/MacXsimilian/kube-phoenix/issues/253)) ([44eb9c0](https://github.com/MacXsimilian/kube-phoenix/commit/44eb9c02a85251f571da415883adaf80abf54295))
+
 ## [0.3.18](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.17...v0.3.18) (2026-03-27)
 
 
