@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.15](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.14...v0.3.15) (2026-03-27)
+
+
+### Features
+
+* audit log fixes, diff highlighting, scheduler settings UI, and Clean Code refactors ([#243](https://github.com/MacXsimilian/kube-phoenix/issues/243)) ([09a5278](https://github.com/MacXsimilian/kube-phoenix/commit/09a5278c99e189e72aca4638671bf66b02171c6c))
+
 ## [0.3.14](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.13...v0.3.14) (2026-03-24)
 
 
