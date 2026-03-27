@@ -68,7 +68,6 @@ function downloadCSV(items: AuditLogEntry[]): void {
   URL.revokeObjectURL(url)
 }
 
-<<<<<<< Updated upstream
 // ── JSON diff ─────────────────────────────────────────────────────────────────
 
 const NULL_SNAPSHOT = 'null'
@@ -141,16 +140,6 @@ const DIFF_STYLE: Record<DiffType, DiffStyle> = {
 function DiffLineRow({ line }: { line: DiffLine }) {
   const style = DIFF_STYLE[line.type]
   const isChanged = line.type !== 'unchanged'
-=======
-function DiffView({ label, json }: { label: string; json?: string }) {
-  if (!json || json === 'null') return null
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(json)
-  } catch {
-    return <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{json}</Typography>
-  }
->>>>>>> Stashed changes
   return (
     <Box sx={{
       display: 'flex', gap: 1, px: 1.5, py: '2px',
