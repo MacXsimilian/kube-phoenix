@@ -643,10 +643,10 @@ The `transitioning` state is the concurrency guard. While a policy is `transitio
 
 ```mermaid
 stateDiagram-v2
-    [*] --> running: execution created
-    running --> success: completed without error
-    running --> failed: completed with error
-    running --> interrupted: server restarted (MarkInterruptedPolicyExecutions)
+    [*] --> running: created
+    running --> success: no error
+    running --> failed: error
+    running --> interrupted: server restart
 ```
 
 Note: `skipped` exists as a constant but is not currently used in the normal flow.
@@ -655,11 +655,11 @@ Note: `skipped` exists as a constant but is not currently used in the normal flo
 
 ```mermaid
 stateDiagram-v2
-    [*] --> pending: exception created
-    pending --> active: StartsAt reached (TickExceptions)
-    active --> completed: EndsAt reached (TickExceptions)
-    pending --> cancelled: deleted via API
-    active --> cancelled: deleted via API (triggers sleep-on-end)
+    [*] --> pending: created
+    pending --> active: StartsAt reached
+    active --> completed: EndsAt reached
+    pending --> cancelled: deleted
+    active --> cancelled: deleted (sleep-on-end)
 ```
 
 ### Sleep Window Storage and Evaluation
