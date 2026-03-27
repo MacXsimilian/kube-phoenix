@@ -64,7 +64,6 @@ func splitCSV(s string) map[string]bool {
 	return stringutil.SplitCSVSet(s)
 }
 
-// isApply returns true when mode is "apply".
 func isApply(mode string) bool { return mode == store.PolicyModeApply }
 
 // namespaceAllowed returns true if the namespace should be processed.
@@ -178,7 +177,17 @@ func (r *Runner) scaleDownWorkloads(ctx context.Context, mode string, entries []
 			counts.Skipped++
 			continue
 		}
-		r.applyScale(ctx, mode, e, wl, 0, fmt.Sprintf("Scaled %s → 0", wl), fmt.Sprintf("Would scale %s → 0", wl), logCh, counts)
+		if isApply(mode) {
+			if err := e.Scale(ctx, e.Namespace, e.Name, 0); err != nil {
+				r.errLog(logCh, fmt.Sprintf("Failed to scale %s: %s", wl, err))
+				counts.Errors++
+				continue
+			}
+			r.ok(logCh, fmt.Sprintf("Scaled %s → 0", wl))
+		} else {
+			r.plan(logCh, fmt.Sprintf("Would scale %s → 0", wl))
+		}
+		counts.Scaled++
 	}
 }
 
@@ -234,21 +243,6 @@ func (r *Runner) saveAnnotation(ctx context.Context, mode string, e workloadEntr
 	}
 	counts.Saved++
 	return true
-}
-
-// applyScale scales or plans a workload to the target replica count.
-func (r *Runner) applyScale(ctx context.Context, mode string, e workloadEntry, wl string, target int32, okMsg, planMsg string, logCh chan<- LogLine, counts *Counts) {
-	if isApply(mode) {
-		if err := e.Scale(ctx, e.Namespace, e.Name, target); err != nil {
-			r.errLog(logCh, fmt.Sprintf("Failed to scale %s: %s", wl, err))
-			counts.Errors++
-			return
-		}
-		r.ok(logCh, okMsg)
-	} else {
-		r.plan(logCh, planMsg)
-	}
-	counts.Scaled++
 }
 
 // ── Node protection helpers ──────────────────────────────────────────────────

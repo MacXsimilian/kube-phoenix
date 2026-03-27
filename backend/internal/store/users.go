@@ -33,19 +33,9 @@ func (s *Store) UpdateUser(id uint, updates map[string]interface{}) (*User, erro
 	allowed := map[string]bool{
 		"email": true, "role": true, "enabled": true,
 	}
-	for key := range updates {
-		if !allowed[key] {
-			delete(updates, key)
-		}
-	}
-	if len(updates) == 0 {
-		return s.GetUserByID(id)
-	}
-	keys := make([]string, 0, len(updates))
-	for key := range updates {
-		keys = append(keys, key)
-	}
-	if err := s.db.Model(&User{}).Where("id = ?", id).Select(keys).Updates(updates).Error; err != nil {
+	user := &User{}
+	user.ID = id
+	if err := selectiveUpdate(s.db, user, updates, allowed); err != nil {
 		return nil, err
 	}
 	return s.GetUserByID(id)
@@ -87,7 +77,7 @@ func (s *Store) ChangePassword(id uint, newPassword string) error {
 }
 
 // GetOrCreateOIDCUser upserts a user by OIDC subject. If no match by sub,
-// attempts to link an existing local user by username. Updates role on every login.
+// creates a new OIDC user. Updates role, email, and name on every login.
 func (s *Store) GetOrCreateOIDCUser(sub, username, email, role, givenName, familyName string) (*User, error) {
 	var user User
 

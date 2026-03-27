@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	corev1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -50,6 +51,30 @@ func (r *Runner) RunScaleDown(ctx context.Context, mode, namespaceFilter string,
 	return counts, nil
 }
 
+// classifyNodes groups pods by node, identifying which nodes run critical
+// workloads (pods in protected namespaces) and how many evictable (non-DaemonSet)
+// pods each node has.
+func classifyNodes(pods []corev1.Pod, skipNsNode map[string]bool) (criticalNodes map[string]bool, podCountPerNode map[string]int) {
+	criticalNodes = map[string]bool{}
+	podCountPerNode = map[string]int{}
+	for _, pod := range pods {
+		if skipNsNode[pod.Namespace] {
+			criticalNodes[pod.Spec.NodeName] = true
+		}
+		isDaemon := false
+		for _, ref := range pod.OwnerReferences {
+			if ref.Kind == "DaemonSet" {
+				isDaemon = true
+				break
+			}
+		}
+		if !isDaemon {
+			podCountPerNode[pod.Spec.NodeName]++
+		}
+	}
+	return criticalNodes, podCountPerNode
+}
+
 // drainNodes handles node draining and deletion during scale-down.
 func (r *Runner) drainNodes(ctx context.Context, mode string, guardrails *store.Guardrails, logCh chan<- LogLine, counts *Counts) {
 	r.info(logCh, "Fetching nodes...")
@@ -69,23 +94,7 @@ func (r *Runner) drainNodes(ctx context.Context, mode string, guardrails *store.
 	}
 
 	skipNsNode := splitCSV(guardrails.SkipNsNode)
-	criticalNodes := map[string]bool{}
-	podCountPerNode := map[string]int{}
-	for _, pod := range allPods {
-		if skipNsNode[pod.Namespace] {
-			criticalNodes[pod.Spec.NodeName] = true
-		}
-		isDaemon := false
-		for _, ref := range pod.OwnerReferences {
-			if ref.Kind == "DaemonSet" {
-				isDaemon = true
-				break
-			}
-		}
-		if !isDaemon {
-			podCountPerNode[pod.Spec.NodeName]++
-		}
-	}
+	criticalNodes, podCountPerNode := classifyNodes(allPods, skipNsNode)
 
 	for _, node := range nodes {
 		name := node.Name

@@ -37,10 +37,10 @@ type sleepWorkloadParams struct {
 
 // sleepWorkload processes a single workload (Deployment or StatefulSet) during a policy sleep.
 // Returns: scaled (bool), error occurred (bool).
-func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, kind, namespace, name string, replicas int32, annotate func() error, scale func() error) (scaled bool, errored bool) {
-	wl := formatWorkload(kind, namespace, name)
+func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, e workloadEntry) (scaled bool, errored bool) {
+	wl := formatWorkload(e.Kind, e.Namespace, e.Name)
 
-	if p.snapped[kind+"/"+namespace+"/"+name] {
+	if p.snapped[e.Kind+"/"+e.Namespace+"/"+e.Name] {
 		emit(p.logCh, "info", fmt.Sprintf("Snapshot already exists for %s (skipping double-sleep)", wl))
 		return false, false
 	}
@@ -48,24 +48,26 @@ func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, kind, namespace, nam
 	snap := &store.WorkloadSnapshot{
 		PolicyID:         p.policy.ID,
 		SleepExecutionID: p.execID,
-		Kind:             kind,
-		Namespace:        namespace,
-		Name:             name,
-		ReplicasBefore:   replicas,
-		WasAlreadyZero:   replicas == 0,
+		Kind:             e.Kind,
+		Namespace:        e.Namespace,
+		Name:             e.Name,
+		ReplicasBefore:   e.Replicas,
+		WasAlreadyZero:   e.Replicas == 0,
 		CapturedAt:       time.Now(),
 	}
 
-	if replicas == 0 {
+	if e.Replicas == 0 {
 		emit(p.logCh, "info", fmt.Sprintf("Already at 0 replicas: %s (snapshotted, not scaled)", wl))
 		if isApply(p.policy.Mode) {
-			_ = r.store.CreateWorkloadSnapshot(snap)
+			if err := r.store.CreateWorkloadSnapshot(snap); err != nil {
+				slog.Warn("failed to snapshot zero-replica workload", "workload", wl, "err", err)
+			}
 		}
 		return false, false
 	}
 
 	if !isApply(p.policy.Mode) {
-		emit(p.logCh, "plan", fmt.Sprintf("Would sleep %s → 0 (currently %d replicas)", wl, replicas))
+		emit(p.logCh, "plan", fmt.Sprintf("Would sleep %s → 0 (currently %d replicas)", wl, e.Replicas))
 		return true, false
 	}
 
@@ -73,10 +75,10 @@ func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, kind, namespace, nam
 		emit(p.logCh, "error", fmt.Sprintf("Failed to save snapshot for %s: %s", wl, err))
 		return false, true
 	}
-	if err := annotate(); err != nil {
+	if err := e.Annotate(p.ctx, e.Namespace, e.Name, annotationKey, fmt.Sprintf("%d", e.Replicas)); err != nil {
 		emit(p.logCh, "warn", fmt.Sprintf("Could not write annotation for %s: %s", wl, err))
 	}
-	if err := scale(); err != nil {
+	if err := e.Scale(p.ctx, e.Namespace, e.Name, 0); err != nil {
 		emit(p.logCh, "error", fmt.Sprintf("Failed to scale %s: %s", wl, err))
 		if delErr := r.store.DeleteWorkloadSnapshot(snap.ID); delErr != nil {
 			slog.Error("orphaned snapshot: failed to delete after scale failure",
@@ -85,7 +87,7 @@ func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, kind, namespace, nam
 		}
 		return false, true
 	}
-	emit(p.logCh, "ok", fmt.Sprintf("Slept %s (was %d replicas)", wl, replicas))
+	emit(p.logCh, "ok", fmt.Sprintf("Slept %s (was %d replicas)", wl, e.Replicas))
 	return true, false
 }
 
@@ -139,12 +141,7 @@ func (r *PolicyRunner) RunPolicySleep(
 	entries := r.base.collectFilteredEntries(deps, ssets, skipNS, policy.NamespaceFilter, counts, true)
 	for _, e := range entries {
 		e := e
-		scaled, errored := r.sleepWorkload(swp, e.Kind, e.Namespace, e.Name, e.Replicas,
-			func() error {
-				return e.Annotate(ctx, e.Namespace, e.Name, annotationKey, fmt.Sprintf("%d", e.Replicas))
-			},
-			func() error { return e.Scale(ctx, e.Namespace, e.Name, 0) },
-		)
+		scaled, errored := r.sleepWorkload(swp, e)
 		switch {
 		case errored:
 			counts.Errors++
@@ -167,31 +164,23 @@ func (r *PolicyRunner) RunPolicySleep(
 func (r *PolicyRunner) lookupWorkload(ctx context.Context, kind, namespace, name string) (exists bool, currentReplicas int32) {
 	switch kind {
 	case "Deployment":
-		deps, err := r.base.k8s.ListDeploymentsBySelector(ctx, namespace, "")
+		d, err := r.base.k8s.GetDeployment(ctx, namespace, name)
 		if err != nil {
 			return false, 0
 		}
-		for _, d := range deps {
-			if d.Name == name {
-				if d.Spec.Replicas != nil {
-					return true, *d.Spec.Replicas
-				}
-				return true, 0
-			}
+		if d.Spec.Replicas != nil {
+			return true, *d.Spec.Replicas
 		}
+		return true, 0
 	case "StatefulSet":
-		ssets, err := r.base.k8s.ListStatefulSetsBySelector(ctx, namespace, "")
+		ss, err := r.base.k8s.GetStatefulSet(ctx, namespace, name)
 		if err != nil {
 			return false, 0
 		}
-		for _, ss := range ssets {
-			if ss.Name == name {
-				if ss.Spec.Replicas != nil {
-					return true, *ss.Spec.Replicas
-				}
-				return true, 0
-			}
+		if ss.Spec.Replicas != nil {
+			return true, *ss.Spec.Replicas
 		}
+		return true, 0
 	}
 	return false, 0
 }
@@ -239,7 +228,9 @@ func (r *PolicyRunner) RunPolicyWake(
 		if snap.WasAlreadyZero {
 			emit(logCh, "info", fmt.Sprintf("Skipping %s — was already at 0 before sleep (not owned by this policy)", wl))
 			if isApply(policy.Mode) {
-				_ = r.store.CloseSnapshot(snap.ID, execID, 0)
+				if err := r.store.CloseSnapshot(snap.ID, execID, 0); err != nil {
+					slog.Warn("failed to close zero-replica snapshot", "snapshotID", snap.ID, "err", err)
+				}
 			}
 			counts.Skipped++
 			continue
@@ -249,7 +240,9 @@ func (r *PolicyRunner) RunPolicyWake(
 		if !exists {
 			emit(logCh, "warn", fmt.Sprintf("Workload %s no longer exists — skipping restore", wl))
 			if isApply(policy.Mode) {
-				_ = r.store.MarkSnapshotDeletedAtWake(snap.ID, execID)
+				if err := r.store.MarkSnapshotDeletedAtWake(snap.ID, execID); err != nil {
+					slog.Warn("failed to mark snapshot as deleted at wake", "snapshotID", snap.ID, "err", err)
+				}
 			}
 			counts.Skipped++
 			continue
@@ -261,7 +254,9 @@ func (r *PolicyRunner) RunPolicyWake(
 				wl, currentReplicas, snap.ReplicasBefore,
 			))
 			if isApply(policy.Mode) {
-				_ = r.store.MarkSnapshotExternallyScaled(snap.ID)
+				if err := r.store.MarkSnapshotExternallyScaled(snap.ID); err != nil {
+					slog.Warn("failed to mark snapshot as externally scaled", "snapshotID", snap.ID, "err", err)
+				}
 			}
 		}
 
@@ -277,7 +272,9 @@ func (r *PolicyRunner) RunPolicyWake(
 			counts.Errors++
 			continue
 		}
-		_ = r.store.CloseSnapshot(snap.ID, execID, target)
+		if err := r.store.CloseSnapshot(snap.ID, execID, target); err != nil {
+			slog.Warn("failed to close snapshot after restore", "snapshotID", snap.ID, "err", err)
+		}
 		emit(logCh, "ok", fmt.Sprintf("Restored %s → %d replicas", wl, target))
 		counts.Scaled++
 	}

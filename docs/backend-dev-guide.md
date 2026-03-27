@@ -147,7 +147,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `RunPolicySleep(ctx, policy, execID, logCh)` -- for each matched workload: create `WorkloadSnapshot`, annotate `previous-replicas`, scale to 0. Then drain and delete unprotected nodes.
 - `RunPolicyWake(ctx, policy, execID, logCh)` -- load open snapshots, restore each workload to `ReplicasBefore`, close snapshots. Nodes are not managed (Karpenter handles provisioning).
 - `sleepWorkload(params, kind, ns, name, replicas, annotate, scale)` -- processes a single workload during sleep; handles already-zero, snapshot creation, rollback on scale failure.
-- `lookupWorkload(ctx, kind, ns, name)` -- checks if a workload still exists in the cluster.
+- `lookupWorkload(ctx, kind, ns, name)` -- performs a direct Get to check if a workload still exists in the cluster.
 - `restoreWorkload(ctx, kind, ns, name, target)` -- scales up and removes the annotation.
 
 **Key functions (Runner):**
@@ -352,7 +352,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 ### GORM Models
 
-All models are defined in `backend/internal/store/models.go`. GORM's `AutoMigrate` manages the schema. CHECK constraints for enum fields are added via raw SQL in `store.New()`.
+All models are defined in `backend/internal/store/models.go`. GORM's `AutoMigrate` manages the schema. CHECK constraints for enum fields are added via raw SQL in `runMigrations()`, which is called from `store.New()`.
 
 #### Guardrails (singleton, ID=1)
 

@@ -8,13 +8,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"time"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/auth"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
-	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
-	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"golang.org/x/oauth2"
 )
 
@@ -154,7 +151,7 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	metrics.AuthAttemptsTotal.WithLabelValues("success", "oidc").Inc()
 	_ = h.store.UpdateLastLogin(user.ID)
 
-	if err := h.createOIDCSession(w, r, user); err != nil {
+	if err := h.createSessionCookies(w, r, user); err != nil {
 		jsonInternalError(w, err, "create session failed")
 		return
 	}
@@ -254,41 +251,3 @@ func oidcExtractClaims(idToken *gooidc.IDToken, groupsClaim string) (oidcClaims,
 	}, true
 }
 
-// createOIDCSession creates a kube-phoenix session and sets the session + CSRF cookies.
-func (h *Handler) createOIDCSession(w http.ResponseWriter, r *http.Request, user *store.User) error {
-	sessToken, err := store.GenerateToken()
-	if err != nil {
-		return err
-	}
-
-	now := time.Now()
-	sess := &store.Session{
-		Token:        sessToken,
-		UserID:       user.ID,
-		IPAddress:    r.RemoteAddr,
-		UserAgent:    r.UserAgent(),
-		ExpiresAt:    now.Add(h.idleTimeout),
-		MaxExpiresAt: now.Add(h.maxLifetime),
-		CreatedAt:    now,
-	}
-	if err := h.store.CreateSession(sess); err != nil {
-		return err
-	}
-
-	secure := os.Getenv("COOKIE_SECURE") != "false"
-	http.SetCookie(w, &http.Cookie{
-		Name:     "__kp_session",
-		Value:    sessToken,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   secure,
-		SameSite: http.SameSiteStrictMode,
-	})
-
-	csrfToken, err := authmw.GenerateCSRFToken()
-	if err != nil {
-		return err
-	}
-	authmw.SetCSRFCookie(w, csrfToken, secure)
-	return nil
-}

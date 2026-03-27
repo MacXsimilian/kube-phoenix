@@ -17,6 +17,13 @@ const (
 	dbConnMaxLifetime = 5 * time.Minute
 )
 
+var allModels = []interface{}{
+	&Guardrails{},
+	&User{}, &Session{}, &AuditLog{},
+	&Policy{}, &PolicyExecution{}, &PolicyLogLine{},
+	&WorkloadSnapshot{}, &PolicyOverride{}, &ScheduledException{},
+}
+
 type Store struct {
 	db *gorm.DB
 }
@@ -41,6 +48,14 @@ func New(dsn string) (*Store, error) {
 	sqlDB.SetMaxIdleConns(dbMaxIdleConns)
 	sqlDB.SetConnMaxLifetime(dbConnMaxLifetime)
 
+	if err := runMigrations(db); err != nil {
+		return nil, err
+	}
+
+	return &Store{db: db}, nil
+}
+
+func runMigrations(db *gorm.DB) error {
 	// Drop legacy unique index on username alone (replaced by composite username+source).
 	db.Exec("DROP INDEX IF EXISTS idx_users_username")
 	// Rename misnamed column from GORM's default naming convention (idempotent).
@@ -51,13 +66,8 @@ func New(dsn string) (*Store, error) {
 	END $$`)
 	db.Exec("DROP INDEX IF EXISTS idx_users_o_id_c_subject")
 
-	if err := db.AutoMigrate(
-		&Guardrails{},
-		&User{}, &Session{}, &AuditLog{},
-		&Policy{}, &PolicyExecution{}, &PolicyLogLine{},
-		&WorkloadSnapshot{}, &PolicyOverride{}, &ScheduledException{},
-	); err != nil {
-		return nil, err
+	if err := db.AutoMigrate(allModels...); err != nil {
+		return err
 	}
 	// Add CHECK constraints for enum-like status fields (idempotent).
 	db.Exec(`DO $$ BEGIN
@@ -82,7 +92,7 @@ func New(dsn string) (*Store, error) {
 	db.Exec("ALTER TABLE policies DROP COLUMN IF EXISTS next_sleep_at")
 	db.Exec("ALTER TABLE policies DROP COLUMN IF EXISTS next_wake_at")
 
-	return &Store{db: db}, nil
+	return nil
 }
 
 // migrateWindowsFromCrons converts legacy cron-only policies to the window format.
