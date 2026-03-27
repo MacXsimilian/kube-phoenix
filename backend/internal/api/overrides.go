@@ -63,6 +63,10 @@ func (h *Handler) createPolicyOverride(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "startsAt and endsAt are required for windowed overrides", http.StatusBadRequest)
 			return
 		}
+		if body.StartsAt.Before(time.Now().Add(-1 * time.Minute)) {
+			jsonError(w, "startsAt must not be in the past", http.StatusBadRequest)
+			return
+		}
 		if !body.EndsAt.After(*body.StartsAt) {
 			jsonError(w, "endsAt must be after startsAt", http.StatusBadRequest)
 			return

@@ -79,6 +79,8 @@ func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, kind, namespace, nam
 	if err := scale(); err != nil {
 		emit(p.logCh, "error", fmt.Sprintf("Failed to scale %s: %s", wl, err))
 		if delErr := r.store.DeleteWorkloadSnapshot(snap.ID); delErr != nil {
+			slog.Error("orphaned snapshot: failed to delete after scale failure",
+				"snapshotID", snap.ID, "workload", wl, "err", delErr)
 			emit(p.logCh, "warn", fmt.Sprintf("Could not remove snapshot for %s: %s", wl, delErr))
 		}
 		return false, true

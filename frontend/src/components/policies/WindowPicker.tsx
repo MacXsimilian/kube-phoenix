@@ -334,6 +334,11 @@ export default function WindowPicker({
                       sx={{
                         px: 1.75,
                         py: 1,
+                        minWidth: 44,
+                        minHeight: 44,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         borderRadius: 1.5,
                         cursor: 'pointer',
                         border: '1px solid',

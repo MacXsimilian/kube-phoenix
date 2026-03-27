@@ -35,7 +35,17 @@ func (h *Handler) listPolicyExecutions(w http.ResponseWriter, r *http.Request) {
 		}
 		filter.Page = page
 	}
+	// Accept both page_size (snake_case) and pageSize (camelCase)
 	if ps := query.Get("page_size"); ps != "" {
+		pageSize, _ := strconv.Atoi(ps)
+		if pageSize > 100 {
+			pageSize = 100
+		}
+		if pageSize < 1 {
+			pageSize = 20
+		}
+		filter.PageSize = pageSize
+	} else if ps := query.Get("pageSize"); ps != "" {
 		pageSize, _ := strconv.Atoi(ps)
 		if pageSize > 100 {
 			pageSize = 100

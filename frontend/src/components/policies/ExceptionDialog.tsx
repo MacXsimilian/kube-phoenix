@@ -186,7 +186,7 @@ export default function ExceptionDialog({
           />
         </Box>
         <Typography variant="caption" color="text.disabled" sx={{ mt: 0.5 }}>
-          Times are in your browser's local timezone
+          Times are in your browser&#39;s local timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone})
         </Typography>
 
         <TextField

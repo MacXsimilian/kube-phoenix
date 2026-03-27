@@ -217,7 +217,12 @@ func (ps *PolicyScheduler) maybeStartException(ex store.ScheduledException, now 
 	slog.Info("exception started", "exceptionID", ex.ID, "ticketRef", ex.TicketRef)
 	if ex.PolicyID != nil {
 		if _, err := ps.RunWakeNow(*ex.PolicyID, "exception_start"); err != nil {
-			slog.Error("exception: wake failed", "exceptionID", ex.ID, "err", err)
+			slog.Warn("exception: wake failed, reverting to pending",
+				"exceptionID", ex.ID, "err", err)
+			if rbErr := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusPending); rbErr != nil {
+				slog.Error("exception: revert to pending failed",
+					"exceptionID", ex.ID, "err", rbErr)
+			}
 		}
 	}
 }
@@ -293,7 +298,24 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, now time.Time, autoWa
 	if intended == PolicyStateUnknown {
 		return
 	}
-	if p.CurrentState == string(intended) || p.CurrentState == store.PolicyStateTransitioning {
+	if p.CurrentState == string(intended) {
+		return
+	}
+	if p.CurrentState == store.PolicyStateTransitioning {
+		if p.StateSince != nil && now.Sub(*p.StateSince) > 10*time.Minute {
+			slog.Warn("policy scheduler: policy stuck in transitioning, resetting to unknown",
+				"policyID", p.ID, "stuckSince", p.StateSince)
+			if err := ps.store.UpdatePolicyState(p.ID, store.PolicyStateUnknown, nil); err != nil {
+				slog.Error("policy scheduler: failed to reset stuck policy state",
+					"policyID", p.ID, "err", err)
+			}
+			ps.mu.Lock()
+			if cp, ok := ps.policies[p.ID]; ok {
+				cp.policy.CurrentState = store.PolicyStateUnknown
+				ps.policies[p.ID] = cp
+			}
+			ps.mu.Unlock()
+		}
 		return
 	}
 
@@ -309,7 +331,10 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, now time.Time, autoWa
 	if skip := HasSkipOverride(overrides, direction, now); skip != nil {
 		slog.Info("policy scheduler: transition skipped by override",
 			"policyID", p.ID, "overrideID", skip.ID, "direction", direction)
-		_ = ps.store.DeletePolicyOverride(skip.ID)
+		if err := ps.store.DeletePolicyOverride(skip.ID); err != nil {
+			slog.Error("policy scheduler: failed to delete skip override",
+				"policyID", p.ID, "overrideID", skip.ID, "err", err)
+		}
 		return
 	}
 
@@ -379,7 +404,10 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		ps.mu.Unlock()
 		return 0, fmt.Errorf("policy %d is already transitioning", p.ID)
 	}
-	_ = ps.store.SetPolicyTransitioning(p.ID)
+	if err := ps.store.SetPolicyTransitioning(p.ID); err != nil {
+		ps.mu.Unlock()
+		return 0, fmt.Errorf("policy %d: set transitioning: %w", p.ID, err)
+	}
 	if cp, ok := ps.policies[p.ID]; ok {
 		cp.policy.CurrentState = store.PolicyStateTransitioning
 		ps.policies[p.ID] = cp
@@ -395,6 +423,17 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		Mode:      p.Mode,
 	}
 	if err := ps.store.CreatePolicyExecution(exec); err != nil {
+		slog.Error("policy scheduler: rollback transitioning after execution create failure",
+			"policyID", p.ID, "err", err)
+		if rbErr := ps.store.UpdatePolicyState(p.ID, store.PolicyStateUnknown, nil); rbErr != nil {
+			slog.Error("policy scheduler: rollback state update failed", "policyID", p.ID, "err", rbErr)
+		}
+		ps.mu.Lock()
+		if cp, ok := ps.policies[p.ID]; ok {
+			cp.policy.CurrentState = store.PolicyStateUnknown
+			ps.policies[p.ID] = cp
+		}
+		ps.mu.Unlock()
 		return 0, fmt.Errorf("create policy execution: %w", err)
 	}
 	execID := exec.ID
@@ -491,7 +530,10 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		} else {
 			newState = store.PolicyStateUnknown
 		}
-		_ = ps.store.UpdatePolicyState(p.ID, newState, nextTransition)
+		if err := ps.store.UpdatePolicyState(p.ID, newState, nextTransition); err != nil {
+		slog.Error("policy scheduler: failed to update policy state after execution",
+			"policyID", p.ID, "newState", newState, "err", err)
+	}
 
 		// Sync the in-memory cache so the next evaluation tick sees the
 		// updated CurrentState instead of the stale snapshot from reload().

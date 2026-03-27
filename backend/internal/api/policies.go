@@ -121,7 +121,11 @@ func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	windowsJSON, _ := json.Marshal(input.SleepWindows)
+	windowsJSON, err := json.Marshal(input.SleepWindows)
+	if err != nil {
+		jsonInternalError(w, err, "failed to marshal sleep windows")
+		return
+	}
 	p.SleepWindows = string(windowsJSON)
 
 	if msg := validatePolicyFields(p); msg != "" {
@@ -136,7 +140,7 @@ func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	p.CurrentState = "unknown"
 
-	if p.Mode == store.PolicyModeApply && p.Enabled {
+	if p.Mode == store.PolicyModeApply {
 		overlap, err := h.store.HasApplyPolicyOverlap(0, p.NamespaceFilter, p.LabelSelector)
 		if err != nil {
 			jsonInternalError(w, err, "conflict check failed")
@@ -244,13 +248,7 @@ func (h *Handler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 	if v, ok := updates["mode"]; ok {
 		finalMode = fmt.Sprintf("%v", v)
 	}
-	finalEnabled := old.Enabled
-	if v, ok := updates["enabled"]; ok {
-		if b, isBool := v.(bool); isBool {
-			finalEnabled = b
-		}
-	}
-	if finalMode == store.PolicyModeApply && finalEnabled {
+	if finalMode == store.PolicyModeApply {
 		finalNS := old.NamespaceFilter
 		if v, ok := updates["namespace_filter"]; ok {
 			finalNS = fmt.Sprintf("%v", v)
@@ -287,7 +285,15 @@ func (h *Handler) deletePolicy(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
-	old, _ := h.store.GetPolicy(id)
+	old, err := h.store.GetPolicy(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			jsonError(w, ErrNotFound, http.StatusNotFound)
+		} else {
+			jsonInternalError(w, err, "get policy failed")
+		}
+		return
+	}
 	if err := h.store.DeletePolicy(id); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			jsonError(w, ErrNotFound, http.StatusNotFound)

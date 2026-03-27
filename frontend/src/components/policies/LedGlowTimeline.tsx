@@ -73,7 +73,7 @@ function overrideSegments(overrides: PolicyOverride[], tz?: string): Segment[] {
   for (const ov of overrides) {
     if (!ov.startsAt || !ov.endsAt) continue
     const color = ov.overrideType === 'force_sleep' ? 'rgba(239,68,68,0.55)' : 'rgba(245,158,11,0.55)'
-    const glow = ov.overrideType === 'force_sleep' ? '#EF4444' : '#F59E0B'
+    const glow = ov.overrideType === 'force_sleep' ? TIMELINE_COLORS.exception : TIMELINE_COLORS.override
     segs.push(...timeRangeToSegments(ov.startsAt, ov.endsAt, color, glow, tz))
   }
   return segs
@@ -85,7 +85,7 @@ function exceptionSegments(exceptions: ScheduledException[], tz?: string): Segme
   for (const ex of exceptions) {
     if (ex.status === 'cancelled' || ex.status === 'completed') continue
     const color = ex.exceptionType === 'force_sleep' ? 'rgba(239,68,68,0.55)' : 'rgba(34,197,94,0.55)'
-    const glow = ex.exceptionType === 'force_sleep' ? '#EF4444' : '#22C55E'
+    const glow = ex.exceptionType === 'force_sleep' ? TIMELINE_COLORS.exception : TIMELINE_COLORS.awake
     segs.push(...timeRangeToSegments(ex.startsAt, ex.endsAt, color, glow, tz))
   }
   return segs
@@ -116,7 +116,7 @@ export default function LedGlowTimeline({
 
   return (
     <Box sx={{ overflowX: 'auto' }}>
-      <svg width={TOTAL_W} height={TOTAL_H} style={{ display: 'block' }}>
+      <svg width="100%" viewBox={`0 0 ${TOTAL_W} ${TOTAL_H}`} style={{ display: 'block' }}>
         <defs>
           <filter id="led-glow-purple" x="-20%" y="-100%" width="140%" height="300%">
             <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
@@ -199,8 +199,8 @@ export default function LedGlowTimeline({
           const y = stripY(seg.row)
           const w = Math.max(seg.x2 - seg.x1, 2)
           const filterId = seg.glow === TIMELINE_COLORS.sleep ? 'led-glow-purple'
-            : seg.glow === '#F59E0B' ? 'led-glow-orange'
-            : seg.glow === '#EF4444' ? 'led-glow-red'
+            : seg.glow === TIMELINE_COLORS.override ? 'led-glow-orange'
+            : seg.glow === TIMELINE_COLORS.exception ? 'led-glow-red'
             : 'led-glow-green'
           return (
             <rect

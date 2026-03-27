@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"log/slog"
 	"time"
 )
 
@@ -173,8 +174,8 @@ type WorkloadSnapshot struct {
 // PolicyOverride suppresses or inverts the normal window-based schedule for a policy.
 type PolicyOverride struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`
-	PolicyID     uint       `gorm:"index" json:"policyId"`
-	OverrideType string     `gorm:"size:30" json:"overrideType"` // stay_awake|force_sleep|skip_sleep|skip_wake
+	PolicyID     uint       `gorm:"index:idx_override_policy_type" json:"policyId"`
+	OverrideType string     `gorm:"index:idx_override_policy_type;size:30" json:"overrideType"` // stay_awake|force_sleep|skip_sleep|skip_wake
 	StartsAt     *time.Time `json:"startsAt"`                    // nil for skip_sleep/skip_wake
 	EndsAt       *time.Time `json:"endsAt"`                      // nil for skip_sleep/skip_wake
 	// TargetCronTime is the specific cron tick being skipped (skip_sleep/skip_wake only).
@@ -205,7 +206,7 @@ type ScheduledException struct {
 	WorkloadTargets string `gorm:"type:jsonb;default:'[]'" json:"-"`
 
 	// Lifecycle
-	Status           string     `gorm:"size:20;default:pending" json:"status"` // pending|active|completed|cancelled
+	Status           string     `gorm:"index;size:20;default:pending" json:"status"` // pending|active|completed|cancelled
 	StartExecutionID *uint      `json:"startExecutionId"`
 	EndExecutionID   *uint      `json:"endExecutionId"`
 	CancelledAt      *time.Time `json:"cancelledAt"`
@@ -222,7 +223,10 @@ func (e *ScheduledException) GetWorkloadTargets() []WorkloadTarget {
 		return nil
 	}
 	var targets []WorkloadTarget
-	_ = json.Unmarshal([]byte(e.WorkloadTargets), &targets)
+	if err := json.Unmarshal([]byte(e.WorkloadTargets), &targets); err != nil {
+		slog.Warn("failed to unmarshal workload targets",
+			"scheduledExceptionID", e.ID, "err", err)
+	}
 	return targets
 }
 
