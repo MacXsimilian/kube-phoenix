@@ -22,7 +22,7 @@
 
 ## 1. Overview
 
-kube-phoenix is a Kubernetes cluster sleep/wake policy engine that reduces cloud spend by scaling workloads to zero and draining nodes during off-hours, then restoring them on schedule. The backend is a single Go binary that serves a REST API, WebSocket and SSE endpoints, Prometheus metrics, and an embedded Next.js SPA -- all from a single HTTP listener on port 8080. A 30-second evaluation ticker continuously reconciles intended state (derived from policy sleep windows, overrides, and exceptions) against actual cluster state, triggering sleep or wake executions when they diverge.
+kube-phoenix is a Kubernetes cluster sleep/wake policy engine that reduces cloud spend by scaling workloads to zero and draining nodes during off-hours, then restoring them on schedule. The backend is a single Go binary that serves a REST API, WebSocket and SSE endpoints, Prometheus metrics, and an embedded Next.js SPA -- all from a single HTTP listener on port 8080. A configurable evaluation ticker (default 30 seconds) continuously reconciles intended state (derived from policy sleep windows, overrides, and exceptions) against actual cluster state, triggering sleep or wake executions when they diverge.
 
 **Tech stack:** Go (Chi v5 router, GORM ORM, gorilla/websocket), PostgreSQL 17, client-go for Kubernetes API access, Prometheus client for metrics.
 
@@ -96,16 +96,17 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 ### `internal/scheduler` -- Policy Scheduler and Engine
 
-**Purpose:** Evaluate policies on a 30-second tick and orchestrate sleep/wake executions when intended state diverges from actual state.
+**Purpose:** Evaluate policies on a configurable tick interval (default 30 seconds) and orchestrate sleep/wake executions when intended state diverges from actual state.
 
 **Key types:**
 - `PolicyScheduler` -- owns the tick loop, in-memory policy cache (`map[uint]cachedPolicy`), `PolicyRunner` (from `scaler`), and `Broker`. Protected by `sync.Mutex`.
 - `cachedPolicy` -- pairs a `store.Policy` with its parsed `[]policy.SleepWindow`.
 - `PolicyState` -- string enum: `"sleeping"`, `"awake"`, `"unknown"`.
 - `Broker` -- in-process pub/sub for execution log lines (see `broker.go`).
+- `SchedulerConfig` -- groups the three runtime-tunable settings: `TickInterval`, `AutoWake`, `ReconcileWhileAwake`.
 
 **Key functions:**
-- `NewPolicyScheduler(st, k8sClient)` -- constructor.
+- `NewPolicyScheduler(st, k8sClient, cfg SchedulerConfig)` -- constructor.
 - `Start(ctx)` / `Stop()` -- lifecycle; `Start` calls `reload()` then launches `tickLoop`.
 - `Reload()` -- re-reads all enabled policies from DB; called after any policy CRUD.
 - `RecoverPolicies(ctx)` -- startup reconciliation: compares `CurrentState` against `IntendedState` and queues recovery executions for mismatches.
@@ -114,6 +115,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `run(ctx, policy, direction, trigger)` -- core orchestration: sets `transitioning` state, creates `PolicyExecution`, spawns goroutine that runs `PolicyRunner.RunPolicySleep/Wake`, persists log lines, publishes to broker, records metrics, updates policy state.
 - `evaluateAll()` -- snapshots the cached policy map and calls `evaluatePolicy` for each.
 - `evaluatePolicy(cp, now)` -- computes `IntendedState`, checks for skip overrides, fires `run()` on mismatch.
+- `UpdateSettings(cfg SchedulerConfig) error` -- apply new eval interval, auto-wake, and reconcile-while-awake at runtime; restarts the ticker goroutine only if the interval changed.
 
 **Policy Engine (`policy_engine.go`):**
 - `IntendedState(windows, timezone, overrides, now)` -- override precedence: `force_sleep` > `stay_awake` > window evaluation.
@@ -361,12 +363,17 @@ type Guardrails struct {
     SkipNamespaces   string    // CSV: user-managed skip list
     SkipNsNode       string    // CSV: namespaces whose pods protect the node from draining
     SkipNodeLabels   string    // CSV key=value pairs: nodes with these labels are protected
-    SkipNodeTaints   string    // CSV key=value:effect: nodes with these taints are protected
-    UpdatedAt        time.Time
+    SkipNodeTaints               string    // CSV key=value:effect: nodes with these taints are protected
+    SchedulerEvalInterval        string    // parsed by ParseSchedulerEvalInterval(); default "30s"
+    SchedulerAutoWake            bool      // default true
+    SchedulerReconcileWhileAwake bool      // default true
+    UpdatedAt                   time.Time
 }
 ```
 
 Seeded with production defaults in `SeedDefaults()`. The scaler reads these before every execution to determine what to skip.
+
+`ParseSchedulerEvalInterval() time.Duration` is a method on `Guardrails` that parses `SchedulerEvalInterval` as a Go duration string and falls back to 30s on empty, invalid, or non-positive values.
 
 #### User
 
@@ -735,12 +742,13 @@ Client
 
 This is the heart of kube-phoenix. Understanding this section is essential for any backend work.
 
-### The 30-Second Tick Loop
+### The Evaluation Tick Loop
 
 ```go
 // policy_scheduler.go
-func (ps *PolicyScheduler) tickLoop(ctx context.Context) {
-    ticker := time.NewTicker(30 * time.Second)
+// interval is snapshotted from ps.cfg.TickInterval in Start() under the mutex.
+func (ps *PolicyScheduler) tickLoop(ctx context.Context, interval time.Duration) {
+    ticker := time.NewTicker(interval)
     for {
         select {
         case <-ctx.Done(): return
@@ -750,7 +758,7 @@ func (ps *PolicyScheduler) tickLoop(ctx context.Context) {
 }
 ```
 
-`evaluateAll()` takes a snapshot of the in-memory policy cache (under mutex), then evaluates each policy without holding the lock.
+`evaluateAll()` takes a snapshot of the in-memory policy cache (under mutex), then evaluates each policy without holding the lock. The tick interval is configurable via the Guardrails UI (Scheduler Behaviour card) and defaults to 30 seconds.
 
 ### How IntendedState is Determined
 

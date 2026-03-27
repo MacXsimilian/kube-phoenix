@@ -21,8 +21,7 @@ kube-phoenix is a Kubernetes cluster sleep/wake policy engine that reduces cloud
 spend by scaling workloads to zero and draining nodes during off-hours, then
 restoring them on schedule. It ships as a single Go binary that embeds a
 statically-exported Next.js SPA, talks to PostgreSQL for persistence, and calls
-the Kubernetes API via a ServiceAccount with cluster-wide RBAC. A 30-second
-evaluation ticker continuously reconciles intended state (derived from policy
+the Kubernetes API via a ServiceAccount with cluster-wide RBAC. A configurable evaluation ticker (default 30 seconds) continuously reconciles intended state (derived from policy
 sleep windows) against actual cluster state, triggering sleep or wake executions
 when they diverge.
 
@@ -103,7 +102,7 @@ Prometheus metrics from a single HTTP listener on port 8080.
 executions when intended state diverges from actual state.
 
 **Key responsibilities:**
-- Run a 30-second evaluation ticker that loads all enabled policies, computes
+- Run a configurable evaluation ticker (default 30 seconds) that loads all enabled policies, computes
   `IntendedState(now)` for each, and fires executions on mismatch.
 - Run a 60-second exception ticker that activates or deactivates scheduled
   exceptions whose time windows have started or ended.
@@ -111,12 +110,16 @@ executions when intended state diverges from actual state.
   state (handles server restarts mid-sleep).
 - Manage an in-memory policy cache for fast tick evaluation.
 - Guard against concurrent runs via the `transitioning` state.
+- Skip automatic wake transitions when `AutoWake` is disabled — the scheduler will only put policies to sleep, not wake them.
+- Skip evaluation for policies already in the awake state when `ReconcileWhileAwake` is disabled — reduces DB load between sleep windows.
 
 **Key interfaces:**
+- `NewPolicyScheduler(st, k8sClient, cfg SchedulerConfig)` -- construct scheduler with configurable settings.
 - `Start(ctx)` / `Stop()` -- lifecycle management.
 - `RunSleepNow(ctx, policyID, trigger)` / `RunWakeNow(...)` -- manual triggers.
 - `RecoverPolicies(ctx)` -- startup reconciliation.
 - `TickExceptions(ctx)` -- exception lifecycle.
+- `UpdateSettings(cfg SchedulerConfig) error` -- apply new eval interval, auto-wake, and reconcile-while-awake settings at runtime.
 
 ### PolicyEngine
 
@@ -196,7 +199,8 @@ more WebSocket clients.
   plan/apply mode toggle, overrides, and scheduled exceptions. Policy cards
   use a wide timeline card layout (gradient header bar, LED status dot,
   70/30 split with sparkline timeline). The policy detail page uses full-width
-  horizontal bands (hero, timeline, overrides+exceptions, execution history).
+  horizontal bands (hero, timeline, overrides+exceptions, execution history);
+  clicking a row in the Recent Executions table opens the log viewer drawer inline.
 - Live execution log viewer via WebSocket, with auto-scroll and level coloring.
 - Live pod log viewer via chunked HTTP streaming from the Kubernetes API.
 - User management (admin), audit log viewer, guardrails editor.
@@ -230,6 +234,9 @@ erDiagram
         text skip_ns_node "CSV"
         text skip_node_labels "CSV key=value"
         text skip_node_taints "CSV key=value:effect"
+        varchar scheduler_eval_interval "default '30s'"
+        boolean scheduler_auto_wake "default true"
+        boolean scheduler_reconcile_while_awake "default true"
     }
 
     users {
@@ -366,11 +373,13 @@ Triggered by the ticker, a manual call, or a scheduled exception ending.
 ### 3. Policy Evaluation Loop
 
 ```
-Every 30 seconds:
+Every configurable interval (default 30s):
   for each enabled policy:
     if current_state == "transitioning": skip
+    if reconcileWhileAwake is false and current_state == "awake": skip
     intended = PolicyEngine.IntendedState(policy, overrides, now)
     if intended != current_state:
+      if intended == "awake" and autoWake is false: skip
       spawn goroutine -> run(policy, intended_direction, "scheduled")
 ```
 

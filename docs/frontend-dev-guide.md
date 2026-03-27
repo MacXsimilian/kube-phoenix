@@ -100,6 +100,8 @@ frontend/
       history/
         ExecutionTable.tsx      # Paginated execution list (global history page)
         LogViewer.tsx           # WebSocket-driven execution log drawer with summary
+      common/
+        LabeledSwitch.tsx       # Shared labeled toggle: Switch + bold title + caption description
       shared/
         StatusChip.tsx          # Reusable status chip with color mapping
       guardrails/
@@ -574,7 +576,7 @@ Bands (top to bottom):
 1. **Hero band** -- state-colored gradient background (`HERO_HEADER_GRADIENTS`), back button, 64px state icon, policy name + description, large state label, mode/enabled chips, action buttons (Sleep Now, Wake Now, Edit, Exception)
 2. **Timeline band** -- `LedGlowTimeline` filling the left, weekly stats (Sleep/Week, Awake/Week, Next Transition with countdown) on the right
 3. **Overrides + Exceptions band** -- subtle alternating background, side-by-side `OverridesSection` and `ExceptionsSection` (wraps on mobile)
-4. **Execution History band** -- `ExecutionHistoryTable` at full width
+4. **Execution History band** -- `ExecutionHistoryTable` at full width. Clicking a row opens the log viewer drawer inline (same behaviour as the History page), using `selectedExec` state and the `LogViewer` component.
 
 #### WindowPicker
 
@@ -753,6 +755,10 @@ The guardrails editor uses a custom `ChipInput` component for tag-like editing:
 The `ProtectedChipInput` variant (for system namespaces) adds a confirmation dialog when removing a chip, warning that removing a system-protected namespace could affect critical infrastructure.
 
 Data is loaded from the API as CSV strings and split with `fromCsv()`. On save, arrays are joined back with `csv()`.
+
+The form also includes a "Scheduler Behaviour" card with three controls: an `Eval Interval` text field (Go duration string, validated with a regex before save) and two `LabeledSwitch` toggles for `Auto Wake` and `Reconcile While Awake`. These map to the three scheduler settings in the `Guardrails` model (`SchedulerEvalInterval`, `SchedulerAutoWake`, `SchedulerReconcileWhileAwake`).
+
+**`LabeledSwitch`** (`components/common/LabeledSwitch.tsx`): A shared component that renders a `FormControlLabel` wrapping a `Switch` with a two-line label (bold title + secondary caption). Used by `GuardrailsForm` and `ExceptionDialog`.
 
 ---
 
