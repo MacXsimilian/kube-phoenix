@@ -1,3 +1,5 @@
+// Package api provides the HTTP handler layer, including the Chi router,
+// middleware stack, and REST/WebSocket endpoints.
 package api
 
 import (

@@ -67,7 +67,9 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `Handler` -- central struct holding `*store.Store`, `*k8s.Client`, `*scheduler.PolicyScheduler`, `*k8s.ClusterCache`, rate limiters, session timeouts, `*AuditWriter`, and OIDC config. Every handler method is a method on `Handler`.
 - `AuditWriter` -- async buffered writer that drains a 1024-entry channel and persists `store.AuditLog` records in the background.
 - `policyResponse` -- wraps `store.Policy` with computed `NextTransitionAt` and deserialized `SleepWindows`.
-- `WorkloadResponse`, `NodeResponse`, `NodeTaintResponse`, `PodDetailResponse`, `NodePodResponse` -- typed JSON response shapes for cluster endpoints.
+- `WorkloadResponse` -- typed JSON response shape for cluster workloads (in `cluster.go`).
+- `NodeResponse`, `NodeTaintResponse` -- typed JSON response shapes for cluster nodes (in `cluster_nodes.go`).
+- `PodDetailResponse`, `NodePodResponse` -- typed JSON response shapes for cluster pods (in `cluster_pods.go`).
 
 **Key files and what they contain:**
 
@@ -80,17 +82,21 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `exceptions.go` | `listExceptions`, `getException`, `createException`, `updateException`, `deleteException` |
 | `overrides.go` | `listPolicyOverrides`, `createPolicyOverride`, `deletePolicyOverride` |
 | `policy_executions.go` | `listPolicyExecutions`, `getPolicyExecution`, `getPolicyExecutionLogs`, `getPolicyExecutionSnapshots`, `getPolicySnapshots`, `wsPolicyExecutionLogs` |
-| `cluster.go` | `getWorkloads`, `getNodes`, `getNodePods`, `getPodDetail`, `getPodLogs`, `getWorkloadPods` |
+| `cluster.go` | `getWorkloads`, `buildWorkloadResponse` |
+| `cluster_nodes.go` | `getNodes`, `buildNodeResponse`, `nodeProtectionStatus` |
+| `cluster_pods.go` | `getPodDetail`, `getPodLogs`, `getNodePods`, `getWorkloadPods` |
 | `overview.go` | `getOverview`, `streamCluster` (SSE), `buildOverview` |
 | `guardrails.go` | `getGuardrails`, `updateGuardrails` |
 | `users.go` | `listUsers`, `createUser`, `updateUser`, `deleteUser` |
 | `audit.go` | `AuditWriter.Start()`, `Handler.audit()`, `marshalOrNull()`, `clientIP()` |
 | `admin.go` | `resetDB` -- streams NDJSON progress events while dropping/recreating all tables |
 | `ws.go` | `wsReadPump`, `wsSendLines`, `wsDrainChannel`, `wsStreamLoop` -- WebSocket helpers |
-| `helpers.go` | `jsonOK`, `jsonCreated`, `jsonError`, `jsonInternalError`, `parseID`, `reloadScheduler` |
+| `helpers.go` | `jsonOK`, `jsonCreated`, `jsonError`, `jsonInternalError`, `parseID`, `parsePageSize`, `reloadScheduler` |
 | `errmsg.go` | String constants: `ErrInvalidID`, `ErrNotFound`, `ErrInvalidBody` |
 
-**Dependencies:** `store`, `k8s`, `scheduler`, `auth`, `middleware`, `metrics`, `policy`, `stringutil`, `web`.
+**Validation helpers:** `validatePolicyMode` and `validatePolicyTimezone` are shared functions used by both `createPolicy` and `updatePolicy` to enforce valid mode and timezone values.
+
+**Dependencies:** `store`, `k8s`, `scheduler`, `auth`, `middleware`, `metrics`, `policy`, `nodeutil`, `stringutil`, `web`.
 
 ---
 
@@ -112,7 +118,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `RecoverPolicies(ctx)` -- startup reconciliation: compares `CurrentState` against `IntendedState` and queues recovery executions for mismatches.
 - `RunSleepNow(policyID, trigger)` / `RunWakeNow(policyID, trigger)` -- manual triggers; return the new execution ID.
 - `TickExceptions(ctx)` -- called every 60s; delegates to `maybeStartException` (pending → active when `StartsAt` passes) and `maybeEndException` (active → completed when `EndsAt` passes, triggers sleep-on-end if configured).
-- `run(ctx, policy, direction, trigger)` -- core orchestration: sets `transitioning` state, creates `PolicyExecution`, spawns goroutine that runs `PolicyRunner.RunPolicySleep/Wake`, persists log lines, publishes to broker, records metrics, updates policy state.
+- `run(ctx, policy, direction, trigger)` -- core orchestration: sets `transitioning` state, creates `PolicyExecution`, spawns goroutine that runs `PolicyRunner.RunPolicySleep/Wake`, persists log lines, publishes to broker. Post-execution cleanup is delegated to extracted helpers: `finalizeExecution` (determines final status, calls `FinishPolicyExecution`), `recordExecutionMetrics` (Prometheus counters and histograms), and `updatePolicyState` (sets `sleeping`, `awake`, or `unknown` in both DB and cache).
 - `evaluateAll()` -- snapshots the cached policy map and calls `evaluatePolicy` for each.
 - `evaluatePolicy(cp, now)` -- computes `IntendedState`, checks for skip overrides, fires `run()` on mismatch.
 - `UpdateSettings(cfg SchedulerConfig) error` -- apply new eval interval, auto-wake, and reconcile-while-awake at runtime; restarts the ticker goroutine only if the interval changed.
@@ -156,9 +162,9 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `restoreWorkloads(ctx, mode, entries, logCh, counts)` -- restore from `previous-replicas` annotation.
 - `drainNodes(ctx, mode, guardrails, logCh, counts)` -- list nodes, identify protected ones, drain and delete the rest.
 - `drainAndDeleteNode(ctx, mode, name, podCount, drainTimeout, logCh, counts)` -- cordon, drain (dynamic timeout: `podCount*15 + 60` seconds), delete node object.
-- `isLabelProtected(labels, skipNodeLabels)` / `isTaintProtected(taints, skipNodeTaints)` -- node protection checks.
+- `isLabelProtected(labels, skipNodeLabels)` / `isTaintProtected(taints, skipNodeTaints)` -- thin wrappers that delegate to `nodeutil.MatchLabel` and `nodeutil.MatchTaint` respectively.
 
-**Dependencies:** `k8s`, `store`, `stringutil`.
+**Dependencies:** `k8s`, `store`, `nodeutil`, `stringutil`.
 
 ---
 
@@ -228,7 +234,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `store.go` | `New(dsn)` -- opens PostgreSQL connection, configures pool (10 open, 5 idle, 5m lifetime), runs `AutoMigrate`, adds CHECK constraints, migrates legacy cron columns. `Ping()`, `DB()`, `Tx()`. |
 | `models.go` | All GORM model struct definitions with tags. |
 | `status.go` | String constants: `PolicyState*`, `PolicyMode*`, `ExecStatus*`, `ExceptionStatus*`. |
-| `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning`, `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`. Log lines: `AppendPolicyLogLine`, `GetPolicyLogLines`. Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `GetSnapshotsForExecution/Policy`, `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`. Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason), `ListOpenExceptions`, `UpdateScheduledExceptionStatus`. |
+| `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning`, `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`. Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines`. Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `GetSnapshotsForExecution/Policy`, `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`. Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason), `ListOpenExceptions`, `UpdateScheduledExceptionStatus`. |
 | `queries.go` | `GetGuardrails`, `UpdateGuardrails`, `SeedDefaults`, `DropAllTables`, `MigrateSchema`. |
 | `users.go` | `CreateUser`, `GetUserByID/Username`, `ListUsers`, `UpdateUser`, `DeleteUser` (transactional), `UpdateLastLogin`, `ChangePassword`, `GetOrCreateOIDCUser`, `HashPassword`, `CheckPassword`. |
 | `sessions.go` | `GenerateToken`, `CreateSession`, `GetSessionByToken` (with expiry check), `ExtendSession` (sliding window capped at `max_expires_at`), `DeleteSession`, `DeleteUserSessions`, `CleanExpiredSessions`, `CountActiveSessions`. |
@@ -303,7 +309,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `OIDCConfigFromEnv()` -- reads `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URL`, `OIDC_GROUPS_CLAIM`, `OIDC_ROLE_ADMIN_GROUPS`, `OIDC_ROLE_OPERATOR_GROUPS`, `OIDC_SKIP_TLS_VERIFY`. Returns nil if `OIDC_ISSUER_URL` is unset.
 
 **`ratelimit.go`:**
-- `RateLimiter` -- in-memory sliding-window counter per key. `Allow(key)` prunes expired entries, returns false if the limit is reached. `Reset(key)` clears on successful login.
+- `RateLimiter` -- in-memory sliding-window counter per key. Self-cleaning: `Allow(key)` evicts expired keys on access, preventing unbounded memory growth. Returns false if the limit is reached. `Reset(key)` clears on successful login.
 
 **Dependencies:** `go-oidc/v3`, `golang.org/x/oauth2`, `stringutil`.
 
@@ -332,6 +338,20 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `SplitCSVSet(s) map[string]bool` -- same but returns a set.
 
 **Dependencies:** None (standard library only).
+
+---
+
+### `internal/nodeutil` -- Node Protection Utilities
+
+**File:** `backend/internal/nodeutil/nodeutil.go`
+
+**Purpose:** Shared node protection logic used by both `api/cluster_nodes.go` (for computing node protection status in API responses) and `scaler/scaler.go` (for deciding which nodes to drain).
+
+**Key functions:**
+- `MatchLabel(labels map[string]string, skipNodeLabels string) bool` -- returns true if any of the node's labels match a `key=value` pair in the CSV skip list.
+- `MatchTaint(taints []corev1.Taint, skipNodeTaints string) bool` -- returns true if any of the node's taints match a `key=value:effect` entry in the CSV skip list.
+
+**Dependencies:** `k8s.io/api/core/v1`, `stringutil`.
 
 ---
 
@@ -787,14 +807,13 @@ When `evaluatePolicy` detects a mismatch (intended != current, and current != tr
 3. **Inside the goroutine:**
    - Create a `context.WithTimeout` using `policy.TimeoutMinutes` (default 2 hours).
    - Create a buffered `logCh` channel (capacity 512).
-   - Start a log-persist goroutine that reads from `logCh`, assigns sequential numbers, persists to `policy_log_lines`, and publishes to `Broker`.
+   - Start a log-persist goroutine that reads from `logCh`, assigns sequential numbers, batch-inserts to `policy_log_lines` (50 per flush via `AppendPolicyLogLines`), and publishes to `Broker`.
    - Call `PolicyRunner.RunPolicySleep` or `RunPolicyWake`.
    - Close `logCh`, wait for the persist goroutine to drain.
    - Call `Broker.Close(execID)` to signal all WebSocket subscribers.
-   - Determine final status (`success` or `failed`).
-   - Call `store.FinishPolicyExecution` with final counts.
-   - Record Prometheus metrics.
-   - Update policy state: `sleeping` (if sleep succeeded), `awake` (if wake succeeded), or `unknown` (if failed).
+   - Call `finalizeExecution` -- determines final status (`success` or `failed`), calls `store.FinishPolicyExecution` with final counts.
+   - Call `recordExecutionMetrics` -- records Prometheus counters and histograms.
+   - Call `updatePolicyState` -- sets `sleeping` (if sleep succeeded), `awake` (if wake succeeded), or `unknown` (if failed) in both the DB and in-memory cache.
 
 ### The Scaling Pipeline
 
@@ -854,7 +873,8 @@ Every scaler operation checks `isApply(mode)`:
 Scaler goroutine
   -> emit(logCh, level, msg)          [non-blocking send to buffered channel]
     -> log-persist goroutine
-      -> store.AppendPolicyLogLine()   [write to DB]
+      -> batch lines (50 per flush)
+      -> store.AppendPolicyLogLines()  [batch insert to DB]
       -> broker.Publish(execID, line)  [fan-out to WebSocket subscribers]
         -> subscriber channels (cap 256)
           -> WebSocket handler writes JSON to client
@@ -903,7 +923,7 @@ The `transitioning` state prevents double execution:
    - Instance type and zone from standard K8s labels (with beta fallbacks).
    - Pod count: non-DaemonSet pods only.
    - CPU/memory: allocatable from node status, requested summed from pod specs.
-   - Protection status: checked against `SkipNodeLabels`, `SkipNodeTaints`, and `SkipNsNode` (critical namespace pods).
+   - Protection status: computed by `nodeProtectionStatus` (in `cluster_nodes.go`) using `nodeutil.MatchLabel`, `nodeutil.MatchTaint`, and `SkipNsNode` (critical namespace pods).
    - Cordon status from `node.Spec.Unschedulable`.
    - Full label map from `node.Labels` (nil-safe via `nonNilLabels`).
    - Taints converted from `node.Spec.Taints` via `convertTaints` (key, value, effect).

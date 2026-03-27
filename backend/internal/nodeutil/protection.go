@@ -1,3 +1,5 @@
+// Package nodeutil provides shared node protection logic for matching labels
+// and taints against guardrail configurations.
 package nodeutil
 
 import (

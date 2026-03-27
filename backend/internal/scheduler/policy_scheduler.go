@@ -1,3 +1,5 @@
+// Package scheduler runs the policy evaluation ticker that periodically
+// triggers sleep and wake executions.
 package scheduler
 
 import (
