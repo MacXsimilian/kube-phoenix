@@ -13,7 +13,7 @@
 3. Confirm the policy is **enabled**.
 4. Check the **Namespace Filter**. If set, only matching namespaces are targeted.
 5. Check the **Label Selector**. If set, only matching workloads are targeted.
-6. Verify the target namespaces are not in **Guardrails > Skip Namespaces**.
+6. Verify the target namespaces are not in **Guardrails > System-Protected Namespaces**.
 
 ## Policy is stuck in `transitioning` state
 
@@ -22,6 +22,10 @@
 **Cause:** The pod was killed mid-execution (OOMKill, node eviction, deployment rollout) and the state was not updated.
 
 **Solution:**
+
+The scheduler automatically recovers stuck `transitioning` policies. If a policy has been in `transitioning` for more than 10 minutes, it is reset to `unknown` and re-evaluated on the next tick. No manual intervention is required.
+
+If you need to resolve it immediately:
 
 1. Check **History > Policies** for the latest execution. If it shows `interrupted`, the pod was killed mid-run.
 2. On next startup, kube-phoenix automatically marks any `running` executions as `interrupted`.

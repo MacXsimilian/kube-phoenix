@@ -2024,6 +2024,7 @@ paths:
             default: 0
         - name: page_size
           in: query
+          description: "Number of results per page. Also accepts camelCase alias: pageSize."
           schema:
             type: integer
             default: 20

@@ -89,7 +89,7 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 
 | Method | Path | Description |
 | :----- | :--- | :---------- |
-| `GET` | `/api/policy-executions` | List executions (filters: `policy_id`, `status`, `page`, `page_size`) |
+| `GET` | `/api/policy-executions` | List executions (filters: `policy_id`, `status`, `page`, `page_size` or `pageSize`) |
 | `GET` | `/api/policy-executions/{id}` | Get a single execution |
 | `GET` | `/api/policy-executions/{id}/logs` | Get log lines for an execution |
 | `GET` | `/api/policy-executions/{id}/snapshots` | Workload snapshots for an execution |
