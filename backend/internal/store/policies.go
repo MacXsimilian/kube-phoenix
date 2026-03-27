@@ -29,19 +29,9 @@ func (s *Store) UpdatePolicy(id uint, updates map[string]interface{}) (*Policy, 
 		"sleep_windows": true, "timezone": true,
 		"mode": true, "enabled": true, "timeout_minutes": true,
 	}
-	for key := range updates {
-		if !allowed[key] {
-			delete(updates, key)
-		}
-	}
-	if len(updates) == 0 {
-		return s.GetPolicy(id)
-	}
-	keys := make([]string, 0, len(updates))
-	for key := range updates {
-		keys = append(keys, key)
-	}
-	if err := s.db.Model(&Policy{}).Where("id = ?", id).Select(keys).Updates(updates).Error; err != nil {
+	p := &Policy{}
+	p.ID = id
+	if err := selectiveUpdate(s.db, p, updates, allowed); err != nil {
 		return nil, fmt.Errorf("update policy %d: %w", id, err)
 	}
 	return s.GetPolicy(id)
@@ -57,7 +47,7 @@ func (s *Store) UpdatePolicyState(id uint, state string, nextTransition *time.Ti
 	switch state {
 	case PolicyStateSleeping:
 		updates["last_sleep_at"] = now
-	case "awake":
+	case PolicyStateAwake:
 		updates["last_wake_at"] = now
 	}
 	return s.db.Model(&Policy{}).Where("id = ?", id).Updates(updates).Error
@@ -205,7 +195,7 @@ func (s *Store) MarkInterruptedPolicyExecutions() (int64, error) {
 	res := s.db.Model(&PolicyExecution{}).
 		Where("status = ?", ExecStatusRunning).
 		Updates(map[string]interface{}{
-			"status":      "interrupted",
+			"status":      ExecStatusInterrupted,
 			"finished_at": now,
 		})
 	return res.RowsAffected, res.Error
@@ -372,20 +362,9 @@ func (s *Store) UpdateScheduledException(id uint, updates map[string]interface{}
 		"ticket_ref": true, "reason": true, "sleep_on_end": true,
 		"namespace_filter": true, "label_selector": true, "workload_targets": true,
 	}
-	filtered := make(map[string]interface{}, len(updates))
-	for key, val := range updates {
-		if allowed[key] {
-			filtered[key] = val
-		}
-	}
-	if len(filtered) == 0 {
-		return s.GetScheduledException(id)
-	}
-	keys := make([]string, 0, len(filtered))
-	for key := range filtered {
-		keys = append(keys, key)
-	}
-	if err := s.db.Model(&ScheduledException{}).Where("id = ?", id).Select(keys).Updates(filtered).Error; err != nil {
+	e := &ScheduledException{}
+	e.ID = id
+	if err := selectiveUpdate(s.db, e, updates, allowed); err != nil {
 		return nil, fmt.Errorf("update exception: %w", err)
 	}
 	return s.GetScheduledException(id)

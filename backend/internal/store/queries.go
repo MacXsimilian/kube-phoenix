@@ -102,12 +102,7 @@ func (s *Store) DropAllTables() error {
 
 // MigrateSchema recreates the schema from the current models.
 func (s *Store) MigrateSchema() error {
-	if err := s.db.AutoMigrate(
-		&Guardrails{},
-		&User{}, &Session{}, &AuditLog{},
-		&Policy{}, &PolicyExecution{}, &PolicyLogLine{},
-		&WorkloadSnapshot{}, &PolicyOverride{}, &ScheduledException{},
-	); err != nil {
+	if err := s.db.AutoMigrate(allModels...); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
 	return nil

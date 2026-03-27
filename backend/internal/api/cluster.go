@@ -209,16 +209,6 @@ func toWorkloadResponse(m workloadMeta) WorkloadResponse {
 		current = *m.Replicas
 	}
 	saved := parseSavedReplicas(m.Annotations)
-	if saved == nil {
-		if v, ok := m.Annotations["previous-replicas"]; ok {
-			if n, err := strconv.ParseInt(v, 10, 32); err == nil {
-				n32 := int32(n)
-				saved = &n32
-			} else {
-				slog.Warn("malformed previous-replicas annotation", "workload", m.Namespace+"/"+m.Name, "value", v)
-			}
-		}
-	}
 	return WorkloadResponse{
 		Namespace:       m.Namespace,
 		Name:            m.Name,
@@ -406,7 +396,10 @@ func (h *Handler) getNodePods(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	podMetrics, _ := h.k8s.GetAllPodMetrics(ctx)
+	podMetrics, err := h.k8s.GetAllPodMetrics(ctx)
+	if err != nil {
+		slog.Warn("getNodePods: pod metrics unavailable", "err", err)
+	}
 	rsOwner := h.fetchRSOwnerMap(ctx, "getNodePods")
 
 	result := filterAndBuildPodResponses(pods, podMetrics, rsOwner, nil)
@@ -692,7 +685,10 @@ func (h *Handler) getWorkloadPods(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	podMetrics, _ := h.k8s.GetAllPodMetrics(ctx)
+	podMetrics, err := h.k8s.GetAllPodMetrics(ctx)
+	if err != nil {
+		slog.Warn("getWorkloadPods: pod metrics unavailable", "err", err)
+	}
 	rsOwner := h.fetchRSOwnerMap(ctx, "getWorkloadPods")
 
 	result := filterAndBuildPodResponses(pods, podMetrics, rsOwner, &podFilter{Kind: kind, Name: name})

@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -14,6 +15,9 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scaler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
+
+// ErrPolicyTransitioning is returned when a policy is already mid-transition.
+var ErrPolicyTransitioning = errors.New("policy is already transitioning")
 
 // PolicyBroker is an alias for Broker, used for policy executions.
 type PolicyBroker = Broker
@@ -128,9 +132,9 @@ func (ps *PolicyScheduler) RunSleepNow(policyID uint, trigger string) (uint, err
 		return 0, fmt.Errorf("policy %d not found: %w", policyID, err)
 	}
 	if !p.Enabled {
-		slog.Warn("manual trigger on disabled policy", "policyID", policyID, "direction", "sleep", "trigger", trigger)
+		slog.Warn("manual trigger on disabled policy", "policyID", policyID, "direction", DirectionSleep, "trigger", trigger)
 	}
-	return ps.run(context.Background(), *p, "sleep", trigger)
+	return ps.run(context.Background(), *p, DirectionSleep, trigger)
 }
 
 // RunWakeNow triggers an immediate wake execution for a policy.
@@ -140,9 +144,9 @@ func (ps *PolicyScheduler) RunWakeNow(policyID uint, trigger string) (uint, erro
 		return 0, fmt.Errorf("policy %d not found: %w", policyID, err)
 	}
 	if !p.Enabled {
-		slog.Warn("manual trigger on disabled policy", "policyID", policyID, "direction", "wake", "trigger", trigger)
+		slog.Warn("manual trigger on disabled policy", "policyID", policyID, "direction", DirectionWake, "trigger", trigger)
 	}
-	return ps.run(context.Background(), *p, "wake", trigger)
+	return ps.run(context.Background(), *p, DirectionWake, trigger)
 }
 
 // RecoverPolicies compares each enabled policy's CurrentState against the
@@ -171,9 +175,9 @@ func (ps *PolicyScheduler) RecoverPolicies(ctx context.Context) error {
 		if p.CurrentState == string(intended) {
 			continue
 		}
-		direction := "sleep"
+		direction := DirectionSleep
 		if intended == PolicyStateAwake {
-			direction = "wake"
+			direction = DirectionWake
 		}
 		slog.Info("policy scheduler: recovery execution queued",
 			"policyID", p.ID, "name", p.Name,
@@ -246,6 +250,9 @@ func (ps *PolicyScheduler) maybeEndException(ex store.ScheduledException, now ti
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
 const (
+	DirectionSleep = "sleep"
+	DirectionWake  = "wake"
+
 	defaultExecutionTimeout = 2 * time.Hour
 	execLogChannelBuffer    = 512
 )
@@ -284,16 +291,16 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, now time.Time, autoWa
 	if !p.Enabled {
 		return
 	}
-	if !reconcileWhileAwake && p.CurrentState == store.PolicyStateAwake {
-		return
-	}
-
 	overrides, err := ps.store.ListActiveOverrides(p.ID, now)
 	if err != nil {
 		slog.Warn("failed to list active overrides", "policyID", p.ID, "err", err)
 		overrides = nil
 	}
 	intended := IntendedState(cp.windows, p.Timezone, overrides, now)
+
+	if !reconcileWhileAwake && p.CurrentState == store.PolicyStateAwake && intended == PolicyStateAwake {
+		return
+	}
 
 	if intended == PolicyStateUnknown {
 		return
@@ -319,12 +326,12 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, now time.Time, autoWa
 		return
 	}
 
-	direction := "sleep"
+	direction := DirectionSleep
 	if intended == PolicyStateAwake {
 		if !autoWake {
 			return
 		}
-		direction = "wake"
+		direction = DirectionWake
 	}
 
 	// Check for skip override.
@@ -393,26 +400,31 @@ func parsePolicyWindows(p store.Policy) []policy.SleepWindow {
 	return windows
 }
 
-func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, trigger string) (uint, error) {
+func (ps *PolicyScheduler) claimTransition(policyID uint) error {
 	ps.mu.Lock()
-	fresh, err := ps.store.GetPolicy(p.ID)
+	defer ps.mu.Unlock()
+
+	fresh, err := ps.store.GetPolicy(policyID)
 	if err != nil {
-		ps.mu.Unlock()
-		return 0, fmt.Errorf("policy %d lookup: %w", p.ID, err)
+		return fmt.Errorf("policy %d lookup: %w", policyID, err)
 	}
 	if fresh.CurrentState == store.PolicyStateTransitioning {
-		ps.mu.Unlock()
-		return 0, fmt.Errorf("policy %d is already transitioning", p.ID)
+		return fmt.Errorf("policy %d: %w", policyID, ErrPolicyTransitioning)
 	}
-	if err := ps.store.SetPolicyTransitioning(p.ID); err != nil {
-		ps.mu.Unlock()
-		return 0, fmt.Errorf("policy %d: set transitioning: %w", p.ID, err)
+	if err := ps.store.SetPolicyTransitioning(policyID); err != nil {
+		return fmt.Errorf("policy %d: set transitioning: %w", policyID, err)
 	}
-	if cp, ok := ps.policies[p.ID]; ok {
+	if cp, ok := ps.policies[policyID]; ok {
 		cp.policy.CurrentState = store.PolicyStateTransitioning
-		ps.policies[p.ID] = cp
+		ps.policies[policyID] = cp
 	}
-	ps.mu.Unlock()
+	return nil
+}
+
+func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, trigger string) (uint, error) {
+	if err := ps.claimTransition(p.ID); err != nil {
+		return 0, err
+	}
 
 	exec := &store.PolicyExecution{
 		PolicyID:  p.ID,
@@ -475,9 +487,9 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		var runErr error
 
 		switch direction {
-		case "sleep":
+		case DirectionSleep:
 			counts, runErr = ps.runner.RunPolicySleep(runCtx, p, execID, logCh)
-		case "wake":
+		case DirectionWake:
 			counts, runErr = ps.runner.RunPolicyWake(runCtx, p, execID, logCh)
 		default:
 			runErr = fmt.Errorf("unknown direction: %s", direction)
@@ -522,7 +534,7 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		nextTransition := ps.NextTransition(p.ID)
 		var newState string
 		if status == store.ExecStatusSuccess {
-			if direction == "sleep" {
+			if direction == DirectionSleep {
 				newState = store.PolicyStateSleeping
 			} else {
 				newState = store.PolicyStateAwake
@@ -531,9 +543,9 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 			newState = store.PolicyStateUnknown
 		}
 		if err := ps.store.UpdatePolicyState(p.ID, newState, nextTransition); err != nil {
-		slog.Error("policy scheduler: failed to update policy state after execution",
-			"policyID", p.ID, "newState", newState, "err", err)
-	}
+			slog.Error("policy scheduler: failed to update policy state after execution",
+				"policyID", p.ID, "newState", newState, "err", err)
+		}
 
 		// Sync the in-memory cache so the next evaluation tick sees the
 		// updated CurrentState instead of the stale snapshot from reload().

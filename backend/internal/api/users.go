@@ -105,7 +105,7 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	caller := authmw.UserFromContext(r.Context())
-	if msg, code := validateUserUpdate(body, target, caller, id); msg != "" {
+	if msg, code := sanitizeUserUpdate(body, target, caller, id); msg != "" {
 		jsonError(w, msg, code)
 		return
 	}
@@ -125,9 +125,9 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, updated)
 }
 
-// validateUserUpdate enforces role/self-modification rules and strips non-editable
+// sanitizeUserUpdate enforces role/self-modification rules and strips non-editable
 // fields from body. Returns an error message and HTTP status, or "" if valid.
-func validateUserUpdate(body map[string]interface{}, target *store.User, caller *store.User, id uint) (string, int) {
+func sanitizeUserUpdate(body map[string]interface{}, target *store.User, caller *store.User, id uint) (string, int) {
 	// OIDC users: role is managed by AD groups, not editable here.
 	if target.Source == "oidc" {
 		delete(body, "role")
