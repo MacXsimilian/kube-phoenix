@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/nodeutil"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/stringutil"
 	appsv1 "k8s.io/api/apps/v1"
@@ -248,33 +249,9 @@ func (r *Runner) saveAnnotation(ctx context.Context, mode string, e workloadEntr
 // ── Node protection helpers ──────────────────────────────────────────────────
 
 func isLabelProtected(labels map[string]string, skipNodeLabels string) bool {
-	for _, kv := range strings.Split(skipNodeLabels, ",") {
-		kv = strings.TrimSpace(kv)
-		if kv == "" {
-			continue
-		}
-		parts := strings.SplitN(kv, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		if v, ok := labels[parts[0]]; ok && v == parts[1] {
-			return true
-		}
-	}
-	return false
+	return nodeutil.MatchLabel(labels, skipNodeLabels) != ""
 }
 
 func isTaintProtected(taints []corev1.Taint, skipNodeTaints string) bool {
-	for _, kv := range strings.Split(skipNodeTaints, ",") {
-		kv = strings.TrimSpace(kv)
-		if kv == "" {
-			continue
-		}
-		for _, taint := range taints {
-			if fmt.Sprintf("%s=%s:%s", taint.Key, taint.Value, taint.Effect) == kv {
-				return true
-			}
-		}
-	}
-	return false
+	return nodeutil.MatchTaint(taints, skipNodeTaints) != ""
 }
