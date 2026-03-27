@@ -34,13 +34,13 @@ flowchart TB
         subgraph NS["kube-phoenix namespace"]
             subgraph Pod["kube-phoenix Pod"]
                 subgraph Binary["Go Binary :8080"]
-                    Router["Chi Router + Auth Middleware"]
+                    Router["Chi Router +\nAuth Middleware"]
                     Handlers["API Handlers"]
-                    Scheduler["PolicyScheduler"]
-                    Engine["PolicyEngine"]
-                    Scaler["PolicyScaler"]
-                    Broker["Broker (WS pub/sub)"]
-                    Store["Store (GORM)"]
+                    Scheduler["Scheduler"]
+                    Engine["Engine"]
+                    Scaler["Scaler"]
+                    Broker["Broker\n(WS pub/sub)"]
+                    Store["Store\n(GORM)"]
                     Cache["ClusterCache"]
                     SPA["Embedded SPA"]
                     K8s["k8s Client"]
@@ -48,7 +48,7 @@ flowchart TB
             end
             PG[("PostgreSQL")]
         end
-        K8sAPI["Kubernetes API Server"]
+        K8sAPI["K8s API Server"]
     end
 
     Browser -- HTTPS --> ALB -- HTTP --> Router
@@ -228,45 +228,45 @@ erDiagram
     policy_executions ||--o{ workload_snapshots : "sleep/wake ref"
 
     guardrails {
-        bigint id PK "singleton row"
+        bigint id PK "singleton"
         text system_namespaces "CSV"
         text skip_ns_node "CSV"
-        text skip_node_labels "CSV key=value"
-        text skip_node_taints "CSV key=value:effect"
-        text scaling_priority_namespaces "CSV ordered"
-        varchar scheduler_eval_interval "default '30s'"
-        boolean scheduler_auto_wake "default true"
-        boolean scheduler_reconcile_while_awake "default true"
+        text skip_node_labels "CSV"
+        text skip_node_taints "CSV"
+        text scaling_priority_ns "CSV"
+        varchar eval_interval "30s"
+        boolean auto_wake "true"
+        boolean reconcile_awake "true"
     }
 
     users {
         bigint id PK
-        varchar username "unique(username,source)"
-        varchar role "admin | operator | viewer"
-        varchar source "local | oidc"
-        varchar oidc_subject "unique, nullable"
+        varchar username "unique"
+        varchar role "enum"
+        varchar source "local/oidc"
+        varchar oidc_subject "nullable"
         boolean enabled
     }
 
     policies {
         bigint id PK
         varchar name
-        jsonb sleep_windows "SleepWindow array (max 10)"
+        jsonb sleep_windows
         varchar timezone
-        varchar mode "plan | apply"
+        varchar mode "plan/apply"
         boolean enabled
-        varchar current_state "sleeping | awake | unknown | transitioning"
-        varchar namespace_filter "CSV, empty = all"
-        varchar label_selector "k8s selector syntax"
+        varchar current_state "enum"
+        varchar namespace_filter "CSV"
+        varchar label_selector
     }
 
     policy_executions {
         bigint id PK
         bigint policy_id FK
-        varchar direction "sleep | wake"
-        varchar trigger "scheduled | manual | recovery | exception"
-        varchar status "running | success | failed | interrupted | skipped"
-        varchar mode "plan | apply"
+        varchar direction "sleep/wake"
+        varchar trigger "enum"
+        varchar status "enum"
+        varchar mode "plan/apply"
         int count_scaled
         int count_drained
         int count_errors
@@ -275,17 +275,17 @@ erDiagram
     policy_log_lines {
         bigint id PK
         bigint execution_id FK
-        int seq "monotonic per execution"
-        varchar level "info | ok | plan | error | warn"
+        int seq
+        varchar level "enum"
         text message
     }
 
     workload_snapshots {
         bigint id PK
         bigint policy_id FK
-        bigint sleep_execution_id FK
-        bigint wake_execution_id FK "nullable"
-        varchar kind "Deployment | StatefulSet"
+        bigint sleep_exec_id FK
+        bigint wake_exec_id FK "nullable"
+        varchar kind
         varchar namespace
         varchar name
         int replicas_before
@@ -296,7 +296,7 @@ erDiagram
     policy_overrides {
         bigint id PK
         bigint policy_id FK
-        varchar override_type "stay_awake | force_sleep | skip_sleep | skip_wake"
+        varchar override_type "enum"
         timestamptz starts_at "nullable"
         timestamptz ends_at "nullable"
         varchar reason
@@ -305,10 +305,10 @@ erDiagram
     scheduled_exceptions {
         bigint id PK
         bigint policy_id FK "nullable"
-        varchar exception_type "stay_awake | force_sleep"
+        varchar exception_type "enum"
         timestamptz starts_at
         timestamptz ends_at
-        varchar status "pending | active | completed | cancelled"
+        varchar status "enum"
         boolean sleep_on_end
     }
 
@@ -316,14 +316,14 @@ erDiagram
         bigint id PK
         varchar token "unique"
         bigint user_id FK
-        timestamptz expires_at "sliding window"
-        timestamptz max_expires_at "hard cap"
+        timestamptz expires_at
+        timestamptz max_expires_at
     }
 
     audit_logs {
         bigint id PK
-        bigint user_id FK "nullable, SET NULL"
-        varchar action "e.g. policy.update"
+        bigint user_id FK "nullable"
+        varchar action
         jsonb before
         jsonb after
     }
