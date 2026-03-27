@@ -67,7 +67,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `Handler` -- central struct holding `*store.Store`, `*k8s.Client`, `*scheduler.PolicyScheduler`, `*k8s.ClusterCache`, rate limiters, session timeouts, `*AuditWriter`, and OIDC config. Every handler method is a method on `Handler`.
 - `AuditWriter` -- async buffered writer that drains a 1024-entry channel and persists `store.AuditLog` records in the background.
 - `policyResponse` -- wraps `store.Policy` with computed `NextTransitionAt` and deserialized `SleepWindows`.
-- `WorkloadResponse`, `NodeResponse`, `PodDetailResponse`, `NodePodResponse` -- typed JSON response shapes for cluster endpoints.
+- `WorkloadResponse`, `NodeResponse`, `NodeTaintResponse`, `PodDetailResponse`, `NodePodResponse` -- typed JSON response shapes for cluster endpoints.
 
 **Key files and what they contain:**
 
@@ -905,6 +905,8 @@ The `transitioning` state prevents double execution:
    - CPU/memory: allocatable from node status, requested summed from pod specs.
    - Protection status: checked against `SkipNodeLabels`, `SkipNodeTaints`, and `SkipNsNode` (critical namespace pods).
    - Cordon status from `node.Spec.Unschedulable`.
+   - Full label map from `node.Labels` (nil-safe via `nonNilLabels`).
+   - Taints converted from `node.Spec.Taints` via `convertTaints` (key, value, effect).
 
 ### `/api/cluster/nodes/{name}/pods` and `/api/cluster/workloads/{ns}/{kind}/{name}/pods`
 

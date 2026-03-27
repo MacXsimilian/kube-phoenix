@@ -31,19 +31,27 @@ type WorkloadResponse struct {
 	Status          string `json:"status"` // "running" | "sleeping" | "partial"
 }
 
+type NodeTaintResponse struct {
+	Key    string `json:"key"`
+	Value  string `json:"value"`
+	Effect string `json:"effect"`
+}
+
 type NodeResponse struct {
-	Name             string `json:"name"`
-	InstanceType     string `json:"instanceType"`
-	Zone             string `json:"zone"`
-	PodCount         int    `json:"podCount"`
-	Status           string `json:"status"` // "active" | "protected" | "would-drain"
-	ProtectionReason string `json:"protectionReason"`
-	CpuAllocatable   int64  `json:"cpuAllocatable"` // millicores
-	CpuRequested     int64  `json:"cpuRequested"`   // millicores
-	MemAllocatable   int64  `json:"memAllocatable"` // bytes
-	MemRequested     int64  `json:"memRequested"`   // bytes
-	CreatedAt        string `json:"createdAt"`      // RFC3339
-	Cordoned         bool   `json:"cordoned"`
+	Name             string              `json:"name"`
+	InstanceType     string              `json:"instanceType"`
+	Zone             string              `json:"zone"`
+	PodCount         int                 `json:"podCount"`
+	Status           string              `json:"status"` // "active" | "protected" | "would-drain"
+	ProtectionReason string              `json:"protectionReason"`
+	CpuAllocatable   int64               `json:"cpuAllocatable"` // millicores
+	CpuRequested     int64               `json:"cpuRequested"`   // millicores
+	MemAllocatable   int64               `json:"memAllocatable"` // bytes
+	MemRequested     int64               `json:"memRequested"`   // bytes
+	CreatedAt        string              `json:"createdAt"`      // RFC3339
+	Cordoned         bool                `json:"cordoned"`
+	Labels           map[string]string   `json:"labels"`
+	Taints           []NodeTaintResponse `json:"taints"`
 }
 
 // validK8sName reports whether s is a valid Kubernetes resource name.
@@ -342,6 +350,8 @@ func buildNodeResponse(nodes []corev1.Node, allPods []corev1.Pod, g *store.Guard
 			MemRequested:     memRequested[node.Name],
 			CreatedAt:        node.CreationTimestamp.UTC().Format(time.RFC3339),
 			Cordoned:         node.Spec.Unschedulable,
+			Labels:           nonNilLabels(node.Labels),
+			Taints:           convertTaints(node.Spec.Taints),
 		})
 	}
 
@@ -359,6 +369,27 @@ func nodeLabel(node corev1.Node, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+// nonNilLabels returns the labels map, or an empty map if nil (ensures JSON "{}").
+func nonNilLabels(labels map[string]string) map[string]string {
+	if labels == nil {
+		return map[string]string{}
+	}
+	return labels
+}
+
+// convertTaints maps Kubernetes taints to their API response representation.
+func convertTaints(taints []corev1.Taint) []NodeTaintResponse {
+	out := make([]NodeTaintResponse, 0, len(taints))
+	for _, t := range taints {
+		out = append(out, NodeTaintResponse{
+			Key:    t.Key,
+			Value:  t.Value,
+			Effect: string(t.Effect),
+		})
+	}
+	return out
 }
 
 // ── Node pods endpoint ────────────────────────────────────────────────────────
