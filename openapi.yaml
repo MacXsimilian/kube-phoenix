@@ -528,9 +528,14 @@ components:
         resourceId:
           type: ["integer", "null"]
         before:
-          description: JSON snapshot before the change.
+          description: JSON snapshot before the change. "null" for create actions.
         after:
-          description: JSON snapshot after the change.
+          description: >
+            JSON snapshot after the change. "null" for delete actions.
+            Auth actions carry structured context: auth.login and auth.logout
+            include {"method":"local"|"oidc"}; auth.login also includes
+            {"username":"..."}; auth.password_change includes
+            {"method":"self-service"}.
         ipAddress:
           type: string
         timestamp:
@@ -1734,24 +1739,24 @@ paths:
           in: query
           schema:
             type: string
-          description: Filter by username.
+          description: Case-insensitive partial match on username (e.g. "ali" matches "alice").
         - name: action
           in: query
           schema:
             type: string
-          description: Filter by action (e.g. policy.update, user.create).
+          description: Filter by exact action (e.g. policy.update, user.create, auth.logout).
         - name: from
           in: query
           schema:
             type: string
             format: date-time
-          description: Start of time range (RFC3339).
+          description: Start of time range (RFC3339, e.g. 2024-01-15T00:00:00Z).
         - name: to
           in: query
           schema:
             type: string
             format: date-time
-          description: End of time range (RFC3339).
+          description: End of time range (RFC3339, e.g. 2024-01-15T23:59:59Z).
         - name: page
           in: query
           schema:
@@ -1763,7 +1768,8 @@ paths:
           schema:
             type: integer
             default: 50
-          description: Number of items per page.
+            maximum: 1000
+          description: Number of items per page. Max 1000 — use a high value with page=0 to export all matching records.
       responses:
         "200":
           description: OK
@@ -1773,6 +1779,8 @@ paths:
                 $ref: "#/components/schemas/PaginatedAuditLogs"
         "401":
           description: Unauthorized
+        "403":
+          description: Forbidden — requires audit.view permission
         "500":
           description: Internal server error
           content:

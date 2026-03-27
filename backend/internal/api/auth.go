@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -30,7 +31,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Rate limiting.
-	ip := r.RemoteAddr
+	ip := clientIP(r)
 	if !h.ipLimiter.Allow(ip) {
 		metrics.RateLimitHitsTotal.WithLabelValues("per_ip").Inc()
 		w.Header().Set("Retry-After", "900")
@@ -72,7 +73,9 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = h.store.UpdateLastLogin(user.ID)
+	if err := h.store.UpdateLastLogin(user.ID); err != nil {
+		slog.Warn("login: failed to update last_login_at", "userID", user.ID, "err", err)
+	}
 	h.audit(r, "auth.login", "user", &user.ID, nil, map[string]string{"username": user.Username, "method": "local"})
 
 	jsonOK(w, map[string]interface{}{
@@ -90,13 +93,22 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.audit(r, "auth.logout", "", nil, nil, nil)
+	// Capture user before clearing cookies so method and ID are recorded.
+	user := authmw.UserFromContext(r.Context())
+	method := "local"
+	if user != nil && user.Source == "oidc" {
+		method = "oidc"
+	}
+	var userID *uint
+	if user != nil {
+		userID = &user.ID
+	}
+	h.audit(r, "auth.logout", "user", userID, nil, map[string]string{"method": method})
 	clearSessionCookies(w)
 
 	// For OIDC users, return the Keycloak end_session URL so the browser can
 	// terminate the SSO session (RP-initiated logout). Without this, Keycloak's
 	// session stays alive and SSO re-authenticates the user silently.
-	user := authmw.UserFromContext(r.Context())
 	if user != nil && user.Source == "oidc" &&
 		h.oidcProvider != nil && h.oidcProvider.EndSessionURL != "" {
 
@@ -186,7 +198,7 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 		jsonInternalError(w, err, "change password failed")
 		return
 	}
-	h.audit(r, "auth.password_change", "user", &user.ID, nil, nil)
+	h.audit(r, "auth.password_change", "user", &user.ID, nil, map[string]string{"method": "self-service"})
 	w.WriteHeader(http.StatusNoContent)
 }
 

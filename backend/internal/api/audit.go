@@ -4,13 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
+
+const systemUser = "system"
 
 // AuditWriter drains a buffered channel and persists audit entries in the background.
 type AuditWriter struct {
@@ -65,9 +69,9 @@ func marshalOrNull(v interface{}) string {
 
 // audit enqueues an audit log entry. Non-blocking — drops the entry if the
 // buffer is full and increments the drop counter.
-func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID *uint, before, after interface{}) {
+func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID *uint, before, after any) {
 	user := authmw.UserFromContext(r.Context())
-	username := "system"
+	username := systemUser
 	var userID *uint
 	if user != nil {
 		username = user.Username
@@ -82,7 +86,7 @@ func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID
 		ResourceID:   resourceID,
 		Before:       marshalOrNull(before),
 		After:        marshalOrNull(after),
-		IPAddress:    r.RemoteAddr,
+		IPAddress:    clientIP(r),
 		Timestamp:    time.Now(),
 	}
 
@@ -94,4 +98,24 @@ func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID
 	}
 
 	metrics.UserActionsTotal.WithLabelValues(action, resourceType).Inc()
+}
+
+// clientIP extracts the real client IP from the request. It prefers
+// X-Real-IP (set by nginx/ingress), falls back to the first entry of
+// X-Forwarded-For, and finally strips the port from r.RemoteAddr.
+func clientIP(r *http.Request) string {
+	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+		return strings.TrimSpace(ip)
+	}
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.IndexByte(xff, ','); i >= 0 {
+			return strings.TrimSpace(xff[:i])
+		}
+		return strings.TrimSpace(xff)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }

@@ -105,11 +105,21 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 | `PUT` | `/api/exceptions/{id}` | Update an exception (pending status only) |
 | `DELETE` | `/api/exceptions/{id}` | Cancel an exception (triggers sleep-on-end if active) |
 
-### Audit Logs -- viewer and above
+### Audit Logs -- requires `audit.view` permission (viewer and above)
 
 | Method | Path | Description |
 | :----- | :--- | :---------- |
 | `GET` | `/api/audit-logs` | List audit logs (filters: `user`, `action`, `from`, `to`, `page`, `pageSize`) |
+
+**Filter notes:**
+- `user` — case-insensitive partial match (e.g. `ali` matches `alice`).
+- `pageSize` — default 50, max 1000. Use a high value with `page=0` to export all results.
+- `from` / `to` — RFC3339 timestamps (e.g. `2024-01-15T00:00:00Z`).
+
+**`after` field for auth actions:**
+- `auth.login` — `{"username": "alice", "method": "local" | "oidc"}`
+- `auth.logout` — `{"method": "local" | "oidc"}`
+- `auth.password_change` — `{"method": "self-service"}`
 
 ### Users -- admin only
 

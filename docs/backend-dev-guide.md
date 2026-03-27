@@ -84,7 +84,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `overview.go` | `getOverview`, `streamCluster` (SSE), `buildOverview` |
 | `guardrails.go` | `getGuardrails`, `updateGuardrails` |
 | `users.go` | `listUsers`, `createUser`, `updateUser`, `deleteUser` |
-| `audit.go` | `AuditWriter.Start()`, `Handler.audit()`, `marshalOrNull()` |
+| `audit.go` | `AuditWriter.Start()`, `Handler.audit()`, `marshalOrNull()`, `clientIP()` |
 | `admin.go` | `resetDB` -- streams NDJSON progress events while dropping/recreating all tables |
 | `ws.go` | `wsReadPump`, `wsSendLines`, `wsDrainChannel`, `wsStreamLoop` -- WebSocket helpers |
 | `helpers.go` | `jsonOK`, `jsonCreated`, `jsonError`, `jsonInternalError`, `parseID`, `reloadScheduler` |
@@ -1030,8 +1030,12 @@ Chi middleware adds request-level logging (via `chiMiddleware.Logger`).
 
 **`marshalOrNull(v interface{}) string`:** Serialises `v` to a JSON string. Returns the literal string `"null"` when `v` is nil or marshalling fails. This is important because the `before`/`after` columns are `jsonb` in PostgreSQL, which rejects empty strings — `"null"` is the correct JSON representation of an absent value.
 
-**What gets logged:**
-- `auth.login`, `auth.logout`, `auth.password_change`
+**`clientIP(r *http.Request) string`:** Extracts the real client IP. Checks `X-Real-IP` first (set by nginx/ingress), then the first entry of `X-Forwarded-For`, and finally strips the port from `r.RemoteAddr`. Used for both audit log `IPAddress` and login rate limiting, ensuring correct client IPs behind a reverse proxy.
+
+**What gets logged (with `after` context for auth actions):**
+- `auth.login` — `after: {"username": "...", "method": "local"|"oidc"}`
+- `auth.logout` — `after: {"method": "local"|"oidc"}`
+- `auth.password_change` — `after: {"method": "self-service"}`
 - `policy.create`, `policy.update`, `policy.delete`, `policy.sleep`, `policy.wake`
 - `policy.override.create`, `policy.override.delete`
 - `exception.create`, `exception.update`, `exception.delete`
@@ -1188,7 +1192,7 @@ if err != nil {
 List endpoints that support pagination use `page` and `pageSize` (or `page_size`) query parameters:
 
 - `page` is 0-indexed. Default: 0.
-- `pageSize` has endpoint-specific defaults (20 for executions, 50 for audit logs) and a max of 100.
+- `pageSize` has endpoint-specific defaults (20 for executions, 50 for audit logs). Executions cap at 100; audit logs cap at 1000 to support full-dataset exports.
 - Response includes `items` (array) and `total` (count before pagination).
 
 Example: `GET /api/policy-executions?policy_id=1&status=success&direction=sleep&page=0&page_size=20`

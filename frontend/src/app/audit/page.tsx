@@ -14,20 +14,59 @@ import TableRow from '@mui/material/TableRow'
 import TablePagination from '@mui/material/TablePagination'
 import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
+import ListSubheader from '@mui/material/ListSubheader'
 import Chip from '@mui/material/Chip'
 import Collapse from '@mui/material/Collapse'
 import IconButton from '@mui/material/IconButton'
 import Skeleton from '@mui/material/Skeleton'
+import Alert from '@mui/material/Alert'
+import Button from '@mui/material/Button'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
+import DownloadIcon from '@mui/icons-material/Download'
 import { getAuditLogs } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { canViewAudit } from '@/lib/rbac'
 import { useRouter } from 'next/navigation'
 import type { AuditLogEntry } from '@/lib/types'
-import { formatActionLabel, actionColor, ACTION_LABELS } from '@/lib/statusColors'
+import { formatActionLabel, actionColor } from '@/lib/statusColors'
 
-const ACTIONS = ['', ...Object.keys(ACTION_LABELS)]
+const ACTION_GROUPS = [
+  { label: 'Auth',       actions: ['auth.login', 'auth.logout', 'auth.password_change'] },
+  { label: 'Policy',     actions: ['policy.create', 'policy.update', 'policy.delete', 'policy.sleep', 'policy.wake'] },
+  { label: 'Override',   actions: ['policy.override.create', 'policy.override.delete'] },
+  { label: 'Exception',  actions: ['exception.create', 'exception.update', 'exception.delete'] },
+  { label: 'Guardrail',  actions: ['guardrail.update'] },
+  { label: 'User',       actions: ['user.create', 'user.update', 'user.delete'] },
+  { label: 'Admin',      actions: ['admin.reset_db'] },
+]
+
+const TABLE_COLS = 6
+
+function toUTCString(ts: string): string {
+  return new Date(ts).toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
+}
+
+function downloadCSV(items: AuditLogEntry[]): void {
+  const header = ['Time (UTC)', 'User', 'Action', 'Resource', 'IP Address']
+  const rows = items.map(e => [
+    toUTCString(e.timestamp),
+    e.username,
+    e.action,
+    e.resourceType ? `${e.resourceType}${e.resourceId != null ? ' #' + e.resourceId : ''}` : '',
+    e.ipAddress ?? '',
+  ])
+  const csv = [header, ...rows]
+    .map(row => row.map(v => `"${v.replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `audit-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 // ── JSON diff ─────────────────────────────────────────────────────────────────
 
@@ -154,14 +193,14 @@ function AuditRow({ entry }: { entry: AuditLogEntry }) {
       <TableRow sx={{ '& > *': { borderBottom: 'unset' } }}>
         <TableCell sx={{ width: 40 }}>
           {hasDiff && (
-            <IconButton size="small" onClick={() => setOpen(!open)} aria-expanded={open} aria-label="Show changes">
+            <IconButton size="small" onClick={() => setOpen(o => !o)} aria-expanded={open} aria-label="Show changes">
               {open ? <KeyboardArrowUpIcon fontSize="small" /> : <KeyboardArrowDownIcon fontSize="small" />}
             </IconButton>
           )}
         </TableCell>
         <TableCell>
-          <Typography variant="caption" color="text.secondary">
-            {new Date(entry.timestamp).toLocaleString()}
+          <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+            {toUTCString(entry.timestamp)}
           </Typography>
         </TableCell>
         <TableCell>
@@ -173,7 +212,7 @@ function AuditRow({ entry }: { entry: AuditLogEntry }) {
         <TableCell>
           {entry.resourceType && (
             <Typography variant="caption" color="text.secondary">
-              {entry.resourceType}{entry.resourceId ? ` #${entry.resourceId}` : ''}
+              {entry.resourceType}{entry.resourceId != null ? ` #${entry.resourceId}` : ''}
             </Typography>
           )}
         </TableCell>
@@ -183,7 +222,7 @@ function AuditRow({ entry }: { entry: AuditLogEntry }) {
       </TableRow>
       {hasDiff && (
         <TableRow>
-          <TableCell colSpan={6} sx={{ py: 0 }}>
+          <TableCell colSpan={TABLE_COLS} sx={{ py: 0 }}>
             <Collapse in={open} timeout="auto" unmountOnExit>
               <Box sx={{ p: 2 }}>
                 <JsonDiffView before={entry.before} after={entry.after} />
@@ -205,46 +244,130 @@ export default function AuditLogPage() {
   const [userFilter, setUserFilter] = useState('')
   const [debouncedUserFilter, setDebouncedUserFilter] = useState('')
   const [actionFilter, setActionFilter] = useState('')
+  const [fromFilter, setFromFilter] = useState('')
+  const [toFilter, setToFilter] = useState('')
+  const [exportError, setExportError] = useState<string | null>(null)
+
+  const hasPermission = !!user && canViewAudit(user.permissions)
 
   useEffect(() => {
-    if (user && !canViewAudit(user.permissions)) router.replace('/overview')
-  }, [user, router])
+    if (user && !hasPermission) router.replace('/overview')
+  }, [user, hasPermission, router])
 
   useEffect(() => {
-    const debounceTimer = setTimeout(() => setDebouncedUserFilter(userFilter), 300)
-    return () => clearTimeout(debounceTimer)
+    const t = setTimeout(() => setDebouncedUserFilter(userFilter), 300)
+    return () => clearTimeout(t)
   }, [userFilter])
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['audit-logs', page, pageSize, debouncedUserFilter, actionFilter],
-    queryFn: () => getAuditLogs({ user: debouncedUserFilter || undefined, action: actionFilter || undefined, page, pageSize }),
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['audit-logs', page, pageSize, debouncedUserFilter, actionFilter, fromFilter, toFilter],
+    queryFn: () => getAuditLogs({
+      user: debouncedUserFilter || undefined,
+      action: actionFilter || undefined,
+      from: fromFilter ? `${fromFilter}T00:00:00Z` : undefined,
+      to: toFilter ? `${toFilter}T23:59:59Z` : undefined,
+      page,
+      pageSize,
+    }),
+    enabled: hasPermission,
   })
 
-  // Permission guard — return null after all hooks.
-  if (user && !canViewAudit(user.permissions)) return null
+  const handleExport = async () => {
+    setExportError(null)
+    try {
+      const result = await getAuditLogs({
+        user: debouncedUserFilter || undefined,
+        action: actionFilter || undefined,
+        from: fromFilter ? `${fromFilter}T00:00:00Z` : undefined,
+        to: toFilter ? `${toFilter}T23:59:59Z` : undefined,
+        page: 0,
+        pageSize: 1000,
+      })
+      downloadCSV(result.items)
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'Export failed')
+    }
+  }
+
+  if (user && !hasPermission) return null
 
   return (
     <Box>
-      <Typography variant="h5" fontWeight={700} gutterBottom>Audit Log</Typography>
-      <Typography variant="body2" color="text.secondary" mb={3}>
-        Track who did what and when.
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3 }}>
+        <Box>
+          <Typography variant="h5" fontWeight={700} gutterBottom>Audit Log</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Track who did what and when.
+          </Typography>
+        </Box>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<DownloadIcon />}
+          onClick={handleExport}
+          disabled={isLoading}
+        >
+          Export CSV
+        </Button>
+      </Box>
 
-      {/* Filters */}
-      <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+      <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
-          label="User" size="small" value={userFilter}
+          label="User"
+          size="small"
+          value={userFilter}
           onChange={e => { setUserFilter(e.target.value); setPage(0) }}
           sx={{ minWidth: 150 }}
+          placeholder="Search by username"
         />
         <TextField
-          label="Action" select size="small" value={actionFilter}
+          label="Action"
+          select
+          size="small"
+          value={actionFilter}
           onChange={e => { setActionFilter(e.target.value); setPage(0) }}
           sx={{ minWidth: 200 }}
         >
-          {ACTIONS.map(a => <MenuItem key={a} value={a}>{a ? formatActionLabel(a) : 'All actions'}</MenuItem>)}
+          <MenuItem value="">All actions</MenuItem>
+          {ACTION_GROUPS.flatMap(group => [
+            <ListSubheader key={`h-${group.label}`} sx={{ lineHeight: '32px', fontSize: 11 }}>
+              {group.label}
+            </ListSubheader>,
+            ...group.actions.map(a => (
+              <MenuItem key={a} value={a}>{formatActionLabel(a)}</MenuItem>
+            )),
+          ])}
         </TextField>
+        <TextField
+          label="From"
+          type="date"
+          size="small"
+          value={fromFilter}
+          onChange={e => { setFromFilter(e.target.value); setPage(0) }}
+          sx={{ minWidth: 160 }}
+          slotProps={{ inputLabel: { shrink: true } }}
+        />
+        <TextField
+          label="To"
+          type="date"
+          size="small"
+          value={toFilter}
+          onChange={e => { setToFilter(e.target.value); setPage(0) }}
+          sx={{ minWidth: 160 }}
+          slotProps={{ inputLabel: { shrink: true } }}
+        />
       </Box>
+
+      {isError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error instanceof Error ? error.message : 'Failed to load audit logs'}
+        </Alert>
+      )}
+      {exportError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setExportError(null)}>
+          Export failed: {exportError}
+        </Alert>
+      )}
 
       <Card>
         <TableContainer>
@@ -252,7 +375,7 @@ export default function AuditLogPage() {
             <TableHead>
               <TableRow>
                 <TableCell width={40} />
-                <TableCell>Time</TableCell>
+                <TableCell>Time (UTC)</TableCell>
                 <TableCell>User</TableCell>
                 <TableCell>Action</TableCell>
                 <TableCell>Resource</TableCell>
@@ -260,13 +383,20 @@ export default function AuditLogPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {isLoading && Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}><TableCell colSpan={6}><Skeleton /></TableCell></TableRow>
+              {isLoading && Array.from({ length: Math.min(pageSize, 8) }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell sx={{ width: 40 }} />
+                  <TableCell><Skeleton width={140} /></TableCell>
+                  <TableCell><Skeleton width={80} /></TableCell>
+                  <TableCell><Skeleton width={100} /></TableCell>
+                  <TableCell><Skeleton width={60} /></TableCell>
+                  <TableCell><Skeleton width={100} /></TableCell>
+                </TableRow>
               ))}
-              {data?.items?.map(entry => <AuditRow key={entry.id} entry={entry} />)}
-              {!isLoading && data?.items?.length === 0 && (
+              {!isLoading && data?.items?.map(entry => <AuditRow key={entry.id} entry={entry} />)}
+              {!isLoading && !isError && data?.items?.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} align="center">
+                  <TableCell colSpan={TABLE_COLS} align="center">
                     <Typography variant="body2" color="text.secondary" py={4}>No audit log entries found.</Typography>
                   </TableCell>
                 </TableRow>
