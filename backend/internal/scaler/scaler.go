@@ -59,15 +59,6 @@ func (r *Runner) ok(ch chan<- LogLine, msg string)     { emit(ch, "ok", msg) }
 func (r *Runner) plan(ch chan<- LogLine, msg string)   { emit(ch, "plan", msg) }
 func (r *Runner) errLog(ch chan<- LogLine, msg string) { emit(ch, "error", msg) }
 
-// mergeCSV merges two comma-separated strings into a single trimmed set.
-func mergeCSV(a, b string) map[string]bool {
-	m := stringutil.SplitCSVSet(a)
-	for k, v := range stringutil.SplitCSVSet(b) {
-		m[k] = v
-	}
-	return m
-}
-
 // splitCSV splits a comma-separated string into a trimmed set.
 func splitCSV(s string) map[string]bool {
 	return stringutil.SplitCSVSet(s)

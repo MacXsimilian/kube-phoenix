@@ -1,7 +1,6 @@
 export interface Guardrails {
   id: number
-  systemNamespaces: string  // protected system defaults — requires confirmation to remove
-  skipNamespaces: string
+  systemNamespaces: string
   skipNsNode: string
   skipNodeLabels: string
   skipNodeTaints: string

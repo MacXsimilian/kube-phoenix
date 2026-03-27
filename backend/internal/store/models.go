@@ -8,7 +8,6 @@ import (
 type Guardrails struct {
 	ID               uint   `gorm:"primaryKey" json:"id"`
 	SystemNamespaces string `json:"systemNamespaces"` // comma-separated — protected system defaults, requires confirmation to remove
-	SkipNamespaces   string `json:"skipNamespaces"`   // comma-separated — user-managed skip list
 	SkipNsNode       string `json:"skipNsNode"`       // comma-separated — namespaces whose pods protect nodes
 	SkipNodeLabels   string `json:"skipNodeLabels"`   // comma-separated key=value
 	SkipNodeTaints   string `json:"skipNodeTaints"`   // comma-separated key=value:effect

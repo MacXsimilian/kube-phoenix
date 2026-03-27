@@ -19,12 +19,12 @@ const (
 func (r *Runner) RunScaleDown(ctx context.Context, mode, namespaceFilter string, logCh chan<- LogLine) (*Counts, error) {
 	counts := &Counts{}
 
-	g, err := r.store.GetGuardrails()
+	guardrails, err := r.store.GetGuardrails()
 	if err != nil {
 		return nil, fmt.Errorf("guardrails: %w", err)
 	}
 
-	skipNS := mergeCSV(g.SystemNamespaces, g.SkipNamespaces)
+	skipNS := splitCSV(guardrails.SystemNamespaces)
 
 	// ── Scale Deployments & StatefulSets ─────────────────────────────────
 	r.info(logCh, "Fetching Deployments...")
@@ -45,13 +45,13 @@ func (r *Runner) RunScaleDown(ctx context.Context, mode, namespaceFilter string,
 	r.scaleDownWorkloads(ctx, mode, entries, logCh, counts)
 
 	// ── Drain & Delete Nodes ──────────────────────────────────────────────
-	r.drainNodes(ctx, mode, g, logCh, counts)
+	r.drainNodes(ctx, mode, guardrails, logCh, counts)
 
 	return counts, nil
 }
 
 // drainNodes handles node draining and deletion during scale-down.
-func (r *Runner) drainNodes(ctx context.Context, mode string, g *store.Guardrails, logCh chan<- LogLine, counts *Counts) {
+func (r *Runner) drainNodes(ctx context.Context, mode string, guardrails *store.Guardrails, logCh chan<- LogLine, counts *Counts) {
 	r.info(logCh, "Fetching nodes...")
 	nodes, err := r.k8s.ListNodes(ctx)
 	if err != nil {
@@ -68,7 +68,7 @@ func (r *Runner) drainNodes(ctx context.Context, mode string, g *store.Guardrail
 		return
 	}
 
-	skipNsNode := splitCSV(g.SkipNsNode)
+	skipNsNode := splitCSV(guardrails.SkipNsNode)
 	criticalNodes := map[string]bool{}
 	podCountPerNode := map[string]int{}
 	for _, pod := range allPods {
@@ -90,7 +90,7 @@ func (r *Runner) drainNodes(ctx context.Context, mode string, g *store.Guardrail
 	for _, node := range nodes {
 		name := node.Name
 
-		if isLabelProtected(node.Labels, g.SkipNodeLabels) || isTaintProtected(node.Spec.Taints, g.SkipNodeTaints) {
+		if isLabelProtected(node.Labels, guardrails.SkipNodeLabels) || isTaintProtected(node.Spec.Taints, guardrails.SkipNodeTaints) {
 			r.info(logCh, fmt.Sprintf("Protected node %s (label/taint match)", name))
 			counts.Protected++
 			continue

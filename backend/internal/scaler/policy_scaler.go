@@ -100,11 +100,11 @@ func (r *PolicyRunner) RunPolicySleep(
 ) (*Counts, error) {
 	counts := &Counts{}
 
-	g, err := r.store.GetGuardrails()
+	guardrails, err := r.store.GetGuardrails()
 	if err != nil {
 		return nil, fmt.Errorf("guardrails: %w", err)
 	}
-	skipNS := mergeCSV(g.SystemNamespaces, g.SkipNamespaces)
+	skipNS := splitCSV(guardrails.SystemNamespaces)
 
 	emit(logCh, "info", fmt.Sprintf("Policy sleep — namespace filter: %q  label selector: %q", policy.NamespaceFilter, policy.LabelSelector))
 
@@ -154,7 +154,7 @@ func (r *PolicyRunner) RunPolicySleep(
 	}
 
 	// ── Drain & Delete Nodes (same as scale_down) ──────────────────────────
-	r.base.drainNodes(ctx, policy.Mode, g, logCh, counts)
+	r.base.drainNodes(ctx, policy.Mode, guardrails, logCh, counts)
 
 	emit(logCh, "info", fmt.Sprintf("Sleep complete — scaled %d workloads, %d skipped, %d errors",
 		counts.Scaled, counts.Skipped, counts.Errors))
