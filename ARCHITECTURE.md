@@ -111,7 +111,7 @@ executions when intended state diverges from actual state.
 - Manage an in-memory policy cache for fast tick evaluation.
 - Guard against concurrent runs via the `transitioning` state.
 - Skip automatic wake transitions when `AutoWake` is disabled — the scheduler will only put policies to sleep, not wake them.
-- Skip evaluation for policies already in the awake state when `ReconcileWhileAwake` is disabled — reduces DB load between sleep windows.
+- When `ReconcileWhileAwake` is enabled (default), detect drift from failed or partial wake executions by counting open snapshots that still need restoring. If drift is found, run a corrective wake (trigger `"reconcile"`) that bypasses the `AutoWake` gate and `skip_wake` overrides. Retries back off at a minimum interval of 5 minutes per policy to avoid flooding history. When disabled, skip reconciliation entirely for policies already awake — reduces DB load between sleep windows.
 
 **Key interfaces:**
 - `NewPolicyScheduler(st, k8sClient, cfg SchedulerConfig)` -- construct scheduler with configurable settings.
@@ -375,12 +375,16 @@ Triggered by the ticker, a manual call, or a scheduled exception ending.
 ```
 Every configurable interval (default 30s):
   for each enabled policy:
-    if current_state == "transitioning": skip
-    if reconcileWhileAwake is false and current_state == "awake": skip
     intended = PolicyEngine.IntendedState(policy, overrides, now)
-    if intended != current_state:
-      if intended == "awake" and autoWake is false: skip
-      spawn goroutine -> run(policy, intended_direction, "scheduled")
+    if current_state == intended:
+      if reconcileWhileAwake and intended == "awake":
+        if backoff elapsed and open snapshots needing restore > 0:
+          spawn goroutine -> run(policy, "wake", "reconcile")  // bypasses autoWake + skip_wake
+      continue
+    if current_state == "transitioning": check for stuck (>10 min), reset to unknown
+    if intended == "awake" and autoWake is false: skip
+    if skip_wake/skip_sleep override active: consume and skip
+    spawn goroutine -> run(policy, intended_direction, "scheduled")
 ```
 
 Override precedence within `IntendedState`:
