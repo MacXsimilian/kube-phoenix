@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.18](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.17...v0.3.18) (2026-03-27)
+
+
+### Bug Fixes
+
+* clean code audit — rate limiter leak, node protection dedup, scheduler decomposition ([#251](https://github.com/MacXsimilian/kube-phoenix/issues/251)) ([01e21f7](https://github.com/MacXsimilian/kube-phoenix/commit/01e21f791040a0c3d444bd933ae3ce6100a6ee8c))
+
 ## [0.3.17](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.16...v0.3.17) (2026-03-27)
 
 
