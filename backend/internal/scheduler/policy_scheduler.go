@@ -380,6 +380,10 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		return 0, fmt.Errorf("policy %d is already transitioning", p.ID)
 	}
 	_ = ps.store.SetPolicyTransitioning(p.ID)
+	if cp, ok := ps.policies[p.ID]; ok {
+		cp.policy.CurrentState = store.PolicyStateTransitioning
+		ps.policies[p.ID] = cp
+	}
 	ps.mu.Unlock()
 
 	exec := &store.PolicyExecution{
@@ -475,7 +479,7 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 			metrics.NodesDeletedTotal.Add(float64(counts.Deleted))
 		}
 
-		// Update policy's cached state
+		// Update policy's persisted and in-memory cached state.
 		nextTransition := ps.NextTransition(p.ID)
 		var newState string
 		if status == store.ExecStatusSuccess {
@@ -488,6 +492,15 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 			newState = store.PolicyStateUnknown
 		}
 		_ = ps.store.UpdatePolicyState(p.ID, newState, nextTransition)
+
+		// Sync the in-memory cache so the next evaluation tick sees the
+		// updated CurrentState instead of the stale snapshot from reload().
+		ps.mu.Lock()
+		if cp, ok := ps.policies[p.ID]; ok {
+			cp.policy.CurrentState = newState
+			ps.policies[p.ID] = cp
+		}
+		ps.mu.Unlock()
 
 		slog.Info("policy scheduler: execution finished",
 			"policyID", p.ID, "execID", execID, "direction", direction,
