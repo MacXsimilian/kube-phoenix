@@ -37,6 +37,7 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 		"schedulerEvalInterval":        "scheduler_eval_interval",
 		"schedulerAutoWake":            "scheduler_auto_wake",
 		"schedulerReconcileWhileAwake": "scheduler_reconcile_while_awake",
+		"scalingPriorityNamespaces":    "scaling_priority_namespaces",
 	}
 	updates := map[string]interface{}{}
 	for jsonKey, dbCol := range fieldMap {
@@ -94,6 +95,19 @@ func validateGuardrailFields(body map[string]interface{}) string {
 	if v, ok := body["systemNamespaces"]; ok {
 		if strings.TrimSpace(fmt.Sprintf("%v", v)) == "" {
 			return "systemNamespaces cannot be empty"
+		}
+	}
+	if v, ok := body["scalingPriorityNamespaces"]; ok {
+		seen := map[string]bool{}
+		for _, entry := range strings.Split(fmt.Sprintf("%v", v), ",") {
+			entry = strings.TrimSpace(entry)
+			if entry == "" {
+				continue
+			}
+			if seen[entry] {
+				return fmt.Sprintf("duplicate namespace %q in scalingPriorityNamespaces", entry)
+			}
+			seen[entry] = true
 		}
 	}
 	return ""

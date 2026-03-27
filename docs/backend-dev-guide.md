@@ -823,19 +823,21 @@ When `evaluatePolicy` detects a mismatch (intended != current, and current != tr
 2. Fetch open snapshots for this policy -> build `snappedSet` to prevent double-sleeping.
 3. List Deployments and StatefulSets (filtered by `policy.LabelSelector`).
 4. Call `collectFilteredEntries` to filter by `skipNS` and `policy.NamespaceFilter`.
-5. For each workload entry, call `sleepWorkload`:
+5. Sort entries by `ScalingPriorityNamespaces` — workloads in priority namespaces are moved to the front of the processing queue in list order.
+6. For each workload entry, call `sleepWorkload`:
    - If already snapshotted -> skip (prevents double-sleep).
    - Create `WorkloadSnapshot` in DB.
    - If replicas == 0 -> snapshot with `WasAlreadyZero=true`, skip scale.
    - If plan mode -> log "Would sleep..." and continue.
    - If apply mode -> save snapshot, annotate `previous-replicas`, scale to 0.
    - On scale failure -> delete the snapshot (rollback).
-6. Call `drainNodes` to handle node draining.
+7. Call `drainNodes` to handle node draining.
 
 #### Wake: `PolicyRunner.RunPolicyWake`
 
 1. Load open snapshots for this policy.
-2. For each snapshot:
+2. Sort snapshots by `ScalingPriorityNamespaces` — priority namespaces are restored first.
+3. For each snapshot:
    - If `WasAlreadyZero` -> close snapshot (we did not own those replicas), skip.
    - Look up workload in cluster. If gone -> mark `WasDeletedAtWake`, skip.
    - If current replicas != 0 -> log warning (externally scaled), mark `WasExternallyScaled`, but still restore.

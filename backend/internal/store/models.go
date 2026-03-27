@@ -13,6 +13,9 @@ type Guardrails struct {
 	SkipNodeLabels   string `json:"skipNodeLabels"`   // comma-separated key=value
 	SkipNodeTaints   string `json:"skipNodeTaints"`   // comma-separated key=value:effect
 
+	// Scaling priority — namespaces listed here are scaled first, in order.
+	ScalingPriorityNamespaces string `json:"scalingPriorityNamespaces"` // comma-separated, ordered
+
 	// Scheduler behaviour — configurable via the UI.
 	SchedulerEvalInterval       string `gorm:"size:20;default:'30s'" json:"schedulerEvalInterval"`
 	SchedulerAutoWake           bool   `gorm:"default:true" json:"schedulerAutoWake"`

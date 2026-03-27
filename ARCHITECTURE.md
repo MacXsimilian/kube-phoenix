@@ -233,6 +233,7 @@ erDiagram
         text skip_ns_node "CSV"
         text skip_node_labels "CSV key=value"
         text skip_node_taints "CSV key=value:effect"
+        text scaling_priority_namespaces "CSV ordered"
         varchar scheduler_eval_interval "default '30s'"
         boolean scheduler_auto_wake "default true"
         boolean scheduler_reconcile_while_awake "default true"

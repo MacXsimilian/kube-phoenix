@@ -171,6 +171,7 @@ Guardrails protect critical resources from being touched by the scaler. Configur
 | Skip Namespaces | Namespaces excluded from all sleep operations (e.g., `kube-system`, `monitoring`) |
 | Skip Node Labels | Nodes with these labels are never cordoned, drained, or deleted |
 | Skip Node Taints | Nodes with these taints are never cordoned, drained, or deleted |
+| Scaling Priority Namespaces | Ordered list of namespaces that are scaled first during sleep and wake runs. Workloads in these namespaces are processed before all others, in list order. Empty by default (no priority). |
 | Scheduler Eval Interval | How often all enabled policies are evaluated. Accepts Go duration strings (`30s`, `1m`, `2m`). Changes take effect immediately — the ticker restarts with the new interval. |
 | Auto Wake | When disabled, the scheduler will only trigger sleep executions automatically. Wake transitions must be triggered manually. |
 | Reconcile While Awake | When disabled, the scheduler skips policy evaluation for policies already in the awake state. Reduces database load between sleep windows. |

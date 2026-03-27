@@ -221,6 +221,7 @@ export default function GuardrailsForm() {
   const [skipNsNode, setSkipNsNode] = useState<string[]>([])
   const [skipLabels, setSkipLabels] = useState<string[]>([])
   const [skipTaints, setSkipTaints] = useState<string[]>([])
+  const [priorityNs, setPriorityNs] = useState<string[]>([])
   const [evalInterval, setEvalInterval] = useState('30s')
   const [autoWake, setAutoWake] = useState(true)
   const [reconcileWhileAwake, setReconcileWhileAwake] = useState(true)
@@ -235,6 +236,7 @@ export default function GuardrailsForm() {
       setSkipNsNode(parseCsv(guardrails.skipNsNode))
       setSkipLabels(parseCsv(guardrails.skipNodeLabels))
       setSkipTaints(parseCsv(guardrails.skipNodeTaints))
+      setPriorityNs(parseCsv(guardrails.scalingPriorityNamespaces))
       setEvalInterval(guardrails.schedulerEvalInterval)
       setAutoWake(guardrails.schedulerAutoWake)
       setReconcileWhileAwake(guardrails.schedulerReconcileWhileAwake)
@@ -253,6 +255,7 @@ export default function GuardrailsForm() {
         skipNsNode: joinCsv(skipNsNode),
         skipNodeLabels: joinCsv(skipLabels),
         skipNodeTaints: joinCsv(skipTaints),
+        scalingPriorityNamespaces: joinCsv(priorityNs),
         schedulerEvalInterval: evalInterval.trim(),
         schedulerAutoWake: autoWake,
         schedulerReconcileWhileAwake: reconcileWhileAwake,
@@ -339,47 +342,68 @@ export default function GuardrailsForm() {
           </Card>
         </Grid>
 
-        {/* Scheduler */}
+        {/* Scaling priority + Scheduler — stacked in right column */}
         <Grid size={{ xs: 12, md: 6 }}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
-                Scheduler Behaviour
-              </Typography>
-              <Typography variant="body2" color="text.secondary" mb={2.5}>
-                Control how the policy evaluation loop runs.
-              </Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Box sx={{ maxWidth: 200 }}>
-                  <TextField
-                    label="Eval Interval"
-                    size="small"
-                    fullWidth
-                    value={evalInterval}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Card>
+              <CardContent sx={{ p: 3 }}>
+                <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
+                  Scaling Priority
+                </Typography>
+                <Typography variant="body2" color="text.secondary" mb={2.5}>
+                  Scale these namespaces first, in listed order.
+                </Typography>
+                <ChipInput
+                  id="chip-input-priority-ns"
+                  label="Priority Namespaces"
+                  hint="Add namespaces in the order they should be scaled"
+                  values={priorityNs}
+                  onChange={setPriorityNs}
+                  readOnly={!hasEdit}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent sx={{ p: 3 }}>
+                <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
+                  Scheduler Behaviour
+                </Typography>
+                <Typography variant="body2" color="text.secondary" mb={2.5}>
+                  Control how the policy evaluation loop runs.
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <Box sx={{ maxWidth: 200 }}>
+                    <TextField
+                      label="Eval Interval"
+                      size="small"
+                      fullWidth
+                      value={evalInterval}
+                      disabled={!hasEdit}
+                      error={!!evalIntervalError}
+                      helperText={evalIntervalError || 'How often policies are checked (e.g. 30s, 1m)'}
+                      onChange={(e) => setEvalInterval(e.target.value)}
+                      slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
+                    />
+                  </Box>
+                  <LabeledSwitch
+                    label="Auto Wake"
+                    description="Automatically wake clusters when outside a sleep window. Disable for sleep-only mode."
+                    checked={autoWake}
                     disabled={!hasEdit}
-                    error={!!evalIntervalError}
-                    helperText={evalIntervalError || 'How often policies are checked (e.g. 30s, 1m)'}
-                    onChange={(e) => setEvalInterval(e.target.value)}
-                    slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
+                    onChange={setAutoWake}
+                  />
+                  <LabeledSwitch
+                    label="Reconcile While Awake"
+                    description="Keep evaluating policies during awake windows. Disable to skip checks between sleep windows."
+                    checked={reconcileWhileAwake}
+                    disabled={!hasEdit}
+                    onChange={setReconcileWhileAwake}
                   />
                 </Box>
-                <LabeledSwitch
-                  label="Auto Wake"
-                  description="Automatically wake clusters when outside a sleep window. Disable for sleep-only mode."
-                  checked={autoWake}
-                  disabled={!hasEdit}
-                  onChange={setAutoWake}
-                />
-                <LabeledSwitch
-                  label="Reconcile While Awake"
-                  description="Keep evaluating policies during awake windows. Disable to skip checks between sleep windows."
-                  checked={reconcileWhileAwake}
-                  disabled={!hasEdit}
-                  onChange={setReconcileWhileAwake}
-                />
-              </Box>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </Box>
         </Grid>
 
         {/* Save */}
