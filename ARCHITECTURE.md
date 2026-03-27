@@ -203,7 +203,7 @@ more WebSocket clients.
   clicking a row in the Recent Executions table opens the log viewer drawer inline.
 - Live execution log viewer via WebSocket, with auto-scroll and level coloring.
 - Live pod log viewer via chunked HTTP streaming from the Kubernetes API.
-- User management (admin), audit log viewer, guardrails editor.
+- User management (admin), audit log viewer with field-level diff highlighting (added/removed/changed/unchanged), guardrails editor.
 - Dark (default) and light theme with WCAG AA contrast compliance.
 - Cookie-based session auth with CSRF double-submit protection; optional OIDC SSO.
 
@@ -420,7 +420,7 @@ kube-phoenix/
 │   │   │   ├── overrides.go         # Policy override CRUD
 │   │   │   ├── guardrails.go        # Guardrails get/update
 │   │   │   ├── users.go             # User CRUD (admin only)
-│   │   │   ├── audit.go             # Audit log listing
+│   │   │   ├── audit.go             # AuditWriter (buffered async channel), audit() enqueue helper, marshalOrNull()
 │   │   │   ├── admin.go             # DB reset (streaming NDJSON)
 │   │   │   ├── ws.go                # WebSocket helpers
 │   │   │   └── helpers.go           # JSON response utilities
@@ -441,8 +441,6 @@ kube-phoenix/
 │   │   ├── middleware/
 │   │   │   ├── auth.go              # Session auth, CSRF double-submit
 │   │   │   └── ratelimit.go         # Per-IP and per-username login throttling
-│   │   ├── audit/
-│   │   │   └── writer.go            # Async buffered audit writer, daily retention
 │   │   ├── metrics/
 │   │   │   └── metrics.go           # Prometheus metrics (promauto registration)
 │   │   └── docs/

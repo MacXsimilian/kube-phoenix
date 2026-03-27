@@ -84,7 +84,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `overview.go` | `getOverview`, `streamCluster` (SSE), `buildOverview` |
 | `guardrails.go` | `getGuardrails`, `updateGuardrails` |
 | `users.go` | `listUsers`, `createUser`, `updateUser`, `deleteUser` |
-| `audit.go` | `AuditWriter.Start()`, `Handler.audit()` |
+| `audit.go` | `AuditWriter.Start()`, `Handler.audit()`, `marshalOrNull()` |
 | `admin.go` | `resetDB` -- streams NDJSON progress events while dropping/recreating all tables |
 | `ws.go` | `wsReadPump`, `wsSendLines`, `wsDrainChannel`, `wsStreamLoop` -- WebSocket helpers |
 | `helpers.go` | `jsonOK`, `jsonCreated`, `jsonError`, `jsonInternalError`, `parseID`, `reloadScheduler` |
@@ -1021,12 +1021,14 @@ Chi middleware adds request-level logging (via `chiMiddleware.Logger`).
 
 **Flow:**
 1. Handler calls `h.audit(r, action, resourceType, resourceID, before, after)`.
-2. `audit()` extracts user from context, serializes `before`/`after` to JSON, creates an `AuditLog` entry.
+2. `audit()` extracts user from context, calls `marshalOrNull()` on `before` and `after` to produce valid JSON strings (`"null"` when the argument is nil), then builds an `AuditLog` entry.
 3. Non-blocking send to `auditWriter.ch`:
    - If buffer has room: entry is queued.
    - If buffer is full: entry is dropped, `kube_phoenix_audit_drops_total` is incremented, warning logged.
 4. `AuditWriter.Start()` goroutine drains the channel and persists entries to PostgreSQL.
 5. On context cancellation (shutdown), remaining entries are flushed.
+
+**`marshalOrNull(v interface{}) string`:** Serialises `v` to a JSON string. Returns the literal string `"null"` when `v` is nil or marshalling fails. This is important because the `before`/`after` columns are `jsonb` in PostgreSQL, which rejects empty strings — `"null"` is the correct JSON representation of an absent value.
 
 **What gets logged:**
 - `auth.login`, `auth.logout`, `auth.password_change`
@@ -1037,7 +1039,7 @@ Chi middleware adds request-level logging (via `chiMiddleware.Logger`).
 - `guardrail.update`
 - `admin.reset_db`
 
-Each entry records `before` and `after` state as JSONB, enabling diff views in the UI.
+Each entry records `before` and `after` state as JSONB. Creates store `before = "null"`, deletes store `after = "null"`. The frontend diff view uses these to classify each field as added, removed, changed, or unchanged.
 
 ---
 
@@ -1203,7 +1205,7 @@ h.audit(r, "policy.update", "policy", &id, oldPolicy, newPolicy)
 h.audit(r, "policy.delete", "policy", &id, oldPolicy, nil)
 ```
 
-Parameters: `(request, action, resourceType, resourceID, before, after)`. Both `before` and `after` are serialized to JSON. `before=nil` for creates, `after=nil` for deletes.
+Parameters: `(request, action, resourceType, resourceID, before, after)`. Both `before` and `after` are serialized to JSON via `marshalOrNull()`. `before=nil` for creates (stored as `"null"`), `after=nil` for deletes (stored as `"null"`). Storing `"null"` rather than an empty string is required because the DB columns are `jsonb` — PostgreSQL rejects empty strings in jsonb columns.
 
 ### Scheduler Reload
 

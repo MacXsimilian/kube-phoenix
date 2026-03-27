@@ -715,6 +715,45 @@ const TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> 
 
 **OverridesSection** includes an inline create form (not a dialog) that expands within the section. Override types `stay_awake` and `force_sleep` require start/end datetime fields; `skip_sleep` and `skip_wake` require a single target cron time.
 
+### Audit Log
+
+**Page:** `src/app/audit/page.tsx`
+
+Displays a paginated, filterable table of audit log entries. Gated by the `audit.view` permission — users without it are redirected to `/overview/`.
+
+**Filters:** `User` (debounced text, exact-match) and `Action` (dropdown built from `ACTION_LABELS`). Both reset pagination to page 0 on change.
+
+**Expandable diff rows:** Entries that carry `before` or `after` data show an expand chevron. Clicking it opens a `JsonDiffView` panel inside a `Collapse`.
+
+#### JsonDiffView
+
+The diff panel compares the `before` and `after` JSON snapshots from the audit entry and renders a line-by-line diff with colour coding:
+
+| Symbol | Colour | Meaning |
+|:-------|:-------|:--------|
+| `+` | green | Field only in `after` (added) |
+| `-` | red | Field only in `before` (removed) |
+| `~` | amber | Field in both, value changed (shows ~~old~~ `new` inline) |
+| ` ` | dimmed | Field unchanged (35% opacity) |
+
+A summary line above the panel shows the count of changed fields.
+
+**Key helpers (all defined in `audit/page.tsx`):**
+
+| Symbol | Purpose |
+|:-------|:--------|
+| `NULL_SNAPSHOT` | Constant `'null'` — the string value stored in the DB when before/after is absent |
+| `isEmptySnapshot(json?)` | Returns `true` when `json` is falsy or equals `NULL_SNAPSHOT` |
+| `flattenToLeaves(value, prefix?)` | Recursively flattens an object to dot-notation key → JSON-value pairs (e.g. `{ "settings.timezone": '"UTC"' }`) |
+| `parseSnapshot(json)` | Parses a JSON string and flattens it; returns `null` on parse error |
+| `classifyLine(key, before?, after?)` | Classifies a single key as `added`, `removed`, `changed`, or `unchanged` |
+| `computeDiff(beforeJson?, afterJson?)` | Orchestrates snapshot parsing and line classification; returns `null` when both snapshots are empty |
+| `formatChangeSummary(count)` | Formats the "N fields changed" summary label |
+| `DIFF_STYLE` | `Record<DiffType, { bg, border, text, prefix }>` — single source of truth for all diff styling per type |
+| `DiffLineRow` | Renders a single classified diff line with the appropriate colours and prefix symbol |
+
+---
+
 ### Settings
 
 **Page:** `src/app/settings/page.tsx`
