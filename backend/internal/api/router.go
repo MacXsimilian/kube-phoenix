@@ -144,8 +144,11 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 			r.Get("/cluster/pods/{namespace}/{name}/logs", h.getPodLogs)
 			r.Get("/cluster/workloads/{namespace}/{kind}/{name}/pods", h.getWorkloadPods)
 
-			// ── Audit logs (all authenticated users) ─────────────────
-			r.Get("/audit-logs", h.listAuditLogs)
+			// ── Audit logs ───────────────────────────────────────────
+			r.Group(func(r chi.Router) {
+				r.Use(authmw.RequirePermission(auth.PermAuditView))
+				r.Get("/audit-logs", h.listAuditLogs)
+			})
 
 			// ── Policy read routes (all authenticated users) ──────────
 			r.Get("/policies", h.listPolicies)

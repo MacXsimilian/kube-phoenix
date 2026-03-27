@@ -1,8 +1,20 @@
 package store
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // ─── Audit Logs ──────────────────────────────────────────────────────────────
+
+const (
+	defaultPageSize = 50
+	maxPageSize     = 1000
+)
+
+// ilikeSafeReplacer escapes PostgreSQL ILIKE wildcard characters so user
+// input is treated as a literal substring, not a pattern.
+var ilikeSafeReplacer = strings.NewReplacer(`%`, `\%`, `_`, `\_`)
 
 func (s *Store) CreateAuditLog(entry *AuditLog) error {
 	return s.db.Create(entry).Error
@@ -29,7 +41,7 @@ func (s *Store) ListAuditLogs(f AuditLogFilter) (*AuditLogPage, error) {
 		query = query.Where("user_id = ?", *f.UserID)
 	}
 	if f.Username != "" {
-		query = query.Where("username = ?", f.Username)
+		query = query.Where("username ILIKE ?", "%"+ilikeSafeReplacer.Replace(f.Username)+"%")
 	}
 	if f.Action != "" {
 		query = query.Where("action = ?", f.Action)
@@ -47,10 +59,10 @@ func (s *Store) ListAuditLogs(f AuditLogFilter) (*AuditLogPage, error) {
 	}
 
 	if f.PageSize <= 0 {
-		f.PageSize = 50
+		f.PageSize = defaultPageSize
 	}
-	if f.PageSize > 100 {
-		f.PageSize = 100
+	if f.PageSize > maxPageSize {
+		f.PageSize = maxPageSize
 	}
 	offset := f.Page * f.PageSize
 

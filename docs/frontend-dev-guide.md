@@ -62,7 +62,7 @@ frontend/
       policies/detail/page.tsx  # /policies/detail/?id=N -- single policy
       exceptions/page.tsx       # /exceptions -- scheduled exceptions list
       history/page.tsx          # /history -- execution history
-      audit/page.tsx            # /audit -- audit log (admin)
+      audit/page.tsx            # /audit -- audit log (viewer and above)
       users/page.tsx            # /users -- user management (admin)
       settings/page.tsx         # /settings -- appearance, account, OIDC, DB reset
       guardrails/page.tsx       # /guardrails -- guardrails editor
@@ -183,7 +183,7 @@ TanStack Query is the sole data-fetching and caching layer. There is no Redux, Z
 | `['resource']` | `['policies']`, `['workloads']`, `['nodes']` | List queries |
 | `['resource', id]` | `['policy', 42]`, `['logs', 15]` | Detail queries |
 | `['resource', parentId]` | `['policy-executions', policyId]`, `['exceptions', policyId]` | Scoped queries |
-| `['resource', ...filters]` | `['audit-logs', page, pageSize, user, action]` | Paginated/filtered queries |
+| `['resource', ...filters]` | `['audit-logs', page, pageSize, user, action, from, to]` | Paginated/filtered queries |
 | `['resource', 'feed']` | `['policy-executions', 'feed']` | Special-purpose queries |
 
 **Default options** (from `queryClient.ts`):
