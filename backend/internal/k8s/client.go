@@ -64,6 +64,14 @@ func (c *Client) ListDeploymentsBySelector(ctx context.Context, namespace, label
 	return list.Items, nil
 }
 
+func (c *Client) GetDeployment(ctx context.Context, namespace, name string) (*appsv1.Deployment, error) {
+	d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
+	}
+	return d, nil
+}
+
 func (c *Client) ScaleDeployment(ctx context.Context, namespace, name string, replicas int32) error {
 	scale, err := c.cs.AppsV1().Deployments(namespace).GetScale(ctx, name, metav1.GetOptions{})
 	if err != nil {
@@ -123,6 +131,14 @@ func (c *Client) ListStatefulSetsBySelector(ctx context.Context, namespace, labe
 		return nil, fmt.Errorf("list statefulsets by selector in %q: %w", namespace, err)
 	}
 	return list.Items, nil
+}
+
+func (c *Client) GetStatefulSet(ctx context.Context, namespace, name string) (*appsv1.StatefulSet, error) {
+	ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
+	}
+	return ss, nil
 }
 
 func (c *Client) ScaleStatefulSet(ctx context.Context, namespace, name string, replicas int32) error {
@@ -286,7 +302,7 @@ func (c *Client) waitForDrain(ctx context.Context, nodeName string, timeout time
 		case <-time.After(2 * time.Second):
 		}
 	}
-	return nil
+	return fmt.Errorf("drain %s: timed out waiting for pods to terminate", nodeName)
 }
 
 func (c *Client) DeleteNode(ctx context.Context, name string) error {
@@ -356,15 +372,11 @@ type ContainerMetrics struct {
 
 // GetAllPodMetrics fetches cluster-wide pod metrics from the Metrics Server.
 // Returns a map keyed by "namespace/podName" with the summed CPU+mem across all containers.
-// Returns an empty map (no error) when Metrics Server is unavailable.
 func (c *Client) GetAllPodMetrics(ctx context.Context) (map[string]ContainerMetrics, error) {
 	res := c.cs.RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/pods").Do(ctx)
-	var statusCode int
-	res.StatusCode(&statusCode)
 	data, err := res.Raw()
 	if err != nil {
-		slog.Warn("GetAllPodMetrics: metrics API call failed", "err", err, "httpStatus", statusCode)
-		return map[string]ContainerMetrics{}, nil
+		return nil, fmt.Errorf("fetch pod metrics: %w", err)
 	}
 
 	var resp struct {
@@ -382,8 +394,7 @@ func (c *Client) GetAllPodMetrics(ctx context.Context) (map[string]ContainerMetr
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(data, &resp); err != nil {
-		slog.Warn("GetAllPodMetrics: failed to parse metrics response", "err", err, "body", string(data[:min(len(data), 512)]))
-		return map[string]ContainerMetrics{}, nil
+		return nil, fmt.Errorf("parse pod metrics response: %w", err)
 	}
 
 	result := make(map[string]ContainerMetrics, len(resp.Items))

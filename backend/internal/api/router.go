@@ -238,14 +238,20 @@ func (h *Handler) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		filter.PageSize = ps
 	}
 	if v := query.Get("from"); v != "" {
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			filter.From = &t
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			jsonError(w, "invalid 'from' timestamp — expected RFC3339 format", http.StatusBadRequest)
+			return
 		}
+		filter.From = &t
 	}
 	if v := query.Get("to"); v != "" {
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			filter.To = &t
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			jsonError(w, "invalid 'to' timestamp — expected RFC3339 format", http.StatusBadRequest)
+			return
 		}
+		filter.To = &t
 	}
 
 	page, err := h.store.ListAuditLogs(filter)

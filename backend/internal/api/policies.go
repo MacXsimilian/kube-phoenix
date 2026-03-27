@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/policy"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"gorm.io/gorm"
 )
@@ -207,7 +208,11 @@ func (h *Handler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	old, err := h.store.GetPolicy(id)
 	if err != nil {
-		jsonError(w, ErrNotFound, http.StatusNotFound)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			jsonError(w, ErrNotFound, http.StatusNotFound)
+		} else {
+			jsonInternalError(w, err, "get policy failed")
+		}
 		return
 	}
 
@@ -320,7 +325,7 @@ func (h *Handler) triggerPolicySleep(w http.ResponseWriter, r *http.Request) {
 	}
 	execID, err := h.policyScheduler.RunSleepNow(id, "manual_sleep")
 	if err != nil {
-		if err.Error() == fmt.Sprintf("policy %d is already transitioning", id) {
+		if errors.Is(err, scheduler.ErrPolicyTransitioning) {
 			jsonError(w, "policy is already executing — wait for current run to finish", http.StatusConflict)
 			return
 		}
@@ -344,7 +349,7 @@ func (h *Handler) triggerPolicyWake(w http.ResponseWriter, r *http.Request) {
 	}
 	execID, err := h.policyScheduler.RunWakeNow(id, "manual_wake")
 	if err != nil {
-		if err.Error() == fmt.Sprintf("policy %d is already transitioning", id) {
+		if errors.Is(err, scheduler.ErrPolicyTransitioning) {
 			jsonError(w, "policy is already executing — wait for current run to finish", http.StatusConflict)
 			return
 		}
