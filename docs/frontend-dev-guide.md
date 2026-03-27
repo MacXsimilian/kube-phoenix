@@ -796,7 +796,7 @@ The `ProtectedChipInput` variant (for system namespaces) adds a confirmation dia
 
 Data is loaded from the API as CSV strings and split with `fromCsv()`. On save, arrays are joined back with `csv()`.
 
-The form also includes a "Scheduler Behaviour" card with three controls: an `Eval Interval` text field (Go duration string, validated with a regex before save) and two `LabeledSwitch` toggles for `Auto Wake` and `Reconcile While Awake`. These map to the three scheduler settings in the `Guardrails` model (`SchedulerEvalInterval`, `SchedulerAutoWake`, `SchedulerReconcileWhileAwake`).
+The form also includes a "Scheduler Behaviour" card with three controls: an `Eval Interval` text field (Go duration string, validated with a regex before save, description shown inline beside the field rather than below it) and two `LabeledSwitch` toggles for `Auto Wake` and `Reconcile While Awake`. These map to the three scheduler settings in the `Guardrails` model (`SchedulerEvalInterval`, `SchedulerAutoWake`, `SchedulerReconcileWhileAwake`).
 
 **`LabeledSwitch`** (`components/common/LabeledSwitch.tsx`): A shared component that renders a `FormControlLabel` wrapping a `Switch` with a two-line label (bold title + secondary caption). Used by `GuardrailsForm` and `ExceptionDialog`.
 

@@ -243,13 +243,12 @@ export default function GuardrailsForm() {
     }
   }, [guardrails])
 
-  const evalIntervalError = /^\d+(ns|us|µs|ms|s|m|h)$/.test(evalInterval.trim())
-    ? ''
-    : 'Must be a valid duration (e.g. 30s, 1m, 2m)'
+  const evalIntervalValid = /^\d+(ns|us|µs|ms|s|m|h)$/.test(evalInterval.trim())
+  const evalIntervalError = evalIntervalValid ? undefined : 'Must be a valid duration (e.g. 30s, 1m, 2m)'
 
   const save = useMutation({
     mutationFn: () => {
-      if (evalIntervalError) return Promise.reject(new Error(evalIntervalError))
+      if (!evalIntervalValid) return Promise.reject(new Error(evalIntervalError))
       return updateGuardrails({
         systemNamespaces: joinCsv(systemNs),
         skipNsNode: joinCsv(skipNsNode),
@@ -373,18 +372,23 @@ export default function GuardrailsForm() {
                   Control how the policy evaluation loop runs.
                 </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <Box sx={{ maxWidth: 200 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                     <TextField
                       label="Eval Interval"
                       size="small"
-                      fullWidth
+                      sx={{ width: 160 }}
                       value={evalInterval}
                       disabled={!hasEdit}
-                      error={!!evalIntervalError}
-                      helperText={evalIntervalError || 'How often policies are checked (e.g. 30s, 1m)'}
+                      error={!evalIntervalValid}
+                      helperText={evalIntervalError}
                       onChange={(e) => setEvalInterval(e.target.value)}
                       slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
                     />
+                    {evalIntervalValid && (
+                      <Typography variant="body2" color="text.secondary">
+                        How often policies are checked (e.g. 30s, 1m)
+                      </Typography>
+                    )}
                   </Box>
                   <LabeledSwitch
                     label="Auto Wake"
