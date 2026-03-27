@@ -24,6 +24,12 @@ func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 
 // Allow reports whether a new event for key is within the rate limit.
 // It records the event if allowed.
+//
+// Inline cleanup: after pruning expired entries, empty keys are deleted
+// from the map to prevent unbounded growth from rotating IPs. For the
+// expected scale (~10 concurrent users, internal tool) this is sufficient.
+// A periodic sweep goroutine is not warranted unless the deployment sees
+// sustained credential-stuffing traffic with millions of unique IPs.
 func (rl *RateLimiter) Allow(key string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
@@ -38,6 +44,11 @@ func (rl *RateLimiter) Allow(key string) bool {
 		start++
 	}
 	entries = entries[start:]
+
+	// Evict fully-expired keys to prevent map growth from rotating IPs.
+	if len(entries) == 0 {
+		delete(rl.entries, key)
+	}
 
 	if len(entries) >= rl.limit {
 		rl.entries[key] = entries

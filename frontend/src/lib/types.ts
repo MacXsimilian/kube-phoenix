@@ -20,6 +20,12 @@ export interface Workload {
   status: 'running' | 'sleeping' | 'partial'
 }
 
+export interface NodeTaint {
+  key: string
+  value: string
+  effect: string
+}
+
 export interface Node {
   name: string
   instanceType: string
@@ -33,6 +39,8 @@ export interface Node {
   memRequested: number
   createdAt: string
   cordoned: boolean
+  labels: Record<string, string>
+  taints: NodeTaint[]
 }
 
 export interface NodePod {

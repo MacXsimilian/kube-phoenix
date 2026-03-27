@@ -1,3 +1,5 @@
+// Package policy provides pure-logic sleep window evaluation and time-based
+// state determination for policies.
 package policy
 
 import (

@@ -75,14 +75,18 @@ kube-phoenix/
   backend/
     cmd/server/main.go            # Entry point
     internal/
-      api/                        # HTTP handlers + Chi router
+      api/                        # HTTP handlers + Chi router (cluster split by resource type)
+      auth/                       # OIDC provider, RBAC permissions, rate limiting
       docs/                       # Embedded openapi.yaml (copied at build time)
-      policy/                     # Sleep window compiler
-      scheduler/                  # PolicyScheduler, PolicyEngine, WS log broker
-      scaler/                     # PolicyScaler (DB-backed sleep/wake)
       k8s/                        # Kubernetes client + ClusterCache
+      metrics/                    # Prometheus metrics (promauto registration)
+      middleware/                  # Session auth, CSRF, rate-limit middleware
+      nodeutil/                   # Shared node protection helpers (label/taint matching)
+      policy/                     # Sleep window compiler
+      scaler/                     # PolicyScaler (DB-backed sleep/wake)
+      scheduler/                  # PolicyScheduler, PolicyEngine, WS log broker
       store/                      # GORM models + queries
-      middleware/                  # BasicAuth
+      stringutil/                 # Generic string helpers (CSV parsing, etc.)
   frontend/src/
     app/                          # Next.js pages
     components/                   # Reusable UI components

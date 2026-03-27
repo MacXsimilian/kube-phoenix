@@ -100,9 +100,13 @@ func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID
 	metrics.UserActionsTotal.WithLabelValues(action, resourceType).Inc()
 }
 
-// clientIP extracts the real client IP from the request. It prefers
-// X-Real-IP (set by nginx/ingress), falls back to the first entry of
-// X-Forwarded-For, and finally strips the port from r.RemoteAddr.
+// clientIP extracts the real client IP from the request. It trusts
+// X-Real-IP and X-Forwarded-For headers because the app runs behind a
+// Kubernetes ingress controller that overwrites these headers. If the
+// app were ever exposed directly to the internet without a reverse proxy,
+// these headers would be spoofable and this function should be revised.
+//
+// Priority: X-Real-IP > X-Forwarded-For (first entry) > r.RemoteAddr.
 func clientIP(r *http.Request) string {
 	if ip := r.Header.Get("X-Real-IP"); ip != "" {
 		return strings.TrimSpace(ip)

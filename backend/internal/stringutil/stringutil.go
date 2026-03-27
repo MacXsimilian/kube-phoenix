@@ -1,3 +1,4 @@
+// Package stringutil provides CSV string splitting and set conversion helpers.
 package stringutil
 
 import "strings"

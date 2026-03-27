@@ -1,3 +1,5 @@
+// Package scheduler runs the policy evaluation ticker that periodically
+// triggers sleep and wake executions.
 package scheduler
 
 import (
@@ -132,9 +134,9 @@ func (ps *PolicyScheduler) RunSleepNow(policyID uint, trigger string) (uint, err
 		return 0, fmt.Errorf("policy %d not found: %w", policyID, err)
 	}
 	if !p.Enabled {
-		slog.Warn("manual trigger on disabled policy", "policyID", policyID, "direction", DirectionSleep, "trigger", trigger)
+		slog.Warn("manual trigger on disabled policy", "policyID", policyID, "direction", directionSleep, "trigger", trigger)
 	}
-	return ps.run(context.Background(), *p, DirectionSleep, trigger)
+	return ps.run(context.Background(), *p, directionSleep, trigger)
 }
 
 // RunWakeNow triggers an immediate wake execution for a policy.
@@ -144,9 +146,9 @@ func (ps *PolicyScheduler) RunWakeNow(policyID uint, trigger string) (uint, erro
 		return 0, fmt.Errorf("policy %d not found: %w", policyID, err)
 	}
 	if !p.Enabled {
-		slog.Warn("manual trigger on disabled policy", "policyID", policyID, "direction", DirectionWake, "trigger", trigger)
+		slog.Warn("manual trigger on disabled policy", "policyID", policyID, "direction", directionWake, "trigger", trigger)
 	}
-	return ps.run(context.Background(), *p, DirectionWake, trigger)
+	return ps.run(context.Background(), *p, directionWake, trigger)
 }
 
 // RecoverPolicies compares each enabled policy's CurrentState against the
@@ -175,9 +177,9 @@ func (ps *PolicyScheduler) RecoverPolicies(ctx context.Context) error {
 		if p.CurrentState == string(intended) {
 			continue
 		}
-		direction := DirectionSleep
+		direction := directionSleep
 		if intended == PolicyStateAwake {
-			direction = DirectionWake
+			direction = directionWake
 		}
 		slog.Info("policy scheduler: recovery execution queued",
 			"policyID", p.ID, "name", p.Name,
@@ -250,8 +252,8 @@ func (ps *PolicyScheduler) maybeEndException(ex store.ScheduledException, now ti
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
 const (
-	DirectionSleep = "sleep"
-	DirectionWake  = "wake"
+	directionSleep = "sleep"
+	directionWake  = "wake"
 
 	defaultExecutionTimeout = 2 * time.Hour
 	execLogChannelBuffer    = 512
@@ -326,12 +328,12 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, now time.Time, autoWa
 		return
 	}
 
-	direction := DirectionSleep
+	direction := directionSleep
 	if intended == PolicyStateAwake {
 		if !autoWake {
 			return
 		}
-		direction = DirectionWake
+		direction = directionWake
 	}
 
 	// Check for skip override.
@@ -467,6 +469,19 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			const flushSize = 50
+			buf := make([]store.PolicyLogLine, 0, flushSize)
+
+			flush := func() {
+				if len(buf) == 0 {
+					return
+				}
+				if err := ps.store.AppendPolicyLogLines(buf); err != nil {
+					slog.Error("policy scheduler: log batch persist error", "execID", execID, "lines", len(buf), "err", err)
+				}
+				buf = buf[:0]
+			}
+
 			for line := range logCh {
 				seq++
 				dbLine := store.PolicyLogLine{
@@ -476,20 +491,24 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 					Message:     line.Message,
 					Timestamp:   line.Time,
 				}
-				if err := ps.store.AppendPolicyLogLine(&dbLine); err != nil {
-					slog.Error("policy scheduler: log persist error", "execID", execID, "err", err)
-				}
+				// Publish immediately for live WebSocket streaming.
 				ps.Broker.Publish(execID, dbLine)
+				buf = append(buf, dbLine)
+				if len(buf) >= flushSize {
+					flush()
+				}
 			}
+			// Final flush for remaining lines.
+			flush()
 		}()
 
 		var counts *scaler.Counts
 		var runErr error
 
 		switch direction {
-		case DirectionSleep:
+		case directionSleep:
 			counts, runErr = ps.runner.RunPolicySleep(runCtx, p, execID, logCh)
-		case DirectionWake:
+		case directionWake:
 			counts, runErr = ps.runner.RunPolicyWake(runCtx, p, execID, logCh)
 		default:
 			runErr = fmt.Errorf("unknown direction: %s", direction)
@@ -505,56 +524,9 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 			slog.Error("policy scheduler: execution failed", "execID", execID, "err", runErr)
 		}
 
-		countMap := map[string]int{}
-		if counts != nil {
-			countMap = map[string]int{
-				"scaled":    counts.Scaled,
-				"skipped":   counts.Skipped,
-				"errors":    counts.Errors,
-				"protected": counts.Protected,
-				"drained":   counts.Drained,
-				"deleted":   counts.Deleted,
-			}
-		}
-		if err := ps.store.FinishPolicyExecution(execID, status, countMap); err != nil {
-			slog.Error("policy scheduler: finish execution error", "execID", execID, "err", err)
-		}
-
-		// Record Prometheus metrics
-		duration := time.Since(exec.StartedAt).Seconds()
-		metrics.ExecutionsTotal.WithLabelValues(status, p.Mode, direction).Inc()
-		metrics.ExecutionDuration.WithLabelValues(p.Mode, direction, status).Observe(duration)
-		if counts != nil {
-			metrics.WorkloadsScaledTotal.WithLabelValues(direction).Add(float64(counts.Scaled))
-			metrics.NodesDrainedTotal.Add(float64(counts.Drained))
-			metrics.NodesDeletedTotal.Add(float64(counts.Deleted))
-		}
-
-		// Update policy's persisted and in-memory cached state.
-		nextTransition := ps.NextTransition(p.ID)
-		var newState string
-		if status == store.ExecStatusSuccess {
-			if direction == DirectionSleep {
-				newState = store.PolicyStateSleeping
-			} else {
-				newState = store.PolicyStateAwake
-			}
-		} else {
-			newState = store.PolicyStateUnknown
-		}
-		if err := ps.store.UpdatePolicyState(p.ID, newState, nextTransition); err != nil {
-			slog.Error("policy scheduler: failed to update policy state after execution",
-				"policyID", p.ID, "newState", newState, "err", err)
-		}
-
-		// Sync the in-memory cache so the next evaluation tick sees the
-		// updated CurrentState instead of the stale snapshot from reload().
-		ps.mu.Lock()
-		if cp, ok := ps.policies[p.ID]; ok {
-			cp.policy.CurrentState = newState
-			ps.policies[p.ID] = cp
-		}
-		ps.mu.Unlock()
+		countMap := ps.finalizeExecution(execID, status, counts)
+		recordExecutionMetrics(p.Mode, direction, status, time.Since(exec.StartedAt).Seconds(), counts)
+		ps.updatePolicyState(p.ID, direction, status)
 
 		slog.Info("policy scheduler: execution finished",
 			"policyID", p.ID, "execID", execID, "direction", direction,
@@ -562,4 +534,61 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 	}()
 
 	return execID, nil
+}
+
+// finalizeExecution writes the completion status and counts to the database.
+// It returns the count map so callers can reference it (e.g. for logging).
+func (ps *PolicyScheduler) finalizeExecution(execID uint, status string, counts *scaler.Counts) map[string]int {
+	countMap := map[string]int{}
+	if counts != nil {
+		countMap = map[string]int{
+			"scaled":    counts.Scaled,
+			"skipped":   counts.Skipped,
+			"errors":    counts.Errors,
+			"protected": counts.Protected,
+			"drained":   counts.Drained,
+			"deleted":   counts.Deleted,
+		}
+	}
+	if err := ps.store.FinishPolicyExecution(execID, status, countMap); err != nil {
+		slog.Error("policy scheduler: finish execution error", "execID", execID, "err", err)
+	}
+	return countMap
+}
+
+// recordExecutionMetrics records Prometheus metrics for a completed execution.
+func recordExecutionMetrics(mode, direction, status string, duration float64, counts *scaler.Counts) {
+	metrics.ExecutionsTotal.WithLabelValues(status, mode, direction).Inc()
+	metrics.ExecutionDuration.WithLabelValues(mode, direction, status).Observe(duration)
+	if counts != nil {
+		metrics.WorkloadsScaledTotal.WithLabelValues(direction).Add(float64(counts.Scaled))
+		metrics.NodesDrainedTotal.Add(float64(counts.Drained))
+		metrics.NodesDeletedTotal.Add(float64(counts.Deleted))
+	}
+}
+
+// updatePolicyState persists the new state to the DB and syncs the in-memory cache.
+func (ps *PolicyScheduler) updatePolicyState(policyID uint, direction, status string) {
+	nextTransition := ps.NextTransition(policyID)
+	var newState string
+	if status == store.ExecStatusSuccess {
+		if direction == directionSleep {
+			newState = store.PolicyStateSleeping
+		} else {
+			newState = store.PolicyStateAwake
+		}
+	} else {
+		newState = store.PolicyStateUnknown
+	}
+	if err := ps.store.UpdatePolicyState(policyID, newState, nextTransition); err != nil {
+		slog.Error("policy scheduler: failed to update policy state after execution",
+			"policyID", policyID, "newState", newState, "err", err)
+	}
+
+	ps.mu.Lock()
+	if cp, ok := ps.policies[policyID]; ok {
+		cp.policy.CurrentState = newState
+		ps.policies[policyID] = cp
+	}
+	ps.mu.Unlock()
 }

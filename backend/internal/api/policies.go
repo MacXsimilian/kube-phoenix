@@ -200,6 +200,53 @@ func applySleepWindowUpdates(body map[string]interface{}, updates map[string]int
 	return ""
 }
 
+// buildPolicyUpdateMap extracts allowed fields from the raw JSON body, validates
+// sleep windows, and returns the GORM update map. Returns an error message (for
+// the client) if validation fails.
+func buildPolicyUpdateMap(body map[string]interface{}) (map[string]interface{}, string) {
+	updates := map[string]interface{}{}
+	for jsonKey, dbCol := range policyFieldMap {
+		if v, ok := body[jsonKey]; ok {
+			updates[dbCol] = v
+		}
+	}
+	if msg := applySleepWindowUpdates(body, updates); msg != "" {
+		return nil, msg
+	}
+	if msg := validatePolicyUpdates(updates); msg != "" {
+		return nil, msg
+	}
+	return updates, ""
+}
+
+// checkPolicyOverlap verifies that an apply-mode policy won't conflict with
+// existing policies. Returns an error message if overlap is detected, or "".
+func (h *Handler) checkPolicyOverlap(id uint, old *store.Policy, updates map[string]interface{}) (string, error) {
+	finalMode := old.Mode
+	if v, ok := updates["mode"]; ok {
+		finalMode = fmt.Sprintf("%v", v)
+	}
+	if finalMode != store.PolicyModeApply {
+		return "", nil
+	}
+	finalNS := old.NamespaceFilter
+	if v, ok := updates["namespace_filter"]; ok {
+		finalNS = fmt.Sprintf("%v", v)
+	}
+	finalLabel := old.LabelSelector
+	if v, ok := updates["label_selector"]; ok {
+		finalLabel = fmt.Sprintf("%v", v)
+	}
+	overlap, err := h.store.HasApplyPolicyOverlap(id, finalNS, finalLabel)
+	if err != nil {
+		return "", err
+	}
+	if overlap {
+		return "an existing apply-mode policy may overlap with these targets; resolve the conflict before saving", nil
+	}
+	return "", nil
+}
+
 func (h *Handler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
@@ -222,18 +269,8 @@ func (h *Handler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updates := map[string]interface{}{}
-	for jsonKey, dbCol := range policyFieldMap {
-		if v, ok := body[jsonKey]; ok {
-			updates[dbCol] = v
-		}
-	}
-
-	if msg := applySleepWindowUpdates(body, updates); msg != "" {
-		jsonError(w, msg, http.StatusBadRequest)
-		return
-	}
-	if msg := validatePolicyUpdates(updates); msg != "" {
+	updates, msg := buildPolicyUpdateMap(body)
+	if msg != "" {
 		jsonError(w, msg, http.StatusBadRequest)
 		return
 	}
@@ -248,29 +285,12 @@ func (h *Handler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check for overlap BEFORE writing to the database.
-	finalMode := old.Mode
-	if v, ok := updates["mode"]; ok {
-		finalMode = fmt.Sprintf("%v", v)
-	}
-	if finalMode == store.PolicyModeApply {
-		finalNS := old.NamespaceFilter
-		if v, ok := updates["namespace_filter"]; ok {
-			finalNS = fmt.Sprintf("%v", v)
-		}
-		finalLabel := old.LabelSelector
-		if v, ok := updates["label_selector"]; ok {
-			finalLabel = fmt.Sprintf("%v", v)
-		}
-		overlap, checkErr := h.store.HasApplyPolicyOverlap(id, finalNS, finalLabel)
-		if checkErr != nil {
-			jsonInternalError(w, checkErr, "conflict check failed")
-			return
-		}
-		if overlap {
-			jsonError(w, "an existing apply-mode policy may overlap with these targets; resolve the conflict before saving", http.StatusConflict)
-			return
-		}
+	if msg, err := h.checkPolicyOverlap(id, old, updates); err != nil {
+		jsonInternalError(w, err, "conflict check failed")
+		return
+	} else if msg != "" {
+		jsonError(w, msg, http.StatusConflict)
+		return
 	}
 
 	p, err := h.store.UpdatePolicy(id, updates)
@@ -363,6 +383,24 @@ func (h *Handler) triggerPolicyWake(w http.ResponseWriter, r *http.Request) {
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
+// validatePolicyMode checks that mode is a recognised value.
+func validatePolicyMode(mode string) string {
+	if mode != "" && mode != store.PolicyModePlan && mode != store.PolicyModeApply {
+		return "mode must be plan or apply"
+	}
+	return ""
+}
+
+// validatePolicyTimezone checks that tz is a valid IANA timezone.
+func validatePolicyTimezone(tz string) string {
+	if tz != "" {
+		if _, err := time.LoadLocation(tz); err != nil {
+			return "invalid timezone"
+		}
+	}
+	return ""
+}
+
 func validatePolicyFields(p store.Policy) string {
 	if len(p.Name) > 255 {
 		return "name must be 255 characters or fewer"
@@ -370,13 +408,11 @@ func validatePolicyFields(p store.Policy) string {
 	if p.TimeoutMinutes < 0 || p.TimeoutMinutes > 1440 {
 		return "timeoutMinutes must be between 0 and 1440"
 	}
-	if p.Mode != "" && p.Mode != store.PolicyModePlan && p.Mode != store.PolicyModeApply {
-		return "mode must be plan or apply"
+	if msg := validatePolicyMode(p.Mode); msg != "" {
+		return msg
 	}
-	if p.Timezone != "" {
-		if _, err := time.LoadLocation(p.Timezone); err != nil {
-			return "invalid timezone"
-		}
+	if msg := validatePolicyTimezone(p.Timezone); msg != "" {
+		return msg
 	}
 	if msg := validateNamespaceFilter(p.NamespaceFilter); msg != "" {
 		return msg
@@ -385,26 +421,24 @@ func validatePolicyFields(p store.Policy) string {
 }
 
 func validatePolicyUpdates(updates map[string]interface{}) string {
-	if v, ok := updates["timezone"]; ok {
-		if _, err := time.LoadLocation(fmt.Sprintf("%v", v)); err != nil {
-			return "invalid timezone"
-		}
-	}
-	if v, ok := updates["mode"]; ok {
-		if m := fmt.Sprintf("%v", v); m != store.PolicyModePlan && m != store.PolicyModeApply {
-			return "mode must be plan or apply"
-		}
-	}
 	if v, ok := updates["name"]; ok {
 		if len(fmt.Sprintf("%v", v)) > 255 {
 			return "name must be 255 characters or fewer"
 		}
 	}
 	if v, ok := updates["timeout_minutes"]; ok {
-		if f, ok := v.(float64); ok {
-			if int(f) < 0 || int(f) > 1440 {
-				return "timeoutMinutes must be between 0 and 1440"
-			}
+		if f, ok := v.(float64); ok && (int(f) < 0 || int(f) > 1440) {
+			return "timeoutMinutes must be between 0 and 1440"
+		}
+	}
+	if v, ok := updates["mode"]; ok {
+		if msg := validatePolicyMode(fmt.Sprintf("%v", v)); msg != "" {
+			return msg
+		}
+	}
+	if v, ok := updates["timezone"]; ok {
+		if msg := validatePolicyTimezone(fmt.Sprintf("%v", v)); msg != "" {
+			return msg
 		}
 	}
 	if v, ok := updates["namespace_filter"]; ok {

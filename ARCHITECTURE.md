@@ -412,15 +412,20 @@ kube-phoenix/
 │   │   ├── api/                     # HTTP handlers and Chi router construction
 │   │   │   ├── router.go            # Route registration, middleware stack
 │   │   │   ├── auth.go              # Login, logout, OIDC callbacks
+│   │   │   ├── oidc.go              # OIDC discovery and SSO endpoints
 │   │   │   ├── policies.go          # Policy CRUD, sleep/wake triggers
 │   │   │   ├── policy_executions.go # Execution list, logs, snapshots, WebSocket
-│   │   │   ├── cluster.go           # Workloads, nodes, pods, overview, SSE stream
+│   │   │   ├── cluster.go           # Workloads, overview, SSE stream
+│   │   │   ├── cluster_nodes.go     # Node list and detail handlers
+│   │   │   ├── cluster_pods.go      # Pod list, detail, and log streaming handlers
+│   │   │   ├── overview.go          # Pre-aggregated dashboard overview endpoint
 │   │   │   ├── exceptions.go        # Scheduled exception CRUD
 │   │   │   ├── overrides.go         # Policy override CRUD
 │   │   │   ├── guardrails.go        # Guardrails get/update
 │   │   │   ├── users.go             # User CRUD (admin only)
 │   │   │   ├── audit.go             # AuditWriter (buffered async channel), audit() enqueue helper, marshalOrNull()
 │   │   │   ├── admin.go             # DB reset (streaming NDJSON)
+│   │   │   ├── errmsg.go            # Centralized error message constants
 │   │   │   ├── ws.go                # WebSocket helpers
 │   │   │   └── helpers.go           # JSON response utilities
 │   │   ├── scheduler/
@@ -437,11 +442,19 @@ kube-phoenix/
 │   │   │   ├── models.go            # GORM model structs
 │   │   │   ├── store.go             # DB connection, AutoMigrate, connection pool
 │   │   │   └── queries.go           # All DB queries, SeedDefaults
+│   │   ├── auth/
+│   │   │   ├── oidc.go              # OIDC provider discovery, token exchange, claim mapping
+│   │   │   ├── permissions.go       # RBAC permission checks by role
+│   │   │   └── ratelimit.go         # Per-IP and per-username login throttling
 │   │   ├── middleware/
 │   │   │   ├── auth.go              # Session auth, CSRF double-submit
 │   │   │   └── ratelimit.go         # Per-IP and per-username login throttling
 │   │   ├── metrics/
 │   │   │   └── metrics.go           # Prometheus metrics (promauto registration)
+│   │   ├── nodeutil/
+│   │   │   └── protection.go        # Shared node protection helpers (label/taint matching)
+│   │   ├── stringutil/
+│   │   │   └── stringutil.go        # Generic string helpers (CSV parsing, etc.)
 │   │   └── docs/
 │   │       └── docs.go              # Embedded OpenAPI spec + Swagger UI handler
 │   └── web/

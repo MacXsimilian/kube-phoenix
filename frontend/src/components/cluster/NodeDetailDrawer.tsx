@@ -3,9 +3,11 @@
 import React, { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
+import ButtonBase from '@mui/material/ButtonBase'
 import Chip from '@mui/material/Chip'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
+import Collapse from '@mui/material/Collapse'
 import Divider from '@mui/material/Divider'
 import Drawer from '@mui/material/Drawer'
 import IconButton from '@mui/material/IconButton'
@@ -20,15 +22,16 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CloseIcon from '@mui/icons-material/Close'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodePods } from '@/lib/api'
 import { fmtCpu, fmtMem, sinceMs, pct, pctColor } from '@/lib/formatters'
 import { nodeStatusMap } from '@/components/cluster/statusColors'
 import { useTheme } from '@mui/material/styles'
-import { useColors } from '@/lib/colors'
+import { semanticColors, useColors } from '@/lib/colors'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import { NODE_PODS_REFETCH_MS } from '@/lib/constants'
-import type { Node, NodePod } from '@/lib/types'
+import type { Node, NodePod, NodeTaint } from '@/lib/types'
 import PodDetailContent from './PodDetailContent'
 import PodRow from './PodRow'
 
@@ -52,6 +55,105 @@ function MiniBar({ used, total, label }: { used: number; total: number; label: s
         />
       </Box>
     </Tooltip>
+  )
+}
+
+const HIGHLIGHTED_LABEL_KEYS = new Set([
+  'node.kubernetes.io/instance-type',
+  'beta.kubernetes.io/instance-type',
+  'topology.kubernetes.io/zone',
+  'failure-domain.beta.kubernetes.io/zone',
+  'eks.amazonaws.com/nodegroup',
+  'karpenter.sh/nodepool',
+  'kubernetes.io/arch',
+])
+
+function taintEffectColors(isDark: boolean) {
+  const c = semanticColors(isDark)
+  return {
+    NoSchedule:       { color: c.orange,   bg: c.orangeBg,  borderColor: isDark ? 'rgba(249,115,22,0.2)' : 'rgba(194,65,12,0.2)' },
+    NoExecute:        { color: c.error,    bg: c.errorBg,   borderColor: isDark ? 'rgba(239,68,68,0.2)'  : 'rgba(185,28,28,0.2)' },
+    PreferNoSchedule: { color: c.warning,  bg: c.warningBg, borderColor: isDark ? 'rgba(245,158,11,0.2)' : 'rgba(146,64,14,0.2)' },
+  } as Record<string, { color: string; bg: string; borderColor: string }>
+}
+const TAINT_EFFECT_FALLBACK = { color: '#9e9e9e', bg: 'rgba(158,158,158,0.12)', borderColor: 'rgba(158,158,158,0.2)' }
+
+function CollapsibleSection({ title, count, defaultOpen = false, children }: {
+  title: string; count: number; defaultOpen?: boolean; children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <Box sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+      <ButtonBase
+        onClick={() => setOpen((v) => !v)}
+        sx={{
+          width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          px: 2.5, py: 1, textAlign: 'left',
+          '&:hover': { bgcolor: 'action.hover' },
+        }}
+      >
+        <Typography variant="caption" sx={{ fontWeight: 600, fontSize: 12 }}>
+          {title}<Typography component="span" variant="caption" sx={{ color: 'text.disabled', ml: 0.75 }}>{count}</Typography>
+        </Typography>
+        <ExpandMoreIcon sx={{ fontSize: 16, color: 'text.disabled', transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+      </ButtonBase>
+      <Collapse in={open}>
+        <Box sx={{ px: 2.5, pb: 1.5 }}>
+          {children}
+        </Box>
+      </Collapse>
+    </Box>
+  )
+}
+
+function LabelChip({ labelKey, value, highlight }: { labelKey: string; value: string; highlight: boolean }) {
+  const isDark = useTheme().palette.mode === 'dark'
+  const mutedBg    = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'
+  const mutedBorder = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)'
+  const accentBg    = isDark ? 'rgba(124,58,237,0.06)'  : 'rgba(109,40,217,0.06)'
+  const accentBorder = isDark ? 'rgba(124,58,237,0.15)' : 'rgba(109,40,217,0.15)'
+  return (
+    <Box
+      component="span"
+      sx={{
+        display: 'inline-block', fontFamily: 'monospace', fontSize: 11, lineHeight: 1.3,
+        px: 1, py: 0.375, borderRadius: 0.5,
+        bgcolor: highlight ? accentBg : mutedBg,
+        border: '1px solid',
+        borderColor: highlight ? accentBorder : mutedBorder,
+      }}
+    >
+      <Box component="span" sx={{ color: 'text.disabled' }}>{labelKey}</Box>
+      <Box component="span" sx={{ color: 'text.disabled', mx: '1px' }}>=</Box>
+      <Box component="span" sx={{ color: highlight ? 'primary.light' : 'text.primary' }}>{value}</Box>
+    </Box>
+  )
+}
+
+function TaintChip({ taint, effectColors }: { taint: NodeTaint; effectColors: Record<string, { color: string; bg: string; borderColor: string }> }) {
+  const style = effectColors[taint.effect] ?? TAINT_EFFECT_FALLBACK
+  return (
+    <Box
+      component="span"
+      sx={{
+        display: 'inline-flex', alignItems: 'center', gap: 0.75,
+        fontFamily: 'monospace', fontSize: 11, lineHeight: 1.3,
+        px: 1.25, py: 0.5, borderRadius: 0.5,
+        bgcolor: style.bg, border: '1px solid', borderColor: style.borderColor,
+        color: style.color,
+      }}
+    >
+      <span>{taint.key}{taint.value ? `=${taint.value}` : ''}</span>
+      <Box
+        component="span"
+        sx={{
+          fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5,
+          px: 0.625, py: '1px', borderRadius: '3px', bgcolor: 'rgba(0,0,0,0.2)',
+        }}
+      >
+        {taint.effect}
+      </Box>
+    </Box>
   )
 }
 
@@ -95,6 +197,17 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
   }, [filtered])
 
   const statusColor = node ? nodeStatusMap(isDark)[node.status] : null
+  const effectColors = useMemo(() => taintEffectColors(isDark), [isDark])
+
+  const sortedLabels = useMemo(() => {
+    if (!node?.labels) return []
+    return Object.entries(node.labels)
+      .map(([key, value]) => ({ key, value, highlight: HIGHLIGHTED_LABEL_KEYS.has(key) }))
+      .sort((a, b) => {
+        if (a.highlight !== b.highlight) return a.highlight ? -1 : 1
+        return a.key.localeCompare(b.key)
+      })
+  }, [node?.labels])
 
   return (
     <Drawer
@@ -211,6 +324,29 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
               </Box>
             )}
           </Box>
+
+          {/* Labels & Taints — hidden in pod detail view */}
+          {!selectedPod && (
+            <>
+              <Divider />
+              <CollapsibleSection title="Labels" count={sortedLabels.length}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {sortedLabels.map((l) => (
+                    <LabelChip key={l.key} labelKey={l.key} value={l.value} highlight={l.highlight} />
+                  ))}
+                </Box>
+              </CollapsibleSection>
+              {(node.taints ?? []).length > 0 && (
+                <CollapsibleSection title="Taints" count={node.taints.length} defaultOpen>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {node.taints.map((t) => (
+                      <TaintChip key={`${t.key}-${t.effect}`} taint={t} effectColors={effectColors} />
+                    ))}
+                  </Box>
+                </CollapsibleSection>
+              )}
+            </>
+          )}
 
           <Divider />
 

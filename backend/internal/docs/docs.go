@@ -1,3 +1,4 @@
+// Package docs embeds and serves the OpenAPI specification at /api/docs/.
 package docs
 
 import (

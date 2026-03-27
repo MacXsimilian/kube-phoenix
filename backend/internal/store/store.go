@@ -1,3 +1,5 @@
+// Package store implements the PostgreSQL persistence layer via GORM,
+// including models, queries, and migrations.
 package store
 
 import (

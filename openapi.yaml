@@ -206,6 +206,28 @@ components:
           format: date-time
         cordoned:
           type: boolean
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          description: Full set of Kubernetes node labels.
+        taints:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodeTaintResponse'
+          description: Kubernetes node taints.
+
+    NodeTaintResponse:
+      description: A Kubernetes node taint.
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        effect:
+          type: string
+          enum: [NoSchedule, PreferNoSchedule, NoExecute]
 
     NodePodResponse:
       description: A pod running on a node (excludes DaemonSet pods).
