@@ -197,33 +197,33 @@ Computes the next time the evaluated state will flip. Algorithm:
 
 ```mermaid
 flowchart TD
-    Start["Evaluate()"] --> Empty{windows\nempty?}
-    Empty -->|yes| Awake[AWAKE]
-    Empty -->|no| LoadTZ["Load tz,\nconvert now"]
-    LoadTZ --> BadTZ{tz valid?}
-    BadTZ -->|no| Awake
-    BadTZ -->|yes| Loop[For each window]
+    Start(["Evaluate()"]) --> Empty{empty?}
+    Empty -->|no windows| Awake([AWAKE])
+    Empty -->|has windows| LoadTZ["Load timezone"]
+    LoadTZ --> BadTZ{valid?}
+    BadTZ -->|invalid tz| Awake
+    BadTZ -->|ok| Loop["Next window"]
 
-    Loop --> IsAllDay{allDay?}
-    IsAllDay -->|yes| DayMatch{weekday in\nDaysOfWeek?}
-    DayMatch -->|yes| Sleeping[SLEEPING]
-    DayMatch -->|no| Next[Next window]
+    Loop --> AllDay{allDay?}
+    AllDay -->|yes| DayOK{day?}
+    DayOK -->|matches| Sleep([SLEEPING])
+    DayOK -->|no match| More
 
-    IsAllDay -->|no| SameDay{start < end?}
+    AllDay -->|no| Same{same-day?}
 
-    SameDay -->|yes| SDCheck{day + time\nin range?}
-    SDCheck -->|yes| Sleeping
-    SDCheck -->|no| Next
+    Same -->|start < end| InRange{in range?}
+    InRange -->|yes| Sleep
+    InRange -->|no| More
 
-    SameDay -->|no| EveningCheck{day + time\n>= start?}
-    EveningCheck -->|yes| Sleeping
-    EveningCheck -->|no| MorningCheck{yesterday +\ntime < end?}
-    MorningCheck -->|yes| Sleeping
-    MorningCheck -->|no| Next
+    Same -->|overnight| PM{evening?}
+    PM -->|time >= start| Sleep
+    PM -->|no| AM{morning?}
+    AM -->|time < end| Sleep
+    AM -->|no| More
 
-    Next --> MoreWindows{more\nwindows?}
-    MoreWindows -->|yes| Loop
-    MoreWindows -->|no| Awake
+    More{more?}
+    More -->|yes| Loop
+    More -->|no| Awake
 ```
 
 ---
