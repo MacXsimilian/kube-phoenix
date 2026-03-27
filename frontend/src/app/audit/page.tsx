@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -18,7 +18,6 @@ import Chip from '@mui/material/Chip'
 import Collapse from '@mui/material/Collapse'
 import IconButton from '@mui/material/IconButton'
 import Skeleton from '@mui/material/Skeleton'
-import Alert from '@mui/material/Alert'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
 import { getAuditLogs } from '@/lib/api'
@@ -30,15 +29,117 @@ import { formatActionLabel, actionColor, ACTION_LABELS } from '@/lib/statusColor
 
 const ACTIONS = ['', ...Object.keys(ACTION_LABELS)]
 
-function DiffView({ label, json }: { label: string; json?: string }) {
-  if (!json || json === 'null') return null
-  let parsed: unknown
-  try { parsed = JSON.parse(json) } catch { return <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{json}</Typography> }
+// ── JSON diff ─────────────────────────────────────────────────────────────────
+
+const NULL_SNAPSHOT = 'null'
+
+function isEmptySnapshot(json?: string): boolean {
+  return !json || json === NULL_SNAPSHOT
+}
+
+function flattenToLeaves(value: unknown, prefix = ''): Record<string, string> {
+  if (value === null || value === undefined) return prefix ? { [prefix]: 'null' } : {}
+  if (typeof value !== 'object' || Array.isArray(value)) return { [prefix]: JSON.stringify(value) }
+  const result: Record<string, string> = {}
+  for (const [fieldKey, child] of Object.entries(value as Record<string, unknown>)) {
+    const path = prefix ? `${prefix}.${fieldKey}` : fieldKey
+    Object.assign(result, flattenToLeaves(child, path))
+  }
+  return result
+}
+
+function parseSnapshot(json: string): Record<string, string> | null {
+  try {
+    return flattenToLeaves(JSON.parse(json))
+  } catch {
+    return null
+  }
+}
+
+type DiffType = 'added' | 'removed' | 'changed' | 'unchanged'
+
+type DiffLine = {
+  key: string
+  type: DiffType
+  before?: string
+  after?: string
+}
+
+function classifyLine(key: string, beforeValue: string | undefined, afterValue: string | undefined): DiffLine {
+  if (beforeValue === undefined) return { key, type: 'added', after: afterValue }
+  if (afterValue === undefined) return { key, type: 'removed', before: beforeValue }
+  if (beforeValue !== afterValue) return { key, type: 'changed', before: beforeValue, after: afterValue }
+  return { key, type: 'unchanged', before: beforeValue, after: afterValue }
+}
+
+function computeDiff(beforeJson?: string, afterJson?: string): DiffLine[] | null {
+  if (isEmptySnapshot(beforeJson) && isEmptySnapshot(afterJson)) return null
+
+  const flatBefore = isEmptySnapshot(beforeJson) ? {} : parseSnapshot(beforeJson!)
+  const flatAfter  = isEmptySnapshot(afterJson)  ? {} : parseSnapshot(afterJson!)
+
+  if (flatBefore === null || flatAfter === null) return null
+
+  const allKeys = Array.from(new Set([...Object.keys(flatBefore), ...Object.keys(flatAfter)])).sort()
+  return allKeys.map(key => classifyLine(key, flatBefore[key], flatAfter[key]))
+}
+
+function formatChangeSummary(changedCount: number): string {
+  if (changedCount === 0) return 'No fields changed'
+  return `${changedCount} field${changedCount !== 1 ? 's' : ''} changed`
+}
+
+type DiffStyle = { bg: string; border: string; text: string; prefix: string }
+
+const DIFF_STYLE: Record<DiffType, DiffStyle> = {
+  added:     { bg: 'rgba(34,197,94,0.10)',  border: '#86efac', text: '#86efac', prefix: '+' },
+  removed:   { bg: 'rgba(239,68,68,0.10)',  border: '#fca5a5', text: '#fca5a5', prefix: '-' },
+  changed:   { bg: 'rgba(245,158,11,0.10)', border: '#fcd34d', text: '#fcd34d', prefix: '~' },
+  unchanged: { bg: 'transparent',           border: 'transparent', text: '',    prefix: ' ' },
+}
+
+function DiffLineRow({ line }: { line: DiffLine }) {
+  const style = DIFF_STYLE[line.type]
+  const isChanged = line.type !== 'unchanged'
   return (
-    <Box sx={{ mb: 1 }}>
-      <Typography variant="caption" color="text.secondary" fontWeight={600}>{label}:</Typography>
-      <Box sx={{ bgcolor: 'background.default', borderRadius: 1, p: 1, mt: 0.5, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 200, overflowY: 'auto' }}>
-        {JSON.stringify(parsed, null, 2)}
+    <Box sx={{
+      display: 'flex', gap: 1, px: 1.5, py: '2px',
+      bgcolor: style.bg,
+      borderLeft: `2px solid ${style.border}`,
+      opacity: isChanged ? 1 : 0.35,
+      fontFamily: 'monospace', fontSize: 12,
+    }}>
+      <Box component="span" sx={{ color: style.border || 'text.disabled', width: 10, flexShrink: 0, userSelect: 'none' }}>
+        {style.prefix}
+      </Box>
+      <Box component="span" sx={{ color: 'text.secondary', flexShrink: 0, mr: 0.5 }}>
+        {line.key}:
+      </Box>
+      {line.type === 'changed' ? (
+        <Box component="span" sx={{ wordBreak: 'break-all' }}>
+          <Box component="span" sx={{ color: '#fca5a5', textDecoration: 'line-through', mr: 1 }}>{line.before}</Box>
+          <Box component="span" sx={{ color: '#86efac' }}>{line.after}</Box>
+        </Box>
+      ) : (
+        <Box component="span" sx={{ color: isChanged ? style.text : 'text.primary', wordBreak: 'break-all' }}>
+          {line.before ?? line.after}
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+function JsonDiffView({ before, after }: { before?: string; after?: string }) {
+  const lines = useMemo(() => computeDiff(before, after), [before, after])
+  if (!lines) return null
+  const changedCount = lines.filter(line => line.type !== 'unchanged').length
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+        {formatChangeSummary(changedCount)}
+      </Typography>
+      <Box sx={{ borderRadius: 1, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', maxHeight: 320, overflowY: 'auto' }}>
+        {lines.map(line => <DiffLineRow key={line.key} line={line} />)}
       </Box>
     </Box>
   )
@@ -46,7 +147,7 @@ function DiffView({ label, json }: { label: string; json?: string }) {
 
 function AuditRow({ entry }: { entry: AuditLogEntry }) {
   const [open, setOpen] = useState(false)
-  const hasDiff = (entry.before && entry.before !== 'null') || (entry.after && entry.after !== 'null')
+  const hasDiff = !isEmptySnapshot(entry.before) || !isEmptySnapshot(entry.after)
 
   return (
     <>
@@ -85,8 +186,7 @@ function AuditRow({ entry }: { entry: AuditLogEntry }) {
           <TableCell colSpan={6} sx={{ py: 0 }}>
             <Collapse in={open} timeout="auto" unmountOnExit>
               <Box sx={{ p: 2 }}>
-                <DiffView label="Before" json={entry.before} />
-                <DiffView label="After" json={entry.after} />
+                <JsonDiffView before={entry.before} after={entry.after} />
               </Box>
             </Collapse>
           </TableCell>
