@@ -207,6 +207,14 @@ func (s *Store) AppendPolicyLogLine(line *PolicyLogLine) error {
 	return s.db.Create(line).Error
 }
 
+// AppendPolicyLogLines inserts multiple log lines in a single batch.
+func (s *Store) AppendPolicyLogLines(lines []PolicyLogLine) error {
+	if len(lines) == 0 {
+		return nil
+	}
+	return s.db.Create(&lines).Error
+}
+
 func (s *Store) GetPolicyLogLines(executionID uint) ([]PolicyLogLine, error) {
 	var lines []PolicyLogLine
 	return lines, s.db.Where("execution_id = ?", executionID).Order("seq asc").Find(&lines).Error
