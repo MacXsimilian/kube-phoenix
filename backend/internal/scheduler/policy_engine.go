@@ -58,7 +58,7 @@ func IntendedState(windows []policy.SleepWindow, timezone string, overrides []st
 // and the override hasn't expired.
 func HasSkipOverride(overrides []store.PolicyOverride, direction string, now time.Time) *store.PolicyOverride {
 	wantType := "skip_sleep"
-	if direction == DirectionWake {
+	if direction == directionWake {
 		wantType = "skip_wake"
 	}
 	for i := range overrides {

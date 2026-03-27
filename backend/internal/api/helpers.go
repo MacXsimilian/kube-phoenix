@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -46,5 +47,25 @@ func (h *Handler) reloadScheduler(policyID uint) {
 	if err := h.policyScheduler.Reload(); err != nil {
 		slog.Error("policy scheduler reload failed", "policyID", policyID, "err", err)
 	}
+}
+
+// parsePageSize extracts a page size from query parameters, checking both
+// snake_case and camelCase variants. Clamps to [1, maxVal] with a default.
+func parsePageSize(query url.Values, defaultVal, maxVal int) int {
+	raw := query.Get("page_size")
+	if raw == "" {
+		raw = query.Get("pageSize")
+	}
+	if raw == "" {
+		return defaultVal
+	}
+	ps, err := strconv.Atoi(raw)
+	if err != nil || ps < 1 {
+		return defaultVal
+	}
+	if ps > maxVal {
+		return maxVal
+	}
+	return ps
 }
 

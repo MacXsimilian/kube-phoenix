@@ -229,14 +229,7 @@ func (h *Handler) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		}
 		filter.Page = p
 	}
-	if v := query.Get("pageSize"); v != "" {
-		ps, err := strconv.Atoi(v)
-		if err != nil {
-			jsonError(w, "invalid pageSize parameter", http.StatusBadRequest)
-			return
-		}
-		filter.PageSize = ps
-	}
+	filter.PageSize = parsePageSize(query, 50, 1000)
 	if v := query.Get("from"); v != "" {
 		t, err := time.Parse(time.RFC3339, v)
 		if err != nil {
