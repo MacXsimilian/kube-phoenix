@@ -18,20 +18,19 @@ import Divider from '@mui/material/Divider'
 import { createException, updateException } from '@/lib/api'
 import type { ScheduledException, ScheduledExceptionInput } from '@/lib/types'
 
-function toLocalDatetimeInput(iso: string | undefined): string {
+function isoToLocalInput(iso: string | undefined): string {
   if (!iso) return ''
-  // Convert ISO to local datetime-local input value (YYYY-MM-DDTHH:mm)
-  const dateObj = new Date(iso)
+  const d = new Date(iso)
   const pad = (n: number) => String(n).padStart(2, '0')
-  return `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}T${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-function toISO(localDT: string): string {
-  if (!localDT) return ''
-  return new Date(localDT).toISOString()
+function localInputToISO(local: string): string {
+  if (!local) return ''
+  return new Date(local).toISOString()
 }
 
-const DEFAULTS: ScheduledExceptionInput = {
+const EMPTY_FORM: ScheduledExceptionInput = {
   exceptionType: 'stay_awake',
   startsAt: '',
   endsAt: '',
@@ -56,60 +55,52 @@ export default function ExceptionDialog({
   defaultPolicyId?: number
 }) {
   const queryClient = useQueryClient()
-  const isEdit = !!existing
 
-  const [form, setForm] = useState<ScheduledExceptionInput & { startsAtLocal: string; endsAtLocal: string }>({
-    ...DEFAULTS,
-    startsAtLocal: '',
-    endsAtLocal: '',
-  })
+  const [form, setForm] = useState<ScheduledExceptionInput>({ ...EMPTY_FORM })
+  const [localTimes, setLocalTimes] = useState({ startsAt: '', endsAt: '' })
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (open) {
-      if (existing) {
-        setForm({
-          policyId: existing.policyId ?? undefined,
-          exceptionType: existing.exceptionType,
-          startsAt: existing.startsAt,
-          endsAt: existing.endsAt,
-          startsAtLocal: toLocalDatetimeInput(existing.startsAt),
-          endsAtLocal: toLocalDatetimeInput(existing.endsAt),
-          ticketRef: existing.ticketRef || '',
-          reason: existing.reason || '',
-          sleepOnEnd: existing.sleepOnEnd,
-          namespaceFilter: existing.namespaceFilter || '',
-          labelSelector: existing.labelSelector || '',
-        })
-      } else {
-        setForm({
-          ...DEFAULTS,
-          policyId: defaultPolicyId,
-          startsAtLocal: '',
-          endsAtLocal: '',
-        })
-      }
-      setError('')
+    if (!open) return
+    if (existing) {
+      setForm({
+        policyId: existing.policyId ?? undefined,
+        exceptionType: existing.exceptionType,
+        startsAt: existing.startsAt,
+        endsAt: existing.endsAt,
+        ticketRef: existing.ticketRef || '',
+        reason: existing.reason || '',
+        sleepOnEnd: existing.sleepOnEnd,
+        namespaceFilter: existing.namespaceFilter || '',
+        labelSelector: existing.labelSelector || '',
+      })
+      setLocalTimes({
+        startsAt: isoToLocalInput(existing.startsAt),
+        endsAt: isoToLocalInput(existing.endsAt),
+      })
+    } else {
+      setForm({ ...EMPTY_FORM, policyId: defaultPolicyId })
+      setLocalTimes({ startsAt: '', endsAt: '' })
     }
+    setError('')
   }, [open, existing, defaultPolicyId])
 
-  function set<K extends keyof typeof form>(key: K, val: (typeof form)[K]) {
-    setForm(f => {
-      const next = { ...f, [key]: val }
-      // Keep ISO fields in sync with local fields
-      if (key === 'startsAtLocal') next.startsAt = toISO(val as string)
-      if (key === 'endsAtLocal') next.endsAt = toISO(val as string)
-      return next
-    })
+  function setField<K extends keyof ScheduledExceptionInput>(key: K, val: ScheduledExceptionInput[K]) {
+    setForm(f => ({ ...f, [key]: val }))
+  }
+
+  function setLocalTime(field: 'startsAt' | 'endsAt', local: string) {
+    setLocalTimes(t => ({ ...t, [field]: local }))
+    setForm(f => ({ ...f, [field]: localInputToISO(local) }))
   }
 
   function validate(): string {
-    if (!form.startsAtLocal) return 'Start time is required'
-    if (!form.endsAtLocal) return 'End time is required'
-    const start = new Date(form.startsAtLocal)
-    const end = new Date(form.endsAtLocal)
+    if (!localTimes.startsAt) return 'Start time is required'
+    if (!localTimes.endsAt) return 'End time is required'
+    const start = new Date(localTimes.startsAt)
+    const end = new Date(localTimes.endsAt)
     if (end <= start) return 'End time must be after start time'
-    if (start <= new Date() && !isEdit) return 'Start time must be in the future'
+    if (!existing && start <= new Date()) return 'Start time must be in the future'
     return ''
   }
 
@@ -126,11 +117,14 @@ export default function ExceptionDialog({
         namespaceFilter: form.namespaceFilter || undefined,
         labelSelector: form.labelSelector || undefined,
       }
-      return isEdit ? updateException(existing!.id, payload) : createException(payload)
+      if (existing) {
+        return updateException(existing.id, payload)
+      }
+      return createException(payload)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exceptions'] })
-      onNotify?.(isEdit ? 'Exception updated' : 'Exception created', 'success')
+      onNotify?.(existing ? 'Exception updated' : 'Exception created', 'success')
       onClose()
     },
     onError: (err: unknown) => {
@@ -153,14 +147,14 @@ export default function ExceptionDialog({
       maxWidth="sm"
       slotProps={{ paper: { sx: { bgcolor: 'background.paper' } } }}
     >
-      <DialogTitle fontWeight={700}>{isEdit ? 'Edit Exception' : 'New Exception'}</DialogTitle>
+      <DialogTitle fontWeight={700}>{existing ? 'Edit Exception' : 'New Exception'}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '20px !important' }}>
         {error && <Alert severity="error">{error}</Alert>}
 
         <TextField
           label="Exception Type"
           value={form.exceptionType}
-          onChange={e => set('exceptionType', e.target.value as 'stay_awake' | 'force_sleep')}
+          onChange={e => setField('exceptionType', e.target.value as 'stay_awake' | 'force_sleep')}
           select
           fullWidth
           size="small"
@@ -173,8 +167,8 @@ export default function ExceptionDialog({
           <TextField
             label="Starts At"
             type="datetime-local"
-            value={form.startsAtLocal}
-            onChange={e => set('startsAtLocal', e.target.value)}
+            value={localTimes.startsAt}
+            onChange={e => setLocalTime('startsAt', e.target.value)}
             fullWidth
             size="small"
             InputLabelProps={{ shrink: true }}
@@ -183,8 +177,8 @@ export default function ExceptionDialog({
           <TextField
             label="Ends At"
             type="datetime-local"
-            value={form.endsAtLocal}
-            onChange={e => set('endsAtLocal', e.target.value)}
+            value={localTimes.endsAt}
+            onChange={e => setLocalTime('endsAt', e.target.value)}
             fullWidth
             size="small"
             InputLabelProps={{ shrink: true }}
@@ -198,7 +192,7 @@ export default function ExceptionDialog({
         <TextField
           label="Ticket Reference"
           value={form.ticketRef ?? ''}
-          onChange={e => set('ticketRef', e.target.value)}
+          onChange={e => setField('ticketRef', e.target.value)}
           fullWidth
           size="small"
           placeholder="e.g. JIRA-1234 or GH#567"
@@ -206,7 +200,7 @@ export default function ExceptionDialog({
         <TextField
           label="Reason"
           value={form.reason ?? ''}
-          onChange={e => set('reason', e.target.value)}
+          onChange={e => setField('reason', e.target.value)}
           fullWidth
           size="small"
           multiline
@@ -218,7 +212,7 @@ export default function ExceptionDialog({
         <TextField
           label="Namespace Filter"
           value={form.namespaceFilter ?? ''}
-          onChange={e => set('namespaceFilter', e.target.value)}
+          onChange={e => setField('namespaceFilter', e.target.value)}
           fullWidth
           size="small"
           placeholder="e.g. staging,dev  (empty = policy default)"
@@ -226,7 +220,7 @@ export default function ExceptionDialog({
         <TextField
           label="Label Selector"
           value={form.labelSelector ?? ''}
-          onChange={e => set('labelSelector', e.target.value)}
+          onChange={e => setField('labelSelector', e.target.value)}
           fullWidth
           size="small"
           placeholder="e.g. app=api"
@@ -236,7 +230,7 @@ export default function ExceptionDialog({
           label="Sleep on end"
           description="When the exception window ends, put workloads to sleep immediately"
           checked={form.sleepOnEnd ?? true}
-          onChange={v => set('sleepOnEnd', v)}
+          onChange={v => setField('sleepOnEnd', v)}
         />
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -247,7 +241,7 @@ export default function ExceptionDialog({
           startIcon={mutation.isPending ? <CircularProgress size={14} /> : undefined}
           onClick={handleSave}
         >
-          {isEdit ? 'Save' : 'Create'}
+          {existing ? 'Save' : 'Create'}
         </Button>
       </DialogActions>
     </Dialog>

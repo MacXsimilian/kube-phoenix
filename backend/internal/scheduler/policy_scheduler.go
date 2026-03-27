@@ -191,40 +191,49 @@ func (ps *PolicyScheduler) RecoverPolicies(ctx context.Context) error {
 // TickExceptions is called periodically to start and end ScheduledExceptions.
 func (ps *PolicyScheduler) TickExceptions(ctx context.Context) {
 	now := time.Now()
-	exceptions, err := ps.store.ListPendingExceptions()
+	exceptions, err := ps.store.ListOpenExceptions()
 	if err != nil {
-		slog.Error("policy scheduler: list pending exceptions failed", "err", err)
+		slog.Error("policy scheduler: list open exceptions failed", "err", err)
 		return
 	}
 	for _, ex := range exceptions {
-		ex := ex
 		switch ex.Status {
 		case store.ExceptionStatusPending:
-			if !now.Before(ex.StartsAt) {
-				if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusActive); err != nil {
-					slog.Error("exception: set active failed", "exceptionID", ex.ID, "err", err)
-					continue
-				}
-				slog.Info("exception started", "exceptionID", ex.ID, "ticketRef", ex.TicketRef)
-				if ex.PolicyID != nil {
-					if _, err := ps.RunWakeNow(*ex.PolicyID, "exception_start"); err != nil {
-						slog.Error("exception: wake failed", "exceptionID", ex.ID, "err", err)
-					}
-				}
-			}
+			ps.maybeStartException(ex, now)
 		case store.ExceptionStatusActive:
-			if now.After(ex.EndsAt) {
-				if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusCompleted); err != nil {
-					slog.Error("exception: set completed failed", "exceptionID", ex.ID, "err", err)
-					continue
-				}
-				slog.Info("exception ended", "exceptionID", ex.ID, "ticketRef", ex.TicketRef)
-				if ex.SleepOnEnd && ex.PolicyID != nil {
-					if _, err := ps.RunSleepNow(*ex.PolicyID, "exception_end"); err != nil {
-						slog.Error("exception: sleep-on-end failed", "exceptionID", ex.ID, "err", err)
-					}
-				}
-			}
+			ps.maybeEndException(ex, now)
+		}
+	}
+}
+
+func (ps *PolicyScheduler) maybeStartException(ex store.ScheduledException, now time.Time) {
+	if now.Before(ex.StartsAt) {
+		return
+	}
+	if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusActive); err != nil {
+		slog.Error("exception: set active failed", "exceptionID", ex.ID, "err", err)
+		return
+	}
+	slog.Info("exception started", "exceptionID", ex.ID, "ticketRef", ex.TicketRef)
+	if ex.PolicyID != nil {
+		if _, err := ps.RunWakeNow(*ex.PolicyID, "exception_start"); err != nil {
+			slog.Error("exception: wake failed", "exceptionID", ex.ID, "err", err)
+		}
+	}
+}
+
+func (ps *PolicyScheduler) maybeEndException(ex store.ScheduledException, now time.Time) {
+	if !now.After(ex.EndsAt) {
+		return
+	}
+	if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusCompleted); err != nil {
+		slog.Error("exception: set completed failed", "exceptionID", ex.ID, "err", err)
+		return
+	}
+	slog.Info("exception ended", "exceptionID", ex.ID, "ticketRef", ex.TicketRef)
+	if ex.SleepOnEnd && ex.PolicyID != nil {
+		if _, err := ps.RunSleepNow(*ex.PolicyID, "exception_end"); err != nil {
+			slog.Error("exception: sleep-on-end failed", "exceptionID", ex.ID, "err", err)
 		}
 	}
 }
