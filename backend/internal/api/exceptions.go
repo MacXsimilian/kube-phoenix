@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -30,17 +31,9 @@ func (h *Handler) listExceptions(w http.ResponseWriter, r *http.Request) {
 		jsonInternalError(w, err, "list exceptions failed")
 		return
 	}
-	// Attach deserialized workload targets
-	type exceptionResponse struct {
-		store.ScheduledException
-		Targets []store.WorkloadTarget `json:"workloadTargets"`
-	}
-	resp := make([]exceptionResponse, len(items))
-	for i, ex := range items {
-		resp[i] = exceptionResponse{
-			ScheduledException: ex,
-			Targets:            ex.GetWorkloadTargets(),
-		}
+	resp := make([]exceptionResponseShape, len(items))
+	for i := range items {
+		resp[i] = exceptionWithTargets(&items[i])
 	}
 	jsonOK(w, resp)
 }
@@ -69,12 +62,10 @@ func (h *Handler) createException(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
 	}
-	if msg := validateExceptionInput(body); msg != "" {
-		jsonError(w, msg, http.StatusBadRequest)
+	if err := validateExceptionInput(body); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	// Validate policy exists if provided
 	if body.PolicyID != nil {
 		if _, err := h.store.GetPolicy(*body.PolicyID); err != nil {
 			jsonError(w, "policy not found", http.StatusBadRequest)
@@ -82,32 +73,10 @@ func (h *Handler) createException(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	ex := &store.ScheduledException{
-		PolicyID:        body.PolicyID,
-		ExceptionType:   body.ExceptionType,
-		StartsAt:        body.StartsAt,
-		EndsAt:          body.EndsAt,
-		TicketRef:       body.TicketRef,
-		Reason:          body.Reason,
-		SleepOnEnd:      body.SleepOnEnd,
-		NamespaceFilter: body.NamespaceFilter,
-		LabelSelector:   body.LabelSelector,
-		Status:          store.ExceptionStatusPending,
-	}
-	if !ex.SleepOnEnd && !body.SleepOnEndSet {
-		ex.SleepOnEnd = true // default to true
-	}
-
-	if len(body.WorkloadTargets) > 0 {
-		if err := ex.SetWorkloadTargets(body.WorkloadTargets); err != nil {
-			jsonInternalError(w, err, "encode workload targets failed")
-			return
-		}
-	}
-
-	// Set created_by from session
-	if u := authmw.UserFromContext(r.Context()); u != nil {
-		ex.CreatedBy = u.Username
+	ex, err := newExceptionFromInput(body, r)
+	if err != nil {
+		jsonInternalError(w, err, "build exception failed")
+		return
 	}
 
 	if err := h.store.CreateScheduledException(ex); err != nil {
@@ -117,7 +86,6 @@ func (h *Handler) createException(w http.ResponseWriter, r *http.Request) {
 	slog.Info("scheduled exception created",
 		"exceptionID", ex.ID, "ticketRef", ex.TicketRef, "startsAt", ex.StartsAt)
 	h.audit(r, "exception.create", "exception", &ex.ID, nil, exceptionWithTargets(ex))
-
 	jsonCreated(w, exceptionWithTargets(ex))
 }
 
@@ -127,23 +95,31 @@ func (h *Handler) updateException(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
-	ex, err := h.store.GetScheduledException(id)
-	if err != nil {
-		jsonError(w, ErrNotFound, http.StatusNotFound)
-		return
-	}
-	if ex.Status != store.ExceptionStatusPending {
-		jsonError(w, "only pending exceptions can be edited", http.StatusConflict)
-		return
-	}
 
 	var body exceptionInput
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
 	}
+	updates, err := buildExceptionUpdates(body)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	updates := buildExceptionUpdates(body)
+	ex, err := h.store.GetScheduledException(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			jsonError(w, ErrNotFound, http.StatusNotFound)
+		} else {
+			jsonInternalError(w, err, "get exception failed")
+		}
+		return
+	}
+	if ex.Status != store.ExceptionStatusPending {
+		jsonError(w, "only pending exceptions can be edited", http.StatusConflict)
+		return
+	}
 
 	updated, err := h.store.UpdateScheduledException(id, updates)
 	if err != nil {
@@ -162,11 +138,14 @@ func (h *Handler) deleteException(w http.ResponseWriter, r *http.Request) {
 	}
 	ex, err := h.store.GetScheduledException(id)
 	if err != nil {
-		jsonError(w, ErrNotFound, http.StatusNotFound)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			jsonError(w, ErrNotFound, http.StatusNotFound)
+		} else {
+			jsonInternalError(w, err, "get exception failed")
+		}
 		return
 	}
 
-	// If active, trigger sleep-on-end before cancelling
 	if ex.Status == store.ExceptionStatusActive && ex.SleepOnEnd && ex.PolicyID != nil {
 		slog.Info("exception cancelled while active — triggering sleep-on-end", "exceptionID", id)
 		if _, runErr := h.policyScheduler.RunSleepNow(*ex.PolicyID, "exception_end"); runErr != nil {
@@ -174,11 +153,7 @@ func (h *Handler) deleteException(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	updates := map[string]interface{}{
-		"status":        store.ExceptionStatusCancelled,
-		"cancel_reason": "deleted via API",
-	}
-	if _, err := h.store.UpdateScheduledException(id, updates); err != nil {
+	if err := h.store.CancelScheduledException(id, "deleted via API"); err != nil {
 		jsonInternalError(w, err, "cancel exception failed")
 		return
 	}
@@ -196,32 +171,37 @@ type exceptionInput struct {
 	EndsAt          time.Time              `json:"endsAt"`
 	TicketRef       string                 `json:"ticketRef"`
 	Reason          string                 `json:"reason"`
-	SleepOnEnd      bool                   `json:"sleepOnEnd"`
-	SleepOnEndSet   bool                   `json:"-"` // tracks if field was explicitly provided
+	SleepOnEnd      *bool                  `json:"sleepOnEnd"`
 	NamespaceFilter string                 `json:"namespaceFilter"`
 	LabelSelector   string                 `json:"labelSelector"`
 	WorkloadTargets []store.WorkloadTarget `json:"workloadTargets"`
 }
 
-func (e *exceptionInput) UnmarshalJSON(data []byte) error {
-	type Alias exceptionInput
-	raw := struct {
-		Alias
-		SleepOnEnd *bool `json:"sleepOnEnd"`
-	}{}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
+func newExceptionFromInput(body exceptionInput, r *http.Request) (*store.ScheduledException, error) {
+	ex := &store.ScheduledException{
+		PolicyID:        body.PolicyID,
+		ExceptionType:   body.ExceptionType,
+		StartsAt:        body.StartsAt,
+		EndsAt:          body.EndsAt,
+		TicketRef:       body.TicketRef,
+		Reason:          body.Reason,
+		SleepOnEnd:      body.SleepOnEnd == nil || *body.SleepOnEnd, // default true
+		NamespaceFilter: body.NamespaceFilter,
+		LabelSelector:   body.LabelSelector,
+		Status:          store.ExceptionStatusPending,
 	}
-	*e = exceptionInput(raw.Alias)
-	if raw.SleepOnEnd != nil {
-		e.SleepOnEnd = *raw.SleepOnEnd
-		e.SleepOnEndSet = true
+	if len(body.WorkloadTargets) > 0 {
+		if err := ex.SetWorkloadTargets(body.WorkloadTargets); err != nil {
+			return nil, fmt.Errorf("encode workload targets: %w", err)
+		}
 	}
-	return nil
+	if u := authmw.UserFromContext(r.Context()); u != nil {
+		ex.CreatedBy = u.Username
+	}
+	return ex, nil
 }
 
-// buildExceptionUpdates converts non-zero input fields to a DB update map.
-func buildExceptionUpdates(body exceptionInput) map[string]interface{} {
+func buildExceptionUpdates(body exceptionInput) (map[string]interface{}, error) {
 	updates := map[string]interface{}{}
 	if body.ExceptionType != "" {
 		updates["exception_type"] = body.ExceptionType
@@ -238,8 +218,8 @@ func buildExceptionUpdates(body exceptionInput) map[string]interface{} {
 	if body.Reason != "" {
 		updates["reason"] = body.Reason
 	}
-	if body.SleepOnEndSet {
-		updates["sleep_on_end"] = body.SleepOnEnd
+	if body.SleepOnEnd != nil {
+		updates["sleep_on_end"] = *body.SleepOnEnd
 	}
 	if body.NamespaceFilter != "" {
 		updates["namespace_filter"] = body.NamespaceFilter
@@ -249,30 +229,31 @@ func buildExceptionUpdates(body exceptionInput) map[string]interface{} {
 	}
 	if len(body.WorkloadTargets) > 0 {
 		b, err := json.Marshal(body.WorkloadTargets)
-		if err == nil {
-			updates["workload_targets"] = string(b)
+		if err != nil {
+			return nil, fmt.Errorf("encode workload targets: %w", err)
 		}
+		updates["workload_targets"] = string(b)
 	}
-	return updates
+	return updates, nil
 }
 
-func validateExceptionInput(b exceptionInput) string {
+func validateExceptionInput(b exceptionInput) error {
 	if b.ExceptionType != "stay_awake" && b.ExceptionType != "force_sleep" {
-		return "exceptionType must be stay_awake or force_sleep"
+		return errors.New("exceptionType must be stay_awake or force_sleep")
 	}
 	if b.StartsAt.IsZero() {
-		return "startsAt is required"
+		return errors.New("startsAt is required")
 	}
 	if b.EndsAt.IsZero() {
-		return "endsAt is required"
+		return errors.New("endsAt is required")
 	}
 	if !b.EndsAt.After(b.StartsAt) {
-		return "endsAt must be after startsAt"
+		return errors.New("endsAt must be after startsAt")
 	}
 	if time.Until(b.StartsAt) < 0 {
-		return "startsAt must be in the future"
+		return errors.New("startsAt must be in the future")
 	}
-	return ""
+	return nil
 }
 
 type exceptionResponseShape struct {
@@ -287,7 +268,6 @@ func exceptionWithTargets(ex *store.ScheduledException) exceptionResponseShape {
 	}
 }
 
-// parseIDFromString parses a uint from a string query parameter.
 func parseIDFromString(s string) (uint, error) {
 	id, err := strconv.ParseUint(s, 10, 64)
 	return uint(id), err

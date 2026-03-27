@@ -18,6 +18,13 @@ import (
 // PolicyBroker is an alias for Broker, used for policy executions.
 type PolicyBroker = Broker
 
+// SchedulerConfig holds the runtime-tunable settings for the policy evaluation loop.
+type SchedulerConfig struct {
+	TickInterval        time.Duration
+	AutoWake            bool
+	ReconcileWhileAwake bool
+}
+
 // cachedPolicy holds a parsed in-memory representation of a policy.
 type cachedPolicy struct {
 	policy  store.Policy
@@ -31,19 +38,22 @@ type PolicyScheduler struct {
 	store  *store.Store
 	runner *scaler.PolicyRunner
 	Broker *PolicyBroker
+	cfg    SchedulerConfig
 
-	mu       sync.Mutex
-	cancel   context.CancelFunc
-	policies map[uint]cachedPolicy
+	mu        sync.Mutex
+	cancel    context.CancelFunc
+	parentCtx context.Context
+	policies  map[uint]cachedPolicy
 }
 
 // NewPolicyScheduler creates a PolicyScheduler. Pass nil k8sClient in tests.
-func NewPolicyScheduler(st *store.Store, k8sClient *k8s.Client) *PolicyScheduler {
+func NewPolicyScheduler(st *store.Store, k8sClient *k8s.Client, cfg SchedulerConfig) *PolicyScheduler {
 	return &PolicyScheduler{
 		store:    st,
 		runner:   scaler.NewPolicyRunner(k8sClient, st),
 		Broker:   NewBroker(),
 		policies: map[uint]cachedPolicy{},
+		cfg:      cfg,
 	}
 }
 
@@ -51,20 +61,40 @@ func NewPolicyScheduler(st *store.Store, k8sClient *k8s.Client) *PolicyScheduler
 func (ps *PolicyScheduler) Start(ctx context.Context) error {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
+	ps.parentCtx = ctx
 	ctx, ps.cancel = context.WithCancel(ctx)
 	if err := ps.reload(); err != nil {
 		return err
 	}
-	go ps.tickLoop(ctx)
+	interval := ps.cfg.TickInterval
+	go ps.tickLoop(ctx, interval)
 	slog.Info("policy scheduler started")
 	return nil
 }
 
 // Stop gracefully shuts down the ticker.
 func (ps *PolicyScheduler) Stop() {
-	if ps.cancel != nil {
-		ps.cancel()
+	ps.mu.Lock()
+	cancel := ps.cancel
+	ps.mu.Unlock()
+	if cancel != nil {
+		cancel()
 	}
+}
+
+// UpdateSettings applies new scheduler settings at runtime. If the eval
+// interval changes the ticker loop is restarted automatically.
+func (ps *PolicyScheduler) UpdateSettings(cfg SchedulerConfig) error {
+	ps.mu.Lock()
+	intervalChanged := ps.cfg.TickInterval != cfg.TickInterval
+	ps.cfg = cfg
+	parentCtx := ps.parentCtx
+	ps.mu.Unlock()
+
+	if intervalChanged && parentCtx != nil {
+		return ps.Restart(parentCtx)
+	}
+	return nil
 }
 
 // Reload re-reads all policies from the DB. Called after any policy CRUD.
@@ -161,40 +191,49 @@ func (ps *PolicyScheduler) RecoverPolicies(ctx context.Context) error {
 // TickExceptions is called periodically to start and end ScheduledExceptions.
 func (ps *PolicyScheduler) TickExceptions(ctx context.Context) {
 	now := time.Now()
-	exceptions, err := ps.store.ListPendingExceptions()
+	exceptions, err := ps.store.ListOpenExceptions()
 	if err != nil {
-		slog.Error("policy scheduler: list pending exceptions failed", "err", err)
+		slog.Error("policy scheduler: list open exceptions failed", "err", err)
 		return
 	}
 	for _, ex := range exceptions {
-		ex := ex
 		switch ex.Status {
 		case store.ExceptionStatusPending:
-			if !now.Before(ex.StartsAt) {
-				if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusActive); err != nil {
-					slog.Error("exception: set active failed", "exceptionID", ex.ID, "err", err)
-					continue
-				}
-				slog.Info("exception started", "exceptionID", ex.ID, "ticketRef", ex.TicketRef)
-				if ex.PolicyID != nil {
-					if _, err := ps.RunWakeNow(*ex.PolicyID, "exception_start"); err != nil {
-						slog.Error("exception: wake failed", "exceptionID", ex.ID, "err", err)
-					}
-				}
-			}
+			ps.maybeStartException(ex, now)
 		case store.ExceptionStatusActive:
-			if now.After(ex.EndsAt) {
-				if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusCompleted); err != nil {
-					slog.Error("exception: set completed failed", "exceptionID", ex.ID, "err", err)
-					continue
-				}
-				slog.Info("exception ended", "exceptionID", ex.ID, "ticketRef", ex.TicketRef)
-				if ex.SleepOnEnd && ex.PolicyID != nil {
-					if _, err := ps.RunSleepNow(*ex.PolicyID, "exception_end"); err != nil {
-						slog.Error("exception: sleep-on-end failed", "exceptionID", ex.ID, "err", err)
-					}
-				}
-			}
+			ps.maybeEndException(ex, now)
+		}
+	}
+}
+
+func (ps *PolicyScheduler) maybeStartException(ex store.ScheduledException, now time.Time) {
+	if now.Before(ex.StartsAt) {
+		return
+	}
+	if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusActive); err != nil {
+		slog.Error("exception: set active failed", "exceptionID", ex.ID, "err", err)
+		return
+	}
+	slog.Info("exception started", "exceptionID", ex.ID, "ticketRef", ex.TicketRef)
+	if ex.PolicyID != nil {
+		if _, err := ps.RunWakeNow(*ex.PolicyID, "exception_start"); err != nil {
+			slog.Error("exception: wake failed", "exceptionID", ex.ID, "err", err)
+		}
+	}
+}
+
+func (ps *PolicyScheduler) maybeEndException(ex store.ScheduledException, now time.Time) {
+	if !now.After(ex.EndsAt) {
+		return
+	}
+	if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusCompleted); err != nil {
+		slog.Error("exception: set completed failed", "exceptionID", ex.ID, "err", err)
+		return
+	}
+	slog.Info("exception ended", "exceptionID", ex.ID, "ticketRef", ex.TicketRef)
+	if ex.SleepOnEnd && ex.PolicyID != nil {
+		if _, err := ps.RunSleepNow(*ex.PolicyID, "exception_end"); err != nil {
+			slog.Error("exception: sleep-on-end failed", "exceptionID", ex.ID, "err", err)
 		}
 	}
 }
@@ -202,13 +241,12 @@ func (ps *PolicyScheduler) TickExceptions(ctx context.Context) {
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
 const (
-	policyEvalTickInterval  = 30 * time.Second
 	defaultExecutionTimeout = 2 * time.Hour
 	execLogChannelBuffer    = 512
 )
 
-func (ps *PolicyScheduler) tickLoop(ctx context.Context) {
-	ticker := time.NewTicker(policyEvalTickInterval)
+func (ps *PolicyScheduler) tickLoop(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -226,17 +264,22 @@ func (ps *PolicyScheduler) evaluateAll() {
 	for _, cp := range ps.policies {
 		snapshot = append(snapshot, cp)
 	}
+	autoWake := ps.cfg.AutoWake
+	reconcileWhileAwake := ps.cfg.ReconcileWhileAwake
 	ps.mu.Unlock()
 
 	now := time.Now()
 	for _, cp := range snapshot {
-		ps.evaluatePolicy(cp, now)
+		ps.evaluatePolicy(cp, now, autoWake, reconcileWhileAwake)
 	}
 }
 
-func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, now time.Time) {
+func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, now time.Time, autoWake bool, reconcileWhileAwake bool) {
 	p := cp.policy
 	if !p.Enabled {
+		return
+	}
+	if !reconcileWhileAwake && p.CurrentState == store.PolicyStateAwake {
 		return
 	}
 
@@ -256,6 +299,9 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, now time.Time) {
 
 	direction := "sleep"
 	if intended == PolicyStateAwake {
+		if !autoWake {
+			return
+		}
 		direction = "wake"
 	}
 
@@ -439,7 +485,7 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 				newState = store.PolicyStateAwake
 			}
 		} else {
-			newState = "unknown"
+			newState = store.PolicyStateUnknown
 		}
 		_ = ps.store.UpdatePolicyState(p.ID, newState, nextTransition)
 

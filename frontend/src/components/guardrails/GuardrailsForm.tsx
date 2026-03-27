@@ -18,6 +18,7 @@ import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
+import LabeledSwitch from '@/components/common/LabeledSwitch'
 import SaveIcon from '@mui/icons-material/Save'
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded'
@@ -229,6 +230,9 @@ export default function GuardrailsForm() {
   const [skipNsNode, setSkipNsNode] = useState<string[]>([])
   const [skipLabels, setSkipLabels] = useState<string[]>([])
   const [skipTaints, setSkipTaints] = useState<string[]>([])
+  const [evalInterval, setEvalInterval] = useState('30s')
+  const [autoWake, setAutoWake] = useState(true)
+  const [reconcileWhileAwake, setReconcileWhileAwake] = useState(true)
   const [snackOpen, setSnackOpen] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const initialised = useRef(false)
@@ -241,18 +245,30 @@ export default function GuardrailsForm() {
       setSkipNsNode(fromCsv(g.skipNsNode))
       setSkipLabels(fromCsv(g.skipNodeLabels))
       setSkipTaints(fromCsv(g.skipNodeTaints))
+      setEvalInterval(g.schedulerEvalInterval)
+      setAutoWake(g.schedulerAutoWake)
+      setReconcileWhileAwake(g.schedulerReconcileWhileAwake)
     }
   }, [g])
 
+  const evalIntervalError = /^\d+(ns|us|µs|ms|s|m|h)$/.test(evalInterval.trim())
+    ? ''
+    : 'Must be a valid duration (e.g. 30s, 1m, 2m)'
+
   const save = useMutation({
-    mutationFn: () =>
-      updateGuardrails({
+    mutationFn: () => {
+      if (evalIntervalError) return Promise.reject(new Error(evalIntervalError))
+      return updateGuardrails({
         systemNamespaces: csv(systemNs),
         skipNamespaces: csv(skipNs),
         skipNsNode: csv(skipNsNode),
         skipNodeLabels: csv(skipLabels),
         skipNodeTaints: csv(skipTaints),
-      }),
+        schedulerEvalInterval: evalInterval.trim(),
+        schedulerAutoWake: autoWake,
+        schedulerReconcileWhileAwake: reconcileWhileAwake,
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['guardrails'] })
       setSaveError(null)
@@ -346,6 +362,49 @@ export default function GuardrailsForm() {
                   values={skipTaints}
                   onChange={setSkipTaints}
                   readOnly={!hasEdit}
+                />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Scheduler */}
+        <Grid size={12}>
+          <Card>
+            <CardContent sx={{ p: 3 }}>
+              <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
+                Scheduler Behaviour
+              </Typography>
+              <Typography variant="body2" color="text.secondary" mb={2.5}>
+                Control how the policy evaluation loop runs.
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box sx={{ maxWidth: 200 }}>
+                  <TextField
+                    label="Eval Interval"
+                    size="small"
+                    fullWidth
+                    value={evalInterval}
+                    disabled={!hasEdit}
+                    error={!!evalIntervalError}
+                    helperText={evalIntervalError || 'How often policies are checked (e.g. 30s, 1m)'}
+                    onChange={(e) => setEvalInterval(e.target.value)}
+                    slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
+                  />
+                </Box>
+                <LabeledSwitch
+                  label="Auto Wake"
+                  description="Automatically wake clusters when outside a sleep window. Disable for sleep-only mode."
+                  checked={autoWake}
+                  disabled={!hasEdit}
+                  onChange={setAutoWake}
+                />
+                <LabeledSwitch
+                  label="Reconcile While Awake"
+                  description="Keep evaluating policies during awake windows. Disable to skip checks between sleep windows."
+                  checked={reconcileWhileAwake}
+                  disabled={!hasEdit}
+                  onChange={setReconcileWhileAwake}
                 />
               </Box>
             </CardContent>

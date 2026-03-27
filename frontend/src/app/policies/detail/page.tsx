@@ -24,13 +24,14 @@ import {
   getPolicyOverrides,
   getExceptions,
 } from '@/lib/api'
-import type { ScheduledException, SnackMessage } from '@/lib/types'
+import type { PolicyExecution, ScheduledException, SnackMessage } from '@/lib/types'
 import CreatePolicyDialog from '@/components/policies/CreatePolicyDialog'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
 import LedGlowTimeline from '@/components/policies/LedGlowTimeline'
 import OverridesSection from '@/components/policies/OverridesSection'
 import ExceptionsSection from '@/components/policies/ExceptionsSection'
 import ExecutionHistoryTable from '@/components/policies/ExecutionHistoryTable'
+import LogViewer from '@/components/history/LogViewer'
 import { windowsToText, computeWeeklyStats, hasSleepWindows } from '@/lib/windowUtils'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules, canTriggerSchedules } from '@/lib/rbac'
@@ -69,6 +70,7 @@ export default function PolicyDetailPage() {
   const [exceptionOpen, setExceptionOpen] = useState(false)
   const [editingException, setEditingException] = useState<ScheduledException | undefined>()
   const [snack, setSnack] = useState<SnackMessage | null>(null)
+  const [selectedExec, setSelectedExec] = useState<PolicyExecution | null>(null)
 
   const canEdit = canEditSchedules(user?.permissions)
   const canTrigger = canTriggerSchedules(user?.permissions)
@@ -362,9 +364,11 @@ export default function PolicyDetailPage() {
         <ExecutionHistoryTable
           executions={executions}
           policyId={policyId}
-          onRowClick={(ex) => router.push(`/policies/detail/?id=${policyId}&exec=${ex.id}`)}
+          onRowClick={setSelectedExec}
         />
       </Box>
+
+      <LogViewer execution={selectedExec} onClose={() => setSelectedExec(null)} />
 
       {/* ── Dialogs ───────────────────────────────────────────────────── */}
       <CreatePolicyDialog

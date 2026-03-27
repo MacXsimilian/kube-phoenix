@@ -76,7 +76,16 @@ func main() {
 	defer cancel()
 
 	// ── Policy scheduler ──────────────────────────────────────────────────
-	policySched := scheduler.NewPolicyScheduler(st, k8s)
+	g, err := st.GetGuardrails()
+	if err != nil {
+		slog.Error("failed to load guardrails", "err", err)
+		os.Exit(1)
+	}
+	policySched := scheduler.NewPolicyScheduler(st, k8s, scheduler.SchedulerConfig{
+		TickInterval:        g.ParseSchedulerEvalInterval(),
+		AutoWake:            g.SchedulerAutoWake,
+		ReconcileWhileAwake: g.SchedulerReconcileWhileAwake,
+	})
 	if k8s != nil {
 		if err := policySched.Start(ctx); err != nil {
 			slog.Error("policy scheduler failed to start", "err", err)

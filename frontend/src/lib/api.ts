@@ -63,6 +63,9 @@ export const updateGuardrails = (data: Partial<Guardrails>): Promise<Guardrails>
       skipNsNode: data.skipNsNode,
       skipNodeLabels: data.skipNodeLabels,
       skipNodeTaints: data.skipNodeTaints,
+      schedulerEvalInterval: data.schedulerEvalInterval,
+      schedulerAutoWake: data.schedulerAutoWake,
+      schedulerReconcileWhileAwake: data.schedulerReconcileWhileAwake,
     }),
   })
 

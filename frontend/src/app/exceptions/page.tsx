@@ -17,6 +17,11 @@ import TableCell from '@mui/material/TableCell'
 import IconButton from '@mui/material/IconButton'
 import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogContentText from '@mui/material/DialogContentText'
+import DialogActions from '@mui/material/DialogActions'
 import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
@@ -37,6 +42,7 @@ export default function ExceptionsPage() {
   const [editing, setEditing] = useState<ScheduledException | undefined>()
   const [tab, setTab] = useState(0)
   const [snack, setSnack] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<ScheduledException | null>(null)
 
   const statusFilter = tab === 0 ? undefined : STATUS_TABS[tab]
 
@@ -56,6 +62,17 @@ export default function ExceptionsPage() {
       setSnack({ msg: err instanceof Error ? err.message : 'Cancel failed', severity: 'error' })
     },
   })
+
+  function confirmDelete(ex: ScheduledException) {
+    setPendingDelete(ex)
+  }
+
+  function handleDeleteConfirmed() {
+    if (pendingDelete) {
+      deleteMut.mutate(pendingDelete.id)
+    }
+    setPendingDelete(null)
+  }
 
   const canEdit = canEditSchedules(user?.permissions)
 
@@ -158,7 +175,7 @@ export default function ExceptionsPage() {
                         <IconButton
                           size="small"
                           color="error"
-                          onClick={() => deleteMut.mutate(ex.id)}
+                          onClick={() => confirmDelete(ex)}
                           aria-label="Cancel exception"
                         >
                           <DeleteOutlineIcon fontSize="small" />
@@ -179,6 +196,23 @@ export default function ExceptionsPage() {
         existing={editing}
         onNotify={(msg, severity) => setSnack({ msg, severity })}
       />
+
+      <Dialog open={!!pendingDelete} onClose={() => setPendingDelete(null)}>
+        <DialogTitle>Cancel exception?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {pendingDelete?.ticketRef
+              ? `This will cancel exception ${pendingDelete.ticketRef}. This action cannot be undone.`
+              : 'This will cancel the exception. This action cannot be undone.'}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingDelete(null)}>Keep</Button>
+          <Button color="error" variant="contained" onClick={handleDeleteConfirmed}>
+            Cancel exception
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={!!snack}

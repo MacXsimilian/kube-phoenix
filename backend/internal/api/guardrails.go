@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 )
 
 func (h *Handler) getGuardrails(w http.ResponseWriter, r *http.Request) {
@@ -28,11 +30,14 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 
 	// Map camelCase JSON keys to snake_case GORM column names.
 	fieldMap := map[string]string{
-		"systemNamespaces": "system_namespaces",
-		"skipNamespaces":   "skip_namespaces",
-		"skipNsNode":       "skip_ns_node",
-		"skipNodeLabels":   "skip_node_labels",
-		"skipNodeTaints":   "skip_node_taints",
+		"systemNamespaces":             "system_namespaces",
+		"skipNamespaces":               "skip_namespaces",
+		"skipNsNode":                   "skip_ns_node",
+		"skipNodeLabels":               "skip_node_labels",
+		"skipNodeTaints":               "skip_node_taints",
+		"schedulerEvalInterval":        "scheduler_eval_interval",
+		"schedulerAutoWake":            "scheduler_auto_wake",
+		"schedulerReconcileWhileAwake": "scheduler_reconcile_while_awake",
 	}
 	updates := map[string]interface{}{}
 	for jsonKey, dbCol := range fieldMap {
@@ -53,6 +58,17 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Info("guardrails updated")
 	h.audit(r, "guardrail.update", "guardrail", nil, old, g)
+
+	if h.policyScheduler != nil {
+		if err := h.policyScheduler.UpdateSettings(scheduler.SchedulerConfig{
+			TickInterval:        g.ParseSchedulerEvalInterval(),
+			AutoWake:            g.SchedulerAutoWake,
+			ReconcileWhileAwake: g.SchedulerReconcileWhileAwake,
+		}); err != nil {
+			slog.Error("scheduler settings update failed", "err", err)
+		}
+	}
+
 	jsonOK(w, g)
 }
 

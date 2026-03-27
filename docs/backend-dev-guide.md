@@ -22,7 +22,7 @@
 
 ## 1. Overview
 
-kube-phoenix is a Kubernetes cluster sleep/wake policy engine that reduces cloud spend by scaling workloads to zero and draining nodes during off-hours, then restoring them on schedule. The backend is a single Go binary that serves a REST API, WebSocket and SSE endpoints, Prometheus metrics, and an embedded Next.js SPA -- all from a single HTTP listener on port 8080. A 30-second evaluation ticker continuously reconciles intended state (derived from policy sleep windows, overrides, and exceptions) against actual cluster state, triggering sleep or wake executions when they diverge.
+kube-phoenix is a Kubernetes cluster sleep/wake policy engine that reduces cloud spend by scaling workloads to zero and draining nodes during off-hours, then restoring them on schedule. The backend is a single Go binary that serves a REST API, WebSocket and SSE endpoints, Prometheus metrics, and an embedded Next.js SPA -- all from a single HTTP listener on port 8080. A configurable evaluation ticker (default 30 seconds) continuously reconciles intended state (derived from policy sleep windows, overrides, and exceptions) against actual cluster state, triggering sleep or wake executions when they diverge.
 
 **Tech stack:** Go (Chi v5 router, GORM ORM, gorilla/websocket), PostgreSQL 17, client-go for Kubernetes API access, Prometheus client for metrics.
 
@@ -84,7 +84,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `overview.go` | `getOverview`, `streamCluster` (SSE), `buildOverview` |
 | `guardrails.go` | `getGuardrails`, `updateGuardrails` |
 | `users.go` | `listUsers`, `createUser`, `updateUser`, `deleteUser` |
-| `audit.go` | `AuditWriter.Start()`, `Handler.audit()` |
+| `audit.go` | `AuditWriter.Start()`, `Handler.audit()`, `marshalOrNull()` |
 | `admin.go` | `resetDB` -- streams NDJSON progress events while dropping/recreating all tables |
 | `ws.go` | `wsReadPump`, `wsSendLines`, `wsDrainChannel`, `wsStreamLoop` -- WebSocket helpers |
 | `helpers.go` | `jsonOK`, `jsonCreated`, `jsonError`, `jsonInternalError`, `parseID`, `reloadScheduler` |
@@ -96,24 +96,26 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 ### `internal/scheduler` -- Policy Scheduler and Engine
 
-**Purpose:** Evaluate policies on a 30-second tick and orchestrate sleep/wake executions when intended state diverges from actual state.
+**Purpose:** Evaluate policies on a configurable tick interval (default 30 seconds) and orchestrate sleep/wake executions when intended state diverges from actual state.
 
 **Key types:**
 - `PolicyScheduler` -- owns the tick loop, in-memory policy cache (`map[uint]cachedPolicy`), `PolicyRunner` (from `scaler`), and `Broker`. Protected by `sync.Mutex`.
 - `cachedPolicy` -- pairs a `store.Policy` with its parsed `[]policy.SleepWindow`.
 - `PolicyState` -- string enum: `"sleeping"`, `"awake"`, `"unknown"`.
 - `Broker` -- in-process pub/sub for execution log lines (see `broker.go`).
+- `SchedulerConfig` -- groups the three runtime-tunable settings: `TickInterval`, `AutoWake`, `ReconcileWhileAwake`.
 
 **Key functions:**
-- `NewPolicyScheduler(st, k8sClient)` -- constructor.
+- `NewPolicyScheduler(st, k8sClient, cfg SchedulerConfig)` -- constructor.
 - `Start(ctx)` / `Stop()` -- lifecycle; `Start` calls `reload()` then launches `tickLoop`.
 - `Reload()` -- re-reads all enabled policies from DB; called after any policy CRUD.
 - `RecoverPolicies(ctx)` -- startup reconciliation: compares `CurrentState` against `IntendedState` and queues recovery executions for mismatches.
 - `RunSleepNow(policyID, trigger)` / `RunWakeNow(policyID, trigger)` -- manual triggers; return the new execution ID.
-- `TickExceptions(ctx)` -- called every 60s; activates pending exceptions whose `StartsAt` has passed and completes active exceptions whose `EndsAt` has passed.
+- `TickExceptions(ctx)` -- called every 60s; delegates to `maybeStartException` (pending → active when `StartsAt` passes) and `maybeEndException` (active → completed when `EndsAt` passes, triggers sleep-on-end if configured).
 - `run(ctx, policy, direction, trigger)` -- core orchestration: sets `transitioning` state, creates `PolicyExecution`, spawns goroutine that runs `PolicyRunner.RunPolicySleep/Wake`, persists log lines, publishes to broker, records metrics, updates policy state.
 - `evaluateAll()` -- snapshots the cached policy map and calls `evaluatePolicy` for each.
 - `evaluatePolicy(cp, now)` -- computes `IntendedState`, checks for skip overrides, fires `run()` on mismatch.
+- `UpdateSettings(cfg SchedulerConfig) error` -- apply new eval interval, auto-wake, and reconcile-while-awake at runtime; restarts the ticker goroutine only if the interval changed.
 
 **Policy Engine (`policy_engine.go`):**
 - `IntendedState(windows, timezone, overrides, now)` -- override precedence: `force_sleep` > `stay_awake` > window evaluation.
@@ -226,7 +228,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `store.go` | `New(dsn)` -- opens PostgreSQL connection, configures pool (10 open, 5 idle, 5m lifetime), runs `AutoMigrate`, adds CHECK constraints, migrates legacy cron columns. `Ping()`, `DB()`, `Tx()`. |
 | `models.go` | All GORM model struct definitions with tags. |
 | `status.go` | String constants: `PolicyState*`, `PolicyMode*`, `ExecStatus*`, `ExceptionStatus*`. |
-| `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning`, `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`. Log lines: `AppendPolicyLogLine`, `GetPolicyLogLines`. Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `GetSnapshotsForExecution/Policy`, `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`. Exceptions: `Create/Get/List/Update/Delete ScheduledException`, `ListPendingExceptions`, `UpdateScheduledExceptionStatus`. |
+| `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning`, `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`. Log lines: `AppendPolicyLogLine`, `GetPolicyLogLines`. Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `GetSnapshotsForExecution/Policy`, `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`. Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason), `ListOpenExceptions`, `UpdateScheduledExceptionStatus`. |
 | `queries.go` | `GetGuardrails`, `UpdateGuardrails`, `SeedDefaults`, `DropAllTables`, `MigrateSchema`. |
 | `users.go` | `CreateUser`, `GetUserByID/Username`, `ListUsers`, `UpdateUser`, `DeleteUser` (transactional), `UpdateLastLogin`, `ChangePassword`, `GetOrCreateOIDCUser`, `HashPassword`, `CheckPassword`. |
 | `sessions.go` | `GenerateToken`, `CreateSession`, `GetSessionByToken` (with expiry check), `ExtendSession` (sliding window capped at `max_expires_at`), `DeleteSession`, `DeleteUserSessions`, `CleanExpiredSessions`, `CountActiveSessions`. |
@@ -361,12 +363,17 @@ type Guardrails struct {
     SkipNamespaces   string    // CSV: user-managed skip list
     SkipNsNode       string    // CSV: namespaces whose pods protect the node from draining
     SkipNodeLabels   string    // CSV key=value pairs: nodes with these labels are protected
-    SkipNodeTaints   string    // CSV key=value:effect: nodes with these taints are protected
-    UpdatedAt        time.Time
+    SkipNodeTaints               string    // CSV key=value:effect: nodes with these taints are protected
+    SchedulerEvalInterval        string    // parsed by ParseSchedulerEvalInterval(); default "30s"
+    SchedulerAutoWake            bool      // default true
+    SchedulerReconcileWhileAwake bool      // default true
+    UpdatedAt                   time.Time
 }
 ```
 
 Seeded with production defaults in `SeedDefaults()`. The scaler reads these before every execution to determine what to skip.
+
+`ParseSchedulerEvalInterval() time.Duration` is a method on `Guardrails` that parses `SchedulerEvalInterval` as a Go duration string and falls back to 30s on empty, invalid, or non-positive values.
 
 #### User
 
@@ -735,12 +742,13 @@ Client
 
 This is the heart of kube-phoenix. Understanding this section is essential for any backend work.
 
-### The 30-Second Tick Loop
+### The Evaluation Tick Loop
 
 ```go
 // policy_scheduler.go
-func (ps *PolicyScheduler) tickLoop(ctx context.Context) {
-    ticker := time.NewTicker(30 * time.Second)
+// interval is snapshotted from ps.cfg.TickInterval in Start() under the mutex.
+func (ps *PolicyScheduler) tickLoop(ctx context.Context, interval time.Duration) {
+    ticker := time.NewTicker(interval)
     for {
         select {
         case <-ctx.Done(): return
@@ -750,7 +758,7 @@ func (ps *PolicyScheduler) tickLoop(ctx context.Context) {
 }
 ```
 
-`evaluateAll()` takes a snapshot of the in-memory policy cache (under mutex), then evaluates each policy without holding the lock.
+`evaluateAll()` takes a snapshot of the in-memory policy cache (under mutex), then evaluates each policy without holding the lock. The tick interval is configurable via the Guardrails UI (Scheduler Behaviour card) and defaults to 30 seconds.
 
 ### How IntendedState is Determined
 
@@ -1013,12 +1021,14 @@ Chi middleware adds request-level logging (via `chiMiddleware.Logger`).
 
 **Flow:**
 1. Handler calls `h.audit(r, action, resourceType, resourceID, before, after)`.
-2. `audit()` extracts user from context, serializes `before`/`after` to JSON, creates an `AuditLog` entry.
+2. `audit()` extracts user from context, calls `marshalOrNull()` on `before` and `after` to produce valid JSON strings (`"null"` when the argument is nil), then builds an `AuditLog` entry.
 3. Non-blocking send to `auditWriter.ch`:
    - If buffer has room: entry is queued.
    - If buffer is full: entry is dropped, `kube_phoenix_audit_drops_total` is incremented, warning logged.
 4. `AuditWriter.Start()` goroutine drains the channel and persists entries to PostgreSQL.
 5. On context cancellation (shutdown), remaining entries are flushed.
+
+**`marshalOrNull(v interface{}) string`:** Serialises `v` to a JSON string. Returns the literal string `"null"` when `v` is nil or marshalling fails. This is important because the `before`/`after` columns are `jsonb` in PostgreSQL, which rejects empty strings — `"null"` is the correct JSON representation of an absent value.
 
 **What gets logged:**
 - `auth.login`, `auth.logout`, `auth.password_change`
@@ -1029,7 +1039,7 @@ Chi middleware adds request-level logging (via `chiMiddleware.Logger`).
 - `guardrail.update`
 - `admin.reset_db`
 
-Each entry records `before` and `after` state as JSONB, enabling diff views in the UI.
+Each entry records `before` and `after` state as JSONB. Creates store `before = "null"`, deletes store `after = "null"`. The frontend diff view uses these to classify each field as added, removed, changed, or unchanged.
 
 ---
 
@@ -1195,7 +1205,7 @@ h.audit(r, "policy.update", "policy", &id, oldPolicy, newPolicy)
 h.audit(r, "policy.delete", "policy", &id, oldPolicy, nil)
 ```
 
-Parameters: `(request, action, resourceType, resourceID, before, after)`. Both `before` and `after` are serialized to JSON. `before=nil` for creates, `after=nil` for deletes.
+Parameters: `(request, action, resourceType, resourceID, before, after)`. Both `before` and `after` are serialized to JSON via `marshalOrNull()`. `before=nil` for creates (stored as `"null"`), `after=nil` for deletes (stored as `"null"`). Storing `"null"` rather than an empty string is required because the DB columns are `jsonb` — PostgreSQL rejects empty strings in jsonb columns.
 
 ### Scheduler Reload
 

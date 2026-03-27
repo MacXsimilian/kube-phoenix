@@ -100,6 +100,8 @@ frontend/
       history/
         ExecutionTable.tsx      # Paginated execution list (global history page)
         LogViewer.tsx           # WebSocket-driven execution log drawer with summary
+      common/
+        LabeledSwitch.tsx       # Shared labeled toggle: Switch + bold title + caption description
       shared/
         StatusChip.tsx          # Reusable status chip with color mapping
       guardrails/
@@ -574,7 +576,7 @@ Bands (top to bottom):
 1. **Hero band** -- state-colored gradient background (`HERO_HEADER_GRADIENTS`), back button, 64px state icon, policy name + description, large state label, mode/enabled chips, action buttons (Sleep Now, Wake Now, Edit, Exception)
 2. **Timeline band** -- `LedGlowTimeline` filling the left, weekly stats (Sleep/Week, Awake/Week, Next Transition with countdown) on the right
 3. **Overrides + Exceptions band** -- subtle alternating background, side-by-side `OverridesSection` and `ExceptionsSection` (wraps on mobile)
-4. **Execution History band** -- `ExecutionHistoryTable` at full width
+4. **Execution History band** -- `ExecutionHistoryTable` at full width. Clicking a row opens the log viewer drawer inline (same behaviour as the History page), using `selectedExec` state and the `LogViewer` component.
 
 #### WindowPicker
 
@@ -713,6 +715,45 @@ const TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> 
 
 **OverridesSection** includes an inline create form (not a dialog) that expands within the section. Override types `stay_awake` and `force_sleep` require start/end datetime fields; `skip_sleep` and `skip_wake` require a single target cron time.
 
+### Audit Log
+
+**Page:** `src/app/audit/page.tsx`
+
+Displays a paginated, filterable table of audit log entries. Gated by the `audit.view` permission — users without it are redirected to `/overview/`.
+
+**Filters:** `User` (debounced text, exact-match) and `Action` (dropdown built from `ACTION_LABELS`). Both reset pagination to page 0 on change.
+
+**Expandable diff rows:** Entries that carry `before` or `after` data show an expand chevron. Clicking it opens a `JsonDiffView` panel inside a `Collapse`.
+
+#### JsonDiffView
+
+The diff panel compares the `before` and `after` JSON snapshots from the audit entry and renders a line-by-line diff with colour coding:
+
+| Symbol | Colour | Meaning |
+|:-------|:-------|:--------|
+| `+` | green | Field only in `after` (added) |
+| `-` | red | Field only in `before` (removed) |
+| `~` | amber | Field in both, value changed (shows ~~old~~ `new` inline) |
+| ` ` | dimmed | Field unchanged (35% opacity) |
+
+A summary line above the panel shows the count of changed fields.
+
+**Key helpers (all defined in `audit/page.tsx`):**
+
+| Symbol | Purpose |
+|:-------|:--------|
+| `NULL_SNAPSHOT` | Constant `'null'` — the string value stored in the DB when before/after is absent |
+| `isEmptySnapshot(json?)` | Returns `true` when `json` is falsy or equals `NULL_SNAPSHOT` |
+| `flattenToLeaves(value, prefix?)` | Recursively flattens an object to dot-notation key → JSON-value pairs (e.g. `{ "settings.timezone": '"UTC"' }`) |
+| `parseSnapshot(json)` | Parses a JSON string and flattens it; returns `null` on parse error |
+| `classifyLine(key, before?, after?)` | Classifies a single key as `added`, `removed`, `changed`, or `unchanged` |
+| `computeDiff(beforeJson?, afterJson?)` | Orchestrates snapshot parsing and line classification; returns `null` when both snapshots are empty |
+| `formatChangeSummary(count)` | Formats the "N fields changed" summary label |
+| `DIFF_STYLE` | `Record<DiffType, { bg, border, text, prefix }>` — single source of truth for all diff styling per type |
+| `DiffLineRow` | Renders a single classified diff line with the appropriate colours and prefix symbol |
+
+---
+
 ### Settings
 
 **Page:** `src/app/settings/page.tsx`
@@ -753,6 +794,10 @@ The guardrails editor uses a custom `ChipInput` component for tag-like editing:
 The `ProtectedChipInput` variant (for system namespaces) adds a confirmation dialog when removing a chip, warning that removing a system-protected namespace could affect critical infrastructure.
 
 Data is loaded from the API as CSV strings and split with `fromCsv()`. On save, arrays are joined back with `csv()`.
+
+The form also includes a "Scheduler Behaviour" card with three controls: an `Eval Interval` text field (Go duration string, validated with a regex before save) and two `LabeledSwitch` toggles for `Auto Wake` and `Reconcile While Awake`. These map to the three scheduler settings in the `Guardrails` model (`SchedulerEvalInterval`, `SchedulerAutoWake`, `SchedulerReconcileWhileAwake`).
+
+**`LabeledSwitch`** (`components/common/LabeledSwitch.tsx`): A shared component that renders a `FormControlLabel` wrapping a `Switch` with a two-line label (bold title + secondary caption). Used by `GuardrailsForm` and `ExceptionDialog`.
 
 ---
 

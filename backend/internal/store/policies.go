@@ -343,9 +343,8 @@ func (s *Store) ListScheduledExceptions(f ScheduledExceptionFilter) ([]Scheduled
 	return items, query.Order("starts_at asc").Find(&items).Error
 }
 
-// ListPendingExceptions returns all pending or active exceptions that should
-// be evaluated. Called by the policy scheduler tick.
-func (s *Store) ListPendingExceptions() ([]ScheduledException, error) {
+// ListOpenExceptions returns all pending or active exceptions for scheduler evaluation.
+func (s *Store) ListOpenExceptions() ([]ScheduledException, error) {
 	var items []ScheduledException
 	return items, s.db.Where("status IN (?,?)", ExceptionStatusPending, ExceptionStatusActive).Order("starts_at asc").Find(&items).Error
 }
@@ -353,10 +352,18 @@ func (s *Store) ListPendingExceptions() ([]ScheduledException, error) {
 func (s *Store) UpdateScheduledExceptionStatus(id uint, status string) error {
 	updates := map[string]interface{}{"status": status}
 	if status == ExceptionStatusCancelled {
-		now := time.Now()
-		updates["cancelled_at"] = now
+		updates["cancelled_at"] = time.Now()
 	}
 	return s.db.Model(&ScheduledException{}).Where("id = ?", id).Updates(updates).Error
+}
+
+// CancelScheduledException atomically sets status, cancelled_at, and cancel_reason in one write.
+func (s *Store) CancelScheduledException(id uint, reason string) error {
+	return s.db.Model(&ScheduledException{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"status":        ExceptionStatusCancelled,
+		"cancelled_at":  time.Now(),
+		"cancel_reason": reason,
+	}).Error
 }
 
 func (s *Store) UpdateScheduledException(id uint, updates map[string]interface{}) (*ScheduledException, error) {
@@ -364,33 +371,22 @@ func (s *Store) UpdateScheduledException(id uint, updates map[string]interface{}
 		"exception_type": true, "starts_at": true, "ends_at": true,
 		"ticket_ref": true, "reason": true, "sleep_on_end": true,
 		"namespace_filter": true, "label_selector": true, "workload_targets": true,
-		"cancel_reason": true,
 	}
-	for key := range updates {
-		if !allowed[key] {
-			delete(updates, key)
+	filtered := make(map[string]interface{}, len(updates))
+	for key, val := range updates {
+		if allowed[key] {
+			filtered[key] = val
 		}
 	}
-	if len(updates) == 0 {
+	if len(filtered) == 0 {
 		return s.GetScheduledException(id)
 	}
-	keys := make([]string, 0, len(updates))
-	for key := range updates {
+	keys := make([]string, 0, len(filtered))
+	for key := range filtered {
 		keys = append(keys, key)
 	}
-	if err := s.db.Model(&ScheduledException{}).Where("id = ?", id).Select(keys).Updates(updates).Error; err != nil {
+	if err := s.db.Model(&ScheduledException{}).Where("id = ?", id).Select(keys).Updates(filtered).Error; err != nil {
 		return nil, fmt.Errorf("update exception: %w", err)
 	}
 	return s.GetScheduledException(id)
-}
-
-func (s *Store) DeleteScheduledException(id uint) error {
-	result := s.db.Delete(&ScheduledException{}, id)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
 }

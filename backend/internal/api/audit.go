@@ -50,6 +50,19 @@ func (aw *AuditWriter) Start(ctx context.Context) {
 	}
 }
 
+// marshalOrNull serialises v to a JSON string, or returns "null" if v is nil
+// or marshalling fails.
+func marshalOrNull(v interface{}) string {
+	if v == nil {
+		return "null"
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "null"
+	}
+	return string(b)
+}
+
 // audit enqueues an audit log entry. Non-blocking — drops the entry if the
 // buffer is full and increments the drop counter.
 func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID *uint, before, after interface{}) {
@@ -61,26 +74,14 @@ func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID
 		userID = &user.ID
 	}
 
-	var beforeJSON, afterJSON string
-	if before != nil {
-		if b, err := json.Marshal(before); err == nil {
-			beforeJSON = string(b)
-		}
-	}
-	if after != nil {
-		if b, err := json.Marshal(after); err == nil {
-			afterJSON = string(b)
-		}
-	}
-
 	entry := &store.AuditLog{
 		UserID:       userID,
 		Username:     username,
 		Action:       action,
 		ResourceType: resourceType,
 		ResourceID:   resourceID,
-		Before:       beforeJSON,
-		After:        afterJSON,
+		Before:       marshalOrNull(before),
+		After:        marshalOrNull(after),
 		IPAddress:    r.RemoteAddr,
 		Timestamp:    time.Now(),
 	}
