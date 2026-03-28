@@ -140,7 +140,11 @@ func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
 	if p.Mode == "" {
 		p.Mode = "plan"
 	}
-	p.CurrentState = "unknown"
+	// Compute the initial state from sleep windows instead of defaulting to "unknown".
+	now := time.Now()
+	initialState := scheduler.IntendedState(input.SleepWindows, p.Timezone, nil, now)
+	p.CurrentState = string(initialState)
+	p.StateSince = &now
 
 	if p.Mode == store.PolicyModeApply {
 		overlap, err := h.store.HasApplyPolicyOverlap(0, p.NamespaceFilter, p.LabelSelector)
@@ -161,7 +165,7 @@ func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	metrics.PolicyOperationsTotal.WithLabelValues("create", "success").Inc()
 	slog.Info("policy created", "policyID", p.ID, "name", p.Name)
-	h.audit(r, "policy.create", "policy", &p.ID, nil, p)
+	h.audit(r, "policy.create", "policy", &p.ID, nil, policyAuditSnapshot(p))
 	h.reloadScheduler(p.ID)
 	jsonCreated(w, h.policyResp(p))
 }
@@ -425,6 +429,42 @@ func validatePolicyFields(p store.Policy) string {
 		return msg
 	}
 	return ""
+}
+
+// policyAuditSnapshot builds a clean map for audit logs, omitting null/zero
+// derived-state fields that carry no information on create events.
+func policyAuditSnapshot(p store.Policy) map[string]interface{} {
+	m := map[string]interface{}{
+		"id":           p.ID,
+		"name":         p.Name,
+		"mode":         p.Mode,
+		"enabled":      p.Enabled,
+		"currentState": p.CurrentState,
+		"timezone":     p.Timezone,
+		"createdAt":    p.CreatedAt,
+	}
+	if p.Description != "" {
+		m["description"] = p.Description
+	}
+	if p.NamespaceFilter != "" {
+		m["namespaceFilter"] = p.NamespaceFilter
+	}
+	if p.LabelSelector != "" {
+		m["labelSelector"] = p.LabelSelector
+	}
+	if p.TimeoutMinutes != 0 {
+		m["timeoutMinutes"] = p.TimeoutMinutes
+	}
+	if p.StateSince != nil {
+		m["stateSince"] = p.StateSince
+	}
+	if p.LastSleepAt != nil {
+		m["lastSleepAt"] = p.LastSleepAt
+	}
+	if p.LastWakeAt != nil {
+		m["lastWakeAt"] = p.LastWakeAt
+	}
+	return m
 }
 
 func validatePolicyUpdates(updates map[string]interface{}) string {
