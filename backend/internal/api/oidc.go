@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/auth"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"golang.org/x/oauth2"
 )
 
@@ -69,14 +69,13 @@ func (h *Handler) oidcLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store state and PKCE verifier in short-lived HTTP-only cookies.
-	secure := os.Getenv("COOKIE_SECURE") != "false"
 	http.SetCookie(w, &http.Cookie{
 		Name:     "__kp_oidc_state",
 		Value:    state,
 		Path:     "/api/auth/oidc",
 		MaxAge:   300, // 5 minutes
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   h.cookieSecure,
 		SameSite: http.SameSiteLaxMode, // Lax required for cross-site redirect
 	})
 	http.SetCookie(w, &http.Cookie{
@@ -85,7 +84,7 @@ func (h *Handler) oidcLogin(w http.ResponseWriter, r *http.Request) {
 		Path:     "/api/auth/oidc",
 		MaxAge:   300,
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   h.cookieSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
 
@@ -124,18 +123,7 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(claims.Groups) == 0 {
-		slog.Warn("oidc: no groups in token — user will be assigned viewer role",
-			"sub", claims.Sub, "username", claims.PreferredUsername, "claim", h.oidcProvider.GroupsClaim)
-	}
-
-	role := auth.MapGroupsToRole(claims.Groups, h.oidcProvider.AdminGroups, h.oidcProvider.OpGroups)
-	username := claims.PreferredUsername
-	if username == "" {
-		username = claims.Sub
-	}
-
-	user, err := h.store.GetOrCreateOIDCUser(claims.Sub, username, claims.Email, role, claims.GivenName, claims.FamilyName)
+	user, err := h.resolveOIDCUser(claims)
 	if err != nil {
 		jsonInternalError(w, err, "oidc user upsert failed")
 		return
@@ -148,6 +136,36 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.completeOIDCLogin(w, r, user)
+}
+
+// resolveOIDCUser maps OIDC claims to a local user record, creating or updating
+// as necessary.
+func (h *Handler) resolveOIDCUser(claims oidcClaims) (*store.User, error) {
+	if len(claims.Groups) == 0 {
+		slog.Warn("oidc: no groups in token — user will be assigned viewer role",
+			"sub", claims.Sub, "username", claims.PreferredUsername, "claim", h.oidcProvider.GroupsClaim)
+	}
+
+	role := auth.MapGroupsToRole(claims.Groups, h.oidcProvider.AdminGroups, h.oidcProvider.OpGroups)
+	username := claims.PreferredUsername
+	if username == "" {
+		username = claims.Sub
+	}
+
+	return h.store.GetOrCreateOIDCUser(store.OIDCUserInfo{
+		Sub:        claims.Sub,
+		Username:   username,
+		Email:      claims.Email,
+		Role:       role,
+		GivenName:  claims.GivenName,
+		FamilyName: claims.FamilyName,
+	})
+}
+
+// completeOIDCLogin finalises the OIDC login flow by creating the session,
+// recording metrics, and redirecting to the app root.
+func (h *Handler) completeOIDCLogin(w http.ResponseWriter, r *http.Request, user *store.User) {
 	metrics.AuthAttemptsTotal.WithLabelValues("success", "oidc").Inc()
 	if err := h.store.UpdateLastLogin(user.ID); err != nil {
 		slog.Warn("oidc: failed to update last_login_at", "userID", user.ID, "err", err)
