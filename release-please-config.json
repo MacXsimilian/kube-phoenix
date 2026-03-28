@@ -11,6 +11,11 @@
           "type": "yaml",
           "path": "helm/kube-phoenix/Chart.yaml",
           "jsonpath": "$.appVersion"
+        },
+        {
+          "type": "yaml",
+          "path": "helm/kube-phoenix/Chart.yaml",
+          "jsonpath": "$.version"
         }
       ]
     }
