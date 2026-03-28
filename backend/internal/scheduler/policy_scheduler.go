@@ -638,56 +638,15 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		defer cancel()
 
 		logCh := make(chan scaler.LogLine, execLogChannelBuffer)
-		seq := 0
 
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			const flushSize = 50
-			buf := make([]store.PolicyLogLine, 0, flushSize)
-
-			flush := func() {
-				if len(buf) == 0 {
-					return
-				}
-				if err := ps.store.AppendPolicyLogLines(buf); err != nil {
-					slog.Error("policy scheduler: log batch persist error", "execID", execID, "lines", len(buf), "err", err)
-				}
-				buf = buf[:0]
-			}
-
-			for line := range logCh {
-				seq++
-				dbLine := store.PolicyLogLine{
-					ExecutionID: execID,
-					Seq:         seq,
-					Level:       line.Level,
-					Message:     line.Message,
-					Timestamp:   line.Time,
-				}
-				// Publish immediately for live WebSocket streaming.
-				ps.Broker.Publish(execID, dbLine)
-				buf = append(buf, dbLine)
-				if len(buf) >= flushSize {
-					flush()
-				}
-			}
-			// Final flush for remaining lines.
-			flush()
+			ps.drainLogChannel(execID, logCh)
 		}()
 
-		var counts *scaler.Counts
-		var runErr error
-
-		switch direction {
-		case directionSleep:
-			counts, runErr = ps.runner.RunPolicySleep(runCtx, p, execID, logCh)
-		case directionWake:
-			counts, runErr = ps.runner.RunPolicyWake(runCtx, p, execID, logCh)
-		default:
-			runErr = fmt.Errorf("unknown direction: %s", direction)
-		}
+		counts, runErr := ps.executeScaler(runCtx, p, direction, execID, logCh)
 
 		close(logCh)
 		wg.Wait()
@@ -709,6 +668,53 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 	}()
 
 	return execID, nil
+}
+
+// drainLogChannel reads log lines from the scaler, publishes them to WebSocket
+// subscribers in real time, and batches them for DB persistence.
+func (ps *PolicyScheduler) drainLogChannel(execID uint, logCh <-chan scaler.LogLine) {
+	const flushSize = 50
+	buf := make([]store.PolicyLogLine, 0, flushSize)
+	seq := 0
+
+	flush := func() {
+		if len(buf) == 0 {
+			return
+		}
+		if err := ps.store.AppendPolicyLogLines(buf); err != nil {
+			slog.Error("policy scheduler: log batch persist error", "execID", execID, "lines", len(buf), "err", err)
+		}
+		buf = buf[:0]
+	}
+
+	for line := range logCh {
+		seq++
+		dbLine := store.PolicyLogLine{
+			ExecutionID: execID,
+			Seq:         seq,
+			Level:       line.Level,
+			Message:     line.Message,
+			Timestamp:   line.Time,
+		}
+		ps.Broker.Publish(execID, dbLine)
+		buf = append(buf, dbLine)
+		if len(buf) >= flushSize {
+			flush()
+		}
+	}
+	flush()
+}
+
+// executeScaler dispatches to the appropriate sleep or wake runner.
+func (ps *PolicyScheduler) executeScaler(ctx context.Context, p store.Policy, direction string, execID uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error) {
+	switch direction {
+	case directionSleep:
+		return ps.runner.RunPolicySleep(ctx, p, execID, logCh)
+	case directionWake:
+		return ps.runner.RunPolicyWake(ctx, p, execID, logCh)
+	default:
+		return nil, fmt.Errorf("unknown direction: %s", direction)
+	}
 }
 
 // finalizeExecution writes the completion status and counts to the database.
