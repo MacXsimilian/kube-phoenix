@@ -43,6 +43,9 @@ jobs:
 
       - run: npm ci
 
+      - name: npm audit (high + critical)
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Build
         id: fe_build
         run: |
@@ -165,6 +168,13 @@ jobs:
           version: "4.1.3"
 
       - run: helm lint helm/kube-phoenix
+
+      - name: Lint with example values
+        run: |
+          for f in examples/values-*.yaml; do
+            echo "--- helm lint -f $f ---"
+            helm lint helm/kube-phoenix -f "$f"
+          done
 
   # ── Docker build check ──────────────────────────────────────────────────────
   docker:
