@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/MacXsimilian/kube-phoenix/compare/v0.4.0...v0.4.1) (2026-03-28)
+
+
+### Performance Improvements
+
+* **cache:** replace ClusterCache polling with SharedInformers ([#260](https://github.com/MacXsimilian/kube-phoenix/issues/260)) ([150a806](https://github.com/MacXsimilian/kube-phoenix/commit/150a8065cabe1a8b5dd004920192564f1c545a9d))
+
 ## [0.4.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.21...v0.4.0) (2026-03-28)
 
 
