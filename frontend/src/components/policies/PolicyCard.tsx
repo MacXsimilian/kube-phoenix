@@ -20,7 +20,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { deletePolicy } from '@/lib/api'
 import type { Policy, SnackMessage } from '@/lib/types'
 import { windowsToText, hasSleepWindows } from '@/lib/windowUtils'
@@ -110,7 +110,7 @@ export default function PolicyCard({
 }) {
   const queryClient = useQueryClient()
   const router = useRouter()
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const [deleteDialog, setDeleteDialog] = useState(false)
   const STATE_COLORS = stateColors(isDark)
   const MODE_COLORS = modeColors(isDark)

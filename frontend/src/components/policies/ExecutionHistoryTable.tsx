@@ -15,7 +15,7 @@ import MenuItem from '@mui/material/MenuItem'
 import CircularProgress from '@mui/material/CircularProgress'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import StatusChip from '@/components/shared/StatusChip'
 import { fmtDtShort, fmtDuration } from '@/lib/formatters'
 import { modeColors, SMALL_CHIP_SX } from '@/lib/statusColors'
@@ -30,7 +30,7 @@ export default function ExecutionHistoryTable({
   executions: PolicyExecutionPage | undefined
   onRowClick: (exec: PolicyExecution) => void
 }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const MODE_COLORS = modeColors(isDark)
   const [statusFilter, setStatusFilter] = useState<string>('all')
 

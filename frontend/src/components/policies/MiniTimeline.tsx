@@ -4,7 +4,7 @@ import { useId, useState, useEffect, useMemo } from 'react'
 import Box from '@mui/material/Box'
 import Tooltip from '@mui/material/Tooltip'
 import type { SleepWindow } from '@/lib/types'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { timeToHours, isOvernight, windowsToText, nowInTimezone } from '@/lib/windowUtils'
 import { TIMELINE_COLORS } from '@/lib/colors'
 
@@ -33,7 +33,7 @@ export default function MiniTimeline({
   height?: number
   timezone?: string
 }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const uid = useId()
   const gradIdAwake = `spark-awake-${uid}`
   const gradIdSleep = `spark-sleep-${uid}`

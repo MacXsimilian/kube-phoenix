@@ -27,7 +27,7 @@ import { getNodes } from '@/lib/api'
 import type { Node } from '@/lib/types'
 import { fmtCpu, fmtMem, podAge, sinceMs, pct, pctColor } from '@/lib/formatters'
 import { nodeStatusMap } from '@/components/cluster/statusColors'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { useColors } from '@/lib/colors'
 import { NODES_REFETCH_MS } from '@/lib/constants'
 import MiniBar from './MiniBar'
@@ -91,7 +91,7 @@ interface NodeRowProps {
 }
 
 function NodeRow({ node, groupByZone, isSelected, onSelect }: NodeRowProps) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const colors = useColors()
   const statusColor = nodeStatusMap(isDark)[node.status]
   const statusChip = (
@@ -150,7 +150,7 @@ export default function NodesTable() {
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(20)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const colors = useColors()
 
   function handleSort(col: SortCol) {

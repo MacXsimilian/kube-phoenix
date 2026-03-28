@@ -14,7 +14,7 @@ import TableRow from '@mui/material/TableRow'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import DnsIcon from '@mui/icons-material/Dns'
 import StorageIcon from '@mui/icons-material/Storage'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { semanticColors } from '@/lib/colors'
 import { parseSummary, type WorkloadEntry, type NodeEntry } from './parseSummary'
 import type { LogLine } from '@/lib/types'
@@ -39,7 +39,7 @@ function nodeChip(isDark: boolean): Record<NodeEntry['action'], { label: string;
 }
 
 export default function ExecutionSummary({ lines }: { lines: LogLine[] }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const { workloads, nodes, errors } = parseSummary(lines)
 
   if (workloads.length === 0 && nodes.length === 0 && errors.length === 0) return null

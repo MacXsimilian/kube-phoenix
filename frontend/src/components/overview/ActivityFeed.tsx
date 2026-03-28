@@ -23,7 +23,7 @@ import { useColors } from '@/lib/colors'
 import { ACTIVITY_FEED_STALE_MS, ACTIVITY_FEED_REFETCH_MS } from '@/lib/constants'
 import StatusChip from '@/components/shared/StatusChip'
 import LogViewer from '@/components/history/LogViewer'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { modeColors } from '@/lib/statusColors'
 
 const livePulseAnimation = {
@@ -34,7 +34,7 @@ const livePulseAnimation = {
 export default function ActivityFeed() {
   const router = useRouter()
   const colors = useColors()
-  const MODE_COLORS = modeColors(useTheme().palette.mode === 'dark')
+  const MODE_COLORS = modeColors(useIsDark())
   const [selected, setSelected] = useState<PolicyExecution | null>(null)
   const { data, isLoading, isError } = useQuery({
     queryKey: ['policy-executions', 'feed'],

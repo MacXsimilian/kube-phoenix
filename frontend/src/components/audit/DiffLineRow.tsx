@@ -1,10 +1,10 @@
 import Box from '@mui/material/Box'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import type { DiffEntry } from './auditDiff'
 import { diffStyle } from './auditDiff'
 
 export default function DiffLineRow({ line }: { line: DiffEntry }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const styles = diffStyle(isDark)
   const style = styles[line.type]
   const isChanged = line.type !== 'unchanged'

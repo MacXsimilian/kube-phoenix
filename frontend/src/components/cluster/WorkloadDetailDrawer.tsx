@@ -24,7 +24,7 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import { getWorkloadPods } from '@/lib/api'
 import { sinceMs } from '@/lib/formatters'
 import { statusColors } from '@/components/cluster/statusColors'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { useColors } from '@/lib/colors'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import { WORKLOAD_PODS_REFETCH_MS } from '@/lib/constants'
@@ -66,7 +66,7 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
   const { width: drawerWidth, onMouseDown: handleResizeMouseDown, onTouchStart: handleResizeTouchStart } = useDrawerResize(560)
   const [search, setSearch] = useState('')
   const [selectedPod, setSelectedPod] = useState<NodePod | null>(null)
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const colors = useColors()
 
   const { data: pods = [], isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({

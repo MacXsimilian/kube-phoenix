@@ -1,11 +1,11 @@
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { executionStatusColors, executionStatusFallback } from '@/lib/statusColors'
 
 export default function StatusChip({ status }: { status: string }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const colors = executionStatusColors(isDark)
   const statusStyle = colors[status as keyof typeof colors] ?? executionStatusFallback(isDark)
 

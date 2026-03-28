@@ -22,7 +22,7 @@ import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import CloudOffIcon from '@mui/icons-material/CloudOff'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { PolicyExecution, LogLine } from '@/lib/types'
 import { LOG_LEVEL_COLORS_DARK, LOG_LEVEL_COLORS_LIGHT, modeColors } from '@/lib/statusColors'
@@ -33,8 +33,8 @@ import { SNACKBAR_AUTO_HIDE_MS } from '@/lib/constants'
 // ── Log line row ──────────────────────────────────────────────────────────────
 
 function LogLineRow({ line }: { line: LogLine }) {
-  const theme = useTheme()
-  const levelColors = theme.palette.mode === 'dark' ? LOG_LEVEL_COLORS_DARK : LOG_LEVEL_COLORS_LIGHT
+  const isDark = useIsDark()
+  const levelColors = isDark ? LOG_LEVEL_COLORS_DARK : LOG_LEVEL_COLORS_LIGHT
   return (
     <Box
       component="div"
@@ -63,7 +63,7 @@ export default function LogViewer({
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
-  const MODE_COLORS = modeColors(useTheme().palette.mode === 'dark')
+  const MODE_COLORS = modeColors(useIsDark())
   const [copied, setCopied] = useState(false)
   const { width: drawerWidth, onMouseDown: handleResizeMouseDown, onTouchStart: handleResizeTouchStart } = useDrawerResize(640)
   const [currentErrorIdx, setCurrentErrorIdx] = useState(-1)

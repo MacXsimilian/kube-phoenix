@@ -3,7 +3,7 @@
 import React from 'react'
 import Box from '@mui/material/Box'
 import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { nowInTimezone, DOW_MAP } from '@/lib/windowUtils'
 import { TIMELINE_COLORS } from '@/lib/colors'
 import LegendItem from './LegendItem'
@@ -61,7 +61,7 @@ export default function LedGlowTimeline({
   exceptions?: ScheduledException[]
   timezone?: string
 }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   if (!windows || windows.length === 0) return null
 
   const { dayOfWeek, fractionalHour: nowH } = nowInTimezone(timezone)

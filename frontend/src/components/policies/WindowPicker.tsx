@@ -12,7 +12,7 @@ import Switch from '@mui/material/Switch'
 import Chip from '@mui/material/Chip'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import AddIcon from '@mui/icons-material/Add'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import type { SleepWindow } from '@/lib/types'
 import { windowsToText, isOvernight } from '@/lib/windowUtils'
 
@@ -115,7 +115,7 @@ function WindowCard({
   onRemove: (idx: number) => void
   onToggleDay: (windowIdx: number, day: number) => void
 }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const [sH, sM] = w.allDay ? [0, 0] : parseHM(w.startTime)
   const [eH, eM] = w.allDay ? [0, 0] : parseHM(w.endTime)
   const overnightWin = !w.allDay && isOvernight(w)

@@ -1,5 +1,5 @@
 import Box from '@mui/material/Box'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import type { NodeTaint } from '@/lib/types'
 
 const TAINT_FALLBACK_DARK = { color: '#9e9e9e', bg: 'rgba(158,158,158,0.12)', borderColor: 'rgba(158,158,158,0.2)' }
@@ -11,7 +11,7 @@ interface TaintChipProps {
 }
 
 export default function TaintChip({ taint, effectColors }: TaintChipProps) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const style = effectColors[taint.effect] ?? (isDark ? TAINT_FALLBACK_DARK : TAINT_FALLBACK_LIGHT)
   return (
     <Box

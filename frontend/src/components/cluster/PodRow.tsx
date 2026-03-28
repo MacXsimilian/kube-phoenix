@@ -3,7 +3,7 @@ import TableCell from '@mui/material/TableCell'
 import TableRow from '@mui/material/TableRow'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { fmtCpu, fmtMem, podAge } from '@/lib/formatters'
 import { getPodStatusStyle } from '@/components/cluster/statusColors'
 import { useColors } from '@/lib/colors'
@@ -47,7 +47,7 @@ export default function PodRow({
   onClick?: () => void
   showOwner?: boolean
 }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const colors = useColors()
   const statusStyle = getPodStatusStyle(pod.status, isDark)
   const ownerColor = showOwner && pod.ownerKind ? (podOwnerColors(isDark)[pod.ownerKind] ?? podOwnerFallback(isDark)) : null

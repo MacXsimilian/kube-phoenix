@@ -25,7 +25,7 @@ import Tooltip from '@mui/material/Tooltip'
 import { getWorkloads } from '@/lib/api'
 import type { Workload } from '@/lib/types'
 import { sinceMs } from '@/lib/formatters'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { statusColors } from '@/components/cluster/statusColors'
 import { useColors } from '@/lib/colors'
 import { WORKLOADS_REFETCH_MS } from '@/lib/constants'
@@ -55,7 +55,7 @@ export default function WorkloadsTable() {
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(20)
   const [selectedWorkload, setSelectedWorkload] = useState<Workload | null>(null)
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const colors = useColors()
   const STATUS_COLORS = statusColors(isDark)
 

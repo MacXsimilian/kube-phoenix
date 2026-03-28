@@ -2,7 +2,7 @@ import Box from '@mui/material/Box'
 import LinearProgress from '@mui/material/LinearProgress'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { pct, pctColor } from '@/lib/formatters'
 
 export interface MiniBarProps {
@@ -12,7 +12,7 @@ export interface MiniBarProps {
 }
 
 export default function MiniBar({ used, total, label }: MiniBarProps) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const percentUsed = pct(used, total)
   const color = pctColor(percentUsed, isDark)
   return (

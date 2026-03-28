@@ -15,7 +15,7 @@ import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import StatusChip from '@/components/shared/StatusChip'
 import { fmtDt } from '@/lib/formatters'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { typeLabels, typeLabelFallback } from '@/lib/statusColors'
 import type { ScheduledException } from '@/lib/types'
 
@@ -30,7 +30,7 @@ export default function ExceptionsSection({
   onAddException: () => void
   onEditException: (ex: ScheduledException) => void
 }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const TYPE_LABELS = typeLabels(isDark)
   const TYPE_LABEL_FALLBACK = typeLabelFallback(isDark)
 

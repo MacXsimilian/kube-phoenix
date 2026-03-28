@@ -19,7 +19,7 @@ import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import TerminalIcon from '@mui/icons-material/Terminal'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { getPodDetail } from '@/lib/api'
 import { fmtCpu, fmtMem, podAge } from '@/lib/formatters'
 import { useColors } from '@/lib/colors'
@@ -53,7 +53,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 function ContainersSection({ containers }: { containers: PodContainer[] }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const colors = useColors()
   return (
     <Box>
@@ -113,7 +113,7 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
 }
 
 function ConditionsSection({ conditions }: { conditions: PodCondition[] }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const ordered = [...conditions].sort(
     (a, b) => CONDITION_ORDER.indexOf(a.type) - CONDITION_ORDER.indexOf(b.type)
   )
@@ -138,7 +138,7 @@ function ConditionsSection({ conditions }: { conditions: PodCondition[] }) {
 }
 
 function EventsSection({ events }: { events: PodEvent[] }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const colors = useColors()
   if (!events?.length) return null
   return (

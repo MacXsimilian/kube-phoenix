@@ -23,7 +23,7 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodePods } from '@/lib/api'
 import { fmtCpu, fmtMem, sinceMs } from '@/lib/formatters'
 import { nodeStatusMap } from '@/components/cluster/statusColors'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { semanticColors, useColors } from '@/lib/colors'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import { NODE_PODS_REFETCH_MS } from '@/lib/constants'
@@ -67,7 +67,7 @@ export default function NodeDetailDrawer({ node, onClose }: NodeDetailDrawerProp
   const [search, setSearch] = useState('')
   const { width: drawerWidth, onMouseDown: handleResizeMouseDown, onTouchStart: handleResizeTouchStart } = useDrawerResize(540)
   const [selectedPod, setSelectedPod] = useState<NodePod | null>(null)
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const colors = useColors()
 
   function handleClose() {
