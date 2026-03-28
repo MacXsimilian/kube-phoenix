@@ -7,7 +7,10 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
-const subscriberChannelBuffer = 256
+const (
+	subscriberChannelBuffer    = 256
+	maxSubscribersPerExecution = 50
+)
 
 // Broker manages WebSocket subscriber channels for live log streaming.
 type Broker struct {
@@ -23,11 +26,17 @@ func NewBroker() *Broker {
 	}
 }
 
+// Subscribe registers a new subscriber for the given execution. Returns nil if
+// the per-execution subscriber limit has been reached.
 func (b *Broker) Subscribe(execID uint) chan store.PolicyLogLine {
-	ch := make(chan store.PolicyLogLine, subscriberChannelBuffer)
 	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.subs[execID]) >= maxSubscribersPerExecution {
+		slog.Warn("broker: subscriber limit reached", "execID", execID, "limit", maxSubscribersPerExecution)
+		return nil
+	}
+	ch := make(chan store.PolicyLogLine, subscriberChannelBuffer)
 	b.subs[execID] = append(b.subs[execID], ch)
-	b.mu.Unlock()
 	return ch
 }
 
