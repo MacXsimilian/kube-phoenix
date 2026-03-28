@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.4](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.3...v0.5.4) (2026-03-28)
+
+
+### Bug Fixes
+
+* audit remediation — scheduler state bug, OIDC error handling, execution cancellation, and Clean Code refactors ([#273](https://github.com/MacXsimilian/kube-phoenix/issues/273)) ([f2461b6](https://github.com/MacXsimilian/kube-phoenix/commit/f2461b6e246279e058cb08843343432ec99ed349))
+
 ## [0.5.3](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.2...v0.5.3) (2026-03-28)
 
 
