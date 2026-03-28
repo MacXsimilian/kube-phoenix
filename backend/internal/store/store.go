@@ -5,6 +5,7 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -93,6 +94,22 @@ func runMigrations(db *gorm.DB) error {
 	EXCEPTION WHEN duplicate_object THEN NULL;
 	END $$`).Error; err != nil {
 		slog.Warn("migration: add execution status CHECK failed (non-fatal)", "err", err)
+	}
+
+	// Additional CHECK constraints for enum-like columns (idempotent).
+	checks := []struct{ table, name, expr string }{
+		{"policies", "chk_policy_mode", "mode IN ('plan','apply')"},
+		{"policies", "chk_policy_state", "current_state IN ('sleeping','awake','unknown','transitioning')"},
+		{"policy_executions", "chk_policy_execution_direction", "direction IN ('sleep','wake')"},
+		{"policy_overrides", "chk_override_type", "override_type IN ('stay_awake','force_sleep','skip_sleep','skip_wake')"},
+		{"users", "chk_user_role", "role IN ('admin','operator','viewer')"},
+		{"users", "chk_user_source", "source IN ('local','oidc')"},
+	}
+	for _, c := range checks {
+		sql := fmt.Sprintf(`DO $$ BEGIN ALTER TABLE %s ADD CONSTRAINT %s CHECK (%s); EXCEPTION WHEN duplicate_object THEN NULL; END $$`, c.table, c.name, c.expr)
+		if err := db.Exec(sql).Error; err != nil {
+			slog.Warn("migration: add CHECK constraint failed (non-fatal)", "table", c.table, "constraint", c.name, "err", err)
+		}
 	}
 
 	slog.Info("store: schema migration complete")

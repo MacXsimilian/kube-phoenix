@@ -170,19 +170,27 @@ func startMaintenanceTickers(ctx context.Context, st *store.Store, retentionDays
 		})
 	}()
 
-	// Audit log retention — daily.
+	// Data retention — daily (audit logs, old executions, expired overrides).
 	if retentionDays > 0 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			runTicker(ctx, auditRetentionInterval, "audit-retention", func() {
-				deleted, err := st.CleanOldAuditLogs(time.Duration(retentionDays) * 24 * time.Hour)
-				if err != nil {
-					slog.Error("audit-retention failed", "err", err)
-					return
+			retention := time.Duration(retentionDays) * 24 * time.Hour
+			runTicker(ctx, auditRetentionInterval, "data-retention", func() {
+				if n, err := st.CleanOldAuditLogs(retention); err != nil {
+					slog.Error("retention: audit logs failed", "err", err)
+				} else if n > 0 {
+					slog.Info("retention: old audit logs removed", "count", n)
 				}
-				if deleted > 0 {
-					slog.Info("audit-retention: old entries removed", "count", deleted, "retentionDays", retentionDays)
+				if n, err := st.CleanOldExecutions(retention); err != nil {
+					slog.Error("retention: old executions failed", "err", err)
+				} else if n > 0 {
+					slog.Info("retention: old executions removed (cascades to log lines + snapshots)", "count", n)
+				}
+				if n, err := st.CleanExpiredOverrides(retention); err != nil {
+					slog.Error("retention: expired overrides failed", "err", err)
+				} else if n > 0 {
+					slog.Info("retention: expired overrides removed", "count", n)
 				}
 			})
 		}()

@@ -43,21 +43,17 @@ func (s *Store) UpdateUser(id uint, updates map[string]interface{}) (*User, erro
 	return s.GetUserByID(id)
 }
 
+// DeleteUser removes a user by ID. Sessions are cleaned up automatically
+// via the ON DELETE CASCADE FK constraint on sessions.user_id.
 func (s *Store) DeleteUser(id uint) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		// Delete all sessions for the user first.
-		if err := tx.Where("user_id = ?", id).Delete(&Session{}).Error; err != nil {
-			return fmt.Errorf("delete user sessions: %w", err)
-		}
-		result := tx.Delete(&User{}, id)
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected == 0 {
-			return gorm.ErrRecordNotFound
-		}
-		return nil
-	})
+	result := s.db.Delete(&User{}, id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (s *Store) UpdateLastLogin(id uint) error {

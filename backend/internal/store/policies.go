@@ -229,6 +229,35 @@ func (s *Store) ResetStuckTransitioningPolicies() (int64, error) {
 	return res.RowsAffected, res.Error
 }
 
+// ─── Retention ───────────────────────────────────────────────────────────────
+
+// CleanOldExecutions deletes finished policy executions older than the given
+// duration. Cascades to policy_log_lines and workload_snapshots via FK.
+// Executions with open (un-restored) snapshots are preserved regardless of age.
+func (s *Store) CleanOldExecutions(olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-olderThan)
+	result := s.db.
+		Where("finished_at < ? AND status != ? AND id NOT IN (?)",
+			cutoff, ExecStatusRunning,
+			s.db.Model(&WorkloadSnapshot{}).Select("DISTINCT sleep_execution_id").Where("wake_execution_id IS NULL"),
+		).
+		Delete(&PolicyExecution{})
+	return result.RowsAffected, result.Error
+}
+
+// CleanExpiredOverrides deletes time-bounded overrides whose window has passed
+// and skip overrides older than the given duration.
+func (s *Store) CleanExpiredOverrides(olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-olderThan)
+	result := s.db.
+		Where("(override_type IN ('stay_awake','force_sleep') AND ends_at < ?) OR "+
+			"(override_type IN ('skip_sleep','skip_wake') AND created_at < ?)",
+			cutoff, cutoff,
+		).
+		Delete(&PolicyOverride{})
+	return result.RowsAffected, result.Error
+}
+
 // ─── Policy Log Lines ─────────────────────────────────────────────────────────
 
 func (s *Store) AppendPolicyLogLine(line *PolicyLogLine) error {
