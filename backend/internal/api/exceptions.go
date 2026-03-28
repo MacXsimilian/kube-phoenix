@@ -285,26 +285,32 @@ func buildExceptionUpdates(body exceptionInput) (map[string]interface{}, error) 
 }
 
 func validateExceptionUpdates(updates map[string]interface{}) error {
-	if v, ok := updates["exception_type"].(string); ok && !validExceptionTypes[v] {
-		return errors.New("exceptionType must be stay_awake or force_sleep")
+	if v, ok := updates["exception_type"].(string); ok {
+		if err := validateExceptionType(v); err != nil {
+			return err
+		}
 	}
 	startsAt, hasStart := updates["starts_at"].(time.Time)
 	endsAt, hasEnd := updates["ends_at"].(time.Time)
 	if hasStart && hasEnd && !endsAt.After(startsAt) {
 		return errors.New("endsAt must be after startsAt")
 	}
-	if v, ok := updates["ticket_ref"].(string); ok && len(v) > maxTicketRefLen {
-		return errors.New("ticketRef must be 255 characters or fewer")
+	if v, ok := updates["ticket_ref"].(string); ok {
+		if err := validateFieldLen(v, maxTicketRefLen, "ticketRef"); err != nil {
+			return err
+		}
 	}
-	if v, ok := updates["reason"].(string); ok && len(v) > maxReasonLen {
-		return errors.New("reason must be 1024 characters or fewer")
+	if v, ok := updates["reason"].(string); ok {
+		if err := validateFieldLen(v, maxReasonLen, "reason"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 func validateExceptionInput(b exceptionInput) error {
-	if !validExceptionTypes[b.ExceptionType] {
-		return errors.New("exceptionType must be stay_awake or force_sleep")
+	if err := validateExceptionType(b.ExceptionType); err != nil {
+		return err
 	}
 	if b.StartsAt.IsZero() {
 		return errors.New("startsAt is required")
@@ -318,11 +324,25 @@ func validateExceptionInput(b exceptionInput) error {
 	if time.Until(b.StartsAt) < 0 {
 		return errors.New("startsAt must be in the future")
 	}
-	if len(b.Reason) > maxReasonLen {
-		return errors.New("reason must be 1024 characters or fewer")
+	if err := validateFieldLen(b.Reason, maxReasonLen, "reason"); err != nil {
+		return err
 	}
-	if len(b.TicketRef) > maxTicketRefLen {
-		return errors.New("ticketRef must be 255 characters or fewer")
+	if err := validateFieldLen(b.TicketRef, maxTicketRefLen, "ticketRef"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateExceptionType(t string) error {
+	if !validExceptionTypes[t] {
+		return errors.New("exceptionType must be stay_awake or force_sleep")
+	}
+	return nil
+}
+
+func validateFieldLen(v string, max int, name string) error {
+	if len(v) > max {
+		return fmt.Errorf("%s must be %d characters or fewer", name, max)
 	}
 	return nil
 }

@@ -170,9 +170,9 @@ func (ps *PolicyScheduler) NextTransition(policyID uint) *time.Time {
 func (ps *PolicyScheduler) NextTransitions(policyIDs []uint) map[uint]*time.Time {
 	ps.mu.Lock()
 	type entry struct {
-		id      uint
-		windows []policy.SleepWindow
-		tz      string
+		id       uint
+		windows  []policy.SleepWindow
+		timezone string
 	}
 	entries := make([]entry, 0, len(policyIDs))
 	for _, id := range policyIDs {
@@ -185,7 +185,7 @@ func (ps *PolicyScheduler) NextTransitions(policyIDs []uint) map[uint]*time.Time
 	now := time.Now()
 	result := make(map[uint]*time.Time, len(entries))
 	for _, e := range entries {
-		result[e.id] = policy.NextTransition(e.windows, e.tz, now)
+		result[e.id] = policy.NextTransition(e.windows, e.timezone, now)
 	}
 	return result
 }

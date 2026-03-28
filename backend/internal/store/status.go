@@ -29,3 +29,9 @@ const (
 	ExceptionStatusCompleted = "completed"
 	ExceptionStatusCancelled = "cancelled"
 )
+
+// Exception types.
+const (
+	ExceptionTypeStayAwake  = "stay_awake"
+	ExceptionTypeForceSleep = "force_sleep"
+)

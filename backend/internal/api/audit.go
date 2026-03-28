@@ -77,8 +77,8 @@ func marshalOrNull(v interface{}) string {
 	return string(b)
 }
 
-// audit enqueues an audit log entry. Non-blocking — drops the entry if the
-// buffer is full and increments the drop counter.
+// audit enqueues an audit log entry. Non-blocking on first attempt; blocks up
+// to 500ms before dropping if the buffer is full.
 func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID *uint, before, after any) {
 	user := authmw.UserFromContext(r.Context())
 	username := systemUser
@@ -120,9 +120,9 @@ func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID
 // the user context is available.
 func (h *Handler) auditDeniedMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ww := &statusCapture{ResponseWriter: w}
-		next.ServeHTTP(ww, r)
-		if ww.code == http.StatusForbidden {
+		capture := &statusCapture{ResponseWriter: w}
+		next.ServeHTTP(capture, r)
+		if capture.code == http.StatusForbidden {
 			h.audit(r, "auth.denied", "permission", nil, nil, map[string]string{
 				"method": r.Method,
 				"path":   r.URL.Path,

@@ -33,7 +33,7 @@ var (
 		store.ExceptionStatusCancelled: true,
 	}
 	validExceptionTypes = map[string]bool{
-		"stay_awake":  true,
-		"force_sleep": true,
+		store.ExceptionTypeStayAwake:  true,
+		store.ExceptionTypeForceSleep: true,
 	}
 )
