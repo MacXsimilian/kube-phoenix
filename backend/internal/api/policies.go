@@ -364,7 +364,7 @@ func (h *Handler) triggerPolicySleep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("policy manual sleep triggered", "policyID", id, "execID", execID)
-	h.audit(r, "policy.sleep", "policy", &id, nil, nil)
+	h.audit(r, "policy.sleep", "policy", &id, nil, map[string]interface{}{"executionId": execID})
 	jsonOK(w, map[string]uint{"executionId": execID})
 }
 
@@ -388,7 +388,7 @@ func (h *Handler) triggerPolicyWake(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("policy manual wake triggered", "policyID", id, "execID", execID)
-	h.audit(r, "policy.wake", "policy", &id, nil, nil)
+	h.audit(r, "policy.wake", "policy", &id, nil, map[string]interface{}{"executionId": execID})
 	jsonOK(w, map[string]uint{"executionId": execID})
 }
 
@@ -413,8 +413,14 @@ func validatePolicyTimezone(tz string) string {
 }
 
 func validatePolicyFields(p store.Policy) string {
-	if len(p.Name) > 255 {
+	if len(p.Name) > maxNameLen {
 		return "name must be 255 characters or fewer"
+	}
+	if len(p.Description) > maxDescriptionLen {
+		return "description must be 1024 characters or fewer"
+	}
+	if len(p.LabelSelector) > maxLabelSelectorLen {
+		return "labelSelector must be 4096 characters or fewer"
 	}
 	if p.TimeoutMinutes < 0 || p.TimeoutMinutes > 1440 {
 		return "timeoutMinutes must be between 0 and 1440"
@@ -469,7 +475,7 @@ func policyAuditSnapshot(p store.Policy) map[string]interface{} {
 
 func validatePolicyUpdates(updates map[string]interface{}) string {
 	if v, ok := updates["name"]; ok {
-		if len(fmt.Sprintf("%v", v)) > 255 {
+		if len(fmt.Sprintf("%v", v)) > maxNameLen {
 			return "name must be 255 characters or fewer"
 		}
 	}
@@ -491,6 +497,16 @@ func validatePolicyUpdates(updates map[string]interface{}) string {
 	if v, ok := updates["namespace_filter"]; ok {
 		if msg := validateNamespaceFilter(fmt.Sprintf("%v", v)); msg != "" {
 			return msg
+		}
+	}
+	if v, ok := updates["description"]; ok {
+		if len(fmt.Sprintf("%v", v)) > maxDescriptionLen {
+			return "description must be 1024 characters or fewer"
+		}
+	}
+	if v, ok := updates["label_selector"]; ok {
+		if len(fmt.Sprintf("%v", v)) > maxLabelSelectorLen {
+			return "labelSelector must be 4096 characters or fewer"
 		}
 	}
 	return ""

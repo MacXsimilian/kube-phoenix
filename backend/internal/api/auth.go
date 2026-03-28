@@ -48,17 +48,20 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	user, err := h.store.GetUserByUsername(body.Username)
 	if err != nil {
 		metrics.AuthAttemptsTotal.WithLabelValues("failure", "local").Inc()
+		h.audit(r, "auth.login_failed", "user", nil, nil, map[string]string{"username": body.Username, "reason": "unknown_user"})
 		jsonError(w, "invalid username or password", http.StatusUnauthorized)
 		return
 	}
 	if !store.CheckPassword(user.PasswordHash, body.Password) {
 		metrics.AuthAttemptsTotal.WithLabelValues("failure", "local").Inc()
+		h.audit(r, "auth.login_failed", "user", &user.ID, nil, map[string]string{"username": body.Username, "reason": "bad_password"})
 		jsonError(w, "invalid username or password", http.StatusUnauthorized)
 		return
 	}
 
 	if !user.Enabled {
 		metrics.AuthAttemptsTotal.WithLabelValues("failure", "local").Inc()
+		h.audit(r, "auth.login_failed", "user", &user.ID, nil, map[string]string{"username": body.Username, "reason": "account_disabled"})
 		jsonError(w, "account disabled", http.StatusForbidden)
 		return
 	}
@@ -179,6 +182,10 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "new password must be at least 8 characters", http.StatusBadRequest)
 		return
 	}
+	if len(body.NewPassword) > 72 {
+		jsonError(w, "password must be 72 characters or fewer", http.StatusBadRequest)
+		return
+	}
 	if !store.CheckPassword(user.PasswordHash, body.CurrentPassword) {
 		jsonError(w, "current password is incorrect", http.StatusUnauthorized)
 		return
@@ -214,11 +221,15 @@ func (h *Handler) updateUserSettings(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "invalid timezone", http.StatusBadRequest)
 			return
 		}
+		oldTz := user.DefaultTimezone
 		if err := h.store.UpdateUserTimezone(user.ID, body.DefaultTimezone); err != nil {
 			jsonInternalError(w, err, "update user settings failed")
 			return
 		}
 		user.DefaultTimezone = body.DefaultTimezone
+		h.audit(r, "user.settings", "user", &user.ID,
+			map[string]string{"defaultTimezone": oldTz},
+			map[string]string{"defaultTimezone": body.DefaultTimezone})
 	}
 
 	jsonOK(w, userResponse(user))

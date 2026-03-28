@@ -25,6 +25,10 @@ func (h *Handler) listExceptions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if s := query.Get("status"); s != "" {
+		if !validExceptionStatuses[s] {
+			jsonError(w, "status must be pending, active, completed, or cancelled", http.StatusBadRequest)
+			return
+		}
 		filter.Status = s
 	}
 	items, err := h.store.ListScheduledExceptions(filter)
@@ -270,11 +274,32 @@ func buildExceptionUpdates(body exceptionInput) (map[string]interface{}, error) 
 		}
 		updates["workload_targets"] = string(b)
 	}
+	if err := validateExceptionUpdates(updates); err != nil {
+		return nil, err
+	}
 	return updates, nil
 }
 
+func validateExceptionUpdates(updates map[string]interface{}) error {
+	if v, ok := updates["exception_type"].(string); ok && !validExceptionTypes[v] {
+		return errors.New("exceptionType must be stay_awake or force_sleep")
+	}
+	startsAt, hasStart := updates["starts_at"].(time.Time)
+	endsAt, hasEnd := updates["ends_at"].(time.Time)
+	if hasStart && hasEnd && !endsAt.After(startsAt) {
+		return errors.New("endsAt must be after startsAt")
+	}
+	if v, ok := updates["ticket_ref"].(string); ok && len(v) > maxTicketRefLen {
+		return errors.New("ticketRef must be 255 characters or fewer")
+	}
+	if v, ok := updates["reason"].(string); ok && len(v) > maxReasonLen {
+		return errors.New("reason must be 1024 characters or fewer")
+	}
+	return nil
+}
+
 func validateExceptionInput(b exceptionInput) error {
-	if b.ExceptionType != "stay_awake" && b.ExceptionType != "force_sleep" {
+	if !validExceptionTypes[b.ExceptionType] {
 		return errors.New("exceptionType must be stay_awake or force_sleep")
 	}
 	if b.StartsAt.IsZero() {
@@ -288,6 +313,12 @@ func validateExceptionInput(b exceptionInput) error {
 	}
 	if time.Until(b.StartsAt) < 0 {
 		return errors.New("startsAt must be in the future")
+	}
+	if len(b.Reason) > maxReasonLen {
+		return errors.New("reason must be 1024 characters or fewer")
+	}
+	if len(b.TicketRef) > maxTicketRefLen {
+		return errors.New("ticketRef must be 255 characters or fewer")
 	}
 	return nil
 }

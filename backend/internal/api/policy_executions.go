@@ -5,12 +5,17 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"gorm.io/gorm"
 )
+
+const maxWSConnections = 100
+
+var wsConnectionCount atomic.Int64
 
 func (h *Handler) listPolicyExecutions(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
@@ -24,9 +29,17 @@ func (h *Handler) listPolicyExecutions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if s := query.Get("status"); s != "" {
+		if !validExecStatuses[s] {
+			jsonError(w, "status must be running, success, failed, or interrupted", http.StatusBadRequest)
+			return
+		}
 		filter.Status = s
 	}
 	if d := query.Get("direction"); d != "" {
+		if d != "sleep" && d != "wake" {
+			jsonError(w, "direction must be sleep or wake", http.StatusBadRequest)
+			return
+		}
 		filter.Direction = d
 	}
 	if p := query.Get("page"); p != "" {
@@ -128,11 +141,17 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if wsConnectionCount.Load() >= maxWSConnections {
+		http.Error(w, "too many WebSocket connections", http.StatusServiceUnavailable)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Warn("ws policy: upgrade failed", "execID", id, "err", err)
 		return
 	}
+	wsConnectionCount.Add(1)
 	slog.Info("ws policy: client connected", "execID", id, "remote_addr", conn.RemoteAddr())
 	metrics.WSConnectionsTotal.Inc()
 	metrics.WSActiveConnections.Inc()
@@ -140,6 +159,7 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 	done := wsReadPump(conn)
 	defer func() { <-done }()
 	defer func() {
+		wsConnectionCount.Add(-1)
 		metrics.WSActiveConnections.Dec()
 		slog.Info("ws policy: client disconnected", "execID", id)
 		_ = conn.Close()
@@ -159,6 +179,10 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 	}
 
 	sub := h.policyScheduler.Broker.Subscribe(id)
+	if sub == nil {
+		slog.Warn("ws policy: subscriber limit reached", "execID", id)
+		return
+	}
 	defer h.policyScheduler.Broker.Unsubscribe(id, sub)
 
 	// Re-check: may have finished between GetPolicyExecution and Subscribe

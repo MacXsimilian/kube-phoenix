@@ -53,6 +53,10 @@ func (h *Handler) createPolicyOverride(w http.ResponseWriter, r *http.Request) {
 	validTypes := map[string]bool{
 		"stay_awake": true, "force_sleep": true, "skip_sleep": true, "skip_wake": true,
 	}
+	if len(body.Reason) > maxReasonLen {
+		jsonError(w, "reason must be 1024 characters or fewer", http.StatusBadRequest)
+		return
+	}
 	if !validTypes[body.OverrideType] {
 		jsonError(w, "overrideType must be stay_awake, force_sleep, skip_sleep, or skip_wake", http.StatusBadRequest)
 		return

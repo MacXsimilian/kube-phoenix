@@ -14,9 +14,9 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/auth"
-	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/docs"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
@@ -27,9 +27,9 @@ import (
 
 // Rate limit settings for login endpoints.
 const (
-	rateLimitPerIP       = 10
-	rateLimitPerUser     = 5
-	rateLimitWindow      = 15 * time.Minute
+	rateLimitPerIP   = 10
+	rateLimitPerUser = 5
+	rateLimitWindow  = 15 * time.Minute
 )
 
 type Handler struct {
@@ -126,6 +126,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 	r.Group(func(r chi.Router) {
 		r.Use(authmw.SessionAuth(st, idleTimeout))
 		r.Use(authmw.CSRFProtect)
+		r.Use(h.auditDeniedMiddleware)
 
 		// Auth endpoints
 		r.Post("/api/auth/logout", h.logout)
@@ -236,6 +237,9 @@ func (h *Handler) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			jsonError(w, "invalid page parameter", http.StatusBadRequest)
 			return
+		}
+		if p < 0 {
+			p = 0
 		}
 		filter.Page = p
 	}
