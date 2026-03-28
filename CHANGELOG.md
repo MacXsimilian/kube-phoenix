@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.2...v0.5.3) (2026-03-28)
+
+
+### Bug Fixes
+
+* harden input validation, error handling, audit trail, and database integrity ([#271](https://github.com/MacXsimilian/kube-phoenix/issues/271)) ([81aeed5](https://github.com/MacXsimilian/kube-phoenix/commit/81aeed5a01d62877da67e0606d838a67190a5ac5))
+
 ## [0.5.2](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.1...v0.5.2) (2026-03-28)
 
 
