@@ -6,7 +6,7 @@ import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/type
 import { useIsDark } from '@/lib/useIsDark'
 import { nowInTimezone, DOW_MAP } from '@/lib/windowUtils'
 import { TIMELINE_COLORS } from '@/lib/colors'
-import LegendItem from './LegendItem'
+import TimelineLegend from './TimelineLegend'
 import { computeWindowSegments, computeOverrideSegments, computeExceptionSegments } from './timelineSegments'
 
 const ROW_H = 24
@@ -156,20 +156,7 @@ export default function WeeklyTimeline({
         )}
       </svg>
 
-      {/* Legend */}
-      <Box sx={{ display: 'flex', gap: 2, mt: 0.75 }}>
-        <LegendItem color={TIMELINE_COLORS.sleep} label="Sleep" />
-        <LegendItem color={TIMELINE_COLORS.awake} label="Awake" />
-        {overrides && overrides.some(o => o.overrideType === 'stay_awake') && (
-          <LegendItem color={TIMELINE_COLORS.override} label="Stay awake" />
-        )}
-        {overrides && overrides.some(o => o.overrideType === 'force_sleep') && (
-          <LegendItem color={TIMELINE_COLORS.exception} label="Force sleep" />
-        )}
-        {exceptions && exceptions.some(e => e.exceptionType === 'stay_awake') && (
-          <LegendItem color={TIMELINE_COLORS.awake} label="Exception" />
-        )}
-      </Box>
+      <TimelineLegend overrides={overrides} exceptions={exceptions} />
     </Box>
   )
 }

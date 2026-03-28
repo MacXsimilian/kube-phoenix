@@ -28,12 +28,12 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import { getPolicyExecutions } from '@/lib/api'
 import { fmtDtShort, fmtDuration } from '@/lib/formatters'
 import { useIsDark } from '@/lib/useIsDark'
+import { EXECUTIONS_REFETCH_MS } from '@/lib/constants'
 import { modeColors, SMALL_CHIP_SX } from '@/lib/statusColors'
 import StatusChip from '@/components/shared/StatusChip'
 import type { PolicyExecution } from '@/lib/types'
 
-const HEADER_SX = { fontWeight: 700, color: 'text.secondary', fontSize: 12 } as const
-const EXECUTIONS_REFETCH_MS = 10_000
+const TABLE_HEADER_CELL_SX = { fontWeight: 700, color: 'text.secondary', fontSize: 12 } as const
 
 function SummaryCell({ exec }: { exec: PolicyExecution }) {
   const isWake = exec.direction === 'wake'
@@ -164,13 +164,13 @@ export default function PolicyExecutionTable({
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={HEADER_SX}>STARTED</TableCell>
-                  <TableCell sx={HEADER_SX}>POLICY</TableCell>
-                  <TableCell sx={HEADER_SX}>DIRECTION</TableCell>
-                  <TableCell sx={HEADER_SX}>MODE</TableCell>
-                  <TableCell sx={HEADER_SX}>STATUS</TableCell>
-                  <TableCell sx={HEADER_SX}>DURATION</TableCell>
-                  <TableCell sx={HEADER_SX}>SUMMARY</TableCell>
+                  <TableCell sx={TABLE_HEADER_CELL_SX}>STARTED</TableCell>
+                  <TableCell sx={TABLE_HEADER_CELL_SX}>POLICY</TableCell>
+                  <TableCell sx={TABLE_HEADER_CELL_SX}>DIRECTION</TableCell>
+                  <TableCell sx={TABLE_HEADER_CELL_SX}>MODE</TableCell>
+                  <TableCell sx={TABLE_HEADER_CELL_SX}>STATUS</TableCell>
+                  <TableCell sx={TABLE_HEADER_CELL_SX}>DURATION</TableCell>
+                  <TableCell sx={TABLE_HEADER_CELL_SX}>SUMMARY</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>

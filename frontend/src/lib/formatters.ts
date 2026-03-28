@@ -53,10 +53,13 @@ export function pct(used: number, total: number): number {
   return total > 0 ? Math.round((used / total) * 100) : 0
 }
 
-/** Return a colour for a percentage value, red >= 85, amber >= 65, green otherwise */
+const PCT_CRITICAL = 85
+const PCT_WARNING = 65
+
+/** Return a colour for a percentage value, red >= critical, amber >= warning, green otherwise */
 export function pctColor(p: number, isDark: boolean): string {
-  if (p >= 85) return isDark ? '#F87171' : '#B91C1C'
-  if (p >= 65) return isDark ? '#FBBF24' : '#92400E'
+  if (p >= PCT_CRITICAL) return isDark ? '#F87171' : '#B91C1C'
+  if (p >= PCT_WARNING) return isDark ? '#FBBF24' : '#92400E'
   return isDark ? '#22C55E' : '#15803D'
 }
 

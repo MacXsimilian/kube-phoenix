@@ -6,7 +6,7 @@ import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/type
 import { useIsDark } from '@/lib/useIsDark'
 import { nowInTimezone, DOW_MAP } from '@/lib/windowUtils'
 import { TIMELINE_COLORS } from '@/lib/colors'
-import LegendItem from './LegendItem'
+import TimelineLegend from './TimelineLegend'
 import { computeWindowSegments, computeOverrideSegments, computeExceptionSegments, type TimelineSegment } from './timelineSegments'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -179,20 +179,7 @@ export default function LedGlowTimeline({
         )}
       </svg>
 
-      {/* Legend */}
-      <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
-        <LegendItem color={TIMELINE_COLORS.sleep} label="Sleep" variant="led" />
-        <LegendItem color={TIMELINE_COLORS.awake} label="Awake" variant="led" />
-        {overrides && overrides.some(o => o.overrideType === 'stay_awake') && (
-          <LegendItem color={TIMELINE_COLORS.override} label="Stay awake" variant="led" />
-        )}
-        {overrides && overrides.some(o => o.overrideType === 'force_sleep') && (
-          <LegendItem color={TIMELINE_COLORS.exception} label="Force sleep" variant="led" />
-        )}
-        {exceptions && exceptions.some(e => e.exceptionType === 'stay_awake') && (
-          <LegendItem color={TIMELINE_COLORS.awake} label="Exception" variant="led" />
-        )}
-      </Box>
+      <TimelineLegend overrides={overrides} exceptions={exceptions} variant="led" />
     </Box>
   )
 }

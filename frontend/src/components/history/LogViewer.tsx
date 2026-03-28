@@ -12,7 +12,6 @@ import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import Tooltip from '@mui/material/Tooltip'
-import Snackbar from '@mui/material/Snackbar'
 import CloseIcon from '@mui/icons-material/Close'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
@@ -26,9 +25,9 @@ import { useIsDark } from '@/lib/useIsDark'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { PolicyExecution, LogLine } from '@/lib/types'
 import { LOG_LEVEL_COLORS_DARK, LOG_LEVEL_COLORS_LIGHT, modeColors } from '@/lib/statusColors'
+import { useSnackbar } from '@/lib/useSnackbar'
 import ExecutionSummary from './ExecutionSummary'
 import { useExecutionLogs } from './useExecutionLogs'
-import { SNACKBAR_AUTO_HIDE_MS } from '@/lib/constants'
 
 // ── Log line row ──────────────────────────────────────────────────────────────
 
@@ -64,7 +63,7 @@ export default function LogViewer({
 }) {
   const queryClient = useQueryClient()
   const MODE_COLORS = modeColors(useIsDark())
-  const [copied, setCopied] = useState(false)
+  const { notify, SnackbarAlert } = useSnackbar()
   const { width: drawerWidth, onMouseDown: handleResizeMouseDown, onTouchStart: handleResizeTouchStart } = useDrawerResize(640)
   const [currentErrorIdx, setCurrentErrorIdx] = useState(-1)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -104,7 +103,7 @@ export default function LogViewer({
     const text = lines
       .map((l) => `${new Date(l.timestamp).toLocaleTimeString()}  ${l.message}`)
       .join('\n')
-    navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => setCopied(false))
+    navigator.clipboard.writeText(text).then(() => notify('Logs copied to clipboard', 'success'))
   }
 
   return (
@@ -268,13 +267,7 @@ export default function LogViewer({
         )}
       </Drawer>
 
-      <Snackbar
-        open={copied}
-        autoHideDuration={SNACKBAR_AUTO_HIDE_MS}
-        onClose={() => setCopied(false)}
-        message="Logs copied to clipboard"
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      />
+      {SnackbarAlert}
     </>
   )
 }
