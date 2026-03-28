@@ -325,6 +325,8 @@ erDiagram
         bigint id PK
         varchar token "unique"
         bigint user_id FK
+        varchar ip_address
+        varchar user_agent
         timestamptz expires_at
         timestamptz max_expires_at
     }

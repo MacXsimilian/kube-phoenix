@@ -708,7 +708,7 @@ The history page composes `ExecutionTable` and `LogViewer`. It supports deep-lin
 - Paginated table using `TablePagination` (10/20/50 rows per page)
 - Refetches periodically to catch newly completed executions
 - **Filter dropdowns** for Status (running/success/failed/interrupted/skipped) and Direction (sleep/wake)
-- Columns: Started (`fmtDtShort` with year), Policy name (from preloaded relation), Direction (sleep/wake icon), Mode chip (using `MODE_COLORS`), Status via `StatusChip`, Duration (`fmtDuration`), Summary (icons for scaled/drained/deleted/errors)
+- Columns: Started (`fmtDtShort` with year), Policy name (from preloaded relation), Direction (sleep/wake icon), Mode chip (using `modeColors(isDark)`), Status via `StatusChip`, Duration (`fmtDuration`), Summary (icons for scaled/drained/deleted/errors)
 - Header styling extracted to `HEADER_SX` constant; chip sizing uses shared `SMALL_CHIP_SX`
 - Row click calls `onSelect(execution)`, which opens the `LogViewer` drawer
 
@@ -758,16 +758,7 @@ Handles both create and edit modes. Key datetime handling:
 
 #### ExceptionsSection / OverridesSection
 
-Both use the shared `TYPE_LABELS` map from `lib/statusColors.ts` to color-code exception/override types:
-
-```typescript
-const TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  stay_awake:  { label: 'Stay Awake',  color: '#FCD34D', bg: 'rgba(245,158,11,0.15)' },
-  force_sleep: { label: 'Force Sleep', color: '#FCA5A5', bg: 'rgba(239,68,68,0.15)' },
-  skip_sleep:  { label: 'Skip Sleep',  color: '#A5B4FC', bg: 'rgba(99,102,241,0.15)' },
-  skip_wake:   { label: 'Skip Wake',   color: '#A5B4FC', bg: 'rgba(99,102,241,0.15)' },
-}
-```
+Both use the shared `typeLabels(isDark)` function from `lib/statusColors.ts` to color-code exception/override types with mode-aware colors. The function returns pre-computed maps for dark and light modes with labels for `stay_awake`, `force_sleep`, `skip_sleep`, and `skip_wake`.
 
 **Exception status lifecycle:** `pending` (created, start time is in the future) -> `active` (start time has passed, the backend activates the exception) -> `completed` (end time has passed) or `cancelled` (manually cancelled). The backend manages these transitions; the frontend only displays them.
 
@@ -932,19 +923,21 @@ The form also includes a "Scheduler Behaviour" card with four controls: an `Eval
 
 ### lib/statusColors.ts
 
+Most color exports are mode-aware functions that accept an `isDark: boolean` parameter and return pre-computed static objects (no per-render allocations). Call them with `useTheme().palette.mode === 'dark'` inside components.
+
 | Export | Type | Purpose |
 |:-------|:-----|:--------|
-| `STATE_COLORS` | `Record<string, { bg, color, label }>` | Policy current state (sleeping, awake, transitioning, unknown) |
-| `EXECUTION_STATUS_COLORS` | `Record<string, { bg, color }>` | Execution and exception statuses (running, success, failed, interrupted, skipped, pending, active, completed, cancelled) |
-| `EXECUTION_STATUS_FALLBACK` | `{ bg, color }` | Default for unknown status strings |
-| `MODE_COLORS` | `Record<string, { bg, color }>` | Plan (blue) and Apply (amber) mode chips |
+| `stateColors(isDark)` | `(boolean) → Record<string, { bg, color, label }>` | Policy current state (sleeping, awake, transitioning, unknown) |
+| `executionStatusColors(isDark)` | `(boolean) → Record<string, { bg, color }>` | Execution and exception statuses (running, success, failed, interrupted, skipped, pending, active, completed, cancelled) |
+| `executionStatusFallback(isDark)` | `(boolean) → { bg, color }` | Default for unknown status strings |
+| `modeColors(isDark)` | `(boolean) → Record<string, { bg, color }>` | Plan (blue) and Apply (amber) mode chips |
 | `SMALL_CHIP_SX` | `{ height: 18, fontSize: 10 }` | Shared sx for small chips (mode, type badges) |
 | `CARD_HEADER_GRADIENTS` | `Record<string, string>` | Horizontal gradient for PolicyCard top edge (3px bar) |
 | `HERO_HEADER_GRADIENTS` | `Record<string, string>` | Vertical gradient for detail page hero band background |
 | `LED_COLORS` | `Record<string, { bg, glow }>` | LED dot colors per policy state (bg color + glow shadow) |
-| `SUBTLE_BORDER` | `string` | Subtle separator color (`rgba(255,255,255,0.04)`) for full-width bands |
-| `TYPE_LABELS` | `Record<string, { label, color, bg }>` | Override/exception types (stay_awake, force_sleep, skip_sleep, skip_wake) |
-| `TYPE_LABEL_FALLBACK` | `{ label, color, bg }` | Default for unknown type strings |
+| `subtleBorder(isDark)` | `(boolean) → string` | Subtle separator color for full-width bands |
+| `typeLabels(isDark)` | `(boolean) → Record<string, { label, color, bg }>` | Override/exception types (stay_awake, force_sleep, skip_sleep, skip_wake) |
+| `typeLabelFallback(isDark)` | `(boolean) → { label, color, bg }` | Default for unknown type strings |
 | `ACTION_LABELS` | `Record<string, string>` | Human-readable labels for audit log actions (e.g. `policy.update` → "Policy Update") |
 | `formatActionLabel(action)` | `(string) → string` | Returns the label for an action key, with auto-formatting fallback for unknown actions |
 | `actionColor(action)` | `(string) → MUI color` | Derives semantic chip color from action verb suffix (`.create` → success, `.delete` → error, `.update` → info) |
@@ -1077,8 +1070,10 @@ sx={{ color: colors.success, bgcolor: colors.successBg }}
 
 **Use `TIMELINE_COLORS`** for SVG timeline rendering (static, not mode-aware).
 
-**Use `statusColors.ts` maps** for status-dependent coloring:
+**Use `statusColors.ts` functions** for status-dependent coloring:
 ```typescript
+const isDark = useTheme().palette.mode === 'dark'
+const STATE_COLORS = stateColors(isDark)
 const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
 sx={{ bgcolor: stateStyle.bg, color: stateStyle.color }}
 ```
