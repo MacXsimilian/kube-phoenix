@@ -37,6 +37,8 @@ func (h *Handler) getOverview(w http.ResponseWriter, r *http.Request) {
 
 // streamCluster streams OverviewResponse updates as Server-Sent Events.
 // Each cache rebuild pushes a new event to all connected clients.
+const sseKeepaliveInterval = 30 * time.Second
+
 func (h *Handler) streamCluster(w http.ResponseWriter, r *http.Request) {
 	if h.cache == nil {
 		jsonError(w, "cluster cache unavailable", http.StatusServiceUnavailable)
@@ -49,16 +51,25 @@ func (h *Handler) streamCluster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ch := h.cache.Subscribe()
+	if ch == nil {
+		jsonError(w, "too many streaming connections", http.StatusServiceUnavailable)
+		return
+	}
+	defer h.cache.Unsubscribe(ch)
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no") // disable nginx response buffering
 	w.WriteHeader(http.StatusOK)
 
 	// Send current state immediately so the client gets data before the first tick
-	h.writeSSEOverview(w, flusher)
+	if !h.writeSSEOverview(w, flusher) {
+		return
+	}
 
-	ch := h.cache.Subscribe()
-	defer h.cache.Unsubscribe(ch)
+	keepalive := time.NewTicker(sseKeepaliveInterval)
+	defer keepalive.Stop()
 
 	ctx := r.Context()
 	for {
@@ -66,20 +77,28 @@ func (h *Handler) streamCluster(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case <-ch:
-			h.writeSSEOverview(w, flusher)
+			if !h.writeSSEOverview(w, flusher) {
+				return
+			}
+		case <-keepalive.C:
+			if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
 		}
 	}
 }
 
-func (h *Handler) writeSSEOverview(w http.ResponseWriter, flusher http.Flusher) {
+func (h *Handler) writeSSEOverview(w http.ResponseWriter, flusher http.Flusher) bool {
 	data, err := json.Marshal(h.buildOverview())
 	if err != nil {
-		return
+		return false
 	}
 	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
-		return
+		return false
 	}
 	flusher.Flush()
+	return true
 }
 
 func (h *Handler) buildOverview() OverviewResponse {
@@ -188,19 +207,25 @@ func (h *Handler) populateNextRun(resp *OverviewResponse) {
 	if err != nil {
 		return
 	}
-	var earliestTime *time.Time
+	var enabledIDs []uint
+	nameByID := map[uint]string{}
 	for _, p := range policies {
-		if !p.Enabled {
-			continue
+		if p.Enabled {
+			enabledIDs = append(enabledIDs, p.ID)
+			nameByID[p.ID] = p.Name
 		}
-		nextTransition := h.policyScheduler.NextTransition(p.ID)
-		if nextTransition != nil {
-			if earliestTime == nil || nextTransition.Before(*earliestTime) {
-				earliestTime = nextTransition
-				resp.NextRun = &NextRunInfo{
-					Name:    p.Name,
-					NextRun: nextTransition.UTC().Format(time.RFC3339),
-				}
+	}
+	if len(enabledIDs) == 0 {
+		return
+	}
+	transitions := h.policyScheduler.NextTransitions(enabledIDs)
+	var earliestTime *time.Time
+	for id, t := range transitions {
+		if t != nil && (earliestTime == nil || t.Before(*earliestTime)) {
+			earliestTime = t
+			resp.NextRun = &NextRunInfo{
+				Name:    nameByID[id],
+				NextRun: t.UTC().Format(time.RFC3339),
 			}
 		}
 	}

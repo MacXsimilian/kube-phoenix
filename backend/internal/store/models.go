@@ -17,10 +17,10 @@ type Guardrails struct {
 	ScalingPriorityNamespaces string `json:"scalingPriorityNamespaces"` // comma-separated, ordered
 
 	// Scheduler behaviour — configurable via the UI.
-	SchedulerEvalInterval       string `gorm:"size:20;default:'30s'" json:"schedulerEvalInterval"`
-	SchedulerAutoWake           bool   `gorm:"default:true" json:"schedulerAutoWake"`
-	SchedulerReconcileWhileAwake bool  `gorm:"default:true" json:"schedulerReconcileWhileAwake"`
-	ScalingConcurrency           int   `gorm:"default:10" json:"scalingConcurrency"`
+	SchedulerEvalInterval        string `gorm:"size:20;default:'30s'" json:"schedulerEvalInterval"`
+	SchedulerAutoWake            bool   `gorm:"default:true" json:"schedulerAutoWake"`
+	SchedulerReconcileWhileAwake bool   `gorm:"default:true" json:"schedulerReconcileWhileAwake"`
+	ScalingConcurrency           int    `gorm:"default:10" json:"scalingConcurrency"`
 
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -40,20 +40,20 @@ func (g *Guardrails) ParseSchedulerEvalInterval() time.Duration {
 // ─── User management ─────────────────────────────────────────────────────────
 
 type User struct {
-	ID           uint       `gorm:"primaryKey" json:"id"`
-	Username     string     `gorm:"uniqueIndex:idx_users_username_source;size:255" json:"username"`
-	GivenName    string     `gorm:"size:255" json:"givenName,omitempty"`
-	FamilyName   string     `gorm:"size:255" json:"familyName,omitempty"`
-	Email        string     `gorm:"size:255" json:"email,omitempty"`
-	PasswordHash string     `gorm:"column:password_hash;size:72" json:"-"`
-	Role         string     `gorm:"size:20;default:viewer" json:"role"`                                        // admin | operator | viewer
-	Source       string     `gorm:"uniqueIndex:idx_users_username_source;size:20;default:local" json:"source"` // local | oidc
-	OIDCSubject  *string    `gorm:"column:oidc_subject;uniqueIndex;size:255" json:"-"`                         // OIDC sub claim
+	ID              uint       `gorm:"primaryKey" json:"id"`
+	Username        string     `gorm:"uniqueIndex:idx_users_username_source;size:255" json:"username"`
+	GivenName       string     `gorm:"size:255" json:"givenName,omitempty"`
+	FamilyName      string     `gorm:"size:255" json:"familyName,omitempty"`
+	Email           string     `gorm:"size:255" json:"email,omitempty"`
+	PasswordHash    string     `gorm:"column:password_hash;size:72" json:"-"`
+	Role            string     `gorm:"size:20;default:viewer" json:"role"`                                        // admin | operator | viewer
+	Source          string     `gorm:"uniqueIndex:idx_users_username_source;size:20;default:local" json:"source"` // local | oidc
+	OIDCSubject     *string    `gorm:"column:oidc_subject;uniqueIndex;size:255" json:"-"`                         // OIDC sub claim
 	Enabled         bool       `gorm:"default:true" json:"enabled"`
 	DefaultTimezone string     `gorm:"size:64;default:'UTC'" json:"defaultTimezone"`
 	CreatedAt       time.Time  `json:"createdAt"`
 	UpdatedAt       time.Time  `json:"updatedAt"`
-	LastLoginAt  *time.Time `json:"lastLoginAt,omitempty"`
+	LastLoginAt     *time.Time `json:"lastLoginAt,omitempty"`
 }
 
 type Session struct {
@@ -106,11 +106,11 @@ type Policy struct {
 	Timezone     string `gorm:"size:100" json:"timezone"`
 
 	Mode           string `gorm:"size:10" json:"mode"` // "plan" | "apply"
-	Enabled        bool   `json:"enabled"`
+	Enabled        bool   `gorm:"default:false" json:"enabled"`
 	TimeoutMinutes int    `json:"timeoutMinutes"` // 0 = server default (120 min)
 
 	// Derived state — cached after each execution, updated by the policy scheduler.
-	CurrentState     string     `gorm:"size:20;default:unknown" json:"currentState"` // sleeping|awake|unknown|transitioning
+	CurrentState     string     `gorm:"size:20;default:unknown;index" json:"currentState"` // sleeping|awake|unknown|transitioning
 	StateSince       *time.Time `json:"stateSince"`
 	LastSleepAt      *time.Time `json:"lastSleepAt"`
 	LastWakeAt       *time.Time `json:"lastWakeAt"`
@@ -123,11 +123,11 @@ type Policy struct {
 // PolicyExecution records a single sleep or wake run driven by a Policy.
 type PolicyExecution struct {
 	ID         uint       `gorm:"primaryKey" json:"id"`
-	PolicyID   uint       `gorm:"index" json:"policyId"`
+	PolicyID   uint       `gorm:"index;index:idx_pe_policy_started,priority:1" json:"policyId"`
 	Policy     Policy     `gorm:"foreignKey:PolicyID;constraint:OnDelete:CASCADE" json:"policy"`
 	Direction  string     `gorm:"size:10;index" json:"direction"` // "sleep" | "wake"
 	Trigger    string     `gorm:"size:30" json:"trigger"`         // scheduled|manual_sleep|manual_wake|recovery|skip_applied|override_start|override_end|exception_start|exception_end
-	StartedAt  time.Time  `gorm:"index" json:"startedAt"`
+	StartedAt  time.Time  `gorm:"index;index:idx_pe_policy_started,priority:2,sort:desc" json:"startedAt"`
 	FinishedAt *time.Time `json:"finishedAt"`
 	Status     string     `gorm:"index;size:20" json:"status"` // running|success|failed|interrupted|skipped
 	Mode       string     `gorm:"size:10" json:"mode"`         // "plan" | "apply"
@@ -155,11 +155,13 @@ type PolicyLogLine struct {
 // The wake execution reads from these rows instead of K8s annotations (which
 // are also written as a belt-and-suspenders fallback).
 type WorkloadSnapshot struct {
-	ID               uint `gorm:"primaryKey" json:"id"`
-	PolicyID         uint `gorm:"index" json:"policyId"`
-	SleepExecutionID uint `gorm:"index" json:"sleepExecutionId"`
+	ID               uint            `gorm:"primaryKey" json:"id"`
+	PolicyID         uint            `gorm:"index;index:idx_ws_policy_wake,priority:1" json:"policyId"`
+	Policy           Policy          `gorm:"foreignKey:PolicyID;constraint:OnDelete:CASCADE" json:"-"`
+	SleepExecutionID uint            `gorm:"index" json:"sleepExecutionId"`
+	SleepExecution   PolicyExecution `gorm:"foreignKey:SleepExecutionID;constraint:OnDelete:CASCADE" json:"-"`
 	// WakeExecutionID is null while the workload is still sleeping.
-	WakeExecutionID  *uint      `gorm:"index" json:"wakeExecutionId"`
+	WakeExecutionID  *uint      `gorm:"index;index:idx_ws_policy_wake,priority:2" json:"wakeExecutionId"`
 	Kind             string     `gorm:"size:50" json:"kind"`
 	Namespace        string     `gorm:"size:63;index" json:"namespace"`
 	Name             string     `gorm:"size:253" json:"name"`
@@ -168,8 +170,8 @@ type WorkloadSnapshot struct {
 	RestoredAt       *time.Time `json:"restoredAt"`
 
 	// Edge case flags
-	WasAlreadyZero      bool `json:"wasAlreadyZero"`      // was at 0 before we touched it
-	WasDeletedAtWake    bool `json:"wasDeletedAtWake"`    // workload gone when we tried to restore
+	WasAlreadyZero   bool `json:"wasAlreadyZero"`   // was at 0 before we touched it
+	WasDeletedAtWake bool `json:"wasDeletedAtWake"` // workload gone when we tried to restore
 	// ExternallyScaled indicates the workload was scaled by an external actor during the sleep period.
 	WasExternallyScaled bool `json:"wasExternallyScaled"`
 
@@ -180,9 +182,10 @@ type WorkloadSnapshot struct {
 type PolicyOverride struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`
 	PolicyID     uint       `gorm:"index:idx_override_policy_type" json:"policyId"`
+	Policy       Policy     `gorm:"foreignKey:PolicyID;constraint:OnDelete:CASCADE" json:"-"`
 	OverrideType string     `gorm:"index:idx_override_policy_type;size:30" json:"overrideType"` // stay_awake|force_sleep|skip_sleep|skip_wake
-	StartsAt     *time.Time `json:"startsAt"`                    // nil for skip_sleep/skip_wake
-	EndsAt       *time.Time `json:"endsAt"`                      // nil for skip_sleep/skip_wake
+	StartsAt     *time.Time `gorm:"index:idx_override_time" json:"startsAt"`                    // nil for skip_sleep/skip_wake
+	EndsAt       *time.Time `gorm:"index:idx_override_time" json:"endsAt"`                      // nil for skip_sleep/skip_wake
 	// TargetCronTime is the specific cron tick being skipped (skip_sleep/skip_wake only).
 	TargetCronTime *time.Time `json:"targetCronTime"`
 	Reason         string     `gorm:"size:1024" json:"reason"`
@@ -195,10 +198,11 @@ type PolicyOverride struct {
 // executes automatically later.
 type ScheduledException struct {
 	ID            uint      `gorm:"primaryKey" json:"id"`
-	PolicyID      *uint     `gorm:"index" json:"policyId"`        // optional — can be freestanding
+	PolicyID      *uint     `gorm:"index" json:"policyId"` // optional — can be freestanding
+	Policy        *Policy   `gorm:"foreignKey:PolicyID;constraint:OnDelete:CASCADE" json:"-"`
 	ExceptionType string    `gorm:"size:20" json:"exceptionType"` // "stay_awake" | "force_sleep"
-	StartsAt      time.Time `gorm:"index" json:"startsAt"`
-	EndsAt        time.Time `json:"endsAt"`
+	StartsAt      time.Time `gorm:"index;index:idx_se_status_starts,priority:2" json:"startsAt"`
+	EndsAt        time.Time `gorm:"index:idx_se_status_ends" json:"endsAt"`
 	TicketRef     string    `gorm:"size:255" json:"ticketRef"` // JIRA-123, GH-456, etc.
 	Reason        string    `gorm:"size:1024" json:"reason"`
 	SleepOnEnd    bool      `gorm:"default:true" json:"sleepOnEnd"` // return to policy state at EndsAt
@@ -211,11 +215,13 @@ type ScheduledException struct {
 	WorkloadTargets string `gorm:"type:jsonb;default:'[]'" json:"-"`
 
 	// Lifecycle
-	Status           string     `gorm:"index;size:20;default:pending" json:"status"` // pending|active|completed|cancelled
-	StartExecutionID *uint      `json:"startExecutionId"`
-	EndExecutionID   *uint      `json:"endExecutionId"`
-	CancelledAt      *time.Time `json:"cancelledAt"`
-	CancelReason     string     `gorm:"size:1024" json:"cancelReason"`
+	Status           string           `gorm:"index;size:20;default:pending;index:idx_se_status_starts,priority:1;index:idx_se_status_ends,priority:1" json:"status"` // pending|active|completed|cancelled
+	StartExecutionID *uint            `json:"startExecutionId"`
+	StartExecution   *PolicyExecution `gorm:"foreignKey:StartExecutionID;constraint:OnDelete:SET NULL" json:"-"`
+	EndExecutionID   *uint            `json:"endExecutionId"`
+	EndExecution     *PolicyExecution `gorm:"foreignKey:EndExecutionID;constraint:OnDelete:SET NULL" json:"-"`
+	CancelledAt      *time.Time       `json:"cancelledAt"`
+	CancelReason     string           `gorm:"size:1024" json:"cancelReason"`
 
 	CreatedBy string    `gorm:"size:255" json:"createdBy"`
 	CreatedAt time.Time `json:"createdAt"`

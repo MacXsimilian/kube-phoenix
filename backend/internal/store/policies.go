@@ -40,8 +40,8 @@ func (s *Store) UpdatePolicy(id uint, updates map[string]interface{}) (*Policy, 
 func (s *Store) UpdatePolicyState(id uint, state string, nextTransition *time.Time) error {
 	now := time.Now()
 	updates := map[string]interface{}{
-		"current_state":     state,
-		"state_since":       now,
+		"current_state":      state,
+		"state_since":        now,
 		"next_transition_at": nextTransition,
 	}
 	switch state {
@@ -229,6 +229,35 @@ func (s *Store) ResetStuckTransitioningPolicies() (int64, error) {
 	return res.RowsAffected, res.Error
 }
 
+// ─── Retention ───────────────────────────────────────────────────────────────
+
+// CleanOldExecutions deletes finished policy executions older than the given
+// duration. Cascades to policy_log_lines and workload_snapshots via FK.
+// Executions with open (un-restored) snapshots are preserved regardless of age.
+func (s *Store) CleanOldExecutions(olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-olderThan)
+	result := s.db.
+		Where("finished_at < ? AND status != ? AND id NOT IN (?)",
+			cutoff, ExecStatusRunning,
+			s.db.Model(&WorkloadSnapshot{}).Select("DISTINCT sleep_execution_id").Where("wake_execution_id IS NULL"),
+		).
+		Delete(&PolicyExecution{})
+	return result.RowsAffected, result.Error
+}
+
+// CleanExpiredOverrides deletes time-bounded overrides whose window has passed
+// and skip overrides older than the given duration.
+func (s *Store) CleanExpiredOverrides(olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-olderThan)
+	result := s.db.
+		Where("(override_type IN ('stay_awake','force_sleep') AND ends_at < ?) OR "+
+			"(override_type IN ('skip_sleep','skip_wake') AND created_at < ?)",
+			cutoff, cutoff,
+		).
+		Delete(&PolicyOverride{})
+	return result.RowsAffected, result.Error
+}
+
 // ─── Policy Log Lines ─────────────────────────────────────────────────────────
 
 func (s *Store) AppendPolicyLogLine(line *PolicyLogLine) error {
@@ -243,9 +272,13 @@ func (s *Store) AppendPolicyLogLines(lines []PolicyLogLine) error {
 	return s.db.Create(&lines).Error
 }
 
+// maxLogLines caps the number of log lines returned per execution to prevent
+// unbounded memory growth. Executions with more lines are truncated.
+const maxLogLines = 5000
+
 func (s *Store) GetPolicyLogLines(executionID uint) ([]PolicyLogLine, error) {
 	var lines []PolicyLogLine
-	return lines, s.db.Where("execution_id = ?", executionID).Order("seq asc").Find(&lines).Error
+	return lines, s.db.Where("execution_id = ?", executionID).Order("seq asc").Limit(maxLogLines).Find(&lines).Error
 }
 
 // ─── Workload Snapshots ───────────────────────────────────────────────────────
@@ -279,10 +312,11 @@ func (s *Store) GetSnapshotsForExecution(sleepExecID uint) ([]WorkloadSnapshot, 
 	return snaps, s.db.Where("sleep_execution_id = ?", sleepExecID).Find(&snaps).Error
 }
 
-// GetSnapshotsForPolicy returns all snapshots for a policy (open and closed).
+// GetSnapshotsForPolicy returns the most recent snapshots for a policy (open and closed).
+// Capped at 5000 rows to prevent unbounded memory growth.
 func (s *Store) GetSnapshotsForPolicy(policyID uint) ([]WorkloadSnapshot, error) {
 	var snaps []WorkloadSnapshot
-	return snaps, s.db.Where("policy_id = ?", policyID).Order("captured_at desc").Find(&snaps).Error
+	return snaps, s.db.Where("policy_id = ?", policyID).Order("captured_at desc").Limit(5000).Find(&snaps).Error
 }
 
 // CloseSnapshot marks a snapshot as restored by linking it to the wake execution.
@@ -340,6 +374,27 @@ func (s *Store) ListActiveOverrides(policyID uint, now time.Time) ([]PolicyOverr
 	return overrides, err
 }
 
+// ListActiveOverridesForPolicies returns overrides currently in effect for
+// multiple policies in a single query. Results are grouped by policy ID.
+func (s *Store) ListActiveOverridesForPolicies(policyIDs []uint, now time.Time) (map[uint][]PolicyOverride, error) {
+	if len(policyIDs) == 0 {
+		return map[uint][]PolicyOverride{}, nil
+	}
+	var overrides []PolicyOverride
+	err := s.db.Where(
+		"policy_id IN (?) AND ((override_type IN ('stay_awake','force_sleep') AND starts_at <= ? AND ends_at >= ?) OR override_type IN ('skip_sleep','skip_wake'))",
+		policyIDs, now, now,
+	).Find(&overrides).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[uint][]PolicyOverride, len(policyIDs))
+	for i := range overrides {
+		result[overrides[i].PolicyID] = append(result[overrides[i].PolicyID], overrides[i])
+	}
+	return result, nil
+}
+
 func (s *Store) DeletePolicyOverride(id uint) error {
 	result := s.db.Delete(&PolicyOverride{}, id)
 	if result.Error != nil {
@@ -376,7 +431,7 @@ func (s *Store) ListScheduledExceptions(f ScheduledExceptionFilter) ([]Scheduled
 		query = query.Where("status = ?", f.Status)
 	}
 	var items []ScheduledException
-	return items, query.Order("starts_at asc").Find(&items).Error
+	return items, query.Order("starts_at asc").Limit(500).Find(&items).Error
 }
 
 // ListOpenExceptions returns all pending or active exceptions for scheduler evaluation.
@@ -385,21 +440,43 @@ func (s *Store) ListOpenExceptions() ([]ScheduledException, error) {
 	return items, s.db.Where("status IN (?,?)", ExceptionStatusPending, ExceptionStatusActive).Order("starts_at asc").Find(&items).Error
 }
 
-func (s *Store) UpdateScheduledExceptionStatus(id uint, status string) error {
-	updates := map[string]interface{}{"status": status}
-	if status == ExceptionStatusCancelled {
+// UpdateScheduledExceptionStatus atomically transitions an exception from
+// expectedStatus to newStatus. Returns ErrRecordNotFound if the row does not
+// exist or is not in the expected state (prevents concurrent double-transitions).
+func (s *Store) UpdateScheduledExceptionStatus(id uint, expectedStatus, newStatus string) error {
+	updates := map[string]interface{}{"status": newStatus}
+	if newStatus == ExceptionStatusCancelled {
 		updates["cancelled_at"] = time.Now()
 	}
-	return s.db.Model(&ScheduledException{}).Where("id = ?", id).Updates(updates).Error
+	result := s.db.Model(&ScheduledException{}).
+		Where("id = ? AND status = ?", id, expectedStatus).
+		Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
-// CancelScheduledException atomically sets status, cancelled_at, and cancel_reason in one write.
+// CancelScheduledException atomically sets status, cancelled_at, and cancel_reason
+// in one write. Only transitions from pending or active states.
 func (s *Store) CancelScheduledException(id uint, reason string) error {
-	return s.db.Model(&ScheduledException{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"status":        ExceptionStatusCancelled,
-		"cancelled_at":  time.Now(),
-		"cancel_reason": reason,
-	}).Error
+	result := s.db.Model(&ScheduledException{}).
+		Where("id = ? AND status IN (?, ?)", id, ExceptionStatusPending, ExceptionStatusActive).
+		Updates(map[string]interface{}{
+			"status":        ExceptionStatusCancelled,
+			"cancelled_at":  time.Now(),
+			"cancel_reason": reason,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (s *Store) UpdateScheduledException(id uint, updates map[string]interface{}) (*ScheduledException, error) {

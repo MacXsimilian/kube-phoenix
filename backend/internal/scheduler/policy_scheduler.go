@@ -19,13 +19,11 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/policy"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scaler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	"gorm.io/gorm"
 )
 
 // ErrPolicyTransitioning is returned when a policy is already mid-transition.
 var ErrPolicyTransitioning = errors.New("policy is already transitioning")
-
-// PolicyBroker is an alias for Broker, used for policy executions.
-type PolicyBroker = Broker
 
 // schedulerStore abstracts the store methods the scheduler depends on,
 // enabling test doubles.
@@ -33,6 +31,7 @@ type schedulerStore interface {
 	GetPolicy(id uint) (*store.Policy, error)
 	ListPolicies() ([]store.Policy, error)
 	ListActiveOverrides(policyID uint, now time.Time) ([]store.PolicyOverride, error)
+	ListActiveOverridesForPolicies(policyIDs []uint, now time.Time) (map[uint][]store.PolicyOverride, error)
 	CountOpenSnapshotsForRestore(policyID uint) (int64, error)
 	UpdatePolicyState(id uint, state string, nextTransition *time.Time) error
 	SetPolicyTransitioning(id uint) error
@@ -41,7 +40,7 @@ type schedulerStore interface {
 	FinishPolicyExecution(id uint, status string, counts map[string]int) error
 	AppendPolicyLogLines(lines []store.PolicyLogLine) error
 	ListOpenExceptions() ([]store.ScheduledException, error)
-	UpdateScheduledExceptionStatus(id uint, status string) error
+	UpdateScheduledExceptionStatus(id uint, expectedStatus, newStatus string) error
 }
 
 // policyRunner abstracts the execution engine for sleep/wake operations.
@@ -63,6 +62,7 @@ type evalContext struct {
 	now                 time.Time
 	autoWake            bool
 	reconcileWhileAwake bool
+	overridesByPolicy   map[uint][]store.PolicyOverride // batch-fetched per tick
 }
 
 // cachedPolicy holds a parsed in-memory representation of a policy.
@@ -77,15 +77,15 @@ type cachedPolicy struct {
 type PolicyScheduler struct {
 	store  schedulerStore
 	runner policyRunner
-	Broker *PolicyBroker
+	Broker *Broker
 	cfg    SchedulerConfig
 
-	mu                    sync.Mutex
-	cancel                context.CancelFunc
-	parentCtx             context.Context
-	policies              map[uint]cachedPolicy
-	lastReconcileAttempt  map[uint]time.Time
-	inflight              sync.WaitGroup // tracks running execution goroutines
+	mu                   sync.Mutex
+	cancel               context.CancelFunc
+	parentCtx            context.Context
+	policies             map[uint]cachedPolicy
+	lastReconcileAttempt map[uint]time.Time
+	inflight             sync.WaitGroup // tracks running execution goroutines
 }
 
 // NewPolicyScheduler creates a PolicyScheduler. Pass nil k8sClient in tests.
@@ -163,6 +163,31 @@ func (ps *PolicyScheduler) NextTransition(policyID uint) *time.Time {
 		return nil
 	}
 	return policy.NextTransition(cp.windows, cp.policy.Timezone, time.Now())
+}
+
+// NextTransitions returns the next transition time for each requested policy
+// in a single lock acquisition.
+func (ps *PolicyScheduler) NextTransitions(policyIDs []uint) map[uint]*time.Time {
+	ps.mu.Lock()
+	type entry struct {
+		id       uint
+		windows  []policy.SleepWindow
+		timezone string
+	}
+	entries := make([]entry, 0, len(policyIDs))
+	for _, id := range policyIDs {
+		if cp, ok := ps.policies[id]; ok {
+			entries = append(entries, entry{id, cp.windows, cp.policy.Timezone})
+		}
+	}
+	ps.mu.Unlock()
+
+	now := time.Now()
+	result := make(map[uint]*time.Time, len(entries))
+	for _, e := range entries {
+		result[e.id] = policy.NextTransition(e.windows, e.timezone, now)
+	}
+	return result
 }
 
 // RunSleepNow triggers an immediate sleep execution for a policy.
@@ -254,8 +279,11 @@ func (ps *PolicyScheduler) maybeStartException(ex store.ScheduledException, now 
 	if now.Before(ex.StartsAt) {
 		return
 	}
-	if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusActive); err != nil {
-		slog.Error("exception: set active failed", "exceptionID", ex.ID, "err", err)
+	if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusPending, store.ExceptionStatusActive); err != nil {
+		// ErrRecordNotFound means another tick already transitioned it — not an error.
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			slog.Error("exception: set active failed", "exceptionID", ex.ID, "err", err)
+		}
 		return
 	}
 	slog.Info("exception started", "exceptionID", ex.ID, "ticketRef", ex.TicketRef)
@@ -263,7 +291,7 @@ func (ps *PolicyScheduler) maybeStartException(ex store.ScheduledException, now 
 		if _, err := ps.RunWakeNow(*ex.PolicyID, "exception_start"); err != nil {
 			slog.Warn("exception: wake failed, reverting to pending",
 				"exceptionID", ex.ID, "err", err)
-			if rbErr := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusPending); rbErr != nil {
+			if rbErr := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusActive, store.ExceptionStatusPending); rbErr != nil {
 				slog.Error("exception: revert to pending failed",
 					"exceptionID", ex.ID, "err", rbErr)
 			}
@@ -275,8 +303,10 @@ func (ps *PolicyScheduler) maybeEndException(ex store.ScheduledException, now ti
 	if !now.After(ex.EndsAt) {
 		return
 	}
-	if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusCompleted); err != nil {
-		slog.Error("exception: set completed failed", "exceptionID", ex.ID, "err", err)
+	if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusActive, store.ExceptionStatusCompleted); err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			slog.Error("exception: set completed failed", "exceptionID", ex.ID, "err", err)
+		}
 		return
 	}
 	slog.Info("exception ended", "exceptionID", ex.ID, "ticketRef", ex.TicketRef)
@@ -299,8 +329,8 @@ const (
 	// reconcileBackoff is the minimum interval between corrective-wake
 	// attempts for the same policy. Prevents flooding history when failures
 	// persist.
-	reconcileBackoff        = 5 * time.Minute
-	stuckTransitionTimeout  = 10 * time.Minute
+	reconcileBackoff       = 5 * time.Minute
+	stuckTransitionTimeout = 10 * time.Minute
 )
 
 func (ps *PolicyScheduler) tickLoop(ctx context.Context, interval time.Duration) {
@@ -311,9 +341,21 @@ func (ps *PolicyScheduler) tickLoop(ctx context.Context, interval time.Duration)
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			ps.evaluateAll()
+			ps.safeEvaluateAll()
 		}
 	}
+}
+
+// safeEvaluateAll wraps evaluateAll with panic recovery so a single bad
+// policy evaluation cannot kill the scheduler goroutine permanently.
+func (ps *PolicyScheduler) safeEvaluateAll() {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("policy scheduler: panic in evaluateAll (recovered)", "panic", r)
+			metrics.SchedulerPanicsTotal.Inc()
+		}
+	}()
+	ps.evaluateAll()
 }
 
 func (ps *PolicyScheduler) evaluateAll() {
@@ -321,8 +363,12 @@ func (ps *PolicyScheduler) evaluateAll() {
 
 	ps.mu.Lock()
 	snapshot := make([]cachedPolicy, 0, len(ps.policies))
+	policyIDs := make([]uint, 0, len(ps.policies))
 	for _, cp := range ps.policies {
 		snapshot = append(snapshot, cp)
+		if cp.policy.Enabled {
+			policyIDs = append(policyIDs, cp.policy.ID)
+		}
 	}
 	ctx := evalContext{
 		now:                 start,
@@ -330,6 +376,14 @@ func (ps *PolicyScheduler) evaluateAll() {
 		reconcileWhileAwake: ps.cfg.ReconcileWhileAwake,
 	}
 	ps.mu.Unlock()
+
+	// Batch-fetch overrides for all enabled policies in one query.
+	overrideMap, err := ps.store.ListActiveOverridesForPolicies(policyIDs, start)
+	if err != nil {
+		slog.Warn("failed to batch-fetch active overrides", "err", err)
+		overrideMap = map[uint][]store.PolicyOverride{}
+	}
+	ctx.overridesByPolicy = overrideMap
 
 	for _, cp := range snapshot {
 		ps.evaluatePolicy(cp, ctx)
@@ -344,11 +398,7 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, ctx evalContext) {
 	if !p.Enabled {
 		return
 	}
-	overrides, err := ps.store.ListActiveOverrides(p.ID, ctx.now)
-	if err != nil {
-		slog.Warn("failed to list active overrides", "policyID", p.ID, "err", err)
-		overrides = nil
-	}
+	overrides := ctx.overridesByPolicy[p.ID]
 	intended := IntendedState(cp.windows, p.Timezone, overrides, ctx.now)
 
 	if intended == PolicyStateUnknown {
@@ -570,6 +620,16 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 	ps.inflight.Add(1)
 	go func() {
 		defer ps.inflight.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("policy scheduler: panic in execution goroutine (recovered)",
+					"policyID", p.ID, "execID", exec.ID, "panic", r)
+				metrics.SchedulerPanicsTotal.Inc()
+				// Best-effort: mark execution failed and reset policy state.
+				_ = ps.store.FinishPolicyExecution(exec.ID, store.ExecStatusFailed, nil)
+				ps.updatePolicyState(p.ID, direction, store.ExecStatusFailed)
+			}
+		}()
 		timeout := time.Duration(p.TimeoutMinutes) * time.Minute
 		if timeout <= 0 {
 			timeout = defaultExecutionTimeout
@@ -578,56 +638,15 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		defer cancel()
 
 		logCh := make(chan scaler.LogLine, execLogChannelBuffer)
-		seq := 0
 
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			const flushSize = 50
-			buf := make([]store.PolicyLogLine, 0, flushSize)
-
-			flush := func() {
-				if len(buf) == 0 {
-					return
-				}
-				if err := ps.store.AppendPolicyLogLines(buf); err != nil {
-					slog.Error("policy scheduler: log batch persist error", "execID", execID, "lines", len(buf), "err", err)
-				}
-				buf = buf[:0]
-			}
-
-			for line := range logCh {
-				seq++
-				dbLine := store.PolicyLogLine{
-					ExecutionID: execID,
-					Seq:         seq,
-					Level:       line.Level,
-					Message:     line.Message,
-					Timestamp:   line.Time,
-				}
-				// Publish immediately for live WebSocket streaming.
-				ps.Broker.Publish(execID, dbLine)
-				buf = append(buf, dbLine)
-				if len(buf) >= flushSize {
-					flush()
-				}
-			}
-			// Final flush for remaining lines.
-			flush()
+			ps.drainLogChannel(execID, logCh)
 		}()
 
-		var counts *scaler.Counts
-		var runErr error
-
-		switch direction {
-		case directionSleep:
-			counts, runErr = ps.runner.RunPolicySleep(runCtx, p, execID, logCh)
-		case directionWake:
-			counts, runErr = ps.runner.RunPolicyWake(runCtx, p, execID, logCh)
-		default:
-			runErr = fmt.Errorf("unknown direction: %s", direction)
-		}
+		counts, runErr := ps.executeScaler(runCtx, p, direction, execID, logCh)
 
 		close(logCh)
 		wg.Wait()
@@ -649,6 +668,53 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 	}()
 
 	return execID, nil
+}
+
+// drainLogChannel reads log lines from the scaler, publishes them to WebSocket
+// subscribers in real time, and batches them for DB persistence.
+func (ps *PolicyScheduler) drainLogChannel(execID uint, logCh <-chan scaler.LogLine) {
+	const flushSize = 50
+	buf := make([]store.PolicyLogLine, 0, flushSize)
+	seq := 0
+
+	flush := func() {
+		if len(buf) == 0 {
+			return
+		}
+		if err := ps.store.AppendPolicyLogLines(buf); err != nil {
+			slog.Error("policy scheduler: log batch persist error", "execID", execID, "lines", len(buf), "err", err)
+		}
+		buf = buf[:0]
+	}
+
+	for line := range logCh {
+		seq++
+		dbLine := store.PolicyLogLine{
+			ExecutionID: execID,
+			Seq:         seq,
+			Level:       line.Level,
+			Message:     line.Message,
+			Timestamp:   line.Time,
+		}
+		ps.Broker.Publish(execID, dbLine)
+		buf = append(buf, dbLine)
+		if len(buf) >= flushSize {
+			flush()
+		}
+	}
+	flush()
+}
+
+// executeScaler dispatches to the appropriate sleep or wake runner.
+func (ps *PolicyScheduler) executeScaler(ctx context.Context, p store.Policy, direction string, execID uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error) {
+	switch direction {
+	case directionSleep:
+		return ps.runner.RunPolicySleep(ctx, p, execID, logCh)
+	case directionWake:
+		return ps.runner.RunPolicyWake(ctx, p, execID, logCh)
+	default:
+		return nil, fmt.Errorf("unknown direction: %s", direction)
+	}
 }
 
 // finalizeExecution writes the completion status and counts to the database.

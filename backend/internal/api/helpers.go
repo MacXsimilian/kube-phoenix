@@ -40,7 +40,13 @@ func jsonInternalError(w http.ResponseWriter, err error, msg string) {
 
 func parseID(r *http.Request, param string) (uint, error) {
 	id, err := strconv.ParseUint(chi.URLParam(r, param), 10, 64)
-	return uint(id), err
+	if err != nil {
+		return 0, err
+	}
+	if id == 0 {
+		return 0, strconv.ErrRange
+	}
+	return uint(id), nil
 }
 
 func (h *Handler) reloadScheduler(policyID uint) {
@@ -68,4 +74,3 @@ func parsePageSize(query url.Values, defaultVal, maxVal int) int {
 	}
 	return ps
 }
-

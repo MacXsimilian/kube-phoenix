@@ -22,6 +22,7 @@ const (
 	resyncPeriod       = 5 * time.Minute
 	debounceInterval   = 2 * time.Second
 	startupSyncTimeout = 30 * time.Second
+	maxSSESubscribers  = 100
 )
 
 // CachedSnapshot holds a point-in-time copy of cluster state.
@@ -129,12 +130,15 @@ func (c *ClusterCache) Snapshot() CachedSnapshot {
 }
 
 // Subscribe returns a buffered channel that receives a signal on each cache
-// rebuild. The channel stops receiving signals when Stop is called.
+// rebuild. Returns nil if the subscriber limit has been reached.
 func (c *ClusterCache) Subscribe() chan struct{} {
-	ch := make(chan struct{}, 1)
 	c.subMu.Lock()
+	defer c.subMu.Unlock()
+	if len(c.subs) >= maxSSESubscribers {
+		return nil
+	}
+	ch := make(chan struct{}, 1)
 	c.subs = append(c.subs, ch)
-	c.subMu.Unlock()
 	return ch
 }
 

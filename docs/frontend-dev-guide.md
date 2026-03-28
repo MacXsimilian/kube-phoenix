@@ -388,10 +388,7 @@ async function req<T>(path: string, options?: RequestInit): Promise<T>
 | Function | Method | Endpoint |
 |:---------|:-------|:---------|
 | `getPolicyExecutions(params?)` | GET | `/api/policy-executions?...` |
-| `getPolicyExecution(id)` | GET | `/api/policy-executions/{id}` |
 | `getPolicyExecutionLogs(id)` | GET | `/api/policy-executions/{id}/logs` |
-| `getPolicyExecutionSnapshots(id)` | GET | `/api/policy-executions/{id}/snapshots` |
-| `getPolicySnapshots(policyId, open?)` | GET | `/api/policies/{policyId}/snapshots` |
 
 **Policy Overrides:**
 
@@ -406,7 +403,6 @@ async function req<T>(path: string, options?: RequestInit): Promise<T>
 | Function | Method | Endpoint |
 |:---------|:-------|:---------|
 | `getExceptions(params?)` | GET | `/api/exceptions?...` |
-| `getException(id)` | GET | `/api/exceptions/{id}` |
 | `createException(data)` | POST | `/api/exceptions` |
 | `updateException(id, data)` | PUT | `/api/exceptions/{id}` |
 | `deleteException(id)` | DELETE | `/api/exceptions/{id}` |
@@ -419,7 +415,6 @@ async function req<T>(path: string, options?: RequestInit): Promise<T>
 | `createUserAPI(data)` | POST | `/api/users` |
 | `updateUserAPI(id, data)` | PUT | `/api/users/{id}` |
 | `deleteUserAPI(id)` | DELETE | `/api/users/{id}` |
-| `changePasswordAPI(current, new)` | PUT | `/api/auth/password` |
 
 **Auth/OIDC:**
 
@@ -967,21 +962,16 @@ Most color exports are mode-aware functions that accept an `isDark: boolean` par
 | `NODE_PODS_REFETCH_MS` | 15,000 | Node pod list polling interval |
 | `WORKLOAD_PODS_REFETCH_MS` | 15,000 | Workload pod list polling interval |
 | `POD_DETAIL_REFETCH_MS` | 15,000 | Pod detail polling interval |
-| `WS_RECONNECT_DELAY_MS` | 3,000 | WebSocket reconnection delay |
 | `SNACKBAR_AUTO_HIDE_MS` | 4,000 | Snackbar auto-dismiss time |
 | `DRAWER_MIN_WIDTH` | 360 | Minimum drawer width in pixels |
 | `DRAWER_MAX_WIDTH_RATIO` | 0.9 | Maximum drawer width as fraction of viewport |
-| `LOG_INITIAL_TAIL` | 500 | Initial pod log lines to fetch |
-| `LOG_LOAD_INCREMENT` | 2,000 | Lines added when "Load older logs" is clicked |
-| `LOG_MAX_LINES` | 10,000 | Maximum lines kept in memory |
-| `MAX_TIMEOUT_MINUTES` | 1,440 | Maximum policy timeout (24 hours) |
 | `MINUTES_PER_HOUR` | 60 | Time unit constant |
 | `MINUTES_PER_DAY` | 1,440 | Time unit constant |
 | `HOURS_PER_WEEK` | 168 | Time unit constant |
 
 ### lib/rbac.ts
 
-A thin permission-checking layer. `hasPerm(permissions, perm)` checks if a string exists in the permissions array. Six convenience wrappers are exported for common checks. See [RBAC](#rbac) in Architecture Patterns.
+A thin permission-checking layer. The internal `hasPerm(permissions, perm)` function checks if a string exists in the permissions array. Six convenience wrappers are exported for common checks (`canEditSchedules`, `canTriggerSchedules`, `canEditGuardrails`, `canManageUsers`, `canResetDB`, `canViewAudit`). See [RBAC](#rbac) in Architecture Patterns.
 
 ### lib/usePolicyTriggers.ts
 
@@ -1130,7 +1120,7 @@ The SSE stream pushes updates within ~2 seconds of any cluster change (the backe
 **Flow:**
 1. When `execution.status === 'running'`, `useExecutionLogs` opens `new WebSocket(wsPolicyLogsUrl(execution.id))`
 2. `ws.onmessage` parses each message as a JSON `LogLine` and appends to the lines array
-3. On `ws.onerror`, sets error state and attempts reconnection after 3 seconds (`WS_RECONNECT_DELAY_MS`)
+3. On `ws.onerror`, sets error state and attempts reconnection after 3 seconds
 4. Reconnection only happens if the execution is still running (`isRunningRef.current`)
 5. On component unmount or execution change, the WebSocket is closed via cleanup function
 6. For completed executions, the hook falls back to `getPolicyExecutionLogs()` via REST

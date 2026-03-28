@@ -15,19 +15,19 @@ import (
 // ─── Test doubles ─────────────────────────────────────────────────────────────
 
 type mockStore struct {
-	overrides          []store.PolicyOverride
-	openSnapshotCount  int64
-	policies           []store.Policy
+	overrides         []store.PolicyOverride
+	openSnapshotCount int64
+	policies          []store.Policy
 
 	// Stubbed errors — set before calling to inject failures.
 	transitionErr error
 
 	// Spy fields — record calls for assertions.
-	mu                     sync.Mutex
-	createdExecutions      []store.PolicyExecution
-	deletedOverrides       []uint
-	stateUpdates           []stateUpdate
-	transitioningClaims    []uint
+	mu                  sync.Mutex
+	createdExecutions   []store.PolicyExecution
+	deletedOverrides    []uint
+	stateUpdates        []stateUpdate
+	transitioningClaims []uint
 }
 
 type stateUpdate struct {
@@ -77,11 +77,14 @@ func (m *mockStore) CreatePolicyExecution(exec *store.PolicyExecution) error {
 	return nil
 }
 func (m *mockStore) FinishPolicyExecution(_ uint, _ string, _ map[string]int) error { return nil }
-func (m *mockStore) AppendPolicyLogLines(_ []store.PolicyLogLine) error               { return nil }
+func (m *mockStore) AppendPolicyLogLines(_ []store.PolicyLogLine) error             { return nil }
 func (m *mockStore) ListOpenExceptions() ([]store.ScheduledException, error) {
 	return nil, nil
 }
-func (m *mockStore) UpdateScheduledExceptionStatus(_ uint, _ string) error { return nil }
+func (m *mockStore) UpdateScheduledExceptionStatus(_ uint, _, _ string) error { return nil }
+func (m *mockStore) ListActiveOverridesForPolicies(_ []uint, _ time.Time) (map[uint][]store.PolicyOverride, error) {
+	return map[uint][]store.PolicyOverride{}, nil
+}
 
 type mockRunner struct{}
 

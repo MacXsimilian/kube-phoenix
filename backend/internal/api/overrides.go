@@ -34,7 +34,11 @@ func (h *Handler) createPolicyOverride(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.store.GetPolicy(policyID); err != nil {
-		jsonError(w, "policy not found", http.StatusNotFound)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			jsonError(w, "policy not found", http.StatusNotFound)
+		} else {
+			jsonInternalError(w, err, "get policy failed")
+		}
 		return
 	}
 
@@ -50,33 +54,9 @@ func (h *Handler) createPolicyOverride(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	validTypes := map[string]bool{
-		"stay_awake": true, "force_sleep": true, "skip_sleep": true, "skip_wake": true,
-	}
-	if !validTypes[body.OverrideType] {
-		jsonError(w, "overrideType must be stay_awake, force_sleep, skip_sleep, or skip_wake", http.StatusBadRequest)
+	if msg := validateOverrideInput(body.OverrideType, body.Reason, body.StartsAt, body.EndsAt, body.TargetCronTime); msg != "" {
+		jsonError(w, msg, http.StatusBadRequest)
 		return
-	}
-
-	switch body.OverrideType {
-	case "stay_awake", "force_sleep":
-		if body.StartsAt == nil || body.EndsAt == nil {
-			jsonError(w, "startsAt and endsAt are required for windowed overrides", http.StatusBadRequest)
-			return
-		}
-		if body.StartsAt.Before(time.Now().Add(-1 * time.Minute)) {
-			jsonError(w, "startsAt must not be in the past", http.StatusBadRequest)
-			return
-		}
-		if !body.EndsAt.After(*body.StartsAt) {
-			jsonError(w, "endsAt must be after startsAt", http.StatusBadRequest)
-			return
-		}
-	case "skip_sleep", "skip_wake":
-		if body.TargetCronTime == nil {
-			jsonError(w, "targetCronTime is required for skip overrides", http.StatusBadRequest)
-			return
-		}
 	}
 
 	createdBy := ""
@@ -141,4 +121,34 @@ func (h *Handler) deletePolicyOverride(w http.ResponseWriter, r *http.Request) {
 	slog.Info("policy override deleted", "policyID", policyID, "overrideID", overrideID)
 	h.audit(r, "policy.override.delete", "policy", &policyID, existing, nil)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// validateOverrideInput checks override fields and returns an error message, or "" if valid.
+func validateOverrideInput(overrideType, reason string, startsAt, endsAt, targetCronTime *time.Time) string {
+	if len(reason) > maxReasonLen {
+		return "reason must be 1024 characters or fewer"
+	}
+	validTypes := map[string]bool{
+		"stay_awake": true, "force_sleep": true, "skip_sleep": true, "skip_wake": true,
+	}
+	if !validTypes[overrideType] {
+		return "overrideType must be stay_awake, force_sleep, skip_sleep, or skip_wake"
+	}
+	switch overrideType {
+	case "stay_awake", "force_sleep":
+		if startsAt == nil || endsAt == nil {
+			return "startsAt and endsAt are required for windowed overrides"
+		}
+		if startsAt.Before(time.Now().Add(-1 * time.Minute)) {
+			return "startsAt must not be in the past"
+		}
+		if !endsAt.After(*startsAt) {
+			return "endsAt must be after startsAt"
+		}
+	case "skip_sleep", "skip_wake":
+		if targetCronTime == nil {
+			return "targetCronTime is required for skip overrides"
+		}
+	}
+	return ""
 }

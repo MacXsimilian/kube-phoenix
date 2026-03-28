@@ -41,6 +41,32 @@ const LED_PULSE_KEYFRAMES = {
 
 const STAT_VALUE_SX = { fontSize: 13, lineHeight: 1.3 } as const
 
+const ACTION_BTN_SX_DARK = {
+  width: 40,
+  height: 40,
+  borderRadius: '8px',
+  border: '1px solid rgba(255,255,255,0.07)',
+  bgcolor: 'rgba(255,255,255,0.03)',
+  color: '#94A3B8',
+  '&:hover': {
+    bgcolor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+} as const
+
+const ACTION_BTN_SX_LIGHT = {
+  width: 40,
+  height: 40,
+  borderRadius: '8px',
+  border: '1px solid rgba(0,0,0,0.09)',
+  bgcolor: 'rgba(0,0,0,0.03)',
+  color: '#475569',
+  '&:hover': {
+    bgcolor: 'rgba(0,0,0,0.06)',
+    borderColor: 'rgba(0,0,0,0.12)',
+  },
+} as const
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function nextTransitionLabel(policy: Policy): string {
@@ -119,18 +145,7 @@ export default function PolicyCard({
   const { sleepMut, wakeMut, isBusy } = usePolicyTriggers(policy.id, onNotify)
   const colors = useColors()
 
-  const actionBtnSx = {
-    width: 40,
-    height: 40,
-    borderRadius: '8px',
-    border: `1px solid ${isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.09)'}`,
-    bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
-    color: colors.muted,
-    '&:hover': {
-      bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-      borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
-    },
-  } as const
+  const actionBtnSx = isDark ? ACTION_BTN_SX_DARK : ACTION_BTN_SX_LIGHT
 
   const deleteMut = useMutation({
     mutationFn: () => deletePolicy(policy.id),

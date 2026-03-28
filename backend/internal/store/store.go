@@ -50,6 +50,7 @@ func New(dsn string) (*Store, error) {
 	sqlDB.SetMaxOpenConns(dbMaxOpenConns)
 	sqlDB.SetMaxIdleConns(dbMaxIdleConns)
 	sqlDB.SetConnMaxLifetime(dbConnMaxLifetime)
+	sqlDB.SetConnMaxIdleTime(2 * time.Minute)
 
 	if err := runMigrations(db); err != nil {
 		return nil, err
@@ -60,29 +61,41 @@ func New(dsn string) (*Store, error) {
 
 func runMigrations(db *gorm.DB) error {
 	// Drop legacy unique index on username alone (replaced by composite username+source).
-	db.Exec("DROP INDEX IF EXISTS idx_users_username")
+	if err := db.Exec("DROP INDEX IF EXISTS idx_users_username").Error; err != nil {
+		slog.Warn("migration: drop legacy username index failed (non-fatal)", "err", err)
+	}
 	// Rename misnamed column from GORM's default naming convention (idempotent).
-	db.Exec(`DO $$ BEGIN
+	if err := db.Exec(`DO $$ BEGIN
 		IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='o_id_c_subject') THEN
 			ALTER TABLE users RENAME COLUMN o_id_c_subject TO oidc_subject;
 		END IF;
-	END $$`)
-	db.Exec("DROP INDEX IF EXISTS idx_users_o_id_c_subject")
+	END $$`).Error; err != nil {
+		slog.Warn("migration: rename oidc_subject column failed (non-fatal)", "err", err)
+	}
+	if err := db.Exec("DROP INDEX IF EXISTS idx_users_o_id_c_subject").Error; err != nil {
+		slog.Warn("migration: drop legacy oidc index failed (non-fatal)", "err", err)
+	}
 
 	if err := db.AutoMigrate(allModels...); err != nil {
 		return err
 	}
 	// Add CHECK constraints for enum-like status fields (idempotent).
-	db.Exec(`DO $$ BEGIN
+	if err := db.Exec(`DO $$ BEGIN
 		ALTER TABLE scheduled_exceptions ADD CONSTRAINT chk_exception_status
 			CHECK (status IN ('pending','active','completed','cancelled'));
 	EXCEPTION WHEN duplicate_object THEN NULL;
-	END $$`)
-	db.Exec(`DO $$ BEGIN
+	END $$`).Error; err != nil {
+		slog.Warn("migration: add exception status CHECK failed (non-fatal)", "err", err)
+	}
+	if err := db.Exec(`DO $$ BEGIN
 		ALTER TABLE policy_executions ADD CONSTRAINT chk_policy_execution_status
 			CHECK (status IN ('running','success','failed','interrupted','skipped'));
 	EXCEPTION WHEN duplicate_object THEN NULL;
-	END $$`)
+	END $$`).Error; err != nil {
+		slog.Warn("migration: add execution status CHECK failed (non-fatal)", "err", err)
+	}
+
+	addEnumCheckConstraints(db)
 
 	slog.Info("store: schema migration complete")
 
@@ -90,12 +103,32 @@ func runMigrations(db *gorm.DB) error {
 	migrateWindowsFromCrons(db)
 
 	// Drop legacy cron columns (idempotent).
-	db.Exec("ALTER TABLE policies DROP COLUMN IF EXISTS sleep_cron")
-	db.Exec("ALTER TABLE policies DROP COLUMN IF EXISTS wake_cron")
-	db.Exec("ALTER TABLE policies DROP COLUMN IF EXISTS next_sleep_at")
-	db.Exec("ALTER TABLE policies DROP COLUMN IF EXISTS next_wake_at")
+	for _, col := range []string{"sleep_cron", "wake_cron", "next_sleep_at", "next_wake_at"} {
+		if err := db.Exec("ALTER TABLE policies DROP COLUMN IF EXISTS " + col).Error; err != nil {
+			slog.Warn("migration: drop legacy column failed (non-fatal)", "column", col, "err", err)
+		}
+	}
 
 	return nil
+}
+
+// addEnumCheckConstraints adds CHECK constraints for all enum-like string
+// columns. Each constraint is idempotent (duplicate_object is caught).
+func addEnumCheckConstraints(db *gorm.DB) {
+	checks := []struct{ table, name, expr string }{
+		{"policies", "chk_policy_mode", "mode IN ('plan','apply')"},
+		{"policies", "chk_policy_state", "current_state IN ('sleeping','awake','unknown','transitioning')"},
+		{"policy_executions", "chk_policy_execution_direction", "direction IN ('sleep','wake')"},
+		{"policy_overrides", "chk_override_type", "override_type IN ('stay_awake','force_sleep','skip_sleep','skip_wake')"},
+		{"users", "chk_user_role", "role IN ('admin','operator','viewer')"},
+		{"users", "chk_user_source", "source IN ('local','oidc')"},
+	}
+	for _, c := range checks {
+		sql := "DO $$ BEGIN ALTER TABLE " + c.table + " ADD CONSTRAINT " + c.name + " CHECK (" + c.expr + "); EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+		if err := db.Exec(sql).Error; err != nil {
+			slog.Warn("migration: add CHECK constraint failed (non-fatal)", "table", c.table, "constraint", c.name, "err", err)
+		}
+	}
 }
 
 // migrateWindowsFromCrons converts legacy cron-only policies to the window format.

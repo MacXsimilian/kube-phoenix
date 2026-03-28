@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import Card from '@mui/material/Card'
@@ -34,7 +34,8 @@ const livePulseAnimation = {
 export default function ActivityFeed() {
   const router = useRouter()
   const colors = useColors()
-  const MODE_COLORS = modeColors(useIsDark())
+  const isDark = useIsDark()
+  const MODE_COLORS = useMemo(() => modeColors(isDark), [isDark])
   const [selected, setSelected] = useState<PolicyExecution | null>(null)
   const { data, isLoading, isError } = useQuery({
     queryKey: ['policy-executions', 'feed'],

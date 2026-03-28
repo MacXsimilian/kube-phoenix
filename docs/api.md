@@ -93,7 +93,7 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 
 | Method | Path | Description |
 | :----- | :--- | :---------- |
-| `GET` | `/api/policy-executions` | List executions (filters: `policy_id`, `status`, `page`, `page_size` or `pageSize`) |
+| `GET` | `/api/policy-executions` | List executions (filters: `policy_id`, `status`, `direction`, `page`, `page_size` or `pageSize`) |
 | `GET` | `/api/policy-executions/{id}` | Get a single execution |
 | `GET` | `/api/policy-executions/{id}/logs` | Get log lines for an execution |
 | `GET` | `/api/policy-executions/{id}/snapshots` | Workload snapshots for an execution |
@@ -122,8 +122,12 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 
 **`after` field for auth actions:**
 - `auth.login` — `{"username": "alice", "method": "local" | "oidc"}`
+- `auth.login_failed` — `{"username": "alice", "reason": "unknown_user" | "bad_password" | "account_disabled"}`
 - `auth.logout` — `{"method": "local" | "oidc"}`
 - `auth.password_change` — `{"method": "self-service"}`
+- `auth.denied` — `{"method": "GET", "path": "/api/users"}` (permission denied)
+- `user.settings` — `{"defaultTimezone": "Europe/Berlin"}` (before/after)
+- `policy.sleep` / `policy.wake` — `{"executionId": 42}`
 
 ### Users -- admin only
 

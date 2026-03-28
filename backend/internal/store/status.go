@@ -20,7 +20,6 @@ const (
 	ExecStatusSuccess     = "success"
 	ExecStatusFailed      = "failed"
 	ExecStatusInterrupted = "interrupted"
-	ExecStatusSkipped     = "skipped"
 )
 
 // Exception statuses.
@@ -29,4 +28,10 @@ const (
 	ExceptionStatusActive    = "active"
 	ExceptionStatusCompleted = "completed"
 	ExceptionStatusCancelled = "cancelled"
+)
+
+// Exception types.
+const (
+	ExceptionTypeStayAwake  = "stay_awake"
+	ExceptionTypeForceSleep = "force_sleep"
 )

@@ -172,4 +172,10 @@ var (
 		Help:    "Duration of each scheduler evaluation tick in seconds.",
 		Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5},
 	})
+
+	// SchedulerPanicsTotal counts recovered panics in background goroutines.
+	SchedulerPanicsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "kube_phoenix_scheduler_panics_total",
+		Help: "Total recovered panics in scheduler and background goroutines.",
+	})
 )

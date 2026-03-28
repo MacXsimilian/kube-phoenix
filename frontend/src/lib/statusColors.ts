@@ -159,7 +159,7 @@ type AuditAction =
   | 'user.create' | 'user.update' | 'user.delete'
   | 'auth.login' | 'auth.logout' | 'auth.password_change'
 
-export const ACTION_LABELS: Record<AuditAction, string> = {
+const ACTION_LABELS: Record<AuditAction, string> = {
   'policy.create': 'Policy Create', 'policy.update': 'Policy Update', 'policy.delete': 'Policy Delete',
   'policy.sleep': 'Policy Sleep', 'policy.wake': 'Policy Wake',
   'policy.override.create': 'Override Create', 'policy.override.delete': 'Override Delete',

@@ -25,6 +25,10 @@ func (h *Handler) listExceptions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if s := query.Get("status"); s != "" {
+		if !validExceptionStatuses[s] {
+			jsonError(w, "status must be pending, active, completed, or cancelled", http.StatusBadRequest)
+			return
+		}
 		filter.Status = s
 	}
 	items, err := h.store.ListScheduledExceptions(filter)
@@ -79,7 +83,11 @@ func (h *Handler) createException(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.PolicyID != nil {
 		if _, err := h.store.GetPolicy(*body.PolicyID); err != nil {
-			jsonError(w, "policy not found", http.StatusBadRequest)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				jsonError(w, "policy not found", http.StatusBadRequest)
+			} else {
+				jsonInternalError(w, err, "get policy failed")
+			}
 			return
 		}
 	}
@@ -270,12 +278,39 @@ func buildExceptionUpdates(body exceptionInput) (map[string]interface{}, error) 
 		}
 		updates["workload_targets"] = string(b)
 	}
+	if err := validateExceptionUpdates(updates); err != nil {
+		return nil, err
+	}
 	return updates, nil
 }
 
+func validateExceptionUpdates(updates map[string]interface{}) error {
+	if v, ok := updates["exception_type"].(string); ok {
+		if err := validateExceptionType(v); err != nil {
+			return err
+		}
+	}
+	startsAt, hasStart := updates["starts_at"].(time.Time)
+	endsAt, hasEnd := updates["ends_at"].(time.Time)
+	if hasStart && hasEnd && !endsAt.After(startsAt) {
+		return errors.New("endsAt must be after startsAt")
+	}
+	if v, ok := updates["ticket_ref"].(string); ok {
+		if err := validateFieldLen(v, maxTicketRefLen, "ticketRef"); err != nil {
+			return err
+		}
+	}
+	if v, ok := updates["reason"].(string); ok {
+		if err := validateFieldLen(v, maxReasonLen, "reason"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func validateExceptionInput(b exceptionInput) error {
-	if b.ExceptionType != "stay_awake" && b.ExceptionType != "force_sleep" {
-		return errors.New("exceptionType must be stay_awake or force_sleep")
+	if err := validateExceptionType(b.ExceptionType); err != nil {
+		return err
 	}
 	if b.StartsAt.IsZero() {
 		return errors.New("startsAt is required")
@@ -288,6 +323,26 @@ func validateExceptionInput(b exceptionInput) error {
 	}
 	if time.Until(b.StartsAt) < 0 {
 		return errors.New("startsAt must be in the future")
+	}
+	if err := validateFieldLen(b.Reason, maxReasonLen, "reason"); err != nil {
+		return err
+	}
+	if err := validateFieldLen(b.TicketRef, maxTicketRefLen, "ticketRef"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateExceptionType(t string) error {
+	if !validExceptionTypes[t] {
+		return errors.New("exceptionType must be stay_awake or force_sleep")
+	}
+	return nil
+}
+
+func validateFieldLen(v string, max int, name string) error {
+	if len(v) > max {
+		return fmt.Errorf("%s must be %d characters or fewer", name, max)
 	}
 	return nil
 }

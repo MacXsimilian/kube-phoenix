@@ -1,4 +1,4 @@
-import type { Guardrails, Workload, Node, NodePod, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecution, PolicyExecutionPage, LogLine, WorkloadSnapshot, PolicyOverride, ScheduledException, ScheduledExceptionInput, ClusterInfo, VersionInfo } from './types'
+import type { Guardrails, Workload, Node, NodePod, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecutionPage, LogLine, PolicyOverride, ScheduledException, ScheduledExceptionInput, ClusterInfo, VersionInfo } from './types'
 import { getCSRFToken } from './auth'
 import { REQUEST_TIMEOUT_MS } from './constants'
 
@@ -237,15 +237,9 @@ export const updateUserAPI = (id: number, data: Partial<Pick<User, 'role' | 'ena
 export const deleteUserAPI = (id: number): Promise<void> =>
   req<void>(`/api/users/${id}`, { method: 'DELETE' })
 
-export const changePasswordAPI = (currentPassword: string, newPassword: string): Promise<void> =>
-  req<void>('/api/auth/password', {
-    method: 'PUT',
-    body: JSON.stringify({ currentPassword, newPassword }),
-  })
-
 // ── OIDC ──────────────────────────────────────────────────────────────────────
 
-export interface OIDCConfigResponse {
+interface OIDCConfigResponse {
   enabled: boolean
   mounted: boolean
   issuerURL?: string
@@ -320,19 +314,8 @@ export const getPolicyExecutions = (params?: {
   return req<PolicyExecutionPage>(`/api/policy-executions?${q}`)
 }
 
-export const getPolicyExecution = (id: number): Promise<PolicyExecution> =>
-  req<PolicyExecution>(`/api/policy-executions/${id}`)
-
 export const getPolicyExecutionLogs = (id: number): Promise<LogLine[]> =>
   req<LogLine[]>(`/api/policy-executions/${id}/logs`)
-
-export const getPolicyExecutionSnapshots = (id: number): Promise<WorkloadSnapshot[]> =>
-  req<WorkloadSnapshot[]>(`/api/policy-executions/${id}/snapshots`)
-
-export const getPolicySnapshots = (policyId: number, open?: boolean): Promise<WorkloadSnapshot[]> => {
-  const q = open ? '?open=true' : ''
-  return req<WorkloadSnapshot[]>(`/api/policies/${policyId}/snapshots${q}`)
-}
 
 // ── Policy overrides ──────────────────────────────────────────────────────────
 
@@ -362,9 +345,6 @@ export const getExceptions = (params?: {
   if (params?.status) q.set('status', params.status)
   return req<ScheduledException[]>(`/api/exceptions?${q}`)
 }
-
-export const getException = (id: number): Promise<ScheduledException> =>
-  req<ScheduledException>(`/api/exceptions/${id}`)
 
 export const createException = (data: ScheduledExceptionInput): Promise<ScheduledException> =>
   req<ScheduledException>('/api/exceptions', { method: 'POST', body: JSON.stringify(data) })

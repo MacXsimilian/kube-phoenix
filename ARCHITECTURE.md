@@ -174,11 +174,13 @@ Kubernetes API calls on every HTTP request.
 - Results stored in `CachedSnapshot` behind a `sync.RWMutex` using deep copies
   to prevent mutation of the informer store.
 - Partial failures do not evict previously-good data for unaffected resource types.
-- Pub/sub notification to SSE subscribers on each rebuild.
+- Pub/sub notification to SSE subscribers on each rebuild, capped at 100
+  concurrent subscribers.
 
 **Key interfaces:**
 - `Snapshot() CachedSnapshot` -- current cluster state.
 - `Subscribe() / Unsubscribe(ch)` -- notification channel for SSE stream.
+  `Subscribe()` returns nil when the subscriber limit is reached.
 
 ### Broker
 
@@ -186,7 +188,8 @@ Kubernetes API calls on every HTTP request.
 more WebSocket clients.
 
 **Key responsibilities:**
-- Maintain per-execution subscriber lists (buffered channels, capacity 256).
+- Maintain per-execution subscriber lists (buffered channels, capacity 256),
+  capped at 50 subscribers per execution to prevent resource exhaustion.
 - Non-blocking publish: slow clients are skipped rather than blocking the scaler.
 - Close all subscribers when an execution completes.
 
@@ -438,7 +441,7 @@ kube-phoenix/
 │   │   │   ├── oidc.go              # OIDC discovery and SSO endpoints
 │   │   │   ├── policies.go          # Policy CRUD, sleep/wake triggers
 │   │   │   ├── policy_executions.go # Execution list, logs, snapshots, WebSocket
-│   │   │   ├── cluster.go           # Workloads, overview, SSE stream
+│   │   │   ├── cluster.go           # Workload list handlers
 │   │   │   ├── cluster_nodes.go     # Node list and detail handlers
 │   │   │   ├── cluster_pods.go      # Pod list, detail, and log streaming handlers
 │   │   │   ├── overview.go          # Pre-aggregated dashboard overview endpoint
@@ -446,11 +449,11 @@ kube-phoenix/
 │   │   │   ├── overrides.go         # Policy override CRUD
 │   │   │   ├── guardrails.go        # Guardrails get/update
 │   │   │   ├── users.go             # User CRUD (admin only)
-│   │   │   ├── audit.go             # AuditWriter (buffered async channel), audit() enqueue helper, marshalOrNull()
+│   │   │   ├── audit.go             # AuditWriter, audit() enqueue, auditDeniedMiddleware, statusCapture response wrapper
 │   │   │   ├── cluster_info.go       # Cluster metadata (API server, K8s version, auth mode, name)
 │   │   │   ├── version.go           # Build version, Go version, server uptime (no auth)
 │   │   │   ├── admin.go             # DB reset (streaming NDJSON)
-│   │   │   ├── errmsg.go            # Centralized error message constants
+│   │   │   ├── errmsg.go            # Error constants, field length limits, valid enum sets
 │   │   │   ├── ws.go                # WebSocket helpers
 │   │   │   └── helpers.go           # JSON response utilities
 │   │   ├── scheduler/

@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -42,6 +43,10 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(body.Password) < 8 {
 		jsonError(w, "password must be at least 8 characters", http.StatusBadRequest)
+		return
+	}
+	if len(body.Password) > 72 {
+		jsonError(w, "password must be 72 characters or fewer", http.StatusBadRequest)
 		return
 	}
 	if body.Role == "" {
@@ -119,7 +124,9 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 
 	// If the user was disabled, revoke all their sessions.
 	if enabled, ok := body["enabled"].(bool); ok && !enabled {
-		_ = h.store.DeleteUserSessions(id)
+		if err := h.store.DeleteUserSessions(id); err != nil {
+			slog.Error("failed to revoke sessions for disabled user", "userID", id, "err", err)
+		}
 	}
 
 	jsonOK(w, updated)
@@ -133,8 +140,25 @@ func sanitizeUserUpdate(body map[string]interface{}, target *store.User, caller 
 		delete(body, "role")
 	}
 
-	if role, ok := body["role"].(string); ok && !auth.ValidRole(role) {
-		return "role must be admin, operator, or viewer", http.StatusBadRequest
+	// Type-check values to prevent GORM type coercion issues.
+	if v, ok := body["role"]; ok {
+		role, isStr := v.(string)
+		if !isStr {
+			return "role must be a string", http.StatusBadRequest
+		}
+		if !auth.ValidRole(role) {
+			return "role must be admin, operator, or viewer", http.StatusBadRequest
+		}
+	}
+	if v, ok := body["email"]; ok {
+		if _, isStr := v.(string); !isStr {
+			return "email must be a string", http.StatusBadRequest
+		}
+	}
+	if v, ok := body["enabled"]; ok {
+		if _, isBool := v.(bool); !isBool {
+			return "enabled must be a boolean", http.StatusBadRequest
+		}
 	}
 
 	if caller != nil && caller.ID == id {

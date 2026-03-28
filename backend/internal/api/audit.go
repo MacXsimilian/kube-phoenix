@@ -31,6 +31,7 @@ func NewAuditWriter(s *store.Store, bufSize int) *AuditWriter {
 }
 
 // Start drains the channel and writes entries to the database. Blocks until ctx is cancelled.
+// Recovers from panics to prevent a single bad entry from killing the audit pipeline.
 func (aw *AuditWriter) Start(ctx context.Context) {
 	for {
 		select {
@@ -47,10 +48,19 @@ func (aw *AuditWriter) Start(ctx context.Context) {
 				}
 			}
 		case entry := <-aw.ch:
-			if err := aw.store.CreateAuditLog(entry); err != nil {
-				slog.Error("audit-writer: write failed", "action", entry.Action, "err", err)
-			}
+			aw.safeWrite(entry)
 		}
+	}
+}
+
+func (aw *AuditWriter) safeWrite(entry *store.AuditLog) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("audit-writer: panic during write (recovered)", "action", entry.Action, "panic", r)
+		}
+	}()
+	if err := aw.store.CreateAuditLog(entry); err != nil {
+		slog.Error("audit-writer: write failed", "action", entry.Action, "err", err)
 	}
 }
 
@@ -67,8 +77,8 @@ func marshalOrNull(v interface{}) string {
 	return string(b)
 }
 
-// audit enqueues an audit log entry. Non-blocking — drops the entry if the
-// buffer is full and increments the drop counter.
+// audit enqueues an audit log entry. Non-blocking on first attempt; blocks up
+// to 500ms before dropping if the buffer is full.
 func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID *uint, before, after any) {
 	user := authmw.UserFromContext(r.Context())
 	username := systemUser
@@ -93,11 +103,65 @@ func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID
 	select {
 	case h.auditWriter.ch <- entry:
 	default:
-		metrics.AuditDropsTotal.Inc()
-		slog.Warn("audit-writer: buffer full, entry dropped", "action", action, "user", username)
+		// Buffer full — block briefly before dropping to improve delivery guarantees.
+		select {
+		case h.auditWriter.ch <- entry:
+		case <-time.After(500 * time.Millisecond):
+			metrics.AuditDropsTotal.Inc()
+			slog.Error("audit-writer: buffer full after 500ms, entry dropped", "action", action, "user", username)
+		}
 	}
 
 	metrics.UserActionsTotal.WithLabelValues(action, resourceType).Inc()
+}
+
+// auditDeniedMiddleware logs an audit entry when a request receives a 403 Forbidden
+// response (e.g. from RequirePermission). Must be placed after SessionAuth so that
+// the user context is available.
+func (h *Handler) auditDeniedMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capture := &statusCapture{ResponseWriter: w}
+		next.ServeHTTP(capture, r)
+		if capture.code == http.StatusForbidden {
+			h.audit(r, "auth.denied", "permission", nil, nil, map[string]string{
+				"method": r.Method,
+				"path":   r.URL.Path,
+			})
+		}
+	})
+}
+
+// statusCapture wraps http.ResponseWriter to capture the status code.
+type statusCapture struct {
+	http.ResponseWriter
+	code    int
+	written bool
+}
+
+func (w *statusCapture) WriteHeader(code int) {
+	if !w.written {
+		w.code = code
+		w.written = true
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusCapture) Write(b []byte) (int, error) {
+	if !w.written {
+		w.code = http.StatusOK
+		w.written = true
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *statusCapture) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (w *statusCapture) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }
 
 // clientIP extracts the real client IP from the request. It trusts

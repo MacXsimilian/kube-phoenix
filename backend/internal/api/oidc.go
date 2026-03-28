@@ -149,7 +149,9 @@ func (h *Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metrics.AuthAttemptsTotal.WithLabelValues("success", "oidc").Inc()
-	_ = h.store.UpdateLastLogin(user.ID)
+	if err := h.store.UpdateLastLogin(user.ID); err != nil {
+		slog.Warn("oidc: failed to update last_login_at", "userID", user.ID, "err", err)
+	}
 
 	if err := h.createSessionCookies(w, r, user); err != nil {
 		jsonInternalError(w, err, "create session failed")
@@ -250,4 +252,3 @@ func oidcExtractClaims(idToken *gooidc.IDToken, groupsClaim string) (oidcClaims,
 		Groups:            groups,
 	}, true
 }
-
