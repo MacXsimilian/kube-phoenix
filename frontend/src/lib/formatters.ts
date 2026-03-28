@@ -53,17 +53,23 @@ export function pct(used: number, total: number): number {
   return total > 0 ? Math.round((used / total) * 100) : 0
 }
 
-/** Return a colour for a percentage value, red >= 85, amber >= 65, green otherwise */
+const PCT_CRITICAL = 85
+const PCT_WARNING = 65
+
+/** Return a colour for a percentage value, red >= critical, amber >= warning, green otherwise */
 export function pctColor(p: number, isDark: boolean): string {
-  if (p >= 85) return isDark ? '#F87171' : '#B91C1C'
-  if (p >= 65) return '#FBBF24'
+  if (p >= PCT_CRITICAL) return isDark ? '#F87171' : '#B91C1C'
+  if (p >= PCT_WARNING) return isDark ? '#FBBF24' : '#92400E'
   return isDark ? '#22C55E' : '#15803D'
 }
 
 /** Format an ISO date-time string to a locale string, returning an em-dash for nullish values */
 export function fmtDt(iso: string | null | undefined): string {
   if (!iso) return '\u2014'
-  return new Date(iso).toLocaleString()
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
 }
 
 /** Format an ISO date-time string as a short date: "Mar 24, 2026, 2:15 PM" */

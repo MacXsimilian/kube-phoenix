@@ -3,9 +3,10 @@
 import React from 'react'
 import Box from '@mui/material/Box'
 import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
+import { useIsDark } from '@/lib/useIsDark'
 import { nowInTimezone, DOW_MAP } from '@/lib/windowUtils'
 import { TIMELINE_COLORS } from '@/lib/colors'
-import LegendItem from './LegendItem'
+import TimelineLegend from './TimelineLegend'
 import { computeWindowSegments, computeOverrideSegments, computeExceptionSegments } from './timelineSegments'
 
 const ROW_H = 24
@@ -42,6 +43,7 @@ export default function WeeklyTimeline({
   exceptions?: ScheduledException[]
   timezone?: string
 }) {
+  const isDark = useIsDark()
   if (!windows || windows.length === 0) return null
 
   const { dayOfWeek, fractionalHour: nowH } = nowInTimezone(timezone)
@@ -64,7 +66,7 @@ export default function WeeklyTimeline({
             x={hourToX(h)}
             y={12}
             textAnchor="middle"
-            fill="rgba(148,163,184,0.5)"
+            fill={isDark ? 'rgba(148,163,184,0.5)' : 'rgba(71,85,105,0.5)'}
             fontSize={9}
             fontFamily="monospace"
           >
@@ -92,7 +94,7 @@ export default function WeeklyTimeline({
                 x={LABEL_W - 4}
                 y={y + ROW_H / 2 + 1}
                 textAnchor="end"
-                fill={isToday ? '#e2e8f0' : 'rgba(148,163,184,0.5)'}
+                fill={isToday ? (isDark ? '#e2e8f0' : '#1E293B') : (isDark ? 'rgba(148,163,184,0.5)' : 'rgba(71,85,105,0.5)')}
                 fontSize={10}
                 fontWeight={isToday ? 600 : 400}
                 fontFamily="monospace"
@@ -154,20 +156,7 @@ export default function WeeklyTimeline({
         )}
       </svg>
 
-      {/* Legend */}
-      <Box sx={{ display: 'flex', gap: 2, mt: 0.75 }}>
-        <LegendItem color={TIMELINE_COLORS.sleep} label="Sleep" />
-        <LegendItem color={TIMELINE_COLORS.awake} label="Awake" />
-        {overrides && overrides.some(o => o.overrideType === 'stay_awake') && (
-          <LegendItem color={TIMELINE_COLORS.override} label="Stay awake" />
-        )}
-        {overrides && overrides.some(o => o.overrideType === 'force_sleep') && (
-          <LegendItem color={TIMELINE_COLORS.exception} label="Force sleep" />
-        )}
-        {exceptions && exceptions.some(e => e.exceptionType === 'stay_awake') && (
-          <LegendItem color={TIMELINE_COLORS.awake} label="Exception" />
-        )}
-      </Box>
+      <TimelineLegend overrides={overrides} exceptions={exceptions} />
     </Box>
   )
 }

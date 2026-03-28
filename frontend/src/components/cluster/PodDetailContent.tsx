@@ -19,10 +19,11 @@ import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import TerminalIcon from '@mui/icons-material/Terminal'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { getPodDetail } from '@/lib/api'
 import { fmtCpu, fmtMem, podAge } from '@/lib/formatters'
 import { useColors } from '@/lib/colors'
+import { POD_DETAIL_REFETCH_MS } from '@/lib/constants'
 import PodLogViewer from './PodLogViewer'
 import type { PodContainer, PodCondition, PodEvent } from '@/lib/types'
 
@@ -53,6 +54,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 function ContainersSection({ containers }: { containers: PodContainer[] }) {
+  const isDark = useIsDark()
   const colors = useColors()
   return (
     <Box>
@@ -86,7 +88,7 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
                   sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c.ready ? colors.success : colors.errorLight }}
                 />
               </TableCell>
-              <TableCell sx={{ py: 0.75, fontFamily: 'monospace', color: c.restartCount > 0 ? '#FBBF24' : 'text.primary' }}>
+              <TableCell sx={{ py: 0.75, fontFamily: 'monospace', color: c.restartCount > 0 ? (isDark ? '#FBBF24' : '#92400E') : 'text.primary' }}>
                 {c.restartCount}
               </TableCell>
               <TableCell sx={{ py: 0.75, fontFamily: 'monospace', color: 'text.secondary', whiteSpace: 'nowrap' }}>
@@ -112,7 +114,7 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
 }
 
 function ConditionsSection({ conditions }: { conditions: PodCondition[] }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const ordered = [...conditions].sort(
     (a, b) => CONDITION_ORDER.indexOf(a.type) - CONDITION_ORDER.indexOf(b.type)
   )
@@ -137,7 +139,7 @@ function ConditionsSection({ conditions }: { conditions: PodCondition[] }) {
 }
 
 function EventsSection({ events }: { events: PodEvent[] }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const colors = useColors()
   if (!events?.length) return null
   return (
@@ -215,7 +217,7 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
   const { data: pod, isLoading, isError, error } = useQuery({
     queryKey: ['pod-detail', namespace, podName],
     queryFn: () => getPodDetail(namespace, podName),
-    refetchInterval: 15_000,
+    refetchInterval: POD_DETAIL_REFETCH_MS,
   })
 
   if (isLoading) {

@@ -11,14 +11,13 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import AddIcon from '@mui/icons-material/Add'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
+import { useIsDark } from '@/lib/useIsDark'
 import {
-  STATE_COLORS, MODE_COLORS, SMALL_CHIP_SX,
-  HERO_HEADER_GRADIENTS, SUBTLE_BORDER,
+  stateColors, modeColors, SMALL_CHIP_SX,
+  HERO_HEADER_GRADIENTS, subtleBorder,
 } from '@/lib/statusColors'
 import type { Policy } from '@/lib/types'
-
-const BLEED_MARGIN_X = { xs: -2, sm: -2.5, md: -3 }
-const BLEED_PADDING_X = { xs: 2, sm: 2.5, md: 3 }
+import { BLEED_MARGIN_X, BLEED_PADDING_X } from '@/lib/layoutConstants'
 
 const STATE_ICONS: Record<string, React.ReactNode> = {
   sleeping:      <BedtimeIcon sx={{ fontSize: 32 }} />,
@@ -27,25 +26,32 @@ const STATE_ICONS: Record<string, React.ReactNode> = {
   unknown:       <HelpOutlineIcon sx={{ fontSize: 32 }} />,
 }
 
+interface TriggerActions {
+  isBusy: boolean
+  sleepPending: boolean
+  wakePending: boolean
+  onSleep: () => void
+  onWake: () => void
+}
+
 interface PolicyHeroBandProps {
   policy: Policy
   canEdit: boolean
   canTrigger: boolean
-  isBusy: boolean
-  sleepPending: boolean
-  wakePending: boolean
+  trigger: TriggerActions
   onBack: () => void
-  onSleep: () => void
-  onWake: () => void
   onEdit: () => void
   onAddException: () => void
 }
 
 export default function PolicyHeroBand({
-  policy, canEdit, canTrigger, isBusy,
-  sleepPending, wakePending,
-  onBack, onSleep, onWake, onEdit, onAddException,
+  policy, canEdit, canTrigger, trigger,
+  onBack, onEdit, onAddException,
 }: PolicyHeroBandProps) {
+  const { isBusy, sleepPending, wakePending, onSleep, onWake } = trigger
+  const isDark = useIsDark()
+  const STATE_COLORS = stateColors(isDark)
+  const MODE_COLORS = modeColors(isDark)
   const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
   const modeStyle = MODE_COLORS[policy.mode] ?? MODE_COLORS.plan
 
@@ -57,7 +63,7 @@ export default function PolicyHeroBand({
         py: { xs: 3, md: 4 },
         background: HERO_HEADER_GRADIENTS[policy.currentState] ?? HERO_HEADER_GRADIENTS.unknown,
         borderBottom: '1px solid',
-        borderColor: SUBTLE_BORDER,
+        borderColor: subtleBorder(isDark),
       }}
     >
       <Box sx={{ mb: 2 }}>

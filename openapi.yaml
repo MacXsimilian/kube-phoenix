@@ -60,6 +60,28 @@ components:
           type: string
           format: date-time
 
+    SessionInfo:
+      description: An active user session.
+      type: object
+      properties:
+        id:
+          type: integer
+        ipAddress:
+          type: string
+          example: "192.168.1.1:54321"
+        userAgent:
+          type: string
+          example: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        isCurrent:
+          type: boolean
+          description: True if this is the session making the request.
+
     Guardrails:
       description: Global guardrail configuration that protects namespaces, nodes, and workloads from the scaler.
       type: object
@@ -1632,6 +1654,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MeResponse"
+        "401":
+          description: Unauthorized
+
+  /api/auth/sessions:
+    get:
+      operationId: listSessions
+      summary: List active sessions
+      description: Returns all active (non-expired) sessions for the authenticated user. Each session includes device info and a flag indicating which is the current session.
+      tags: [Auth]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessionInfo"
         "401":
           description: Unauthorized
 

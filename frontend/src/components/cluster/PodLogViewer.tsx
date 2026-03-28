@@ -8,7 +8,6 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import IconButton from '@mui/material/IconButton'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
-import Snackbar from '@mui/material/Snackbar'
 import Stack from '@mui/material/Stack'
 import Switch from '@mui/material/Switch'
 import Tooltip from '@mui/material/Tooltip'
@@ -20,6 +19,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import DownloadIcon from '@mui/icons-material/Download'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import { useColors } from '@/lib/colors'
+import { useSnackbar } from '@/lib/useSnackbar'
 import type { PodContainer } from '@/lib/types'
 import { usePodLogStream } from './usePodLogStream'
 import LogSearchBar from './LogSearchBar'
@@ -33,9 +33,9 @@ interface PodLogViewerProps {
 
 export default function PodLogViewer({ namespace, podName, containers, onBack }: PodLogViewerProps) {
   const colors = useColors()
+  const { notify, SnackbarAlert } = useSnackbar()
   const [container, setContainer] = useState(containers[0]?.name ?? '')
   const [search, setSearch] = useState('')
-  const [copied, setCopied] = useState(false)
   const [autoScroll, setAutoScroll] = useState(true)
   const [currentMatchIdx, setCurrentMatchIdx] = useState(-1)
   const logRef = useRef<HTMLDivElement>(null)
@@ -63,12 +63,14 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
   // O(1) lookup set for highlighting matched lines
   const matchSet = useMemo(() => new Set(matchIndices), [matchIndices])
 
-  // Reset match cursor when search text changes.
-  // We intentionally omit matchIndices from deps: the cursor should only reset
-  // when the user edits the search string, not when new log lines arrive.
+  // Reset match cursor when search text changes (not when new log lines arrive).
+  const prevSearchRef = useRef(search)
   useEffect(() => {
-    setCurrentMatchIdx(matchIndices.length > 0 ? 0 : -1)
-  }, [search]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (prevSearchRef.current !== search) {
+      setCurrentMatchIdx(matchIndices.length > 0 ? 0 : -1)
+      prevSearchRef.current = search
+    }
+  }, [search, matchIndices])
 
   // Scroll to current match
   useEffect(() => {
@@ -106,7 +108,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
 
   const handleCopy = useCallback(() => {
     const text = lines.join('\n')
-    navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => setCopied(false))
+    navigator.clipboard.writeText(text).then(() => notify('Logs copied to clipboard', 'success'))
   }, [lines])
 
   const handleDownload = useCallback(() => {
@@ -174,7 +176,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
       </Box>
 
       {/* Previous container banner */}
-      {hasPreviousInstance && mode === 'live' && (
+      {hasPreviousInstance && selectedContainer && mode === 'live' && (
         <Box sx={{ px: 2, py: 1, bgcolor: 'rgba(245,158,11,0.06)', borderBottom: '1px solid', borderColor: 'divider' }}>
           <Stack direction="row" alignItems="center" spacing={1}>
             <Typography variant="caption" sx={{ color: 'warning.main', flex: 1 }}>
@@ -234,10 +236,10 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
             label={<Typography variant="caption" sx={{ color: 'text.secondary' }}>Auto-scroll</Typography>}
             sx={{ m: 0 }}
           />
-          <Tooltip title={copied ? 'Copied!' : 'Copy all logs'}>
+          <Tooltip title="Copy all logs">
             <span>
               <IconButton size="small" onClick={handleCopy} disabled={lines.length === 0} aria-label="Copy all logs">
-                <ContentCopyIcon sx={{ fontSize: 16, color: copied ? 'success.main' : 'text.secondary' }} />
+                <ContentCopyIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
               </IconButton>
             </span>
           </Tooltip>
@@ -326,13 +328,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
         </Stack>
       </Box>
 
-      <Snackbar
-        open={copied}
-        autoHideDuration={2000}
-        onClose={() => setCopied(false)}
-        message="Logs copied to clipboard"
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      />
+      {SnackbarAlert}
     </Box>
   )
 }

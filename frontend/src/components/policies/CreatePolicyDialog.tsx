@@ -23,6 +23,7 @@ import { useAuth } from '@/lib/auth'
 import { TIMEZONES } from '@/lib/constants'
 import type { Policy, PolicyInput, SleepWindow } from '@/lib/types'
 import { windowsToText, computeWeeklyStats } from '@/lib/windowUtils'
+import { useIsDark } from '@/lib/useIsDark'
 import WindowPicker from './WindowPicker'
 import WeeklyTimeline from './WeeklyTimeline'
 
@@ -59,6 +60,7 @@ export default function CreatePolicyDialog({
   existing?: Policy
 }) {
   const queryClient = useQueryClient()
+  const isDark = useIsDark()
   const { user } = useAuth()
   const isEdit = !!existing
 
@@ -95,12 +97,12 @@ export default function CreatePolicyDialog({
     setForm(f => ({ ...f, [key]: val }))
   }
 
-  function validate(): string {
+  function validate(): string | null {
     if (!form.name.trim()) return 'Name is required'
     if (form.editingWindows.length === 0) return 'At least one sleep window is required'
     if (form.editingWindows.every(w => w.daysOfWeek.length === 0)) return 'Select at least one day'
     if ((form.timeoutMinutes ?? 0) < 0 || (form.timeoutMinutes ?? 0) > 1440) return 'Timeout must be 0\u20131440 minutes'
-    return ''
+    return null
   }
 
   const mutation = useMutation({
@@ -130,7 +132,7 @@ export default function CreatePolicyDialog({
 
   function handleSave() {
     const msg = validate()
-    if (msg) { setError(msg); return }
+    if (msg !== null) { setError(msg); return }
     setError('')
     mutation.mutate()
   }
@@ -195,13 +197,13 @@ export default function CreatePolicyDialog({
 
         {/* Live preview — Dashboard Mini-Card */}
         {form.editingWindows.length > 0 && form.editingWindows.some(w => w.daysOfWeek.length > 0) && (
-          <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden', bgcolor: 'rgba(255,255,255,0.01)' }}>
+          <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden', bgcolor: isDark ? 'rgba(255,255,255,0.01)' : 'rgba(0,0,0,0.01)' }}>
             {/* Card header */}
             <Box sx={{
               px: 2, py: 1.25,
               borderBottom: '1px solid', borderColor: 'divider',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              bgcolor: 'rgba(255,255,255,0.02)',
+              bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
             }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="caption" fontWeight={700} letterSpacing={0.5} textTransform="uppercase" color="text.secondary" sx={{ fontSize: '0.68rem' }}>
@@ -224,17 +226,17 @@ export default function CreatePolicyDialog({
                 px: 2, py: 1.25,
                 borderTop: '1px solid', borderColor: 'divider',
                 display: 'flex', alignItems: 'center', gap: 2.5,
-                bgcolor: 'rgba(255,255,255,0.015)',
+                bgcolor: isDark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.015)',
               }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                  <BedtimeIcon sx={{ fontSize: 13, color: '#A78BFA' }} />
-                  <Typography variant="caption" sx={{ color: '#A78BFA', fontWeight: 600, fontSize: 12 }}>
+                  <BedtimeIcon sx={{ fontSize: 13, color: isDark ? '#A78BFA' : '#6D28D9' }} />
+                  <Typography variant="caption" sx={{ color: isDark ? '#A78BFA' : '#6D28D9', fontWeight: 600, fontSize: 12 }}>
                     {weeklyStats.sleepHours}h sleep
                   </Typography>
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                  <WbSunnyIcon sx={{ fontSize: 13, color: '#86EFAC' }} />
-                  <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 600, fontSize: 12 }}>
+                  <WbSunnyIcon sx={{ fontSize: 13, color: isDark ? '#86EFAC' : '#15803D' }} />
+                  <Typography variant="caption" sx={{ color: isDark ? '#86EFAC' : '#15803D', fontWeight: 600, fontSize: 12 }}>
                     {weeklyStats.awakeHours}h awake
                   </Typography>
                 </Box>

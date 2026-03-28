@@ -87,6 +87,7 @@ frontend/
         TaintChip.tsx           # Styled chip for Kubernetes taints with effect color coding
         MiniBar.tsx             # Compact resource utilization bar (CPU/memory) with label
         LogSearchBar.tsx        # Search input with match count and prev/next navigation
+        DetailDrawer.tsx         # Shared resizable drawer with pod drill-down, search, and back navigation
         usePodLogStream.ts      # Hook: chunked HTTP streaming, line buffering, tail/follow lifecycle
         statusColors.ts         # Mode-aware workload/node/pod status color maps
       policies/
@@ -94,12 +95,14 @@ frontend/
         CreatePolicyDialog.tsx  # Create/edit policy dialog with window picker + preview
         ExceptionDialog.tsx     # Create/edit scheduled exception
         ExceptionsSection.tsx   # Exception table in policy detail
-        OverridesSection.tsx    # Override table + inline create form in policy detail
+        OverridesSection.tsx    # Override table in policy detail
+        CreateOverrideForm.tsx  # Extracted inline override creation form with date validation
         WeeklyTimeline.tsx      # SVG 7-day bar chart timeline
         LedGlowTimeline.tsx     # SVG 7-day LED-strip timeline with glow filters
         MiniTimeline.tsx        # Full-width single-day 24h sparkline for policy cards
         WindowPicker.tsx        # Sleep window editor with day buttons + time selectors
         LegendItem.tsx          # Shared timeline legend dot + label
+        TimelineLegend.tsx      # Extracted legend strip for timelines (sleep, awake, override, exception)
         ExecutionHistoryTable.tsx # Execution table embedded in policy detail
         PolicyHeroBand.tsx      # Full-width hero band with gradient bg, state icon, action buttons
         PolicyMetadataRow.tsx   # Metadata row (timezone, namespace filter, label selector)
@@ -118,7 +121,6 @@ frontend/
       common/
         ChipInput.tsx           # Tag-style input: type + Enter to add chips, Backspace to remove
         LabeledSwitch.tsx       # Shared labeled toggle: Switch + bold title + caption description
-        EmptyStateBox.tsx       # Centered empty state placeholder with icon and message
       shared/
         StatusChip.tsx          # Reusable status chip with color mapping
       guardrails/
@@ -129,7 +131,7 @@ frontend/
         DatabaseSettings.tsx    # Multi-step DB reset with confirmation phrase
         AppearanceSettings.tsx  # Light/dark/system theme selector with card header icon
         OIDCStatusCard.tsx      # OIDC provider connection status (green status bar)
-        ActiveSessionsCard.tsx  # Active sessions placeholder
+        ActiveSessionsCard.tsx  # Active sessions list (fetches from GET /api/auth/sessions)
         ClusterConnectionCard.tsx # Kubernetes cluster connection details
         AboutBar.tsx            # Version and uptime footer bar
       ErrorBoundary.tsx         # React error boundary
@@ -141,7 +143,7 @@ frontend/
       statusColors.ts           # Color maps for states, executions, modes, types, log levels
       constants.ts              # Polling intervals, drawer constraints, log limits, timezones
       formatters.ts             # CPU/memory/time formatting utilities
-      logParsing.ts             # Log line regex parsing (shared by parseSummary.ts)
+      layoutConstants.ts        # Shared layout constants (BLEED_MARGIN_X, BLEED_PADDING_X)
       windowUtils.ts            # Sleep window evaluation, timezone handling, timeline math
       timelineUtils.ts          # Day labels and time-range-to-segment conversion for timelines
       rbac.ts                   # Permission checking helpers
@@ -150,10 +152,9 @@ frontend/
       useClusterStream.ts       # SSE hook: cluster/stream subscription with reconnect + TanStack cache injection
       useDebouncedValue.ts      # Generic debounce hook for search inputs
       useDrawerResize.ts        # Mouse/touch drag resize hook for side drawers (returns named object)
-      useNotification.ts        # Snackbar notification hook (message + severity state)
-      usePermissionGuard.ts     # Redirect-to-overview guard for permission-gated pages
+      useIsDark.ts              # Hook: returns boolean for dark mode (wraps useTheme)
       usePolicyTriggers.ts      # Shared sleep/wake mutation hook (invalidation + navigation)
-      useTableSearch.ts         # Generic table search/filter hook with debounced text matching
+      useSnackbar.tsx           # Hook: returns { notify, SnackbarAlert } for standardized snackbar rendering
     theme/
       theme.ts                  # MUI theme factory (createAppTheme) for dark and light modes
   next.config.mjs               # Static export config
@@ -229,13 +230,15 @@ TanStack Query is the sole data-fetching and caching layer. There is no Redux, Z
 | Data | Interval | Constant |
 |:-----|:---------|:---------|
 | Workloads | 30s | `WORKLOADS_REFETCH_MS` |
+| Nodes | 30s | `NODES_REFETCH_MS` |
 | Workload pods | 15s | `WORKLOAD_PODS_REFETCH_MS` |
 | Node pods | 15s | `NODE_PODS_REFETCH_MS` |
+| Pod detail | 15s | `POD_DETAIL_REFETCH_MS` |
 | Activity feed | 15s | `ACTIVITY_FEED_REFETCH_MS` |
 | Overview (fallback) | 30s | Inline |
-| Executions (history) | 10s | Inline |
-| Policies | 30s | Inline |
-| Exceptions | 30s | Inline |
+| Executions (history) | 10s | `EXECUTIONS_REFETCH_MS` |
+| Policies | 30s | `POLICIES_REFETCH_MS` |
+| Exceptions | 30s | `EXCEPTIONS_REFETCH_MS` |
 
 **Cache invalidation** happens after every mutation via `queryClient.invalidateQueries()`. The pattern is always: mutate -> onSuccess -> invalidate related query keys. Example from `PolicyCard`:
 
@@ -556,6 +559,7 @@ Several components were extracted from `NodeDetailDrawer` and `PodLogViewer` for
 | `TaintChip` | `cluster/TaintChip.tsx` | Styled chip for Kubernetes taints with effect-based colour coding. |
 | `MiniBar` | `cluster/MiniBar.tsx` | Compact resource utilization bar (CPU/memory) with label and percentage. Used by `NodeDetailDrawer` and `PodDetailContent`. |
 | `LogSearchBar` | `cluster/LogSearchBar.tsx` | Search input with match count display and prev/next navigation buttons. Used by `PodLogViewer`. |
+| `DetailDrawer` | `cluster/DetailDrawer.tsx` | Shared resizable drawer shell with header, pod list table, pod search, drill-down to `PodDetailContent`, and back navigation. Used by both `WorkloadDetailDrawer` and `NodeDetailDrawer` to eliminate duplicated drawer/pod-list/drill-down code. |
 | `usePodLogStream` | `cluster/usePodLogStream.ts` | Hook that manages chunked HTTP streaming for pod logs: initial tail fetch, follow mode, line buffering, and abort cleanup. Used by `PodLogViewer`. |
 
 #### useDrawerResize Hook
@@ -616,7 +620,7 @@ The detail page (`src/app/policies/detail/page.tsx`) uses a full-width horizonta
 
 The hero band and metadata row are extracted into dedicated components:
 
-- **`PolicyHeroBand`** (`components/policies/PolicyHeroBand.tsx`): State-colored gradient background, back button, 64px state icon, policy name + description, large state label, mode/enabled chips, action buttons (Sleep Now, Wake Now, Edit, Exception).
+- **`PolicyHeroBand`** (`components/policies/PolicyHeroBand.tsx`): State-colored gradient background, back button, 64px state icon, policy name + description, large state label, mode/enabled chips, action buttons (Sleep Now, Wake Now, Edit, Exception). Action button callbacks are grouped into a `TriggerActions` interface prop (`trigger: { onSleep, onWake, onEdit, onException, isBusy }`) to keep the prop surface clean.
 - **`PolicyMetadataRow`** (`components/policies/PolicyMetadataRow.tsx`): Renders timezone, namespace filter, and label selector in a compact row.
 
 Bands (top to bottom):
@@ -678,6 +682,8 @@ All three timeline components use raw SVG for rendering. They share timeline mat
 - Wrapped in a Tooltip showing the full `windowsToText()` description
 - Used on `PolicyCard` as a full-width timeline row beneath the schedule text
 
+**TimelineLegend** (`TimelineLegend.tsx`): Extracted shared legend strip rendered below both `WeeklyTimeline` and `LedGlowTimeline`. Conditionally shows legend items for sleep, awake, overrides (stay_awake, force_sleep), and exceptions (stay_awake, force_sleep) based on which override/exception types are present in the data.
+
 **Shared timeline math:**
 
 The `DOW_MAP` constant maps array index to JS day-of-week: `[1,2,3,4,5,6,0]` (Mon=0 through Sun=6 in timeline row space, where Mon is row 0 and Sun is row 6).
@@ -708,8 +714,8 @@ The history page composes `ExecutionTable` and `LogViewer`. It supports deep-lin
 - Paginated table using `TablePagination` (10/20/50 rows per page)
 - Refetches periodically to catch newly completed executions
 - **Filter dropdowns** for Status (running/success/failed/interrupted/skipped) and Direction (sleep/wake)
-- Columns: Started (`fmtDtShort` with year), Policy name (from preloaded relation), Direction (sleep/wake icon), Mode chip (using `MODE_COLORS`), Status via `StatusChip`, Duration (`fmtDuration`), Summary (icons for scaled/drained/deleted/errors)
-- Header styling extracted to `HEADER_SX` constant; chip sizing uses shared `SMALL_CHIP_SX`
+- Columns: Started (`fmtDtShort` with year), Policy name (from preloaded relation), Direction (sleep/wake icon), Mode chip (using `modeColors(isDark)`), Status via `StatusChip`, Duration (`fmtDuration`), Summary (icons for scaled/drained/deleted/errors)
+- Header styling extracted to `TABLE_HEADER_CELL_SX` constant; chip sizing uses shared `SMALL_CHIP_SX`
 - Row click calls `onSelect(execution)`, which opens the `LogViewer` drawer
 
 #### LogViewer
@@ -758,26 +764,17 @@ Handles both create and edit modes. Key datetime handling:
 
 #### ExceptionsSection / OverridesSection
 
-Both use the shared `TYPE_LABELS` map from `lib/statusColors.ts` to color-code exception/override types:
-
-```typescript
-const TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  stay_awake:  { label: 'Stay Awake',  color: '#FCD34D', bg: 'rgba(245,158,11,0.15)' },
-  force_sleep: { label: 'Force Sleep', color: '#FCA5A5', bg: 'rgba(239,68,68,0.15)' },
-  skip_sleep:  { label: 'Skip Sleep',  color: '#A5B4FC', bg: 'rgba(99,102,241,0.15)' },
-  skip_wake:   { label: 'Skip Wake',   color: '#A5B4FC', bg: 'rgba(99,102,241,0.15)' },
-}
-```
+Both use the shared `typeLabels(isDark)` function from `lib/statusColors.ts` to color-code exception/override types with mode-aware colors. The function returns pre-computed maps for dark and light modes with labels for `stay_awake`, `force_sleep`, `skip_sleep`, and `skip_wake`.
 
 **Exception status lifecycle:** `pending` (created, start time is in the future) -> `active` (start time has passed, the backend activates the exception) -> `completed` (end time has passed) or `cancelled` (manually cancelled). The backend manages these transitions; the frontend only displays them.
 
-**OverridesSection** includes an inline create form (not a dialog) that expands within the section. Override types `stay_awake` and `force_sleep` require start/end datetime fields; `skip_sleep` and `skip_wake` require a single target cron time.
+**OverridesSection** delegates inline override creation to the extracted `CreateOverrideForm` component (not a dialog). Override types `stay_awake` and `force_sleep` require start/end datetime fields with validation (via `validateDateRange`); `skip_sleep` and `skip_wake` require a single target cron time. The form includes a confirmation dialog for potentially disruptive override types.
 
 ### Audit Log
 
 **Page:** `src/app/audit/page.tsx`
 
-Displays a paginated, filterable table of audit log entries. Gated by the `audit.view` permission via the `usePermissionGuard` hook. The page is decomposed into four extracted modules under `src/components/audit/`.
+Displays a paginated, filterable table of audit log entries. Gated by the `audit.view` permission via an inline navigation guard. The page is decomposed into four extracted modules under `src/components/audit/`.
 
 **Submodules:**
 
@@ -860,7 +857,7 @@ A multi-step destructive action flow:
 
 `src/components/guardrails/GuardrailsForm.tsx`
 
-The guardrails editor delegates tag-like editing to two extracted components:
+The guardrails editor uses a sticky save bar that appears at the bottom of the viewport when unsaved changes are detected. The bar uses `position: sticky` with `bottom: 0` and shows "Unsaved changes" with a Save button. It delegates tag-like editing to two extracted components:
 
 **`ChipInput`** (`components/common/ChipInput.tsx`): A reusable tag input component:
 
@@ -891,7 +888,7 @@ The form also includes a "Scheduler Behaviour" card with four controls: an `Eval
 | `sinceMs(ms)` | `number -> string` | Millisecond timestamp to relative: `"just now"`, `"5s ago"`, `"3m ago"` | WorkloadsTable, NodesTable, drawers (for `dataUpdatedAt`) |
 | `timeUntil(iso)` | `string -> string` | ISO to countdown: `"now"`, `"in 5m"`, `"in 2h 30m"`, `"in 5d 8h"` | ClusterStatusCard, PolicyCard, PolicyDetailPage |
 | `pct(used, total)` | `(number, number) -> number` | Safe percentage: returns 0 when total is 0 | NodesTable, NodeDetailDrawer |
-| `pctColor(p, isDark)` | `(number, boolean) -> string` | Color by percentage threshold: green < 65%, amber 65-84%, red >= 85% | NodesTable, NodeDetailDrawer |
+| `pctColor(p, isDark)` | `(number, boolean) -> string` | Color by percentage threshold using named constants (`PCT_WARNING` = 65%, `PCT_CRITICAL` = 85%): green < warning, amber warning-critical, red >= critical | NodesTable, NodeDetailDrawer |
 | `fmtDt(iso)` | `string \| null -> string` | ISO to locale string, or em-dash for null | PolicyDetailPage, ExceptionsSection, OverridesSection, ExceptionsPage |
 | `fmtDtShort(iso)` | `string \| null -> string` | ISO to short date with year: `"Mar 24, 2026, 2:15 PM"` | ExecutionTable, ExecutionHistoryTable |
 | `fmtDuration(start, end)` | `(string, string \| null) -> string` | Duration between two ISO timestamps: `"5s"`, `"2m 30s"`, or `"Running…"` | ExecutionTable, ExecutionHistoryTable |
@@ -932,19 +929,21 @@ The form also includes a "Scheduler Behaviour" card with four controls: an `Eval
 
 ### lib/statusColors.ts
 
+Most color exports are mode-aware functions that accept an `isDark: boolean` parameter and return pre-computed static objects (no per-render allocations). Call them with `useTheme().palette.mode === 'dark'` inside components.
+
 | Export | Type | Purpose |
 |:-------|:-----|:--------|
-| `STATE_COLORS` | `Record<string, { bg, color, label }>` | Policy current state (sleeping, awake, transitioning, unknown) |
-| `EXECUTION_STATUS_COLORS` | `Record<string, { bg, color }>` | Execution and exception statuses (running, success, failed, interrupted, skipped, pending, active, completed, cancelled) |
-| `EXECUTION_STATUS_FALLBACK` | `{ bg, color }` | Default for unknown status strings |
-| `MODE_COLORS` | `Record<string, { bg, color }>` | Plan (blue) and Apply (amber) mode chips |
+| `stateColors(isDark)` | `(boolean) → Record<string, { bg, color, label }>` | Policy current state (sleeping, awake, transitioning, unknown) |
+| `executionStatusColors(isDark)` | `(boolean) → Record<string, { bg, color }>` | Execution and exception statuses (running, success, failed, interrupted, skipped, pending, active, completed, cancelled) |
+| `executionStatusFallback(isDark)` | `(boolean) → { bg, color }` | Default for unknown status strings |
+| `modeColors(isDark)` | `(boolean) → Record<string, { bg, color }>` | Plan (blue) and Apply (amber) mode chips |
 | `SMALL_CHIP_SX` | `{ height: 18, fontSize: 10 }` | Shared sx for small chips (mode, type badges) |
 | `CARD_HEADER_GRADIENTS` | `Record<string, string>` | Horizontal gradient for PolicyCard top edge (3px bar) |
 | `HERO_HEADER_GRADIENTS` | `Record<string, string>` | Vertical gradient for detail page hero band background |
 | `LED_COLORS` | `Record<string, { bg, glow }>` | LED dot colors per policy state (bg color + glow shadow) |
-| `SUBTLE_BORDER` | `string` | Subtle separator color (`rgba(255,255,255,0.04)`) for full-width bands |
-| `TYPE_LABELS` | `Record<string, { label, color, bg }>` | Override/exception types (stay_awake, force_sleep, skip_sleep, skip_wake) |
-| `TYPE_LABEL_FALLBACK` | `{ label, color, bg }` | Default for unknown type strings |
+| `subtleBorder(isDark)` | `(boolean) → string` | Subtle separator color for full-width bands |
+| `typeLabels(isDark)` | `(boolean) → Record<string, { label, color, bg }>` | Override/exception types (stay_awake, force_sleep, skip_sleep, skip_wake) |
+| `typeLabelFallback(isDark)` | `(boolean) → { label, color, bg }` | Default for unknown type strings |
 | `ACTION_LABELS` | `Record<string, string>` | Human-readable labels for audit log actions (e.g. `policy.update` → "Policy Update") |
 | `formatActionLabel(action)` | `(string) → string` | Returns the label for an action key, with auto-formatting fallback for unknown actions |
 | `actionColor(action)` | `(string) → MUI color` | Derives semantic chip color from action verb suffix (`.create` → success, `.delete` → error, `.update` → info) |
@@ -959,12 +958,17 @@ The form also includes a "Scheduler Behaviour" card with four controls: an `Eval
 | `REQUEST_TIMEOUT_MS` | 30,000 | Default fetch timeout |
 | `DEFAULT_STALE_TIME_MS` | 30,000 | TanStack Query default stale time |
 | `WORKLOADS_REFETCH_MS` | 30,000 | Workload list polling interval |
+| `NODES_REFETCH_MS` | 30,000 | Node list polling interval |
+| `POLICIES_REFETCH_MS` | 30,000 | Policy list polling interval |
+| `EXCEPTIONS_REFETCH_MS` | 30,000 | Exception list polling interval |
+| `EXECUTIONS_REFETCH_MS` | 10,000 | Execution list polling interval |
 | `ACTIVITY_FEED_STALE_MS` | 14,000 | Activity feed stale time |
 | `ACTIVITY_FEED_REFETCH_MS` | 15,000 | Activity feed polling interval |
 | `NODE_PODS_REFETCH_MS` | 15,000 | Node pod list polling interval |
 | `WORKLOAD_PODS_REFETCH_MS` | 15,000 | Workload pod list polling interval |
+| `POD_DETAIL_REFETCH_MS` | 15,000 | Pod detail polling interval |
 | `WS_RECONNECT_DELAY_MS` | 3,000 | WebSocket reconnection delay |
-| `SNACKBAR_AUTO_HIDE_MS` | 2,000 | Snackbar auto-dismiss time |
+| `SNACKBAR_AUTO_HIDE_MS` | 4,000 | Snackbar auto-dismiss time |
 | `DRAWER_MIN_WIDTH` | 360 | Minimum drawer width in pixels |
 | `DRAWER_MAX_WIDTH_RATIO` | 0.9 | Maximum drawer width as fraction of viewport |
 | `LOG_INITIAL_TAIL` | 500 | Initial pod log lines to fetch |
@@ -987,9 +991,20 @@ A custom hook that encapsulates sleep/wake trigger mutations for a policy. Retur
 
 See [useDrawerResize Hook](#usedrawerresize-hook) in the Cluster Views section.
 
-### lib/useNotification.ts
+### lib/useSnackbar.tsx
 
-A hook that manages snackbar notification state. Returns `{ message, severity, notify, clear }`. Components call `notify(text, severity)` to show a snackbar and `clear()` to dismiss it. Replaces inline `useState` pairs for snackbar management across multiple pages.
+A hook that encapsulates snackbar state and rendering. Returns `{ notify, SnackbarAlert }`. Call `notify(message, severity)` to show a snackbar. Render `SnackbarAlert` in the component tree -- the hook manages open/close state, auto-hide duration (from `SNACKBAR_AUTO_HIDE_MS`), and MUI `Alert` rendering internally. Replaces scattered `useState` + inline `<Snackbar>` patterns across all pages.
+
+### lib/useIsDark.ts
+
+A one-liner hook that returns `useTheme().palette.mode === 'dark'`. Eliminates the repeated `const isDark = useTheme().palette.mode === 'dark'` boilerplate from every component that needs mode-aware colors.
+
+### lib/layoutConstants.ts
+
+Exports shared responsive layout constants used by the policy detail page's full-width band layout:
+
+- `BLEED_MARGIN_X` -- negative margins to bleed bands edge-to-edge (`{ xs: -2, sm: -2.5, md: -3 }`)
+- `BLEED_PADDING_X` -- matching padding to re-align content (`{ xs: 2, sm: 2.5, md: 3 }`)
 
 ### lib/useDebouncedValue.ts
 
@@ -998,18 +1013,6 @@ A generic debounce hook: `useDebouncedValue<T>(value, delayMs)` returns the debo
 ### lib/useClusterStream.ts
 
 The SSE subscription hook for the cluster stream. Connects to `GET /api/cluster/stream`, parses SSE events, and pushes `Overview` objects into the TanStack Query cache via `queryClient.setQueryData()`. Implements automatic reconnection with exponential backoff and sets a disconnected flag after 2 consecutive failures.
-
-### lib/usePermissionGuard.ts
-
-A redirect guard hook for permission-gated pages. `usePermissionGuard(user, hasPermission)` returns `true` when the guard is still checking. When the user is loaded and lacks the required permission, it redirects to `/overview/`. Used by the Audit and Users pages.
-
-### lib/useTableSearch.ts
-
-A generic table search/filter hook. `useTableSearch<T>(items, filterFn)` returns `{ search, setSearch, filtered }` where `filtered` is the subset of items matching the debounced search term.
-
-### lib/logParsing.ts
-
-Shared log line parsing utilities. Exports `parseSummary(lines)` which extracts structured workload and node data from execution log lines using regex patterns. Produces workload entries with `targetReplicas` (the replica count to restore).
 
 ### lib/timelineUtils.ts
 
@@ -1077,9 +1080,11 @@ sx={{ color: colors.success, bgcolor: colors.successBg }}
 
 **Use `TIMELINE_COLORS`** for SVG timeline rendering (static, not mode-aware).
 
-**Use `statusColors.ts` maps** for status-dependent coloring:
+**Use `statusColors.ts` functions** for status-dependent coloring:
 ```typescript
-const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
+const isDark = useIsDark()
+const colors = stateColors(isDark)
+const stateStyle = colors[policy.currentState] ?? colors.unknown
 sx={{ bgcolor: stateStyle.bg, color: stateStyle.color }}
 ```
 

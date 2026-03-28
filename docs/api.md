@@ -43,6 +43,7 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 | :----- | :--- | :---------- |
 | `POST` | `/api/auth/logout` | Destroy session and clear cookies |
 | `GET` | `/api/auth/me` | Current user info and permissions |
+| `GET` | `/api/auth/sessions` | List active sessions for the current user |
 | `PUT` | `/api/auth/password` | Change own password (local users only) |
 | `PUT` | `/api/auth/settings` | Update user settings (e.g. default timezone) |
 

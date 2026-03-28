@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -11,12 +10,11 @@ import Divider from '@mui/material/Divider'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import FormControl from '@mui/material/FormControl'
-import Snackbar from '@mui/material/Snackbar'
-import Alert from '@mui/material/Alert'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
 import { updateUserSettings } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { TIMEZONES } from '@/lib/constants'
+import { useSnackbar } from '@/lib/useSnackbar'
 import type { User } from '@/lib/types'
 
 const LABEL_SX = { textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 500 } as const
@@ -31,16 +29,16 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 
 export default function AccountSettings({ user }: { user: User }) {
   const { refreshUser } = useAuth()
-  const [snack, setSnack] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null)
+  const { notify, SnackbarAlert } = useSnackbar()
 
   const mutation = useMutation({
     mutationFn: updateUserSettings,
     onSuccess: () => {
       refreshUser()
-      setSnack({ msg: 'Timezone updated', severity: 'success' })
+      notify('Timezone updated', 'success')
     },
     onError: (err: Error) => {
-      setSnack({ msg: err.message || 'Failed to update timezone', severity: 'error' })
+      notify(err.message || 'Failed to update timezone', 'error')
     },
   })
 
@@ -124,16 +122,7 @@ export default function AccountSettings({ user }: { user: User }) {
         </CardContent>
       </Card>
 
-      <Snackbar
-        open={!!snack}
-        autoHideDuration={3000}
-        onClose={() => setSnack(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert severity={snack?.severity ?? 'success'} onClose={() => setSnack(null)} variant="filled">
-          {snack?.msg}
-        </Alert>
-      </Snackbar>
+      {SnackbarAlert}
     </>
   )
 }

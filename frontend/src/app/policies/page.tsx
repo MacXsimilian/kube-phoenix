@@ -7,7 +7,6 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
-import Snackbar from '@mui/material/Snackbar'
 import AddIcon from '@mui/icons-material/Add'
 import { getPolicies } from '@/lib/api'
 import type { Policy } from '@/lib/types'
@@ -15,17 +14,20 @@ import PolicyCard from '@/components/policies/PolicyCard'
 import CreatePolicyDialog from '@/components/policies/CreatePolicyDialog'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules, canTriggerSchedules } from '@/lib/rbac'
+import Tooltip from '@mui/material/Tooltip'
+import { POLICIES_REFETCH_MS } from '@/lib/constants'
+import { useSnackbar } from '@/lib/useSnackbar'
 
 export default function PoliciesPage() {
   const { user } = useAuth()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Policy | undefined>()
-  const [snack, setSnack] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null)
+  const { notify, SnackbarAlert } = useSnackbar()
 
   const { data: policies, isLoading, error } = useQuery({
     queryKey: ['policies'],
     queryFn: getPolicies,
-    refetchInterval: 30_000,
+    refetchInterval: POLICIES_REFETCH_MS,
   })
 
   function handleEdit(p: Policy) {
@@ -50,14 +52,18 @@ export default function PoliciesPage() {
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Typography variant="h5" fontWeight={700}>Policies</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleCreate}
-          disabled={!canEdit}
-        >
-          New Policy
-        </Button>
+        <Tooltip title={!canEdit ? 'You do not have permission to create policies' : ''}>
+          <span>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={handleCreate}
+              disabled={!canEdit}
+            >
+              New Policy
+            </Button>
+          </span>
+        </Tooltip>
       </Box>
 
       {isLoading && (
@@ -93,7 +99,7 @@ export default function PoliciesPage() {
               key={p.id}
               policy={p}
               onEdit={() => handleEdit(p)}
-              onNotify={(msg, severity) => setSnack({ msg, severity })}
+              onNotify={notify}
               canEdit={canEdit}
               canTrigger={canTrigger}
             />
@@ -105,21 +111,10 @@ export default function PoliciesPage() {
         open={dialogOpen}
         onClose={handleClose}
         existing={editing}
-        onNotify={(msg, severity) => setSnack({ msg, severity })}
+        onNotify={notify}
       />
 
-      <Snackbar
-        open={!!snack}
-        autoHideDuration={4000}
-        onClose={() => setSnack(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        {snack ? (
-          <Alert severity={snack.severity} onClose={() => setSnack(null)} sx={{ width: '100%' }}>
-            {snack.msg}
-          </Alert>
-        ) : undefined}
-      </Snackbar>
+      {SnackbarAlert}
     </Box>
   )
 }

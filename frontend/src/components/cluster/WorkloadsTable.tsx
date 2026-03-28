@@ -11,6 +11,7 @@ import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import TableSortLabel from '@mui/material/TableSortLabel'
+import TablePagination from '@mui/material/TablePagination'
 import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
 import TextField from '@mui/material/TextField'
@@ -24,7 +25,7 @@ import Tooltip from '@mui/material/Tooltip'
 import { getWorkloads } from '@/lib/api'
 import type { Workload } from '@/lib/types'
 import { sinceMs } from '@/lib/formatters'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { statusColors } from '@/components/cluster/statusColors'
 import { useColors } from '@/lib/colors'
 import { WORKLOADS_REFETCH_MS } from '@/lib/constants'
@@ -51,8 +52,10 @@ export default function WorkloadsTable() {
   }, [searchParams])
   const [sortCol, setSortCol] = useState<'namespace' | 'name' | 'kind' | 'replicas' | 'status' | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(20)
   const [selectedWorkload, setSelectedWorkload] = useState<Workload | null>(null)
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const colors = useColors()
   const STATUS_COLORS = statusColors(isDark)
 
@@ -96,6 +99,14 @@ export default function WorkloadsTable() {
       return sortDir === 'asc' ? cmp : -cmp
     })
   }, [filtered, sortCol, sortDir])
+
+  const paginatedRows = useMemo(
+    () => sorted.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [sorted, page, rowsPerPage],
+  )
+
+  // Reset page when filters change
+  useEffect(() => { setPage(0) }, [search, nsFilter, statusFilter])
 
   return (
     <>
@@ -202,7 +213,7 @@ export default function WorkloadsTable() {
                   </TableCell>
                 </TableRow>
               ) : (
-                sorted.map((w) => {
+                paginatedRows.map((w) => {
                   const statusColor = STATUS_COLORS[w.status]
                   const unhealthy = w.readyReplicas < w.currentReplicas && w.currentReplicas > 0
                   return (
@@ -246,6 +257,15 @@ export default function WorkloadsTable() {
               )}
             </TableBody>
           </Table>
+          <TablePagination
+            component="div"
+            count={sorted.length}
+            page={page}
+            onPageChange={(_, p) => setPage(p)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0) }}
+            rowsPerPageOptions={[10, 20, 50]}
+          />
         </TableContainer>
       )}
 

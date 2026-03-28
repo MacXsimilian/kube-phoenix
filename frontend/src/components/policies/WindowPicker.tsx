@@ -12,6 +12,7 @@ import Switch from '@mui/material/Switch'
 import Chip from '@mui/material/Chip'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import AddIcon from '@mui/icons-material/Add'
+import { useIsDark } from '@/lib/useIsDark'
 import type { SleepWindow } from '@/lib/types'
 import { windowsToText, isOvernight } from '@/lib/windowUtils'
 
@@ -114,6 +115,7 @@ function WindowCard({
   onRemove: (idx: number) => void
   onToggleDay: (windowIdx: number, day: number) => void
 }) {
+  const isDark = useIsDark()
   const [sH, sM] = w.allDay ? [0, 0] : parseHM(w.startTime)
   const [eH, eM] = w.allDay ? [0, 0] : parseHM(w.endTime)
   const overnightWin = !w.allDay && isOvernight(w)
@@ -133,7 +135,7 @@ function WindowCard({
         sx={{
           px: 2,
           py: 1,
-          bgcolor: 'rgba(30, 30, 46, 0.6)',
+          bgcolor: isDark ? 'rgba(30, 30, 46, 0.6)' : 'rgba(0, 0, 0, 0.03)',
           borderBottom: '1px solid',
           borderColor: 'divider',
           borderTop: '1px solid',
@@ -247,7 +249,7 @@ function WindowCard({
 
             {overnightWin && (
               <Chip label="next day" size="small"
-                sx={{ fontSize: 10, height: 18, bgcolor: 'rgba(99,102,241,0.15)', color: '#a5b4fc' }}
+                sx={{ fontSize: 10, height: 18, bgcolor: 'rgba(99,102,241,0.15)', color: isDark ? '#a5b4fc' : '#4F46E5' }}
               />
             )}
           </Stack>
@@ -294,7 +296,7 @@ function WindowCard({
                     : 'none',
                   '&:hover': {
                     borderColor: active ? 'primary.main' : 'text.disabled',
-                    bgcolor: active ? 'rgba(124,58,237,0.2)' : 'rgba(255,255,255,0.04)',
+                    bgcolor: active ? 'rgba(124,58,237,0.2)' : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'),
                   },
                 }}
               >
@@ -349,7 +351,7 @@ export default function WindowPicker({
   return (
     <Box>
       {/* Presets — pill buttons with dots */}
-      <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2 }}>
         {PRESETS.map(preset => (
           <Button
             key={preset.label}

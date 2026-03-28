@@ -1,10 +1,17 @@
 import Box from '@mui/material/Box'
+import { useIsDark } from '@/lib/useIsDark'
 import type { DiffEntry } from './auditDiff'
-import { DIFF_STYLE } from './auditDiff'
+import { diffStyle } from './auditDiff'
 
 export default function DiffLineRow({ line }: { line: DiffEntry }) {
-  const style = DIFF_STYLE[line.type]
+  const isDark = useIsDark()
+  const styles = diffStyle(isDark)
+  const style = styles[line.type]
   const isChanged = line.type !== 'unchanged'
+
+  const removedColor = isDark ? '#fca5a5' : '#B91C1C'
+  const addedColor = isDark ? '#86efac' : '#15803D'
+
   return (
     <Box sx={{
       display: 'flex', gap: 1, px: 1.5, py: '2px',
@@ -21,8 +28,8 @@ export default function DiffLineRow({ line }: { line: DiffEntry }) {
       </Box>
       {line.type === 'changed' ? (
         <Box component="span" sx={{ wordBreak: 'break-all' }}>
-          <Box component="span" sx={{ color: '#fca5a5', textDecoration: 'line-through', mr: 1 }}>{line.before}</Box>
-          <Box component="span" sx={{ color: '#86efac' }}>{line.after}</Box>
+          <Box component="span" sx={{ color: removedColor, textDecoration: 'line-through', mr: 1 }}>{line.before}</Box>
+          <Box component="span" sx={{ color: addedColor }}>{line.after}</Box>
         </Box>
       ) : (
         <Box component="span" sx={{ color: isChanged ? style.text : 'text.primary', wordBreak: 'break-all' }}>

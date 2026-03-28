@@ -16,7 +16,7 @@ async function handleAuthErrors(res: Response): Promise<void> {
   }
   if (res.status === 403) {
     const body = await res.json().catch(() => null)
-    throw new Error((body as any)?.error || 'You do not have permission to perform this action')
+    throw new Error((body as { error?: string } | null)?.error || 'You do not have permission to perform this action')
   }
 }
 
@@ -68,6 +68,18 @@ export const getVersionInfo = (): Promise<VersionInfo> =>
 
 export const updateUserSettings = (settings: { defaultTimezone: string }): Promise<User> =>
   req<User>('/api/auth/settings', { method: 'PUT', body: JSON.stringify(settings) })
+
+export interface SessionInfo {
+  id: number
+  ipAddress: string
+  userAgent: string
+  createdAt: string
+  expiresAt: string
+  isCurrent: boolean
+}
+
+export const getSessions = (): Promise<SessionInfo[]> =>
+  req<SessionInfo[]>('/api/auth/sessions')
 
 // ── Guardrails ────────────────────────────────────────────────────────────────
 

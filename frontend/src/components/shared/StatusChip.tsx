@@ -1,10 +1,13 @@
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
-import { EXECUTION_STATUS_COLORS, EXECUTION_STATUS_FALLBACK } from '@/lib/statusColors'
+import { useIsDark } from '@/lib/useIsDark'
+import { executionStatusColors, executionStatusFallback } from '@/lib/statusColors'
 
 export default function StatusChip({ status }: { status: string }) {
-  const statusStyle = EXECUTION_STATUS_COLORS[status as keyof typeof EXECUTION_STATUS_COLORS] ?? EXECUTION_STATUS_FALLBACK
+  const isDark = useIsDark()
+  const colors = executionStatusColors(isDark)
+  const statusStyle = colors[status as keyof typeof colors] ?? executionStatusFallback(isDark)
 
   if (status === 'running') {
     return (
@@ -19,7 +22,7 @@ export default function StatusChip({ status }: { status: string }) {
     <Chip
       label={status.charAt(0).toUpperCase() + status.slice(1)}
       size="small"
-      sx={{ height: 18, fontSize: 10, bgcolor: statusStyle.bg, color: statusStyle.color }}
+      sx={{ height: 20, fontSize: 10, bgcolor: statusStyle.bg, color: statusStyle.color }}
     />
   )
 }

@@ -30,12 +30,12 @@ export default function SettingsPage() {
       <Grid container spacing={3}>
         {/* Top row: Profile (left) + Appearance & Sessions (right) */}
         {user && user.id !== 0 && (
-          <Grid size={{ xs: 12, md: 7 }}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <AccountSettings user={user} />
           </Grid>
         )}
 
-        <Grid size={{ xs: 12, md: 5 }}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <AppearanceSettings mode={mode} onModeChange={setMode} />
             <ActiveSessionsCard />

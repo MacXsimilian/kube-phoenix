@@ -17,11 +17,18 @@ import (
 // ─── Context keys ────────────────────────────────────────────────────────────
 
 type ctxUserKey struct{}
+type ctxSessionIDKey struct{}
 
 // UserFromContext returns the authenticated user, or nil if unauthenticated.
 func UserFromContext(ctx context.Context) *store.User {
 	u, _ := ctx.Value(ctxUserKey{}).(*store.User)
 	return u
+}
+
+// SessionIDFromContext returns the session ID for the current request.
+func SessionIDFromContext(ctx context.Context) uint {
+	id, _ := ctx.Value(ctxSessionIDKey{}).(uint)
+	return id
 }
 
 // ─── Session Auth (cookie-based) ─────────────────────────────────────────────
@@ -56,6 +63,7 @@ func SessionAuth(st *store.Store, idleTimeout time.Duration) func(http.Handler) 
 			}
 
 			ctx := context.WithValue(r.Context(), ctxUserKey{}, &sess.User)
+			ctx = context.WithValue(ctx, ctxSessionIDKey{}, sess.ID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

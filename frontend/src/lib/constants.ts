@@ -33,12 +33,16 @@ export const REQUEST_TIMEOUT_MS = 30_000
 export const DEFAULT_STALE_TIME_MS = 30_000
 export const WORKLOADS_REFETCH_MS = 30_000
 export const NODES_REFETCH_MS = 30_000
+export const POLICIES_REFETCH_MS = 30_000
+export const EXCEPTIONS_REFETCH_MS = 30_000
+export const EXECUTIONS_REFETCH_MS = 10_000
 export const ACTIVITY_FEED_STALE_MS = 14_000
 export const ACTIVITY_FEED_REFETCH_MS = 15_000
 export const NODE_PODS_REFETCH_MS = 15_000
 export const WORKLOAD_PODS_REFETCH_MS = 15_000
+export const POD_DETAIL_REFETCH_MS = 15_000
 export const WS_RECONNECT_DELAY_MS = 3_000
-export const SNACKBAR_AUTO_HIDE_MS = 2_000
+export const SNACKBAR_AUTO_HIDE_MS = 4_000
 
 // ── Drawer constraints ──
 export const DRAWER_MIN_WIDTH = 360

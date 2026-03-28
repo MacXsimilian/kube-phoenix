@@ -50,6 +50,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         width={DRAWER_WIDTH}
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
+        onAboutClick={() => setAboutOpen(true)}
       />
 
       <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />

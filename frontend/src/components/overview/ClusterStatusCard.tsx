@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -8,14 +7,13 @@ import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
 import Button from '@mui/material/Button'
-import Snackbar from '@mui/material/Snackbar'
-import Alert from '@mui/material/Alert'
 import Tooltip from '@mui/material/Tooltip'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import Brightness4Icon from '@mui/icons-material/Brightness4'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import Skeleton from '@mui/material/Skeleton'
+import Alert from '@mui/material/Alert'
 import { getOverview, triggerPolicySleep, triggerPolicyWake, getPolicies } from '@/lib/api'
 import { timeUntil } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
@@ -23,6 +21,7 @@ import { useAuth } from '@/lib/auth'
 import { canTriggerSchedules } from '@/lib/rbac'
 import { useColors } from '@/lib/colors'
 import { useClusterStream } from '@/lib/useClusterStream'
+import { useSnackbar } from '@/lib/useSnackbar'
 
 const statusPulseAnimation = {
   animation: 'statusPulse 2s ease-in-out infinite',
@@ -55,7 +54,7 @@ export default function ClusterStatusCard() {
   // Subscribe to SSE — updates the overview query cache in real time
   const streamDisconnected = useClusterStream()
 
-  const [triggerError, setTriggerError] = useState<string | null>(null)
+  const { notify, SnackbarAlert } = useSnackbar()
 
   // Find first enabled policy for quick sleep/wake triggers
   const firstPolicy = policies.find(p => p.enabled)
@@ -71,7 +70,7 @@ export default function ClusterStatusCard() {
       router.push(`/policies/detail/?id=${firstPolicy!.id}&exec=${executionId}`)
     },
     onError: (err: unknown) => {
-      setTriggerError(err instanceof Error ? err.message : 'Sleep trigger failed')
+      notify(err instanceof Error ? err.message : 'Sleep trigger failed', 'error')
     },
   })
 
@@ -86,7 +85,7 @@ export default function ClusterStatusCard() {
       router.push(`/policies/detail/?id=${firstPolicy!.id}&exec=${executionId}`)
     },
     onError: (err: unknown) => {
-      setTriggerError(err instanceof Error ? err.message : 'Wake trigger failed')
+      notify(err instanceof Error ? err.message : 'Wake trigger failed', 'error')
     },
   })
 
@@ -192,18 +191,21 @@ export default function ClusterStatusCard() {
                 <Chip
                   label={`${activeNodes} Nodes Active`}
                   size="small"
+                  role="link"
                   onClick={() => router.push('/cluster/?tab=nodes')}
                   sx={{ bgcolor: 'rgba(34,197,94,0.1)', color: 'success.main', fontWeight: 600, cursor: 'pointer' }}
                 />
                 <Chip
                   label={`${running} Workloads Running`}
                   size="small"
+                  role="link"
                   onClick={() => router.push('/cluster/?status=running')}
                   sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: 'info.main', fontWeight: 600, cursor: 'pointer' }}
                 />
                 <Chip
                   label={`${sleeping} Workloads Sleeping`}
                   size="small"
+                  role="link"
                   onClick={() => router.push('/cluster/?status=sleeping')}
                   sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: 'warning.main', fontWeight: 600, cursor: 'pointer' }}
                 />
@@ -265,17 +267,7 @@ export default function ClusterStatusCard() {
         </CardContent>
       </Card>
 
-      {/* Trigger error snackbar */}
-      <Snackbar
-        open={triggerError !== null}
-        autoHideDuration={6000}
-        onClose={() => setTriggerError(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert severity="error" onClose={() => setTriggerError(null)} sx={{ width: '100%' }}>
-          {triggerError}
-        </Alert>
-      </Snackbar>
+      {SnackbarAlert}
     </>
   )
 }

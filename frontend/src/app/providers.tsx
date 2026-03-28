@@ -12,11 +12,18 @@ import AppShell from '@/components/layout/AppShell'
 import { AuthProvider, useAuth } from '@/lib/auth'
 import LoginScreen from '@/components/auth/LoginScreen'
 import { ThemeModeProvider, useThemeMode } from '@/lib/themeMode'
+import CircularProgress from '@mui/material/CircularProgress'
 import ErrorBoundary from '@/components/ErrorBoundary'
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, checking, backendError } = useAuth()
-  if (checking) return null
+  if (checking) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <CircularProgress />
+      </Box>
+    )
+  }
   if (backendError) {
     return (
       <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>

@@ -5,6 +5,7 @@ import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
 import Table from '@mui/material/Table'
+import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableBody from '@mui/material/TableBody'
 import TableRow from '@mui/material/TableRow'
@@ -14,9 +15,10 @@ import MenuItem from '@mui/material/MenuItem'
 import CircularProgress from '@mui/material/CircularProgress'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
+import { useIsDark } from '@/lib/useIsDark'
 import StatusChip from '@/components/shared/StatusChip'
 import { fmtDtShort, fmtDuration } from '@/lib/formatters'
-import { MODE_COLORS, SMALL_CHIP_SX } from '@/lib/statusColors'
+import { modeColors, SMALL_CHIP_SX } from '@/lib/statusColors'
 import type { PolicyExecution, PolicyExecutionPage } from '@/lib/types'
 
 const STATUS_OPTIONS = ['all', 'running', 'success', 'failed'] as const
@@ -28,6 +30,8 @@ export default function ExecutionHistoryTable({
   executions: PolicyExecutionPage | undefined
   onRowClick: (exec: PolicyExecution) => void
 }) {
+  const isDark = useIsDark()
+  const MODE_COLORS = modeColors(isDark)
   const [statusFilter, setStatusFilter] = useState<string>('all')
 
   const filtered = useMemo(() => {
@@ -62,6 +66,7 @@ export default function ExecutionHistoryTable({
         </Typography>
       )}
       {filtered && filtered.length > 0 && (
+        <TableContainer>
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -90,8 +95,8 @@ export default function ExecutionHistoryTable({
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       {ex.direction === 'sleep'
-                        ? <BedtimeIcon sx={{ fontSize: 13, color: '#a5b4fc' }} />
-                        : <WbSunnyIcon sx={{ fontSize: 13, color: '#fcd34d' }} />}
+                        ? <BedtimeIcon sx={{ fontSize: 13, color: isDark ? '#a5b4fc' : '#4F46E5' }} />
+                        : <WbSunnyIcon sx={{ fontSize: 13, color: isDark ? '#fcd34d' : '#92400E' }} />}
                       {ex.direction}
                     </Box>
                   </TableCell>
@@ -115,6 +120,7 @@ export default function ExecutionHistoryTable({
             })}
           </TableBody>
         </Table>
+        </TableContainer>
       )}
     </Box>
   )

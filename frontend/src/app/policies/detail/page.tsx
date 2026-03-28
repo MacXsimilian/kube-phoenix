@@ -7,14 +7,13 @@ import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
-import Snackbar from '@mui/material/Snackbar'
 import {
   getPolicy,
   getPolicyExecutions,
   getPolicyOverrides,
   getExceptions,
 } from '@/lib/api'
-import type { PolicyExecution, ScheduledException, SnackMessage } from '@/lib/types'
+import type { PolicyExecution, ScheduledException } from '@/lib/types'
 import CreatePolicyDialog from '@/components/policies/CreatePolicyDialog'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
 import LedGlowTimeline from '@/components/policies/LedGlowTimeline'
@@ -27,13 +26,13 @@ import LogViewer from '@/components/history/LogViewer'
 import { windowsToText, computeWeeklyStats, hasSleepWindows } from '@/lib/windowUtils'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules, canTriggerSchedules } from '@/lib/rbac'
-import { STATE_COLORS, SUBTLE_BORDER } from '@/lib/statusColors'
+import { stateColors, subtleBorder } from '@/lib/statusColors'
 import { fmtDt, timeUntil } from '@/lib/formatters'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
+import { useIsDark } from '@/lib/useIsDark'
 import ErrorBoundary from '@/components/ErrorBoundary'
-
-const BLEED_MARGIN_X = { xs: -2, sm: -2.5, md: -3 }
-const BLEED_PADDING_X = { xs: 2, sm: 2.5, md: 3 }
+import { useSnackbar } from '@/lib/useSnackbar'
+import { BLEED_MARGIN_X, BLEED_PADDING_X } from '@/lib/layoutConstants'
 
 function PolicyDetailContent() {
   const searchParams = useSearchParams()
@@ -41,13 +40,17 @@ function PolicyDetailContent() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
 
+  const isDark = useIsDark()
+  const STATE_COLORS = stateColors(isDark)
+  const SUBTLE_BORDER = subtleBorder(isDark)
+
   const raw = searchParams.get('id')
   const policyId = raw ? parseInt(raw, 10) : NaN
 
   const [editOpen, setEditOpen] = useState(false)
   const [exceptionOpen, setExceptionOpen] = useState(false)
   const [editingException, setEditingException] = useState<ScheduledException | undefined>()
-  const [snack, setSnack] = useState<SnackMessage | null>(null)
+  const { notify, SnackbarAlert } = useSnackbar()
   const [selectedExec, setSelectedExec] = useState<PolicyExecution | null>(null)
 
   const canEdit = canEditSchedules(user?.permissions)
@@ -77,11 +80,7 @@ function PolicyDetailContent() {
     enabled: !isNaN(policyId),
   })
 
-  function handleNotify(msg: string, severity: SnackMessage['severity']) {
-    setSnack({ msg, severity })
-  }
-
-  const { sleepMut, wakeMut, isBusy } = usePolicyTriggers(policyId, handleNotify)
+  const { sleepMut, wakeMut, isBusy } = usePolicyTriggers(policyId, notify)
 
   if (isNaN(policyId)) {
     return <Alert severity="error">No policy ID provided.</Alert>
@@ -103,12 +102,14 @@ function PolicyDetailContent() {
         policy={policy}
         canEdit={canEdit}
         canTrigger={canTrigger}
-        isBusy={isBusy}
-        sleepPending={sleepMut.isPending}
-        wakePending={wakeMut.isPending}
+        trigger={{
+          isBusy,
+          sleepPending: sleepMut.isPending,
+          wakePending: wakeMut.isPending,
+          onSleep: () => sleepMut.mutate(),
+          onWake: () => wakeMut.mutate(),
+        }}
         onBack={() => router.push('/policies')}
-        onSleep={() => sleepMut.mutate()}
-        onWake={() => wakeMut.mutate()}
         onEdit={() => { setExceptionOpen(false); setEditOpen(true) }}
         onAddException={() => { setEditOpen(false); setEditingException(undefined); setExceptionOpen(true) }}
       />
@@ -175,7 +176,7 @@ function PolicyDetailContent() {
       <Box
         sx={{
           mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3,
-          bgcolor: 'rgba(255,255,255,0.015)',
+          bgcolor: isDark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.015)',
           borderBottom: '1px solid', borderColor: SUBTLE_BORDER,
         }}
       >
@@ -187,7 +188,7 @@ function PolicyDetailContent() {
               canEdit={canEdit}
               onRefetch={refetchOverrides}
               onInvalidateExceptions={() => queryClient.invalidateQueries({ queryKey: ['exceptions', policyId] })}
-              onNotify={handleNotify}
+              onNotify={notify}
             />
           </Box>
           <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -216,28 +217,17 @@ function PolicyDetailContent() {
         open={editOpen}
         onClose={() => setEditOpen(false)}
         existing={policy}
-        onNotify={handleNotify}
+        onNotify={notify}
       />
       <ExceptionDialog
         open={exceptionOpen}
         onClose={() => { setExceptionOpen(false); setEditingException(undefined) }}
         existing={editingException}
         defaultPolicyId={policyId}
-        onNotify={handleNotify}
+        onNotify={notify}
       />
 
-      <Snackbar
-        open={!!snack}
-        autoHideDuration={4000}
-        onClose={() => setSnack(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        {snack ? (
-          <Alert severity={snack.severity} onClose={() => setSnack(null)} sx={{ width: '100%' }}>
-            {snack.msg}
-          </Alert>
-        ) : undefined}
-      </Snackbar>
+      {SnackbarAlert}
     </Box>
     </ErrorBoundary>
   )

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import React from 'react'
 import Paper from '@mui/material/Paper'
@@ -11,6 +11,7 @@ import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import TableSortLabel from '@mui/material/TableSortLabel'
+import TablePagination from '@mui/material/TablePagination'
 import Chip from '@mui/material/Chip'
 import Tooltip from '@mui/material/Tooltip'
 import Box from '@mui/material/Box'
@@ -26,7 +27,7 @@ import { getNodes } from '@/lib/api'
 import type { Node } from '@/lib/types'
 import { fmtCpu, fmtMem, podAge, sinceMs, pct, pctColor } from '@/lib/formatters'
 import { nodeStatusMap } from '@/components/cluster/statusColors'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { useColors } from '@/lib/colors'
 import { NODES_REFETCH_MS } from '@/lib/constants'
 import MiniBar from './MiniBar'
@@ -90,7 +91,7 @@ interface NodeRowProps {
 }
 
 function NodeRow({ node, groupByZone, isSelected, onSelect }: NodeRowProps) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const colors = useColors()
   const statusColor = nodeStatusMap(isDark)[node.status]
   const statusChip = (
@@ -146,8 +147,10 @@ export default function NodesTable() {
   const [groupByZone, setGroupByZone] = useState(false)
   const [sortCol, setSortCol] = useState<SortCol | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(20)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const colors = useColors()
 
   function handleSort(col: SortCol) {
@@ -168,6 +171,14 @@ export default function NodesTable() {
   const sorted = useMemo(
     () => (sortCol ? sortNodes(filtered, sortCol, sortDir) : filtered),
     [filtered, sortCol, sortDir],
+  )
+
+  // Reset page when search changes
+  useEffect(() => { setPage(0) }, [search])
+
+  const paginatedRows = useMemo(
+    () => sorted.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [sorted, page, rowsPerPage],
   )
 
   const zoneGroups = useMemo<[string, ZoneStats][]>(() => {
@@ -296,7 +307,7 @@ export default function NodesTable() {
                   )
                 })
               ) : (
-                sorted.map((node) => (
+                paginatedRows.map((node) => (
                   <NodeRow
                     key={node.name}
                     node={node}
@@ -308,6 +319,15 @@ export default function NodesTable() {
               )}
             </TableBody>
           </Table>
+          <TablePagination
+            component="div"
+            count={sorted.length}
+            page={page}
+            onPageChange={(_, p) => setPage(p)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0) }}
+            rowsPerPageOptions={[10, 20, 50]}
+          />
         </TableContainer>
       )}
       <NodeDetailDrawer node={selectedNode} onClose={() => setSelectedNode(null)} />
