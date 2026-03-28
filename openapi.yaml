@@ -430,6 +430,11 @@ components:
           readOnly: true
         enabled:
           type: boolean
+        defaultTimezone:
+          type: string
+          description: IANA timezone used as the default when creating new policies.
+          example: Europe/Budapest
+          default: UTC
         createdAt:
           type: string
           format: date-time
@@ -484,6 +489,10 @@ components:
           enum: [local, oidc]
         enabled:
           type: boolean
+        defaultTimezone:
+          type: string
+          description: IANA timezone used as the default when creating new policies.
+          example: Europe/Budapest
         permissions:
           type: array
           items:
@@ -495,6 +504,45 @@ components:
         lastLoginAt:
           type: ["string", "null"]
           format: date-time
+
+    UserSettingsUpdate:
+      description: Request body for updating user settings.
+      type: object
+      properties:
+        defaultTimezone:
+          type: string
+          description: IANA timezone (e.g. Europe/Budapest). Validated server-side.
+
+    ClusterInfoResponse:
+      description: Metadata about the connected Kubernetes cluster.
+      type: object
+      properties:
+        apiServer:
+          type: string
+          description: Kubernetes API server URL.
+        kubernetesVersion:
+          type: string
+          description: Server GitVersion (e.g. v1.30.2).
+        authMode:
+          type: string
+          description: How the backend authenticated — "in-cluster" or "kubeconfig".
+        clusterName:
+          type: string
+          description: Value of the CLUSTER_NAME env var. Empty when unset.
+
+    VersionResponse:
+      description: Build and runtime information.
+      type: object
+      properties:
+        version:
+          type: string
+          description: Build version set via -ldflags (e.g. 0.4.2). "dev" when unset.
+        goVersion:
+          type: string
+          description: Go runtime version (e.g. go1.26).
+        uptime:
+          type: string
+          description: Server uptime as a Go duration string (e.g. 2h15m30s).
 
     LoginRequest:
       description: Local login credentials.
@@ -1061,6 +1109,21 @@ paths:
                     type: string
                     example: database unavailable
 
+  /api/version:
+    get:
+      operationId: getVersion
+      summary: Build and runtime info
+      description: Returns the build version, Go version, and server uptime. No authentication required.
+      security: []
+      tags: [Health]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+
   /api/overview:
     get:
       operationId: getOverview
@@ -1383,6 +1446,28 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/cluster/info:
+    get:
+      operationId: getClusterInfo
+      summary: Cluster metadata
+      description: Returns the Kubernetes API server URL, server version, authentication mode, and cluster name (from CLUSTER_NAME env var). Cached for 5 minutes.
+      tags: [Cluster]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterInfoResponse"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/guardrails:
     get:
       operationId: getGuardrails
@@ -1583,6 +1668,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /api/auth/settings:
+    put:
+      operationId: updateUserSettings
+      summary: Update user settings
+      description: Updates the current user's settings (e.g. default timezone). Returns the updated user object.
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserSettingsUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "400":
+          description: Invalid timezone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
 
   /api/auth/oidc/config:
     get:

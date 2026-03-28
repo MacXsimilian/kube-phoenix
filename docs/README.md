@@ -19,6 +19,7 @@
 | :------- | :---------- |
 | [API Reference](api.md) | REST, SSE, and WebSocket endpoints with authentication details |
 | [OpenAPI Spec](../openapi.yaml) | Machine-readable OpenAPI 3.1 definition (also served at `/api/docs/openapi.yaml`) |
+| [Window-Native Scheduling](window-native-scheduling.md) | Architecture of the sleep window evaluator and scheduler |
 | [Helm Values](../helm/kube-phoenix/values.yaml) | Full Helm values file with inline comments |
 
 ## Development

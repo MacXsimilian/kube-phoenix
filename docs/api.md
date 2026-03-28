@@ -20,12 +20,13 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 
 ## Endpoints
 
-### Health and Metrics (no auth required)
+### Health, Metrics, and Version (no auth required)
 
 | Method | Path | Description |
 | :----- | :--- | :---------- |
 | `GET` | `/healthz` | Health check (verifies database connectivity) |
 | `GET` | `/metrics` | Prometheus metrics endpoint |
+| `GET` | `/api/version` | Build version, Go version, and server uptime |
 
 ### Authentication (no session required)
 
@@ -43,6 +44,7 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 | `POST` | `/api/auth/logout` | Destroy session and clear cookies |
 | `GET` | `/api/auth/me` | Current user info and permissions |
 | `PUT` | `/api/auth/password` | Change own password (local users only) |
+| `PUT` | `/api/auth/settings` | Update user settings (e.g. default timezone) |
 
 ### Cluster -- viewer and above
 
@@ -56,6 +58,7 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 | `GET` | `/api/cluster/pods/{namespace}/{name}` | Full pod detail: containers, conditions, events, labels, annotations |
 | `GET` | `/api/cluster/pods/{namespace}/{name}/logs` | Stream container logs (query params: `container`, `tailLines`, `follow`, `previous`) |
 | `GET` | `/api/cluster/workloads/{namespace}/{kind}/{name}/pods` | List pods belonging to a Deployment or StatefulSet |
+| `GET` | `/api/cluster/info` | Kubernetes API server URL, version, auth mode, and cluster name |
 
 ### Guardrails -- viewer reads, operator writes
 

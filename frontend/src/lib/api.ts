@@ -1,4 +1,4 @@
-import type { Guardrails, Workload, Node, NodePod, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecution, PolicyExecutionPage, LogLine, WorkloadSnapshot, PolicyOverride, ScheduledException, ScheduledExceptionInput } from './types'
+import type { Guardrails, Workload, Node, NodePod, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecution, PolicyExecutionPage, LogLine, WorkloadSnapshot, PolicyOverride, ScheduledException, ScheduledExceptionInput, ClusterInfo, VersionInfo } from './types'
 import { getCSRFToken } from './auth'
 import { REQUEST_TIMEOUT_MS } from './constants'
 
@@ -55,6 +55,19 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
 }
+
+// ── Cluster info & version ────────────────────────────────────────────────────
+
+export const getClusterInfo = (): Promise<ClusterInfo> =>
+  req<ClusterInfo>('/api/cluster/info')
+
+export const getVersionInfo = (): Promise<VersionInfo> =>
+  req<VersionInfo>('/api/version')
+
+// ── User settings ────────────────────────────────────────────────────────────
+
+export const updateUserSettings = (settings: { defaultTimezone: string }): Promise<User> =>
+  req<User>('/api/auth/settings', { method: 'PUT', body: JSON.stringify(settings) })
 
 // ── Guardrails ────────────────────────────────────────────────────────────────
 

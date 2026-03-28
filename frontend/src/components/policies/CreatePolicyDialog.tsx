@@ -19,6 +19,7 @@ import Divider from '@mui/material/Divider'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import { createPolicy, updatePolicy } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import { TIMEZONES } from '@/lib/constants'
 import type { Policy, PolicyInput, SleepWindow } from '@/lib/types'
 import { windowsToText, computeWeeklyStats } from '@/lib/windowUtils'
@@ -58,6 +59,7 @@ export default function CreatePolicyDialog({
   existing?: Policy
 }) {
   const queryClient = useQueryClient()
+  const { user } = useAuth()
   const isEdit = !!existing
 
   const [form, setForm] = useState(DEFAULTS)
@@ -82,12 +84,12 @@ export default function CreatePolicyDialog({
           editingWindows: windows,
         })
       } else {
-        setForm(DEFAULTS)
+        setForm({ ...DEFAULTS, timezone: user?.defaultTimezone ?? 'UTC' })
       }
       setError('')
       setTouched({})
     }
-  }, [open, existing])
+  }, [open, existing, user?.defaultTimezone])
 
   function setField<K extends keyof PolicyFormState>(key: K, val: PolicyFormState[K]) {
     setForm(f => ({ ...f, [key]: val }))

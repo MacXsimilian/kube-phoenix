@@ -15,6 +15,7 @@
 | `COOKIE_SECURE` | `true` | No | Set to `false` for HTTP-only dev environments |
 | `CORS_ALLOWED_ORIGIN` | -- | No | Allowed CORS origin (e.g., `https://kube-phoenix.example.com`). Unset = same-origin only. In dev mode, CORS allows all origins. |
 | `KUBECONFIG` | -- | No | Path to kubeconfig file. Fallback when in-cluster config is unavailable. |
+| `CLUSTER_NAME` | -- | No | Human-readable cluster name returned by `GET /api/cluster/info`. When unset, the endpoint omits the field. |
 
 ### OIDC Variables
 

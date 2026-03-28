@@ -21,6 +21,8 @@ interface AuthState {
   oidcEnabled: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  /** Re-fetch the current user from /api/auth/me (e.g. after settings change). */
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -137,6 +139,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(me ?? data.user)
   }, [fetchMe])
 
+  const refreshUser = useCallback(async () => {
+    const me = await fetchMe()
+    if (me) setUser(me)
+  }, [fetchMe])
+
   const logout = useCallback(async () => {
     try {
       const res = await fetch(`${BASE}/api/auth/logout`, {
@@ -165,7 +172,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     oidcEnabled,
     login,
     logout,
-  }), [user, checking, backendError, oidcEnabled, login, logout])
+    refreshUser,
+  }), [user, checking, backendError, oidcEnabled, login, logout, refreshUser])
 
   return (
     <AuthContext.Provider value={value}>
