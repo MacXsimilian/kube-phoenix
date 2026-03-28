@@ -217,6 +217,8 @@ more WebSocket clients.
 **Key interfaces:**
 - `api.ts` -- centralized fetch wrapper with cookie/CSRF handling.
 - `auth.tsx` -- React context-based auth state management.
+- `useSnackbar.tsx` -- shared hook returning `{ notify, SnackbarAlert }` for standardized snackbar notifications across all pages.
+- `useIsDark.ts` -- one-liner hook for dark/light mode detection, used by all components needing mode-aware colors.
 - TanStack Query with SSE-driven cache updates for the overview page.
 
 ---

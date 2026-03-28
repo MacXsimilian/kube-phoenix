@@ -230,13 +230,15 @@ TanStack Query is the sole data-fetching and caching layer. There is no Redux, Z
 | Data | Interval | Constant |
 |:-----|:---------|:---------|
 | Workloads | 30s | `WORKLOADS_REFETCH_MS` |
+| Nodes | 30s | `NODES_REFETCH_MS` |
 | Workload pods | 15s | `WORKLOAD_PODS_REFETCH_MS` |
 | Node pods | 15s | `NODE_PODS_REFETCH_MS` |
+| Pod detail | 15s | `POD_DETAIL_REFETCH_MS` |
 | Activity feed | 15s | `ACTIVITY_FEED_REFETCH_MS` |
 | Overview (fallback) | 30s | Inline |
-| Executions (history) | 10s | Inline |
-| Policies | 30s | Inline |
-| Exceptions | 30s | Inline |
+| Executions (history) | 10s | `EXECUTIONS_REFETCH_MS` |
+| Policies | 30s | `POLICIES_REFETCH_MS` |
+| Exceptions | 30s | `EXCEPTIONS_REFETCH_MS` |
 
 **Cache invalidation** happens after every mutation via `queryClient.invalidateQueries()`. The pattern is always: mutate -> onSuccess -> invalidate related query keys. Example from `PolicyCard`:
 
@@ -618,7 +620,7 @@ The detail page (`src/app/policies/detail/page.tsx`) uses a full-width horizonta
 
 The hero band and metadata row are extracted into dedicated components:
 
-- **`PolicyHeroBand`** (`components/policies/PolicyHeroBand.tsx`): State-colored gradient background, back button, 64px state icon, policy name + description, large state label, mode/enabled chips, action buttons (Sleep Now, Wake Now, Edit, Exception).
+- **`PolicyHeroBand`** (`components/policies/PolicyHeroBand.tsx`): State-colored gradient background, back button, 64px state icon, policy name + description, large state label, mode/enabled chips, action buttons (Sleep Now, Wake Now, Edit, Exception). Action button callbacks are grouped into a `TriggerActions` interface prop (`trigger: { onSleep, onWake, onEdit, onException, isBusy }`) to keep the prop surface clean.
 - **`PolicyMetadataRow`** (`components/policies/PolicyMetadataRow.tsx`): Renders timezone, namespace filter, and label selector in a compact row.
 
 Bands (top to bottom):
@@ -886,7 +888,7 @@ The form also includes a "Scheduler Behaviour" card with four controls: an `Eval
 | `sinceMs(ms)` | `number -> string` | Millisecond timestamp to relative: `"just now"`, `"5s ago"`, `"3m ago"` | WorkloadsTable, NodesTable, drawers (for `dataUpdatedAt`) |
 | `timeUntil(iso)` | `string -> string` | ISO to countdown: `"now"`, `"in 5m"`, `"in 2h 30m"`, `"in 5d 8h"` | ClusterStatusCard, PolicyCard, PolicyDetailPage |
 | `pct(used, total)` | `(number, number) -> number` | Safe percentage: returns 0 when total is 0 | NodesTable, NodeDetailDrawer |
-| `pctColor(p, isDark)` | `(number, boolean) -> string` | Color by percentage threshold: green < 65%, amber 65-84%, red >= 85% | NodesTable, NodeDetailDrawer |
+| `pctColor(p, isDark)` | `(number, boolean) -> string` | Color by percentage threshold using named constants (`PCT_WARNING` = 65%, `PCT_CRITICAL` = 85%): green < warning, amber warning-critical, red >= critical | NodesTable, NodeDetailDrawer |
 | `fmtDt(iso)` | `string \| null -> string` | ISO to locale string, or em-dash for null | PolicyDetailPage, ExceptionsSection, OverridesSection, ExceptionsPage |
 | `fmtDtShort(iso)` | `string \| null -> string` | ISO to short date with year: `"Mar 24, 2026, 2:15 PM"` | ExecutionTable, ExecutionHistoryTable |
 | `fmtDuration(start, end)` | `(string, string \| null) -> string` | Duration between two ISO timestamps: `"5s"`, `"2m 30s"`, or `"Running…"` | ExecutionTable, ExecutionHistoryTable |
