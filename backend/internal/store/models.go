@@ -155,9 +155,11 @@ type PolicyLogLine struct {
 // The wake execution reads from these rows instead of K8s annotations (which
 // are also written as a belt-and-suspenders fallback).
 type WorkloadSnapshot struct {
-	ID               uint `gorm:"primaryKey" json:"id"`
-	PolicyID         uint `gorm:"index;index:idx_ws_policy_wake,priority:1" json:"policyId"`
-	SleepExecutionID uint `gorm:"index" json:"sleepExecutionId"`
+	ID               uint            `gorm:"primaryKey" json:"id"`
+	PolicyID         uint            `gorm:"index;index:idx_ws_policy_wake,priority:1" json:"policyId"`
+	Policy           Policy          `gorm:"foreignKey:PolicyID;constraint:OnDelete:CASCADE" json:"-"`
+	SleepExecutionID uint            `gorm:"index" json:"sleepExecutionId"`
+	SleepExecution   PolicyExecution `gorm:"foreignKey:SleepExecutionID;constraint:OnDelete:CASCADE" json:"-"`
 	// WakeExecutionID is null while the workload is still sleeping.
 	WakeExecutionID  *uint      `gorm:"index;index:idx_ws_policy_wake,priority:2" json:"wakeExecutionId"`
 	Kind             string     `gorm:"size:50" json:"kind"`
@@ -178,8 +180,9 @@ type WorkloadSnapshot struct {
 
 // PolicyOverride suppresses or inverts the normal window-based schedule for a policy.
 type PolicyOverride struct {
-	ID           uint       `gorm:"primaryKey" json:"id"`
-	PolicyID     uint       `gorm:"index:idx_override_policy_type" json:"policyId"`
+	ID       uint   `gorm:"primaryKey" json:"id"`
+	PolicyID uint   `gorm:"index:idx_override_policy_type" json:"policyId"`
+	Policy   Policy `gorm:"foreignKey:PolicyID;constraint:OnDelete:CASCADE" json:"-"`
 	OverrideType string     `gorm:"index:idx_override_policy_type;size:30" json:"overrideType"` // stay_awake|force_sleep|skip_sleep|skip_wake
 	StartsAt     *time.Time `json:"startsAt"`                                                   // nil for skip_sleep/skip_wake
 	EndsAt       *time.Time `json:"endsAt"`                                                     // nil for skip_sleep/skip_wake
@@ -194,8 +197,9 @@ type PolicyOverride struct {
 // behaviour for specific workloads. It supports the "ticket" use case: create now,
 // executes automatically later.
 type ScheduledException struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	PolicyID      *uint     `gorm:"index" json:"policyId"`        // optional — can be freestanding
+	ID       uint    `gorm:"primaryKey" json:"id"`
+	PolicyID *uint   `gorm:"index" json:"policyId"` // optional — can be freestanding
+	Policy   *Policy `gorm:"foreignKey:PolicyID;constraint:OnDelete:CASCADE" json:"-"`
 	ExceptionType string    `gorm:"size:20" json:"exceptionType"` // "stay_awake" | "force_sleep"
 	StartsAt      time.Time `gorm:"index;index:idx_se_status_starts,priority:2" json:"startsAt"`
 	EndsAt        time.Time `json:"endsAt"`

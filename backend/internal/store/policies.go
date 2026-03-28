@@ -284,10 +284,10 @@ func (s *Store) GetSnapshotsForExecution(sleepExecID uint) ([]WorkloadSnapshot, 
 }
 
 // GetSnapshotsForPolicy returns the most recent snapshots for a policy (open and closed).
-// Capped at 1000 rows to prevent unbounded memory growth.
+// Capped at 5000 rows to prevent unbounded memory growth.
 func (s *Store) GetSnapshotsForPolicy(policyID uint) ([]WorkloadSnapshot, error) {
 	var snaps []WorkloadSnapshot
-	return snaps, s.db.Where("policy_id = ?", policyID).Order("captured_at desc").Limit(1000).Find(&snaps).Error
+	return snaps, s.db.Where("policy_id = ?", policyID).Order("captured_at desc").Limit(5000).Find(&snaps).Error
 }
 
 // CloseSnapshot marks a snapshot as restored by linking it to the wake execution.

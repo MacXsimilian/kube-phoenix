@@ -19,9 +19,11 @@ func (s *Store) GetUserByID(id uint) (*User, error) {
 	return &u, s.db.First(&u, id).Error
 }
 
+// GetUserByUsername looks up a local user by username. OIDC users are matched
+// by subject claim in GetOrCreateOIDCUser, not by this function.
 func (s *Store) GetUserByUsername(username string) (*User, error) {
 	var u User
-	return &u, s.db.Where("username = ?", username).First(&u).Error
+	return &u, s.db.Where("username = ? AND source = ?", username, "local").First(&u).Error
 }
 
 func (s *Store) ListUsers() ([]User, error) {
