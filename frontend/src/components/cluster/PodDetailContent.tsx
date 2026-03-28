@@ -80,7 +80,11 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
                 </Tooltip>
               </TableCell>
               <TableCell sx={{ py: 0.75 }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c.ready ? colors.success : colors.errorLight }} />
+                <Box
+                  role="img"
+                  aria-label={c.ready ? 'Container ready' : 'Container not ready'}
+                  sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c.ready ? colors.success : colors.errorLight }}
+                />
               </TableCell>
               <TableCell sx={{ py: 0.75, fontFamily: 'monospace', color: c.restartCount > 0 ? '#FBBF24' : 'text.primary' }}>
                 {c.restartCount}
@@ -142,7 +146,7 @@ function EventsSection({ events }: { events: PodEvent[] }) {
       <Table size="small" sx={{ '& td': { fontSize: 12 } }}>
         <TableBody>
           {events.map((e, i) => (
-            <TableRow key={i} sx={{ bgcolor: e.type === 'Warning' ? (isDark ? 'rgba(248,113,113,0.05)' : 'rgba(185,28,28,0.05)') : 'transparent' }}>
+            <TableRow key={`${e.reason}-${e.message}-${i}`} sx={{ bgcolor: e.type === 'Warning' ? (isDark ? 'rgba(248,113,113,0.05)' : 'rgba(185,28,28,0.05)') : 'transparent' }}>
               <TableCell sx={{ py: 0.5, width: 70 }}>
                 <Chip
                   label={e.type}
@@ -202,12 +206,10 @@ function CollapsibleKVSection({ title, entries }: { title: string; entries: [str
 export default function PodDetailContent({ namespace, podName }: { namespace: string; podName: string }) {
   const colors = useColors()
   const [view, setView] = useState<'detail' | 'logs'>('detail')
-  const [containers, setContainers] = useState<PodContainer[]>([])
 
   // Reset to detail view when pod changes
   useEffect(() => {
     setView('detail')
-    setContainers([])
   }, [namespace, podName])
 
   const { data: pod, isLoading, isError, error } = useQuery({
@@ -238,7 +240,7 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
         <PodLogViewer
           namespace={namespace}
           podName={podName}
-          containers={containers}
+          containers={pod.containers ?? []}
           onBack={() => setView('detail')}
         />
       </Box>
@@ -266,10 +268,7 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
           size="small"
           variant="outlined"
           startIcon={<TerminalIcon sx={{ fontSize: '14px !important' }} />}
-          onClick={() => {
-            setContainers(pod.containers ?? [])
-            setView('logs')
-          }}
+          onClick={() => setView('logs')}
           sx={{ fontSize: 11, textTransform: 'none', py: 0.25, px: 1.5 }}
         >
           Logs

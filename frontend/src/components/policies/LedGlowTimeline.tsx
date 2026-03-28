@@ -3,9 +3,10 @@
 import React from 'react'
 import Box from '@mui/material/Box'
 import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
-import { timeToHours, isOvernight, nowInTimezone, DOW_MAP, computeTimeRangeBlocks } from '@/lib/windowUtils'
+import { nowInTimezone, DOW_MAP } from '@/lib/windowUtils'
 import { TIMELINE_COLORS } from '@/lib/colors'
 import LegendItem from './LegendItem'
+import { computeWindowSegments, computeOverrideSegments, computeExceptionSegments, type TimelineSegment } from './timelineSegments'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -24,71 +25,28 @@ function stripY(row: number): number {
   return 14 + row * (STRIP_H + GAP)
 }
 
-interface Segment {
-  row: number
-  x1: number
-  x2: number
-  color: string
-  glow: string
+// ── Glow filter definitions generated from a single array ────────────────────
+
+const GLOW_COLORS = [
+  { id: 'led-glow-purple', stdDeviation: 3 },
+  { id: 'led-glow-orange', stdDeviation: 2.5 },
+  { id: 'led-glow-red',    stdDeviation: 2.5 },
+  { id: 'led-glow-green',  stdDeviation: 2.5 },
+] as const
+
+const VARIANT_TO_GLOW: Record<string, string> = {
+  sleep: 'led-glow-purple',
+  override: 'led-glow-orange',
+  exception: 'led-glow-red',
+  awake: 'led-glow-green',
 }
 
-function windowSegments(windows: SleepWindow[]): Segment[] {
-  const segs: Segment[] = []
-  for (const sleepWindow of windows) {
-    for (const dow of sleepWindow.daysOfWeek) {
-      const row = DOW_MAP.indexOf(dow)
-      if (row === -1) continue
-
-      if (sleepWindow.allDay) {
-        segs.push({ row, x1: hourToX(0), x2: hourToX(24), color: TIMELINE_COLORS.sleepGlow, glow: TIMELINE_COLORS.sleep })
-      } else {
-        const startH = timeToHours(sleepWindow.startTime)
-        const endH = timeToHours(sleepWindow.endTime)
-        if (isOvernight(sleepWindow)) {
-          segs.push({ row, x1: hourToX(startH), x2: hourToX(24), color: TIMELINE_COLORS.sleepGlow, glow: TIMELINE_COLORS.sleep })
-          const nextRow = (row + 1) % 7
-          segs.push({ row: nextRow, x1: hourToX(0), x2: hourToX(endH), color: TIMELINE_COLORS.sleepGlow, glow: TIMELINE_COLORS.sleep })
-        } else {
-          segs.push({ row, x1: hourToX(startH), x2: hourToX(endH), color: TIMELINE_COLORS.sleepGlow, glow: TIMELINE_COLORS.sleep })
-        }
-      }
-    }
-  }
-  return segs
-}
-
-function timeRangeToSegments(startISO: string, endISO: string, color: string, glow: string, tz?: string): Segment[] {
-  return computeTimeRangeBlocks(startISO, endISO, tz).map(tb => ({
-    row: tb.row,
-    x1: hourToX(tb.startHour),
-    x2: hourToX(tb.endHour),
-    color,
-    glow,
-  }))
-}
-
-function overrideSegments(overrides: PolicyOverride[], tz?: string): Segment[] {
-  if (!overrides) return []
-  const segs: Segment[] = []
-  for (const ov of overrides) {
-    if (!ov.startsAt || !ov.endsAt) continue
-    const color = ov.overrideType === 'force_sleep' ? 'rgba(239,68,68,0.55)' : 'rgba(245,158,11,0.55)'
-    const glow = ov.overrideType === 'force_sleep' ? TIMELINE_COLORS.exception : TIMELINE_COLORS.override
-    segs.push(...timeRangeToSegments(ov.startsAt, ov.endsAt, color, glow, tz))
-  }
-  return segs
-}
-
-function exceptionSegments(exceptions: ScheduledException[], tz?: string): Segment[] {
-  if (!exceptions) return []
-  const segs: Segment[] = []
-  for (const ex of exceptions) {
-    if (ex.status === 'cancelled' || ex.status === 'completed') continue
-    const color = ex.exceptionType === 'force_sleep' ? 'rgba(239,68,68,0.55)' : 'rgba(34,197,94,0.55)'
-    const glow = ex.exceptionType === 'force_sleep' ? TIMELINE_COLORS.exception : TIMELINE_COLORS.awake
-    segs.push(...timeRangeToSegments(ex.startsAt, ex.endsAt, color, glow, tz))
-  }
-  return segs
+/** Map shared segment variant to LED-specific glow color */
+function ledColor(seg: TimelineSegment): string {
+  if (seg.variant === 'sleep') return TIMELINE_COLORS.sleepGlow
+  if (seg.variant === 'override') return 'rgba(245,158,11,0.55)'
+  if (seg.variant === 'exception') return 'rgba(239,68,68,0.55)'
+  return 'rgba(34,197,94,0.55)'
 }
 
 export default function LedGlowTimeline({
@@ -109,43 +67,24 @@ export default function LedGlowTimeline({
   const nowX = hourToX(nowH)
 
   const allSegs = [
-    ...windowSegments(windows),
-    ...overrideSegments(overrides ?? [], timezone),
-    ...exceptionSegments(exceptions ?? [], timezone),
+    ...computeWindowSegments(windows),
+    ...computeOverrideSegments(overrides ?? [], timezone),
+    ...computeExceptionSegments(exceptions ?? [], timezone),
   ]
 
   return (
     <Box sx={{ overflowX: 'auto' }}>
       <svg width="100%" viewBox={`0 0 ${TOTAL_W} ${TOTAL_H}`} style={{ display: 'block' }}>
         <defs>
-          <filter id="led-glow-purple" x="-20%" y="-100%" width="140%" height="300%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-          <filter id="led-glow-orange" x="-20%" y="-100%" width="140%" height="300%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-          <filter id="led-glow-red" x="-20%" y="-100%" width="140%" height="300%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-          <filter id="led-glow-green" x="-20%" y="-100%" width="140%" height="300%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
+          {GLOW_COLORS.map(({ id, stdDeviation }) => (
+            <filter key={id} id={id} x="-20%" y="-100%" width="140%" height="300%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation={stdDeviation} result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          ))}
         </defs>
 
         {/* Hour labels */}
@@ -197,20 +136,19 @@ export default function LedGlowTimeline({
         {/* Glow segments */}
         {allSegs.map((seg, i) => {
           const y = stripY(seg.row)
-          const w = Math.max(seg.x2 - seg.x1, 2)
-          const filterId = seg.glow === TIMELINE_COLORS.sleep ? 'led-glow-purple'
-            : seg.glow === TIMELINE_COLORS.override ? 'led-glow-orange'
-            : seg.glow === TIMELINE_COLORS.exception ? 'led-glow-red'
-            : 'led-glow-green'
+          const x1 = hourToX(seg.startHour)
+          const x2 = hourToX(seg.endHour)
+          const w = Math.max(x2 - x1, 2)
+          const filterId = VARIANT_TO_GLOW[seg.variant] ?? 'led-glow-green'
           return (
             <rect
               key={i}
-              x={seg.x1}
+              x={x1}
               y={y}
               width={w}
               height={STRIP_H}
               rx={STRIP_H / 2}
-              fill={seg.color}
+              fill={ledColor(seg)}
               filter={`url(#${filterId})`}
             />
           )

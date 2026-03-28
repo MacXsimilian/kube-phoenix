@@ -1,23 +1,26 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH_RATIO } from './constants'
 
 /**
  * Shared hook for resizable side drawers.
- * Returns [drawerWidth, handleResizeMouseDown, handleResizeTouchStart].
+ * Returns an object with { width, onMouseDown, onTouchStart }.
  */
 export function useDrawerResize(
   initial: number,
   min = DRAWER_MIN_WIDTH,
-): [number, (e: React.MouseEvent) => void, (e: React.TouchEvent) => void] {
+): { width: number; onMouseDown: (e: React.MouseEvent) => void; onTouchStart: (e: React.TouchEvent) => void } {
   const [drawerWidth, setDrawerWidth] = useState(initial)
 
-  const handleResizeMouseDown = useCallback(
+  const widthRef = useRef(drawerWidth)
+  useEffect(() => { widthRef.current = drawerWidth }, [drawerWidth])
+
+  const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault()
       const startX = e.clientX
-      const startWidth = drawerWidth
+      const startWidth = widthRef.current
       const onMouseMove = (mv: MouseEvent) => {
         const delta = startX - mv.clientX
         const next = Math.min(Math.max(startWidth + delta, min), window.innerWidth * DRAWER_MAX_WIDTH_RATIO)
@@ -30,13 +33,13 @@ export function useDrawerResize(
       window.addEventListener('mousemove', onMouseMove)
       window.addEventListener('mouseup', onMouseUp)
     },
-    [drawerWidth, min],
+    [min],
   )
 
-  const handleResizeTouchStart = useCallback(
+  const onTouchStart = useCallback(
     (e: React.TouchEvent) => {
       const startX = e.touches[0].clientX
-      const startWidth = drawerWidth
+      const startWidth = widthRef.current
       const onTouchMove = (mv: TouchEvent) => {
         const delta = startX - mv.touches[0].clientX
         const next = Math.min(Math.max(startWidth + delta, min), window.innerWidth * DRAWER_MAX_WIDTH_RATIO)
@@ -49,8 +52,8 @@ export function useDrawerResize(
       window.addEventListener('touchmove', onTouchMove, { passive: true })
       window.addEventListener('touchend', onTouchEnd)
     },
-    [drawerWidth, min],
+    [min],
   )
 
-  return [drawerWidth, handleResizeMouseDown, handleResizeTouchStart]
+  return { width: drawerWidth, onMouseDown, onTouchStart }
 }

@@ -27,7 +27,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import Tooltip from '@mui/material/Tooltip'
 import CloseIcon from '@mui/icons-material/Close'
 import { getExceptions, deleteException } from '@/lib/api'
-import type { ScheduledException } from '@/lib/types'
+import type { ScheduledException, SnackMessage } from '@/lib/types'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules } from '@/lib/rbac'
@@ -42,12 +42,12 @@ export default function ExceptionsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ScheduledException | undefined>()
   const [tab, setTab] = useState(0)
-  const [snack, setSnack] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null)
+  const [snack, setSnack] = useState<SnackMessage | null>(null)
   const [pendingDelete, setPendingDelete] = useState<ScheduledException | null>(null)
 
   const statusFilter = tab === 0 ? undefined : STATUS_TABS[tab]
 
-  const { data: exceptions, isLoading } = useQuery({
+  const { data: exceptions, isLoading, isError } = useQuery({
     queryKey: ['exceptions', statusFilter],
     queryFn: () => getExceptions(statusFilter ? { status: statusFilter } : undefined),
     refetchInterval: 30_000,
@@ -103,6 +103,8 @@ export default function ExceptionsPage() {
         {STATUS_TABS.map(s => <Tab key={s} label={s.charAt(0).toUpperCase() + s.slice(1)} />)}
       </Tabs>
 
+      {isError && <Alert severity="error" sx={{ mb: 2 }}>Failed to load exceptions</Alert>}
+
       {isLoading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
           <CircularProgress />
@@ -126,7 +128,7 @@ export default function ExceptionsPage() {
       )}
 
       {exceptions && exceptions.length > 0 && (
-        <Table>
+        <Table aria-label="Scheduled exceptions">
           <TableHead>
             <TableRow>
               <TableCell>Type</TableCell>

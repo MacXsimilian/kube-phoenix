@@ -89,8 +89,9 @@ kube-phoenix/
       stringutil/                 # Generic string helpers (CSV parsing, etc.)
   frontend/src/
     app/                          # Next.js pages
-    components/                   # Reusable UI components
-    lib/                          # API client, auth context, TypeScript types
+    components/                   # UI components by domain (audit, cluster, common, guardrails,
+                                  #   history, policies, settings, shared)
+    lib/                          # API client, auth context, types, shared hooks, utilities
     theme/                        # MUI theme (dark + light)
   helm/kube-phoenix/              # Helm chart
   examples/                       # Example Helm value overlays
@@ -186,9 +187,9 @@ Triggered on PRs to `master` when relevant paths change (frontend, backend, Dock
 
 | Job | What it checks |
 | :-- | :------------- |
-| Frontend build | `npm ci` and `npm run build` |
+| Frontend build | `npm ci`, `npm audit` (high/critical gate), and `npm run build` |
 | Backend build | `go vet`, `go test` with coverage, `go build`, golangci-lint, OpenAPI spec sync |
-| Helm lint | `helm lint helm/kube-phoenix` |
+| Helm lint | `helm lint helm/kube-phoenix` + lint with all `examples/values-*.yaml` overlays |
 | Docker build check | Dockerfile lint (hadolint) and build verification |
 
 ### Security (`security.yml`)
@@ -214,8 +215,9 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 1. Merge PRs to `master` using conventional commit messages.
 2. release-please opens a **Release PR** containing the version bump and changelog diff.
 3. Merging the Release PR triggers the release pipeline:
-   - Docker image pushed to `ghcr.io/macxsimilian/kube-phoenix` (semver tags + `latest`).
-   - Trivy scans the published image; CRITICAL/HIGH unfixed CVEs block the release.
+   - Docker image pushed to `ghcr.io/macxsimilian/kube-phoenix` (semver tags only — no `latest`).
+   - Image signed with [cosign](https://github.com/sigstore/cosign) (keyless / OIDC).
+   - SBOM generated with [Syft](https://github.com/anchore/syft) and attached to the image.
    - Helm chart pushed to `oci://ghcr.io/macxsimilian/helm/kube-phoenix`.
 
 Never create Git tags manually -- release-please owns all tags and releases.

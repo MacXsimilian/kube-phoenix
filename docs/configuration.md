@@ -106,8 +106,7 @@ A **Policy** declares when workloads should sleep and wake. Unlike legacy per-sc
 | :---- | :--- | :---------- |
 | Name | string | Human-readable label (max 255 characters) |
 | Description | string | Optional longer description (max 1024 characters) |
-| Sleep Cron | cron | 5-field cron expression for scaling workloads to zero. Optional if Wake Cron is set. |
-| Wake Cron | cron | 5-field cron expression for restoring workloads. Optional if Sleep Cron is set. |
+| Sleep Windows | JSON array | Array of sleep window objects (1--10). Each window specifies days of week, start/end time, and optional all-day flag. |
 | Timezone | string | IANA timezone (e.g., `Europe/Budapest`). Defaults to `UTC`. |
 | Mode | enum | `plan` (dry-run, logs only) or `apply` (executes scaling operations) |
 | Enabled | bool | Whether the policy fires on schedule. Manual triggers work regardless. |
@@ -126,16 +125,16 @@ A **Policy** declares when workloads should sleep and wake. Unlike legacy per-sc
 
 ### Overrides
 
-Overrides take precedence over the normal cron schedule.
+Overrides take precedence over the normal sleep window schedule.
 
 | Type | Description |
 | :--- | :---------- |
 | `stay_awake` | Keep workloads running between `startsAt` and `endsAt`, even during a sleep window |
-| `force_sleep` | Keep workloads at zero between `startsAt` and `endsAt`, even during a wake window |
-| `skip_sleep` | Skip exactly one sleep cron tick (identified by `targetCronTime`) |
-| `skip_wake` | Skip exactly one wake cron tick (identified by `targetCronTime`) |
+| `force_sleep` | Keep workloads at zero between `startsAt` and `endsAt`, even outside a sleep window |
+| `skip_sleep` | Skip exactly one scheduled sleep transition (expires after `targetCronTime`) |
+| `skip_wake` | Skip exactly one scheduled wake transition (expires after `targetCronTime`) |
 
-**Precedence (highest to lowest):** `force_sleep` > `stay_awake` > skip overrides > cron schedule.
+**Precedence (highest to lowest):** `force_sleep` > `stay_awake` > skip overrides > sleep window schedule.
 
 ### Scheduled Exceptions
 
@@ -154,11 +153,11 @@ Exceptions are one-time windows for planned events such as release weekends or o
 
 ## Recovery and State Transitions
 
-On startup, kube-phoenix evaluates each policy's cron schedule and override stack to compute the **intended state** at the current time. If this differs from the persisted `currentState`, a recovery execution is queued automatically.
+On startup, kube-phoenix evaluates each policy's sleep windows and override stack to compute the **intended state** at the current time. If this differs from the persisted `currentState`, a recovery execution is queued automatically.
 
 Key behaviors:
 
-- A fresh policy (no cron expressions) starts with `currentState: unknown` and stays there until a manual trigger or cron tick fires.
+- A fresh policy (no sleep windows) starts with `currentState: unknown` and stays there until a manual trigger or evaluation tick fires.
 - If recovery cannot determine the intended state, the state remains `unknown`. Use **Sleep Now** or **Wake Now** to set a known state.
 - Recovery runs respect the current mode (`plan` or `apply`). Verify guardrails and namespace filters before switching to `apply` mode.
 
@@ -174,7 +173,7 @@ Guardrails protect critical resources from being touched by the scaler. Configur
 | Scaling Priority Namespaces | Ordered list of namespaces that are scaled first during sleep and wake runs. Workloads in these namespaces are processed before all others, in list order. Empty by default (no priority). |
 | Scheduler Eval Interval | How often all enabled policies are evaluated. Accepts Go duration strings (`30s`, `1m`, `2m`). Changes take effect immediately — the ticker restarts with the new interval. |
 | Auto Wake | When disabled, the scheduler will only trigger sleep executions automatically. Wake transitions must be triggered manually. |
-| Reconcile While Awake | When disabled, the scheduler skips policy evaluation for policies already in the awake state. Reduces database load between sleep windows. |
+| Reconcile While Awake | When enabled (default), the scheduler detects drift from failed or partial wake executions — workloads left at zero despite the policy being awake — and runs a corrective wake to restore them. Corrective wakes back off at 5-minute intervals per policy and bypass the Auto Wake gate and `skip_wake` overrides. When disabled, the scheduler skips reconciliation for policies already awake, reducing database load between sleep windows. |
 
 > **Tip:** Scheduler settings take effect immediately on save — no server restart required.
 

@@ -279,6 +279,7 @@ export interface User {
   enabled: boolean
   createdAt: string
   lastLoginAt?: string
+  // Stringly-typed for now; future improvement: define a Permission union type
   permissions: string[]
 }
 

@@ -34,13 +34,13 @@ flowchart TB
         subgraph NS["kube-phoenix namespace"]
             subgraph Pod["kube-phoenix Pod"]
                 subgraph Binary["Go Binary :8080"]
-                    Router["Chi Router + Auth Middleware"]
+                    Router["Chi Router +\nAuth Middleware"]
                     Handlers["API Handlers"]
-                    Scheduler["PolicyScheduler"]
-                    Engine["PolicyEngine"]
-                    Scaler["PolicyScaler"]
-                    Broker["Broker (WS pub/sub)"]
-                    Store["Store (GORM)"]
+                    Scheduler["Scheduler"]
+                    Engine["Engine"]
+                    Scaler["Scaler"]
+                    Broker["Broker\n(WS pub/sub)"]
+                    Store["Store\n(GORM)"]
                     Cache["ClusterCache"]
                     SPA["Embedded SPA"]
                     K8s["k8s Client"]
@@ -48,7 +48,7 @@ flowchart TB
             end
             PG[("PostgreSQL")]
         end
-        K8sAPI["Kubernetes API Server"]
+        K8sAPI["K8s API Server"]
     end
 
     Browser -- HTTPS --> ALB -- HTTP --> Router
@@ -68,8 +68,8 @@ flowchart TB
 | Backend     | Go 1.26, Chi v5, GORM v1.31, gorilla/websocket, client-go |
 | Frontend    | Next.js 16 (static export), MUI v7, TanStack Query v5 |
 | Database    | PostgreSQL 17                            |
-| Container   | Multi-stage Docker build, distroless base |
-| Deployment  | Helm chart (OCI), GitHub Actions CI/CD   |
+| Container   | Multi-stage Docker build, digest-pinned base images, distroless runtime |
+| Deployment  | Helm chart (OCI, with values schema), GitHub Actions CI/CD, cosign-signed images |
 
 ---
 
@@ -111,7 +111,7 @@ executions when intended state diverges from actual state.
 - Manage an in-memory policy cache for fast tick evaluation.
 - Guard against concurrent runs via the `transitioning` state.
 - Skip automatic wake transitions when `AutoWake` is disabled — the scheduler will only put policies to sleep, not wake them.
-- Skip evaluation for policies already in the awake state when `ReconcileWhileAwake` is disabled — reduces DB load between sleep windows.
+- When `ReconcileWhileAwake` is enabled (default), detect drift from failed or partial wake executions by counting open snapshots that still need restoring. If drift is found, run a corrective wake (trigger `"reconcile"`) that bypasses the `AutoWake` gate and `skip_wake` overrides. Retries back off at a minimum interval of 5 minutes per policy to avoid flooding history. When disabled, skip reconciliation entirely for policies already awake — reduces DB load between sleep windows.
 
 **Key interfaces:**
 - `NewPolicyScheduler(st, k8sClient, cfg SchedulerConfig)` -- construct scheduler with configurable settings.
@@ -228,45 +228,45 @@ erDiagram
     policy_executions ||--o{ workload_snapshots : "sleep/wake ref"
 
     guardrails {
-        bigint id PK "singleton row"
+        bigint id PK "singleton"
         text system_namespaces "CSV"
         text skip_ns_node "CSV"
-        text skip_node_labels "CSV key=value"
-        text skip_node_taints "CSV key=value:effect"
-        text scaling_priority_namespaces "CSV ordered"
-        varchar scheduler_eval_interval "default '30s'"
-        boolean scheduler_auto_wake "default true"
-        boolean scheduler_reconcile_while_awake "default true"
+        text skip_node_labels "CSV"
+        text skip_node_taints "CSV"
+        text scaling_priority_ns "CSV"
+        varchar eval_interval "30s"
+        boolean auto_wake "true"
+        boolean reconcile_awake "true"
     }
 
     users {
         bigint id PK
-        varchar username "unique(username,source)"
-        varchar role "admin | operator | viewer"
-        varchar source "local | oidc"
-        varchar oidc_subject "unique, nullable"
+        varchar username "unique"
+        varchar role "enum"
+        varchar source "local/oidc"
+        varchar oidc_subject "nullable"
         boolean enabled
     }
 
     policies {
         bigint id PK
         varchar name
-        jsonb sleep_windows "SleepWindow array (max 10)"
+        jsonb sleep_windows
         varchar timezone
-        varchar mode "plan | apply"
+        varchar mode "plan/apply"
         boolean enabled
-        varchar current_state "sleeping | awake | unknown | transitioning"
-        varchar namespace_filter "CSV, empty = all"
-        varchar label_selector "k8s selector syntax"
+        varchar current_state "enum"
+        varchar namespace_filter "CSV"
+        varchar label_selector
     }
 
     policy_executions {
         bigint id PK
         bigint policy_id FK
-        varchar direction "sleep | wake"
-        varchar trigger "scheduled | manual | recovery | exception"
-        varchar status "running | success | failed | interrupted | skipped"
-        varchar mode "plan | apply"
+        varchar direction "sleep/wake"
+        varchar trigger "enum"
+        varchar status "enum"
+        varchar mode "plan/apply"
         int count_scaled
         int count_drained
         int count_errors
@@ -275,17 +275,17 @@ erDiagram
     policy_log_lines {
         bigint id PK
         bigint execution_id FK
-        int seq "monotonic per execution"
-        varchar level "info | ok | plan | error | warn"
+        int seq
+        varchar level "enum"
         text message
     }
 
     workload_snapshots {
         bigint id PK
         bigint policy_id FK
-        bigint sleep_execution_id FK
-        bigint wake_execution_id FK "nullable"
-        varchar kind "Deployment | StatefulSet"
+        bigint sleep_exec_id FK
+        bigint wake_exec_id FK "nullable"
+        varchar kind
         varchar namespace
         varchar name
         int replicas_before
@@ -296,7 +296,7 @@ erDiagram
     policy_overrides {
         bigint id PK
         bigint policy_id FK
-        varchar override_type "stay_awake | force_sleep | skip_sleep | skip_wake"
+        varchar override_type "enum"
         timestamptz starts_at "nullable"
         timestamptz ends_at "nullable"
         varchar reason
@@ -305,10 +305,10 @@ erDiagram
     scheduled_exceptions {
         bigint id PK
         bigint policy_id FK "nullable"
-        varchar exception_type "stay_awake | force_sleep"
+        varchar exception_type "enum"
         timestamptz starts_at
         timestamptz ends_at
-        varchar status "pending | active | completed | cancelled"
+        varchar status "enum"
         boolean sleep_on_end
     }
 
@@ -316,14 +316,14 @@ erDiagram
         bigint id PK
         varchar token "unique"
         bigint user_id FK
-        timestamptz expires_at "sliding window"
-        timestamptz max_expires_at "hard cap"
+        timestamptz expires_at
+        timestamptz max_expires_at
     }
 
     audit_logs {
         bigint id PK
-        bigint user_id FK "nullable, SET NULL"
-        varchar action "e.g. policy.update"
+        bigint user_id FK "nullable"
+        varchar action
         jsonb before
         jsonb after
     }
@@ -375,12 +375,16 @@ Triggered by the ticker, a manual call, or a scheduled exception ending.
 ```
 Every configurable interval (default 30s):
   for each enabled policy:
-    if current_state == "transitioning": skip
-    if reconcileWhileAwake is false and current_state == "awake": skip
     intended = PolicyEngine.IntendedState(policy, overrides, now)
-    if intended != current_state:
-      if intended == "awake" and autoWake is false: skip
-      spawn goroutine -> run(policy, intended_direction, "scheduled")
+    if current_state == intended:
+      if reconcileWhileAwake and intended == "awake":
+        if backoff elapsed and open snapshots needing restore > 0:
+          spawn goroutine -> run(policy, "wake", "reconcile")  // bypasses autoWake + skip_wake
+      continue
+    if current_state == "transitioning": check for stuck (>10 min), reset to unknown
+    if intended == "awake" and autoWake is false: skip
+    if skip_wake/skip_sleep override active: consume and skip
+    spawn goroutine -> run(policy, intended_direction, "scheduled")
 ```
 
 Override precedence within `IntendedState`:
@@ -430,10 +434,16 @@ kube-phoenix/
 │   │   │   ├── ws.go                # WebSocket helpers
 │   │   │   └── helpers.go           # JSON response utilities
 │   │   ├── scheduler/
-│   │   │   ├── policy_scheduler.go  # 30s ticker, recovery, exception tick
+│   │   │   ├── policy_scheduler.go  # 30s ticker, recovery, exception tick, drift detection
+│   │   │   ├── policy_scheduler_test.go # Scheduler unit tests (mock store + runner)
 │   │   │   ├── policy_engine.go     # IntendedState evaluation, override precedence
-│   │   │   ├── policy_scaler.go     # Sleep/wake execution with snapshot persistence
+│   │   │   ├── policy_engine_test.go # Engine unit tests
 │   │   │   └── broker.go            # WebSocket log pub/sub
+│   │   ├── scaler/
+│   │   │   ├── scaler.go            # Low-level Kubernetes scale/drain operations
+│   │   │   ├── policy_scaler.go     # DB-backed sleep/wake with WorkloadSnapshot logic
+│   │   │   ├── scale_down.go        # Workload annotation + scale-to-zero helpers
+│   │   │   └── scale_up.go          # Workload restore + annotation cleanup helpers
 │   │   ├── policy/
 │   │   │   └── windows.go           # SleepWindow type, validation, evaluator
 │   │   ├── k8s/
@@ -466,6 +476,13 @@ kube-phoenix/
 │   ├── src/
 │   │   ├── app/                     # Next.js pages (overview, cluster, policies, ...)
 │   │   ├── components/              # React components by domain
+│   │   │   ├── audit/               # AuditRow, DiffLineRow, JsonDiffView, auditDiff helpers
+│   │   │   ├── cluster/             # Tables, drawers, extracted subcomponents (MiniBar, LabelChip, etc.)
+│   │   │   ├── common/              # ChipInput, LabeledSwitch, EmptyStateBox
+│   │   │   ├── guardrails/          # GuardrailsForm, ProtectedChipInput
+│   │   │   ├── history/             # ExecutionTable, LogViewer, ExecutionSummary, parseSummary, useExecutionLogs
+│   │   │   ├── policies/            # PolicyCard, timelines, WindowPicker, PolicyHeroBand, timelineSegments
+│   │   │   └── settings/            # AccountSettings, AppearanceSettings, DatabaseSettings, OIDCStatusCard
 │   │   ├── lib/                     # API client, auth, types, query client, utilities, shared hooks
 │   │   └── theme/                   # MUI theme (dark + light mode)
 │   ├── next.config.mjs              # Static export, trailing slash
@@ -474,10 +491,11 @@ kube-phoenix/
 ├── helm/kube-phoenix/
 │   ├── Chart.yaml
 │   ├── values.yaml
+│   ├── values.schema.json           # JSON Schema for install-time validation
 │   └── templates/                   # Deployment, RBAC, Service, Ingress, PG, etc.
 │
 ├── openapi.yaml                     # OpenAPI 3.1 spec (canonical source)
-├── Dockerfile                       # 3-stage: node -> go -> distroless
+├── Dockerfile                       # 3-stage: node -> go -> distroless (all digest-pinned)
 ├── Makefile                         # Developer workflow targets
 └── .github/workflows/               # CI, security scanning, release automation
 ```

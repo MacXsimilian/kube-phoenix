@@ -18,6 +18,7 @@ keywords:
 home: https://github.com/MacXsimilian/kube-phoenix
 sources:
   - https://github.com/MacXsimilian/kube-phoenix
+# icon: https://raw.githubusercontent.com/MacXsimilian/kube-phoenix/master/docs/logo.png  # TODO: add a logo file
 maintainers:
   - name: MacXsimilian
     url: https://github.com/MacXsimilian

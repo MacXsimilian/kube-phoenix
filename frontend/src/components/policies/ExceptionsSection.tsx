@@ -55,13 +55,12 @@ export default function ExceptionsSection({
             </TableRow>
           </TableHead>
           <TableBody>
-            {exceptions.map(ex => (
+            {exceptions.map(ex => {
+              const typeLabel = TYPE_LABELS[ex.exceptionType] ?? TYPE_LABEL_FALLBACK
+              return (
               <TableRow key={ex.id}>
                 <TableCell>
-                  {(() => {
-                    const typeLabel = TYPE_LABELS[ex.exceptionType] ?? TYPE_LABEL_FALLBACK
-                    return <Chip label={typeLabel.label} size="small" sx={{ fontSize: 10, color: typeLabel.color, bgcolor: typeLabel.bg }} />
-                  })()}
+                  <Chip label={typeLabel.label} size="small" sx={{ fontSize: 10, color: typeLabel.color, bgcolor: typeLabel.bg }} />
                 </TableCell>
                 <TableCell>{fmtDt(ex.startsAt)} \u2192 {fmtDt(ex.endsAt)}</TableCell>
                 <TableCell>{ex.ticketRef || '\u2014'}</TableCell>
@@ -77,13 +76,14 @@ export default function ExceptionsSection({
                 </TableCell>
                 <TableCell>
                   {canEdit && ex.status === 'pending' && (
-                    <IconButton size="small" onClick={() => onEditException(ex)}>
+                    <IconButton size="small" onClick={() => onEditException(ex)} aria-label="Edit exception">
                       <EditOutlinedIcon fontSize="small" />
                     </IconButton>
                   )}
                 </TableCell>
               </TableRow>
-            ))}
+              )
+            })}
           </TableBody>
         </Table>
       )}

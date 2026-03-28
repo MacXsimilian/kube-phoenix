@@ -25,6 +25,24 @@ export default function AccountSettings({ user }: { user: User }) {
   const [pwSuccess, setPwSuccess] = useState(false)
   const [pwLoading, setPwLoading] = useState(false)
 
+  const openChangePasswordDialog = () => {
+    setPwDialogOpen(true)
+    setPwError('')
+    setPwSuccess(false)
+    setCurrentPw('')
+    setNewPw('')
+  }
+
+  const handleChangePassword = async () => {
+    setPwLoading(true); setPwError(''); setPwSuccess(false)
+    try {
+      await changePasswordAPI(currentPw, newPw)
+      setPwSuccess(true); setCurrentPw(''); setNewPw('')
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : 'Failed')
+    } finally { setPwLoading(false) }
+  }
+
   return (
     <>
       <Card sx={{ mb: 3 }}>
@@ -55,7 +73,7 @@ export default function AccountSettings({ user }: { user: User }) {
             </Box>
           </Box>
           {user.source === 'local' && (
-            <Button variant="outlined" size="small" onClick={() => { setPwDialogOpen(true); setPwError(''); setPwSuccess(false); setCurrentPw(''); setNewPw('') }}>
+            <Button variant="outlined" size="small" onClick={openChangePasswordDialog}>
               Change Password
             </Button>
           )}
@@ -67,20 +85,12 @@ export default function AccountSettings({ user }: { user: User }) {
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
           {pwError && <Alert severity="error">{pwError}</Alert>}
           {pwSuccess && <Alert severity="success">Password changed successfully.</Alert>}
-          <TextField label="Current password" type="password" fullWidth size="small" value={currentPw} onChange={e => setCurrentPw(e.target.value)} disabled={pwLoading} />
-          <TextField label="New password" type="password" fullWidth size="small" value={newPw} onChange={e => setNewPw(e.target.value)} disabled={pwLoading} helperText="Minimum 8 characters" />
+          <TextField label="Current password" type="password" fullWidth size="small" value={currentPw} onChange={e => setCurrentPw(e.target.value)} disabled={pwLoading} autoComplete="current-password" />
+          <TextField label="New password" type="password" fullWidth size="small" value={newPw} onChange={e => setNewPw(e.target.value)} disabled={pwLoading} helperText="Minimum 8 characters" autoComplete="new-password" />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setPwDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" disabled={pwLoading || !currentPw || newPw.length < 8} onClick={async () => {
-            setPwLoading(true); setPwError(''); setPwSuccess(false)
-            try {
-              await changePasswordAPI(currentPw, newPw)
-              setPwSuccess(true); setCurrentPw(''); setNewPw('')
-            } catch (err) {
-              setPwError(err instanceof Error ? err.message : 'Failed')
-            } finally { setPwLoading(false) }
-          }}>
+          <Button variant="contained" disabled={pwLoading || !currentPw || newPw.length < 8} onClick={handleChangePassword}>
             {pwLoading ? <CircularProgress size={20} /> : 'Change'}
           </Button>
         </DialogActions>

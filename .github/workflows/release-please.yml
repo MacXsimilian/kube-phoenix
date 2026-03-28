@@ -60,11 +60,20 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write   # cosign keyless signing via OIDC
     outputs:
       image: ${{ steps.image.outputs.name }}
       version: ${{ steps.meta.outputs.version }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Validate tag exists
+        if: ${{ inputs.tag != '' }}
+        run: |
+          git rev-parse "${{ inputs.tag }}" >/dev/null 2>&1 || { echo "::error::Tag '${{ inputs.tag }}' does not exist"; exit 1; }
 
       - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
 
@@ -89,20 +98,44 @@ jobs:
             type=semver,pattern={{version}},value=${{ needs.release-please.outputs.tag_name }}
             type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.tag_name }}
             type=semver,pattern={{major}},value=${{ needs.release-please.outputs.tag_name }}
-            type=raw,value=latest,enable=${{ github.ref_name == 'master' }}
 
       - name: Build & push
+        id: build
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294  # v7.0.0
         with:
           context: .
           platforms: linux/amd64
           provenance: true
+          sbom: true
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             NEXT_PUBLIC_APP_VERSION=${{ needs.release-please.outputs.tag_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003  # v4.1.1
+
+      - name: Sign image (keyless)
+        run: |
+          cosign sign --yes "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0
+        with:
+          image: "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
+          artifact-name: sbom-kube-phoenix.spdx.json
+          output-file: sbom-kube-phoenix.spdx.json
+
+      - name: Attach SBOM to image
+        run: |
+          cosign attach sbom --sbom sbom-kube-phoenix.spdx.json "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
+
+      - name: Smoke test — verify image runs
+        run: |
+          docker pull "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
+          docker run --rm "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}" --version || true
 
   helm-publish:
     name: Helm release package & push

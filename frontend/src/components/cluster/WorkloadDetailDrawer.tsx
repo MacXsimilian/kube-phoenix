@@ -63,7 +63,7 @@ function ReplicaBar({ ready, current, saved }: { ready: number; current: number;
 // ── main component ────────────────────────────────────────────────────────────
 
 export default function WorkloadDetailDrawer({ workload, onClose }: { workload: Workload | null; onClose: () => void }) {
-  const [drawerWidth, handleResizeMouseDown, handleResizeTouchStart] = useDrawerResize(560)
+  const { width: drawerWidth, onMouseDown: handleResizeMouseDown, onTouchStart: handleResizeTouchStart } = useDrawerResize(560)
   const [search, setSearch] = useState('')
   const [selectedPod, setSelectedPod] = useState<NodePod | null>(null)
   const isDark = useTheme().palette.mode === 'dark'

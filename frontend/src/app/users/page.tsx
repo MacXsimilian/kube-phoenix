@@ -32,7 +32,7 @@ import { useRouter } from 'next/navigation'
 import { getUsers, createUserAPI, updateUserAPI, deleteUserAPI } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { canManageUsers } from '@/lib/rbac'
-import type { User } from '@/lib/types'
+import type { User, Role } from '@/lib/types'
 
 const ROLE_COLORS: Record<string, 'error' | 'warning' | 'default'> = {
   admin: 'error', operator: 'warning', viewer: 'default',
@@ -70,7 +70,7 @@ export default function UsersPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => updateUserAPI(id, data),
+    mutationFn: ({ id, data }: { id: number; data: Partial<Pick<User, 'role' | 'enabled'>> }) => updateUserAPI(id, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); setMutationError('') },
     onError: (err: Error) => setMutationError(err.message),
   })
@@ -145,7 +145,7 @@ export default function UsersPage() {
                       <TextField
                         select size="small" variant="standard" value={u.role}
                         disabled={u.id === me?.id || updateMutation.isPending}
-                        onChange={e => updateMutation.mutate({ id: u.id, data: { role: e.target.value } })}
+                        onChange={e => updateMutation.mutate({ id: u.id, data: { role: e.target.value as Role } })}
                         sx={{ minWidth: 100 }}
                       >
                         <MenuItem value="admin">admin</MenuItem>
@@ -157,6 +157,7 @@ export default function UsersPage() {
                   <TableCell><Chip label={u.source} size="small" variant="outlined" /></TableCell>
                   <TableCell>
                     <Switch
+                      aria-label={`Toggle ${u.username} enabled`}
                       checked={u.enabled} size="small"
                       disabled={u.id === me?.id || updateMutation.isPending}
                       onChange={(_, checked) => updateMutation.mutate({ id: u.id, data: { enabled: checked } })}
@@ -169,7 +170,7 @@ export default function UsersPage() {
                   </TableCell>
                   <TableCell>
                     {u.id !== me?.id && (
-                      <IconButton size="small" color="error" onClick={() => setDeleteTarget(u)}>
+                      <IconButton aria-label={`Delete user ${u.username}`} size="small" color="error" onClick={() => setDeleteTarget(u)}>
                         <DeleteOutlineIcon fontSize="small" />
                       </IconButton>
                     )}

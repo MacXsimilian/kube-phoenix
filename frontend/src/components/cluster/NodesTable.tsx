@@ -19,7 +19,6 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import Switch from '@mui/material/Switch'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
-import LinearProgress from '@mui/material/LinearProgress'
 import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
 import RefreshIcon from '@mui/icons-material/Refresh'
@@ -29,35 +28,14 @@ import { fmtCpu, fmtMem, podAge, sinceMs, pct, pctColor } from '@/lib/formatters
 import { nodeStatusMap } from '@/components/cluster/statusColors'
 import { useTheme } from '@mui/material/styles'
 import { useColors } from '@/lib/colors'
+import { NODES_REFETCH_MS } from '@/lib/constants'
+import MiniBar from './MiniBar'
 import NodeDetailDrawer from './NodeDetailDrawer'
 
 type SortCol = 'name' | 'age' | 'instanceType' | 'zone' | 'pods' | 'cpu' | 'mem' | 'status'
 type SortDir = 'asc' | 'desc'
 
-function ResourceBar({ used, total, usedLabel, totalLabel }: { used: number; total: number; usedLabel: string; totalLabel: string }) {
-  const isDark = useTheme().palette.mode === 'dark'
-  const percentUsed = pct(used, total)
-  const color = pctColor(percentUsed, isDark)
-  return (
-    <Tooltip title={`${usedLabel} / ${totalLabel} reserved`} arrow>
-      <Box sx={{ minWidth: 72 }}>
-        <Typography variant="caption" sx={{ fontSize: 11, color, fontWeight: 600, display: 'block', mb: 0.25 }}>
-          {percentUsed}%
-        </Typography>
-        <LinearProgress
-          variant="determinate"
-          value={Math.min(percentUsed, 100)}
-          sx={{
-            height: 5,
-            borderRadius: 1,
-            bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-            '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 1 },
-          }}
-        />
-      </Box>
-    </Tooltip>
-  )
-}
+const SELECTED_ROW_BG = 'rgba(124,58,237,0.08)'
 
 function sortNodes(nodes: Node[], col: SortCol, dir: SortDir): Node[] {
   return [...nodes].sort((a, b) => {
@@ -104,17 +82,14 @@ interface ZoneStats {
   cordoned: number
 }
 
-function NodeRow({
-  node,
-  groupByZone,
-  isSelected,
-  onSelect,
-}: {
+interface NodeRowProps {
   node: Node
   groupByZone: boolean
   isSelected: boolean
   onSelect: (n: Node | null) => void
-}) {
+}
+
+function NodeRow({ node, groupByZone, isSelected, onSelect }: NodeRowProps) {
   const isDark = useTheme().palette.mode === 'dark'
   const colors = useColors()
   const statusColor = nodeStatusMap(isDark)[node.status]
@@ -125,7 +100,7 @@ function NodeRow({
     <TableRow
       hover
       onClick={() => onSelect(isSelected ? null : node)}
-      sx={{ cursor: 'pointer', ...(isSelected ? { bgcolor: 'rgba(124,58,237,0.08)' } : {}) }}
+      sx={{ cursor: 'pointer', ...(isSelected ? { bgcolor: SELECTED_ROW_BG } : {}) }}
     >
       <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>{node.name}</TableCell>
       <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{podAge(node.createdAt)}</TableCell>
@@ -133,19 +108,17 @@ function NodeRow({
       {!groupByZone && <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{node.zone || '—'}</TableCell>}
       <TableCell sx={{ fontSize: 13 }}>{node.podCount}</TableCell>
       <TableCell>
-        <ResourceBar
+        <MiniBar
           used={node.cpuRequested}
           total={node.cpuAllocatable}
-          usedLabel={fmtCpu(node.cpuRequested)}
-          totalLabel={fmtCpu(node.cpuAllocatable)}
+          label={`${fmtCpu(node.cpuRequested)} / ${fmtCpu(node.cpuAllocatable)} reserved`}
         />
       </TableCell>
       <TableCell>
-        <ResourceBar
+        <MiniBar
           used={node.memRequested}
           total={node.memAllocatable}
-          usedLabel={fmtMem(node.memRequested)}
-          totalLabel={fmtMem(node.memAllocatable)}
+          label={`${fmtMem(node.memRequested)} / ${fmtMem(node.memAllocatable)} reserved`}
         />
       </TableCell>
       <TableCell>
@@ -166,7 +139,7 @@ export default function NodesTable() {
   const { data: nodes = [], isLoading, isError, error, dataUpdatedAt, refetch } = useQuery({
     queryKey: ['nodes'],
     queryFn: getNodes,
-    refetchInterval: 30_000,
+    refetchInterval: NODES_REFETCH_MS,
   })
 
   const [search, setSearch] = useState('')

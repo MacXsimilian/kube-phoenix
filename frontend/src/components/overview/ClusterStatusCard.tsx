@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -17,75 +17,17 @@ import Brightness4Icon from '@mui/icons-material/Brightness4'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import Skeleton from '@mui/material/Skeleton'
 import { getOverview, triggerPolicySleep, triggerPolicyWake, getPolicies } from '@/lib/api'
-import type { Overview } from '@/lib/types'
 import { timeUntil } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { canTriggerSchedules } from '@/lib/rbac'
 import { useColors } from '@/lib/colors'
+import { useClusterStream } from '@/lib/useClusterStream'
 
-// useClusterStream subscribes to the backend SSE stream and pushes received
-// Overview updates directly into the TanStack Query cache, eliminating polling.
-function useClusterStream() {
-  const queryClient = useQueryClient()
-  const mountedRef = useRef(true)
-  const [disconnected, setDisconnected] = useState(false)
-  const failCountRef = useRef(0)
-
-  useEffect(() => {
-    mountedRef.current = true
-    const controller = new AbortController()
-
-    async function connect() {
-      while (mountedRef.current) {
-        try {
-          const res = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/cluster/stream`,
-            { signal: controller.signal, credentials: 'include' },
-          )
-          if (!res.ok || !res.body) {
-            failCountRef.current += 1
-            if (failCountRef.current > 1) setDisconnected(true)
-            await new Promise((r) => setTimeout(r, 5_000))
-            continue
-          }
-          failCountRef.current = 0
-          setDisconnected(false)
-          const reader = res.body.getReader()
-          const decoder = new TextDecoder()
-          let buf = ''
-          while (mountedRef.current) {
-            const { done, value } = await reader.read()
-            if (done) break
-            buf += decoder.decode(value, { stream: true })
-            const lines = buf.split('\n')
-            buf = lines.pop() ?? ''
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  queryClient.setQueryData<Overview>(['overview'], JSON.parse(line.slice(6)))
-                } catch { /* skip malformed events */ }
-              }
-            }
-          }
-        } catch {
-          if (!mountedRef.current) break
-          failCountRef.current += 1
-          if (failCountRef.current > 1) setDisconnected(true)
-          await new Promise((r) => setTimeout(r, 3_000))
-        }
-      }
-    }
-
-    connect()
-    return () => {
-      mountedRef.current = false
-      controller.abort()
-    }
-  }, [queryClient])
-
-  return disconnected
-}
+const statusPulseAnimation = {
+  animation: 'statusPulse 2s ease-in-out infinite',
+  '@keyframes statusPulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.35 } },
+} as const
 
 export default function ClusterStatusCard() {
   const queryClient = useQueryClient()
@@ -209,10 +151,7 @@ export default function ClusterStatusCard() {
                     bgcolor: statusColor,
                     boxShadow: `0 0 8px ${statusColor}`,
                     flexShrink: 0,
-                    ...(isPartial || isSleeping ? {
-                      animation: 'statusPulse 2s ease-in-out infinite',
-                      '@keyframes statusPulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.35 } },
-                    } : {}),
+                    ...(isPartial || isSleeping ? statusPulseAnimation : {}),
                   }}
                 />
                 <StatusIcon sx={{ fontSize: 18, color: statusColor }} />

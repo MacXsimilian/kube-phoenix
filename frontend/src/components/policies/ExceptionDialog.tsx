@@ -171,7 +171,7 @@ export default function ExceptionDialog({
             onChange={e => setLocalTime('startsAt', e.target.value)}
             fullWidth
             size="small"
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
             required
           />
           <TextField
@@ -181,7 +181,7 @@ export default function ExceptionDialog({
             onChange={e => setLocalTime('endsAt', e.target.value)}
             fullWidth
             size="small"
-            InputLabelProps={{ shrink: true }}
+            slotProps={{ inputLabel: { shrink: true } }}
             required
           />
         </Box>

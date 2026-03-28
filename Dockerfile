@@ -1,6 +1,7 @@
 # ── Stage 1: Build frontend ───────────────────────────────────────────────────
 # Always build on the host platform — Next.js output is arch-independent.
-FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend-builder
+# Digest pins the exact image; update with: docker pull node:24-alpine && docker inspect --format='{{index .RepoDigests 0}}' node:24-alpine
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b AS frontend-builder
 
 ARG NEXT_PUBLIC_APP_VERSION
 
@@ -19,7 +20,7 @@ RUN npm run build
 
 # ── Stage 2: Build backend ────────────────────────────────────────────────────
 # Always compile on the host platform using Go cross-compilation (no QEMU).
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS backend-builder
 ARG TARGETARCH
 
 WORKDIR /app/backend
@@ -43,9 +44,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -o /bin/kube-phoenix ./cmd/server/...
 
 # ── Stage 3: Final minimal image ──────────────────────────────────────────────
-FROM gcr.io/distroless/static-debian13:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:e3f945647ffb95b5839c07038d64f9811adf17308b9121d8a2b87b6a22a80a39
 
-COPY --from=backend-builder /bin/kube-phoenix /kube-phoenix
+COPY --from=backend-builder /bin/kube-phoenix /usr/local/bin/kube-phoenix
 
 EXPOSE 8080
-ENTRYPOINT ["/kube-phoenix"]
+ENTRYPOINT ["/usr/local/bin/kube-phoenix"]

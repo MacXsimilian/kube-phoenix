@@ -106,45 +106,45 @@ erDiagram
     Policy {
         uint ID PK
         string Name
-        string SleepWindows "JSON array of SleepWindow"
+        string SleepWindows "JSON"
         string Timezone
-        string Mode "plan or apply"
+        string Mode "enum"
         bool Enabled
-        string CurrentState "sleeping|awake|unknown|transitioning"
+        string CurrentState "enum"
         timestamp NextTransitionAt
     }
 
     PolicyOverride {
         uint ID PK
         uint PolicyID FK
-        string OverrideType "stay_awake|force_sleep|skip_sleep|skip_wake"
+        string OverrideType "enum"
         timestamp StartsAt "nullable"
         timestamp EndsAt "nullable"
-        timestamp TargetCronTime "valid-until for skip overrides"
+        timestamp TargetCronTime "nullable"
     }
 
     ScheduledException {
         uint ID PK
         uint PolicyID FK "nullable"
-        string ExceptionType "stay_awake|force_sleep"
+        string ExceptionType "enum"
         timestamp StartsAt
         timestamp EndsAt
-        string Status "pending|active|completed|cancelled"
+        string Status "enum"
         bool SleepOnEnd
     }
 
     PolicyExecution {
         uint ID PK
         uint PolicyID FK
-        string Direction "sleep or wake"
-        string Trigger "scheduled|manual|recovery|exception"
-        string Status "running|success|failed"
+        string Direction "sleep/wake"
+        string Trigger "enum"
+        string Status "enum"
     }
 
     WorkloadSnapshot {
         uint ID PK
         uint PolicyID FK
-        uint SleepExecutionID FK
+        uint SleepExecID FK
         string Kind
         string Namespace
         string Name
@@ -155,7 +155,7 @@ erDiagram
         uint ID PK
         uint ExecutionID FK
         int Seq
-        string Level
+        string Level "enum"
         string Message
     }
 ```
@@ -197,33 +197,33 @@ Computes the next time the evaluated state will flip. Algorithm:
 
 ```mermaid
 flowchart TD
-    Start["Evaluate(windows, tz, now)"] --> Empty{windows empty?}
-    Empty -->|yes| Awake[Return AWAKE]
-    Empty -->|no| LoadTZ[Load timezone, convert now to local]
-    LoadTZ --> BadTZ{timezone valid?}
-    BadTZ -->|no| Awake
-    BadTZ -->|yes| Loop["For each window w"]
+    Start(["Evaluate()"]) --> Empty{empty?}
+    Empty -->|no windows| Awake([AWAKE])
+    Empty -->|has windows| LoadTZ["Load timezone"]
+    LoadTZ --> BadTZ{valid?}
+    BadTZ -->|invalid tz| Awake
+    BadTZ -->|ok| Loop["Next window"]
 
-    Loop --> IsAllDay{w.allDay?}
-    IsAllDay -->|yes| DayMatch{current weekday<br/>in w.DaysOfWeek?}
-    DayMatch -->|yes| Sleeping[Return SLEEPING]
-    DayMatch -->|no| Next[Next window]
+    Loop --> AllDay{allDay?}
+    AllDay -->|yes| DayOK{day?}
+    DayOK -->|matches| Sleep([SLEEPING])
+    DayOK -->|no match| More
 
-    IsAllDay -->|no| SameDay{startTime < endTime?}
+    AllDay -->|no| Same{same-day?}
 
-    SameDay -->|yes| SDCheck{"day matches AND<br/>time in [start, end)?"}
-    SDCheck -->|yes| Sleeping
-    SDCheck -->|no| Next
+    Same -->|start < end| InRange{in range?}
+    InRange -->|yes| Sleep
+    InRange -->|no| More
 
-    SameDay -->|no| EveningCheck{"day matches AND<br/>time >= startTime?"}
-    EveningCheck -->|yes| Sleeping
-    EveningCheck -->|no| MorningCheck{"yesterday matches AND<br/>time < endTime?"}
-    MorningCheck -->|yes| Sleeping
-    MorningCheck -->|no| Next
+    Same -->|overnight| PM{evening?}
+    PM -->|time >= start| Sleep
+    PM -->|no| AM{morning?}
+    AM -->|time < end| Sleep
+    AM -->|no| More
 
-    Next --> MoreWindows{more windows?}
-    MoreWindows -->|yes| Loop
-    MoreWindows -->|no| Awake
+    More{more?}
+    More -->|yes| Loop
+    More -->|no| Awake
 ```
 
 ---
@@ -258,14 +258,11 @@ Skip overrides (`skip_sleep`, `skip_wake`) are checked *after* the intended stat
 
 ### State Transition Detection
 
-For each enabled policy, `evaluatePolicy()`:
+For each enabled policy, `evaluatePolicy()` loads active overrides from the database, computes `IntendedState()`, and routes to one of three sub-functions:
 
-1. Loads active overrides from the database.
-2. Computes `IntendedState()`.
-3. Compares against `CurrentState`.
-4. Skips if states match or if `CurrentState == "transitioning"` (execution already in progress).
-5. Checks for skip overrides — if present, consumes and returns.
-6. Otherwise, triggers an execution (sleep or wake).
+- **`reconcilePolicy`** — current state matches intended. When `reconcileWhileAwake` is enabled and the policy is awake, delegates to `reconcileAwakePolicy` which detects drift (open snapshots needing restore) and runs a corrective wake if needed.
+- **`resetStuckTransition`** — `CurrentState == "transitioning"` for longer than 10 minutes. Resets to `unknown`.
+- **`executeTransition`** — state mismatch. Checks for skip overrides (consumes if present), respects the `autoWake` gate, and triggers a sleep or wake execution.
 
 ### Execution Lifecycle
 
@@ -293,38 +290,34 @@ When a transition is triggered:
 
 ```mermaid
 sequenceDiagram
-    participant Ticker as 30s Ticker
-    participant PS as PolicyScheduler
-    participant DB as Store (PostgreSQL)
-    participant Eval as Window Evaluator
-    participant Engine as IntendedState()
-    participant Scaler as PolicyScaler
-    participant K8s as Kubernetes API
+    participant T as Ticker
+    participant PS as Scheduler
+    participant DB as Store
+    participant E as Engine
+    participant S as Scaler
+    participant K as K8s API
 
-    Ticker->>PS: tick
-    PS->>PS: evaluateAll() — snapshot cached policies
+    T->>PS: tick
+    PS->>PS: snapshot policies
 
-    loop For each enabled policy
-        PS->>DB: ListActiveOverrides(policyID, now)
+    loop Each enabled policy
+        PS->>DB: ListActiveOverrides()
         DB-->>PS: overrides[]
-        PS->>Engine: IntendedState(windows, tz, overrides, now)
-        Engine->>Eval: Evaluate(windows, tz, now)
-        Eval-->>Engine: sleeping / awake
-        Engine-->>PS: intended state (with override precedence)
+        PS->>E: IntendedState()
+        E-->>PS: intended
 
-        alt intended == current OR transitioning
-            PS->>PS: skip (no action)
-        else skip override matches
-            PS->>DB: DeletePolicyOverride(skipID)
-            PS->>PS: skip (transition suppressed)
+        alt no change / transitioning
+            PS->>PS: skip
+        else skip override
+            PS->>DB: DeleteOverride()
         else state mismatch
-            PS->>DB: SetPolicyTransitioning(policyID)
-            PS->>DB: CreatePolicyExecution(direction, trigger)
-            PS-->>Scaler: run(policy, direction) [goroutine]
-            Scaler->>K8s: scale workloads
-            Scaler->>DB: persist log lines + snapshot rows
-            Scaler->>DB: FinishPolicyExecution(status, counts)
-            Scaler->>DB: UpdatePolicyState(newState, nextTransition)
+            PS->>DB: SetTransitioning()
+            PS->>DB: CreateExecution()
+            PS-->>S: run() [goroutine]
+            S->>K: scale workloads
+            S->>DB: persist logs + snapshots
+            S->>DB: FinishExecution()
+            S->>DB: UpdateState()
         end
     end
 ```

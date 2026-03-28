@@ -76,7 +76,7 @@ export default function AboutModal({ open, onClose }: { open: boolean; onClose: 
             variant="outlined"
             endIcon={<OpenInNewIcon sx={{ fontSize: 13 }} />}
             sx={{
-              borderColor: 'rgba(255,255,255,0.15)',
+              borderColor: 'divider',
               color: 'text.secondary',
               fontSize: 12,
               textTransform: 'none',

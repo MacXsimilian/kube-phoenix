@@ -27,3 +27,6 @@ k8s
 *.md
 docs
 *.html
+
+# Examples
+examples

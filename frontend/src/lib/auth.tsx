@@ -1,12 +1,17 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import type { User } from './types'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
 
 // How often to re-fetch /api/auth/me to detect role changes or session expiry.
 const ME_POLL_INTERVAL = 5 * 60 * 1000 // 5 minutes
+
+const DEV_PERMISSIONS = [
+  'view.all', 'schedule.edit', 'schedule.trigger', 'guardrail.edit',
+  'user.manage', 'admin.reset_db', 'audit.view', 'password.change',
+] as const
 
 interface AuthState {
   isAuthenticated: boolean
@@ -70,10 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 // No auth required — dev mode. Create a synthetic user.
                 setUser({
                   id: 0, username: 'dev', role: 'admin', source: 'local',
-                  enabled: true, createdAt: '', permissions: [
-                    'view.all', 'schedule.edit', 'schedule.trigger', 'guardrail.edit',
-                    'user.manage', 'admin.reset_db', 'audit.view', 'password.change',
-                  ],
+                  enabled: true, createdAt: '', permissions: [...DEV_PERMISSIONS],
                 })
               } else if (res.status !== 401 && res.status !== 403) {
                 setBackendError(true)
@@ -92,10 +94,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('kp-session-expired', handler)
   }, [])
 
+  // Keep a ref to the current user so the poll interval callback can read the
+  // latest value without restarting the interval every time `user` changes.
+  const userRef = useRef(user)
+  useEffect(() => { userRef.current = user }, [user])
+
   // Periodic refresh — detect role changes, session expiry, disabled accounts.
+  // Derive a stable boolean so the interval starts/stops on login/logout but does
+  // not restart every time the user object is refreshed.
+  const shouldPoll = !!user && user.id !== 0
   useEffect(() => {
-    if (!user || user.id === 0) return
+    if (!shouldPoll) return
     intervalRef.current = setInterval(async () => {
+      if (!userRef.current || userRef.current.id === 0) return
       const currentUser = await fetchMe()
       if (currentUser) {
         setUser(currentUser)
@@ -107,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [user, fetchMe])
+  }, [shouldPoll, fetchMe])
 
   const login = useCallback(async (username: string, password: string) => {
     const res = await fetch(`${BASE}/api/auth/login`, {

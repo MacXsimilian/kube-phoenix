@@ -235,6 +235,16 @@ func (s *Store) GetOpenSnapshots(policyID uint) ([]WorkloadSnapshot, error) {
 		Find(&snaps).Error
 }
 
+// CountOpenSnapshotsForRestore returns the number of snapshots that still need
+// restoring — open, not already-zero, not deleted. A non-zero count while a
+// policy is awake indicates drift from a failed or partial wake.
+func (s *Store) CountOpenSnapshotsForRestore(policyID uint) (int64, error) {
+	var count int64
+	return count, s.db.Model(&WorkloadSnapshot{}).
+		Where("policy_id = ? AND wake_execution_id IS NULL AND was_deleted_at_wake = false AND was_already_zero = false", policyID).
+		Count(&count).Error
+}
+
 // GetSnapshotsForExecution returns all snapshots created by a specific sleep execution.
 func (s *Store) GetSnapshotsForExecution(sleepExecID uint) ([]WorkloadSnapshot, error) {
 	var snaps []WorkloadSnapshot

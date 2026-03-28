@@ -97,6 +97,223 @@ const PRESETS: Preset[] = [
   },
 ]
 
+// ── WindowCard sub-component ─────────────────────────────────────────────────
+
+function WindowCard({
+  w,
+  idx,
+  totalWindows,
+  onUpdate,
+  onRemove,
+  onToggleDay,
+}: {
+  w: SleepWindow
+  idx: number
+  totalWindows: number
+  onUpdate: (idx: number, patch: Partial<SleepWindow>) => void
+  onRemove: (idx: number) => void
+  onToggleDay: (windowIdx: number, day: number) => void
+}) {
+  const [sH, sM] = w.allDay ? [0, 0] : parseHM(w.startTime)
+  const [eH, eM] = w.allDay ? [0, 0] : parseHM(w.endTime)
+  const overnightWin = !w.allDay && isOvernight(w)
+
+  return (
+    <Box
+      sx={{
+        mb: 1.5,
+        border: '1px solid',
+        borderColor: 'divider',
+        borderRadius: 2,
+        overflow: 'hidden',
+      }}
+    >
+      {/* Header bar */}
+      <Box
+        sx={{
+          px: 2,
+          py: 1,
+          bgcolor: 'rgba(30, 30, 46, 0.6)',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          borderTop: '1px solid',
+          borderTopColor: 'divider',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <Box
+          component="input"
+          value={w.name ?? ''}
+          placeholder={totalWindows === 1 ? 'Sleep Window' : deriveWindowPlaceholder(w, idx)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdate(idx, { name: e.target.value || undefined })}
+          sx={{
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: 'text.secondary',
+            fontSize: '0.68rem',
+            fontFamily: 'inherit',
+            border: 'none',
+            outline: 'none',
+            bgcolor: 'transparent',
+            p: 0,
+            width: '100%',
+            maxWidth: 220,
+            '&::placeholder': { color: 'text.disabled', opacity: 1 },
+            '&:hover': { color: 'text.primary' },
+            '&:focus': { color: 'text.primary' },
+          }}
+        />
+        {totalWindows > 1 && (
+          <IconButton
+            size="small"
+            onClick={() => onRemove(idx)}
+            aria-label={`Remove ${w.name || deriveWindowPlaceholder(w, idx)}`}
+            sx={{ ml: 0.5, p: 0.25 }}
+          >
+            <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        )}
+      </Box>
+
+      {/* Card body */}
+      <Box sx={{ px: 2, py: 1.5 }}>
+        {/* All-day toggle — slide switch */}
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+          <Switch
+            checked={w.allDay}
+            onChange={e => onUpdate(idx, { allDay: e.target.checked })}
+            size="small"
+            aria-label="Toggle all day"
+          />
+          <Box>
+            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3 }}>
+              All day
+            </Typography>
+            <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11, lineHeight: 1.2 }}>
+              No wake-up on selected days
+            </Typography>
+          </Box>
+        </Stack>
+
+        {/* Compact time pickers — only shown when not all-day */}
+        {!w.allDay && (
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontSize: 11 }}>
+              Sleep
+            </Typography>
+            <TextField
+              select size="small" value={sH}
+              onChange={e => onUpdate(idx, { startTime: toHM(Number(e.target.value), sM) })}
+              aria-label="Sleep hour"
+              sx={{ width: 68, '& .MuiInputBase-input': { fontSize: 13, py: 0.75 } }}
+            >
+              {HOURS.map(h => <MenuItem key={h} value={h}>{String(h).padStart(2, '0')}</MenuItem>)}
+            </TextField>
+            <Typography color="text.disabled" sx={{ fontSize: 13, mx: -0.5 }}>:</Typography>
+            <TextField
+              select size="small" value={sM}
+              onChange={e => onUpdate(idx, { startTime: toHM(sH, Number(e.target.value)) })}
+              aria-label="Sleep minute"
+              sx={{ width: 62, '& .MuiInputBase-input': { fontSize: 13, py: 0.75 } }}
+            >
+              {MINUTES.map(m => <MenuItem key={m} value={m}>{String(m).padStart(2, '0')}</MenuItem>)}
+            </TextField>
+
+            <Box sx={{ width: 12 }} />
+
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontSize: 11 }}>
+              Wake
+            </Typography>
+            <TextField
+              select size="small" value={eH}
+              onChange={e => onUpdate(idx, { endTime: toHM(Number(e.target.value), eM) })}
+              aria-label="Wake hour"
+              sx={{ width: 68, '& .MuiInputBase-input': { fontSize: 13, py: 0.75 } }}
+            >
+              {HOURS.map(h => <MenuItem key={h} value={h}>{String(h).padStart(2, '0')}</MenuItem>)}
+            </TextField>
+            <Typography color="text.disabled" sx={{ fontSize: 13, mx: -0.5 }}>:</Typography>
+            <TextField
+              select size="small" value={eM}
+              onChange={e => onUpdate(idx, { endTime: toHM(eH, Number(e.target.value)) })}
+              aria-label="Wake minute"
+              sx={{ width: 62, '& .MuiInputBase-input': { fontSize: 13, py: 0.75 } }}
+            >
+              {MINUTES.map(m => <MenuItem key={m} value={m}>{String(m).padStart(2, '0')}</MenuItem>)}
+            </TextField>
+
+            {overnightWin && (
+              <Chip label="next day" size="small"
+                sx={{ fontSize: 10, height: 18, bgcolor: 'rgba(99,102,241,0.15)', color: '#a5b4fc' }}
+              />
+            )}
+          </Stack>
+        )}
+
+        {/* Day buttons — slightly larger with active glow */}
+        <Stack direction="row" spacing={0.75} alignItems="center">
+          {DAYS.map(({ value, label }) => {
+            const active = w.daysOfWeek.includes(value)
+            return (
+              <Box
+                key={value}
+                role="button"
+                tabIndex={0}
+                aria-label={`${label}${active ? ' (selected)' : ''}`}
+                aria-pressed={active}
+                onClick={() => onToggleDay(idx, value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onToggleDay(idx, value)
+                  }
+                }}
+                sx={{
+                  px: 1.75,
+                  py: 1,
+                  minWidth: 44,
+                  minHeight: 44,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 1.5,
+                  cursor: 'pointer',
+                  border: '1px solid',
+                  borderColor: active ? 'primary.main' : 'divider',
+                  bgcolor: active ? 'rgba(124,58,237,0.15)' : 'transparent',
+                  color: active ? 'primary.light' : 'text.disabled',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  userSelect: 'none',
+                  transition: 'all 0.15s',
+                  boxShadow: active
+                    ? '0 0 0 1px rgba(124,58,237,0.15)'
+                    : 'none',
+                  '&:hover': {
+                    borderColor: active ? 'primary.main' : 'text.disabled',
+                    bgcolor: active ? 'rgba(124,58,237,0.2)' : 'rgba(255,255,255,0.04)',
+                  },
+                }}
+              >
+                {label}
+              </Box>
+            )
+          })}
+        </Stack>
+      </Box>
+    </Box>
+  )
+}
+
+// ── WindowPicker ─────────────────────────────────────────────────────────────
+
+function windowStableKey(w: SleepWindow, idx: number): string {
+  return `${w.startTime}-${w.endTime}-${w.daysOfWeek.join(',')}-${idx}`
+}
+
 export default function WindowPicker({
   windows,
   onChange,
@@ -173,200 +390,17 @@ export default function WindowPicker({
       </Stack>
 
       {/* Window cards */}
-      {windows.map((w, idx) => {
-        const [sH, sM] = w.allDay ? [0, 0] : parseHM(w.startTime)
-        const [eH, eM] = w.allDay ? [0, 0] : parseHM(w.endTime)
-        const overnightWin = !w.allDay && isOvernight(w)
-        return (
-          <Box
-            key={idx}
-            sx={{
-              mb: 1.5,
-              border: '1px solid',
-              borderColor: 'divider',
-              borderRadius: 2,
-              overflow: 'hidden',
-            }}
-          >
-            {/* Header bar */}
-            <Box
-              sx={{
-                px: 2,
-                py: 1,
-                bgcolor: 'rgba(30, 30, 46, 0.6)',
-                borderBottom: '1px solid',
-                borderColor: 'divider',
-                borderTop: '1px solid',
-                borderTopColor: 'divider',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <Box
-                component="input"
-                value={w.name ?? ''}
-                placeholder={windows.length === 1 ? 'Sleep Window' : deriveWindowPlaceholder(w, idx)}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateWindow(idx, { name: e.target.value || undefined })}
-                sx={{
-                  fontWeight: 700,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  color: 'text.secondary',
-                  fontSize: '0.68rem',
-                  fontFamily: 'inherit',
-                  border: 'none',
-                  outline: 'none',
-                  bgcolor: 'transparent',
-                  p: 0,
-                  width: '100%',
-                  maxWidth: 220,
-                  '&::placeholder': { color: 'text.disabled', opacity: 1 },
-                  '&:hover': { color: 'text.primary' },
-                  '&:focus': { color: 'text.primary' },
-                }}
-              />
-              {windows.length > 1 && (
-                <IconButton
-                  size="small"
-                  onClick={() => removeWindow(idx)}
-                  aria-label={`Remove ${w.name || deriveWindowPlaceholder(w, idx)}`}
-                  sx={{ ml: 0.5, p: 0.25 }}
-                >
-                  <DeleteOutlineIcon sx={{ fontSize: 16 }} />
-                </IconButton>
-              )}
-            </Box>
-
-            {/* Card body */}
-            <Box sx={{ px: 2, py: 1.5 }}>
-              {/* All-day toggle — slide switch */}
-              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-                <Switch
-                  checked={w.allDay}
-                  onChange={e => updateWindow(idx, { allDay: e.target.checked })}
-                  size="small"
-                  aria-label="Toggle all day"
-                />
-                <Box>
-                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3 }}>
-                    All day
-                  </Typography>
-                  <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11, lineHeight: 1.2 }}>
-                    No wake-up on selected days
-                  </Typography>
-                </Box>
-              </Stack>
-
-              {/* Compact time pickers — only shown when not all-day */}
-              {!w.allDay && (
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontSize: 11 }}>
-                    Sleep
-                  </Typography>
-                  <TextField
-                    select size="small" value={sH}
-                    onChange={e => updateWindow(idx, { startTime: toHM(Number(e.target.value), sM) })}
-                    aria-label="Sleep hour"
-                    sx={{ width: 68, '& .MuiInputBase-input': { fontSize: 13, py: 0.75 } }}
-                  >
-                    {HOURS.map(h => <MenuItem key={h} value={h}>{String(h).padStart(2, '0')}</MenuItem>)}
-                  </TextField>
-                  <Typography color="text.disabled" sx={{ fontSize: 13, mx: -0.5 }}>:</Typography>
-                  <TextField
-                    select size="small" value={sM}
-                    onChange={e => updateWindow(idx, { startTime: toHM(sH, Number(e.target.value)) })}
-                    aria-label="Sleep minute"
-                    sx={{ width: 62, '& .MuiInputBase-input': { fontSize: 13, py: 0.75 } }}
-                  >
-                    {MINUTES.map(m => <MenuItem key={m} value={m}>{String(m).padStart(2, '0')}</MenuItem>)}
-                  </TextField>
-
-                  <Box sx={{ width: 12 }} />
-
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontSize: 11 }}>
-                    Wake
-                  </Typography>
-                  <TextField
-                    select size="small" value={eH}
-                    onChange={e => updateWindow(idx, { endTime: toHM(Number(e.target.value), eM) })}
-                    aria-label="Wake hour"
-                    sx={{ width: 68, '& .MuiInputBase-input': { fontSize: 13, py: 0.75 } }}
-                  >
-                    {HOURS.map(h => <MenuItem key={h} value={h}>{String(h).padStart(2, '0')}</MenuItem>)}
-                  </TextField>
-                  <Typography color="text.disabled" sx={{ fontSize: 13, mx: -0.5 }}>:</Typography>
-                  <TextField
-                    select size="small" value={eM}
-                    onChange={e => updateWindow(idx, { endTime: toHM(eH, Number(e.target.value)) })}
-                    aria-label="Wake minute"
-                    sx={{ width: 62, '& .MuiInputBase-input': { fontSize: 13, py: 0.75 } }}
-                  >
-                    {MINUTES.map(m => <MenuItem key={m} value={m}>{String(m).padStart(2, '0')}</MenuItem>)}
-                  </TextField>
-
-                  {overnightWin && (
-                    <Chip label="next day" size="small"
-                      sx={{ fontSize: 10, height: 18, bgcolor: 'rgba(99,102,241,0.15)', color: '#a5b4fc' }}
-                    />
-                  )}
-                </Stack>
-              )}
-
-              {/* Day buttons — slightly larger with active glow */}
-              <Stack direction="row" spacing={0.75} alignItems="center">
-                {DAYS.map(({ value, label }) => {
-                  const active = w.daysOfWeek.includes(value)
-                  return (
-                    <Box
-                      key={value}
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`${label}${active ? ' (selected)' : ''}`}
-                      aria-pressed={active}
-                      onClick={() => toggleDay(idx, value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          toggleDay(idx, value)
-                        }
-                      }}
-                      sx={{
-                        px: 1.75,
-                        py: 1,
-                        minWidth: 44,
-                        minHeight: 44,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderRadius: 1.5,
-                        cursor: 'pointer',
-                        border: '1px solid',
-                        borderColor: active ? 'primary.main' : 'divider',
-                        bgcolor: active ? 'rgba(124,58,237,0.15)' : 'transparent',
-                        color: active ? 'primary.light' : 'text.disabled',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        userSelect: 'none',
-                        transition: 'all 0.15s',
-                        boxShadow: active
-                          ? '0 0 0 1px rgba(124,58,237,0.15)'
-                          : 'none',
-                        '&:hover': {
-                          borderColor: active ? 'primary.main' : 'text.disabled',
-                          bgcolor: active ? 'rgba(124,58,237,0.2)' : 'rgba(255,255,255,0.04)',
-                        },
-                      }}
-                    >
-                      {label}
-                    </Box>
-                  )
-                })}
-              </Stack>
-            </Box>
-          </Box>
-        )
-      })}
+      {windows.map((w, idx) => (
+        <WindowCard
+          key={windowStableKey(w, idx)}
+          w={w}
+          idx={idx}
+          totalWindows={windows.length}
+          onUpdate={updateWindow}
+          onRemove={removeWindow}
+          onToggleDay={toggleDay}
+        />
+      ))}
 
       <Button size="small" startIcon={<AddIcon />} onClick={addWindow} disabled={windows.length >= MAX_WINDOWS} sx={{ mt: 0.5, mb: 1 }}>
         {windows.length >= MAX_WINDOWS ? `Limit reached (${MAX_WINDOWS})` : 'Add window'}

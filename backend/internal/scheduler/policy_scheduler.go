@@ -1,5 +1,8 @@
 // Package scheduler runs the policy evaluation ticker that periodically
-// triggers sleep and wake executions.
+// triggers sleep and wake executions. The evaluation pipeline is decomposed
+// into evaluatePolicy → reconcilePolicy / resetStuckTransition / executeTransition,
+// with drift detection via reconcileAwakePolicy. Store and runner dependencies
+// are held as interfaces (schedulerStore, policyRunner) for testability.
 package scheduler
 
 import (
@@ -24,11 +27,42 @@ var ErrPolicyTransitioning = errors.New("policy is already transitioning")
 // PolicyBroker is an alias for Broker, used for policy executions.
 type PolicyBroker = Broker
 
+// schedulerStore abstracts the store methods the scheduler depends on,
+// enabling test doubles.
+type schedulerStore interface {
+	GetPolicy(id uint) (*store.Policy, error)
+	ListPolicies() ([]store.Policy, error)
+	ListActiveOverrides(policyID uint, now time.Time) ([]store.PolicyOverride, error)
+	CountOpenSnapshotsForRestore(policyID uint) (int64, error)
+	UpdatePolicyState(id uint, state string, nextTransition *time.Time) error
+	SetPolicyTransitioning(id uint) error
+	DeletePolicyOverride(id uint) error
+	CreatePolicyExecution(exec *store.PolicyExecution) error
+	FinishPolicyExecution(id uint, status string, counts map[string]int) error
+	AppendPolicyLogLines(lines []store.PolicyLogLine) error
+	ListOpenExceptions() ([]store.ScheduledException, error)
+	UpdateScheduledExceptionStatus(id uint, status string) error
+}
+
+// policyRunner abstracts the execution engine for sleep/wake operations.
+type policyRunner interface {
+	RunPolicySleep(ctx context.Context, p store.Policy, execID uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error)
+	RunPolicyWake(ctx context.Context, p store.Policy, execID uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error)
+}
+
 // SchedulerConfig holds the runtime-tunable settings for the policy evaluation loop.
 type SchedulerConfig struct {
 	TickInterval        time.Duration
 	AutoWake            bool
 	ReconcileWhileAwake bool
+}
+
+// evalContext carries per-tick configuration into the evaluation functions,
+// grouping values that would otherwise be passed as individual arguments.
+type evalContext struct {
+	now                 time.Time
+	autoWake            bool
+	reconcileWhileAwake bool
 }
 
 // cachedPolicy holds a parsed in-memory representation of a policy.
@@ -41,25 +75,27 @@ type cachedPolicy struct {
 // triggers sleep/wake executions when the intended state differs from the
 // current state.
 type PolicyScheduler struct {
-	store  *store.Store
-	runner *scaler.PolicyRunner
+	store  schedulerStore
+	runner policyRunner
 	Broker *PolicyBroker
 	cfg    SchedulerConfig
 
-	mu        sync.Mutex
-	cancel    context.CancelFunc
-	parentCtx context.Context
-	policies  map[uint]cachedPolicy
+	mu                    sync.Mutex
+	cancel                context.CancelFunc
+	parentCtx             context.Context
+	policies              map[uint]cachedPolicy
+	lastReconcileAttempt  map[uint]time.Time
 }
 
 // NewPolicyScheduler creates a PolicyScheduler. Pass nil k8sClient in tests.
 func NewPolicyScheduler(st *store.Store, k8sClient *k8s.Client, cfg SchedulerConfig) *PolicyScheduler {
 	return &PolicyScheduler{
-		store:    st,
-		runner:   scaler.NewPolicyRunner(k8sClient, st),
-		Broker:   NewBroker(),
-		policies: map[uint]cachedPolicy{},
-		cfg:      cfg,
+		store:                st,
+		runner:               scaler.NewPolicyRunner(k8sClient, st),
+		Broker:               NewBroker(),
+		policies:             map[uint]cachedPolicy{},
+		lastReconcileAttempt: map[uint]time.Time{},
+		cfg:                  cfg,
 	}
 }
 
@@ -257,6 +293,12 @@ const (
 
 	defaultExecutionTimeout = 2 * time.Hour
 	execLogChannelBuffer    = 512
+
+	// reconcileBackoff is the minimum interval between corrective-wake
+	// attempts for the same policy. Prevents flooding history when failures
+	// persist.
+	reconcileBackoff        = 5 * time.Minute
+	stuckTransitionTimeout  = 10 * time.Minute
 )
 
 func (ps *PolicyScheduler) tickLoop(ctx context.Context, interval time.Duration) {
@@ -278,66 +320,135 @@ func (ps *PolicyScheduler) evaluateAll() {
 	for _, cp := range ps.policies {
 		snapshot = append(snapshot, cp)
 	}
-	autoWake := ps.cfg.AutoWake
-	reconcileWhileAwake := ps.cfg.ReconcileWhileAwake
+	ctx := evalContext{
+		now:                 time.Now(),
+		autoWake:            ps.cfg.AutoWake,
+		reconcileWhileAwake: ps.cfg.ReconcileWhileAwake,
+	}
 	ps.mu.Unlock()
 
-	now := time.Now()
 	for _, cp := range snapshot {
-		ps.evaluatePolicy(cp, now, autoWake, reconcileWhileAwake)
+		ps.evaluatePolicy(cp, ctx)
 	}
 }
 
-func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, now time.Time, autoWake bool, reconcileWhileAwake bool) {
+func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, ctx evalContext) {
 	p := cp.policy
 	if !p.Enabled {
 		return
 	}
-	overrides, err := ps.store.ListActiveOverrides(p.ID, now)
+	overrides, err := ps.store.ListActiveOverrides(p.ID, ctx.now)
 	if err != nil {
 		slog.Warn("failed to list active overrides", "policyID", p.ID, "err", err)
 		overrides = nil
 	}
-	intended := IntendedState(cp.windows, p.Timezone, overrides, now)
-
-	if !reconcileWhileAwake && p.CurrentState == store.PolicyStateAwake && intended == PolicyStateAwake {
-		return
-	}
+	intended := IntendedState(cp.windows, p.Timezone, overrides, ctx.now)
 
 	if intended == PolicyStateUnknown {
 		return
 	}
+
 	if p.CurrentState == string(intended) {
-		return
-	}
-	if p.CurrentState == store.PolicyStateTransitioning {
-		if p.StateSince != nil && now.Sub(*p.StateSince) > 10*time.Minute {
-			slog.Warn("policy scheduler: policy stuck in transitioning, resetting to unknown",
-				"policyID", p.ID, "stuckSince", p.StateSince)
-			if err := ps.store.UpdatePolicyState(p.ID, store.PolicyStateUnknown, nil); err != nil {
-				slog.Error("policy scheduler: failed to reset stuck policy state",
-					"policyID", p.ID, "err", err)
-			}
-			ps.mu.Lock()
-			if cp, ok := ps.policies[p.ID]; ok {
-				cp.policy.CurrentState = store.PolicyStateUnknown
-				ps.policies[p.ID] = cp
-			}
-			ps.mu.Unlock()
-		}
+		ps.reconcilePolicy(p, ctx)
 		return
 	}
 
+	if p.CurrentState == store.PolicyStateTransitioning {
+		ps.resetStuckTransition(p, ctx.now)
+		return
+	}
+
+	ps.executeTransition(p, intended, overrides, ctx)
+}
+
+// reconcilePolicy checks whether a policy that is already in its intended
+// state needs corrective action. Currently this only applies to awake
+// policies when reconcileWhileAwake is enabled.
+func (ps *PolicyScheduler) reconcilePolicy(p store.Policy, ctx evalContext) {
+	if !ctx.reconcileWhileAwake {
+		return
+	}
+	if p.CurrentState != store.PolicyStateAwake {
+		return
+	}
+	ps.reconcileAwakePolicy(p, ctx.now)
+}
+
+// reconcileAwakePolicy detects drift from a failed or partial wake and runs a
+// corrective wake to restore workloads that are still scaled to zero. It
+// bypasses the autoWake gate and skip_wake overrides because this is a fix,
+// not a scheduled transition.
+func (ps *PolicyScheduler) reconcileAwakePolicy(p store.Policy, now time.Time) {
+	if !ps.reconcileBackoffElapsed(p.ID, now) {
+		return
+	}
+
+	count, err := ps.store.CountOpenSnapshotsForRestore(p.ID)
+	if err != nil {
+		slog.Warn("policy scheduler: failed to count open snapshots",
+			"policyID", p.ID, "err", err)
+		return
+	}
+	if count == 0 {
+		return
+	}
+
+	ps.recordReconcileAttempt(p.ID, now)
+
+	slog.Info("policy scheduler: drift detected, running corrective wake",
+		"policyID", p.ID, "openSnapshots", count)
+
+	if _, err := ps.run(context.Background(), p, directionWake, "reconcile"); err != nil {
+		slog.Error("policy scheduler: corrective wake failed",
+			"policyID", p.ID, "err", err)
+	}
+}
+
+func (ps *PolicyScheduler) reconcileBackoffElapsed(policyID uint, now time.Time) bool {
+	ps.mu.Lock()
+	last, ok := ps.lastReconcileAttempt[policyID]
+	ps.mu.Unlock()
+	return !ok || now.Sub(last) >= reconcileBackoff
+}
+
+func (ps *PolicyScheduler) recordReconcileAttempt(policyID uint, now time.Time) {
+	ps.mu.Lock()
+	ps.lastReconcileAttempt[policyID] = now
+	ps.mu.Unlock()
+}
+
+// resetStuckTransition resets policies stuck in "transitioning" for longer
+// than stuckTransitionTimeout back to "unknown" so the next tick re-evaluates.
+func (ps *PolicyScheduler) resetStuckTransition(p store.Policy, now time.Time) {
+	if p.StateSince == nil || now.Sub(*p.StateSince) <= stuckTransitionTimeout {
+		return
+	}
+	slog.Warn("policy scheduler: policy stuck in transitioning, resetting to unknown",
+		"policyID", p.ID, "stuckSince", p.StateSince)
+	if err := ps.store.UpdatePolicyState(p.ID, store.PolicyStateUnknown, nil); err != nil {
+		slog.Error("policy scheduler: failed to reset stuck policy state",
+			"policyID", p.ID, "err", err)
+	}
+	ps.mu.Lock()
+	if cp, ok := ps.policies[p.ID]; ok {
+		cp.policy.CurrentState = store.PolicyStateUnknown
+		ps.policies[p.ID] = cp
+	}
+	ps.mu.Unlock()
+}
+
+// executeTransition handles the normal sleep/wake transition path. It respects
+// the autoWake gate and skip overrides.
+func (ps *PolicyScheduler) executeTransition(p store.Policy, intended PolicyState, overrides []store.PolicyOverride, ctx evalContext) {
 	direction := directionSleep
 	if intended == PolicyStateAwake {
-		if !autoWake {
+		if !ctx.autoWake {
 			return
 		}
 		direction = directionWake
 	}
 
-	// Check for skip override.
-	if skip := HasSkipOverride(overrides, direction, now); skip != nil {
+	if skip := HasSkipOverride(overrides, direction, ctx.now); skip != nil {
 		slog.Info("policy scheduler: transition skipped by override",
 			"policyID", p.ID, "overrideID", skip.ID, "direction", direction)
 		if err := ps.store.DeletePolicyOverride(skip.ID); err != nil {

@@ -9,9 +9,15 @@ const MUTATION_METHODS = new Set(['POST', 'PUT', 'DELETE', 'PATCH'])
 
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const method = options?.method?.toUpperCase() ?? 'GET'
+  const incoming = options?.headers
+  const hdrs: Record<string, string> = incoming instanceof Headers
+    ? Object.fromEntries(incoming.entries())
+    : Array.isArray(incoming)
+      ? Object.fromEntries(incoming as [string, string][])
+      : (incoming as Record<string, string> | undefined) ?? {}
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options?.headers as Record<string, string>,
+    ...hdrs,
   }
 
   // Attach CSRF token on mutation requests.
@@ -44,7 +50,7 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => null)
     throw new Error(body?.error || body?.message || `HTTP ${res.status}`)
   }
-  // 204 No Content
+  // 204 No Content — safe cast: callers use T=void for endpoints that return no body
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
 }
@@ -204,7 +210,7 @@ export const getUsers = (): Promise<User[]> =>
 export const createUserAPI = (data: { username: string; email?: string; password: string; role: string }): Promise<User> =>
   req<User>('/api/users', { method: 'POST', body: JSON.stringify(data) })
 
-export const updateUserAPI = (id: number, data: Record<string, unknown>): Promise<User> =>
+export const updateUserAPI = (id: number, data: Partial<Pick<User, 'role' | 'enabled'>>): Promise<User> =>
   req<User>(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 
 export const deleteUserAPI = (id: number): Promise<void> =>
@@ -351,9 +357,8 @@ export const deleteException = (id: number): Promise<void> =>
 // ── WebSocket URL helper ──────────────────────────────────────────────────────
 
 export const wsPolicyLogsUrl = (executionId: number): string => {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ''
-  const base = apiUrl
-    ? apiUrl.replace(/^http/, 'ws')
+  const base = BASE
+    ? BASE.replace(/^http/, 'ws')
     : `${typeof window !== 'undefined' ? window.location.origin.replace(/^http/, 'ws') : ''}`
   return `${base}/ws/policy-executions/${executionId}/logs`
 }

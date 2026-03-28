@@ -23,17 +23,19 @@ import { resetDatabaseStream, type ResetEvent } from '@/lib/api'
 
 const CONFIRM_PHRASE = 'RESET DATABASE'
 
+interface ResetProgressDialogProps {
+  open: boolean
+  events: ResetEvent[]
+  done: boolean
+  onClose: () => void
+}
+
 function ResetProgressDialog({
   open,
   events,
   done,
   onClose,
-}: {
-  open: boolean
-  events: ResetEvent[]
-  done: boolean
-  onClose: () => void
-}) {
+}: ResetProgressDialogProps) {
   const theme = useTheme()
   const bottomRef = useRef<HTMLDivElement>(null)
 

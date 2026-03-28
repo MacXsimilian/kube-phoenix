@@ -1,23 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
-import Button from '@mui/material/Button'
-import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
 import Snackbar from '@mui/material/Snackbar'
-import IconButton from '@mui/material/IconButton'
-import Tooltip from '@mui/material/Tooltip'
-import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
-import BedtimeIcon from '@mui/icons-material/Bedtime'
-import WbSunnyIcon from '@mui/icons-material/WbSunny'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import AddIcon from '@mui/icons-material/Add'
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 import {
   getPolicy,
   getPolicyExecutions,
@@ -31,34 +21,21 @@ import LedGlowTimeline from '@/components/policies/LedGlowTimeline'
 import OverridesSection from '@/components/policies/OverridesSection'
 import ExceptionsSection from '@/components/policies/ExceptionsSection'
 import ExecutionHistoryTable from '@/components/policies/ExecutionHistoryTable'
+import PolicyHeroBand from '@/components/policies/PolicyHeroBand'
+import PolicyMetadataRow from '@/components/policies/PolicyMetadataRow'
 import LogViewer from '@/components/history/LogViewer'
 import { windowsToText, computeWeeklyStats, hasSleepWindows } from '@/lib/windowUtils'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules, canTriggerSchedules } from '@/lib/rbac'
-import {
-  STATE_COLORS, MODE_COLORS, SMALL_CHIP_SX,
-  HERO_HEADER_GRADIENTS, SUBTLE_BORDER,
-} from '@/lib/statusColors'
+import { STATE_COLORS, SUBTLE_BORDER } from '@/lib/statusColors'
 import { fmtDt, timeUntil } from '@/lib/formatters'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
 import ErrorBoundary from '@/components/ErrorBoundary'
 
-// ── Layout helpers ───────────────────────────────────────────────────────────
-
-/** Negative margins to bleed bands edge-to-edge within AppShell's padded main area */
 const BLEED_MARGIN_X = { xs: -2, sm: -2.5, md: -3 }
 const BLEED_PADDING_X = { xs: 2, sm: 2.5, md: 3 }
 
-const STATE_ICONS: Record<string, React.ReactNode> = {
-  sleeping:      <BedtimeIcon sx={{ fontSize: 32 }} />,
-  awake:         <WbSunnyIcon sx={{ fontSize: 32 }} />,
-  transitioning: <WbSunnyIcon sx={{ fontSize: 32 }} />,
-  unknown:       <HelpOutlineIcon sx={{ fontSize: 32 }} />,
-}
-
-// ── Component ────────────────────────────────────────────────────────────────
-
-export default function PolicyDetailPage() {
+function PolicyDetailContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { user } = useAuth()
@@ -116,136 +93,32 @@ export default function PolicyDetailPage() {
     return <Alert severity="error">Policy not found</Alert>
   }
 
-  const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
-  const modeStyle = MODE_COLORS[policy.mode] ?? MODE_COLORS.plan
   const sleepWindows = policy.sleepWindows ?? []
   const weeklyStats = hasSleepWindows(sleepWindows) ? computeWeeklyStats(sleepWindows) : null
 
   return (
     <ErrorBoundary>
     <Box>
-      {/* ── Hero band ─────────────────────────────────────────────────── */}
-      <Box
-        sx={{
-          mx: BLEED_MARGIN_X,
-          px: BLEED_PADDING_X,
-          py: { xs: 3, md: 4 },
-          background: HERO_HEADER_GRADIENTS[policy.currentState] ?? HERO_HEADER_GRADIENTS.unknown,
-          borderBottom: '1px solid',
-          borderColor: SUBTLE_BORDER,
-        }}
-      >
-        <Box sx={{ mb: 2 }}>
-          <IconButton size="small" onClick={() => router.push('/policies')} aria-label="Back to policies">
-            <ArrowBackIcon />
-          </IconButton>
-        </Box>
+      <PolicyHeroBand
+        policy={policy}
+        canEdit={canEdit}
+        canTrigger={canTrigger}
+        isBusy={isBusy}
+        sleepPending={sleepMut.isPending}
+        wakePending={wakeMut.isPending}
+        onBack={() => router.push('/policies')}
+        onSleep={() => sleepMut.mutate()}
+        onWake={() => wakeMut.mutate()}
+        onEdit={() => { setExceptionOpen(false); setEditOpen(true) }}
+        onAddException={() => { setEditOpen(false); setEditingException(undefined); setExceptionOpen(true) }}
+      />
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap' }}>
-          <Box
-            sx={{
-              width: 64,
-              height: 64,
-              borderRadius: '20px',
-              bgcolor: stateStyle.bg,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: stateStyle.color,
-              flexShrink: 0,
-            }}
-          >
-            {STATE_ICONS[policy.currentState] ?? STATE_ICONS.unknown}
-          </Box>
-
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="h4" fontWeight={700} noWrap>
-              {policy.name}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-              {policy.description || 'No description'}
-              {policy.namespaceFilter && (
-                <Typography component="span" fontFamily="monospace" sx={{ ml: 1, color: 'text.disabled' }}>
-                  {policy.namespaceFilter}
-                </Typography>
-              )}
-            </Typography>
-          </Box>
-
-          <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
-            <Typography
-              variant="h4"
-              fontWeight={800}
-              sx={{ color: stateStyle.color, textTransform: 'uppercase', lineHeight: 1.2 }}
-            >
-              {stateStyle.label}
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', mt: 0.5 }}>
-              <Chip
-                label={policy.mode.toUpperCase()}
-                size="small"
-                sx={{ ...SMALL_CHIP_SX, bgcolor: modeStyle.bg, color: modeStyle.color }}
-              />
-              {policy.enabled ? (
-                <Chip label="Enabled" size="small" sx={{ ...SMALL_CHIP_SX, bgcolor: STATE_COLORS.awake.bg, color: STATE_COLORS.awake.color }} />
-              ) : (
-                <Chip label="Disabled" size="small" sx={{ ...SMALL_CHIP_SX, bgcolor: 'action.selected' }} />
-              )}
-            </Box>
-          </Box>
-        </Box>
-
-        <Box sx={{ display: 'flex', gap: 1.5, mt: 2.5, flexWrap: 'wrap' }}>
-          <Tooltip title={canTrigger ? '' : 'No permission'}>
-            <span>
-              <Button
-                variant="contained"
-                size="small"
-                startIcon={sleepMut.isPending ? <CircularProgress size={14} /> : <BedtimeIcon />}
-                disabled={!canTrigger || isBusy}
-                onClick={() => sleepMut.mutate()}
-                sx={{ bgcolor: STATE_COLORS.sleeping.bg, color: STATE_COLORS.sleeping.color, '&:hover': { bgcolor: 'rgba(99,102,241,0.3)' } }}
-              >
-                Sleep Now
-              </Button>
-            </span>
-          </Tooltip>
-          <Tooltip title={canTrigger ? '' : 'No permission'}>
-            <span>
-              <Button
-                variant="contained"
-                size="small"
-                startIcon={wakeMut.isPending ? <CircularProgress size={14} /> : <WbSunnyIcon />}
-                disabled={!canTrigger || isBusy}
-                onClick={() => wakeMut.mutate()}
-                sx={{ bgcolor: STATE_COLORS.awake.bg, color: STATE_COLORS.awake.color, '&:hover': { bgcolor: 'rgba(34,197,94,0.25)' } }}
-              >
-                Wake Now
-              </Button>
-            </span>
-          </Tooltip>
-          {canEdit && (
-            <Button size="small" startIcon={<EditOutlinedIcon />} onClick={() => { setExceptionOpen(false); setEditOpen(true) }}>
-              Edit Policy
-            </Button>
-          )}
-          {canEdit && (
-            <Button size="small" startIcon={<AddIcon />} onClick={() => { setEditOpen(false); setEditingException(undefined); setExceptionOpen(true) }}>
-              Exception
-            </Button>
-          )}
-        </Box>
-      </Box>
-
-      {/* ── Timeline band ─────────────────────────────────────────────── */}
+      {/* Timeline band */}
       {hasSleepWindows(sleepWindows) && (
         <Box
           sx={{
-            mx: BLEED_MARGIN_X,
-            px: BLEED_PADDING_X,
-            py: 3,
-            borderBottom: '1px solid',
-            borderColor: SUBTLE_BORDER,
+            mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3,
+            borderBottom: '1px solid', borderColor: SUBTLE_BORDER,
           }}
         >
           <Box sx={{ display: 'flex', gap: { xs: 2, md: 5 }, alignItems: 'flex-start', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
@@ -295,48 +168,15 @@ export default function PolicyDetailPage() {
         </Box>
       )}
 
-      {/* ── Metadata row (only if no windows) ─────────────────────────── */}
-      {!hasSleepWindows(sleepWindows) && (
-        <Box
-          sx={{
-            mx: BLEED_MARGIN_X,
-            px: BLEED_PADDING_X,
-            py: 2,
-            borderBottom: '1px solid',
-            borderColor: SUBTLE_BORDER,
-            display: 'flex',
-            gap: 4,
-            flexWrap: 'wrap',
-          }}
-        >
-          <Box>
-            <Typography variant="caption" color="text.disabled">Timezone</Typography>
-            <Typography variant="body2">{policy.timezone || 'UTC'}</Typography>
-          </Box>
-          {policy.namespaceFilter && (
-            <Box>
-              <Typography variant="caption" color="text.disabled">Namespaces</Typography>
-              <Typography variant="body2">{policy.namespaceFilter}</Typography>
-            </Box>
-          )}
-          {policy.labelSelector && (
-            <Box>
-              <Typography variant="caption" color="text.disabled">Label Selector</Typography>
-              <Typography variant="body2" fontFamily="monospace">{policy.labelSelector}</Typography>
-            </Box>
-          )}
-        </Box>
-      )}
+      {/* Metadata row (only if no windows) */}
+      {!hasSleepWindows(sleepWindows) && <PolicyMetadataRow policy={policy} />}
 
-      {/* ── Overrides + Exceptions band ───────────────────────────────── */}
+      {/* Overrides + Exceptions band */}
       <Box
         sx={{
-          mx: BLEED_MARGIN_X,
-          px: BLEED_PADDING_X,
-          py: 3,
+          mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3,
           bgcolor: 'rgba(255,255,255,0.015)',
-          borderBottom: '1px solid',
-          borderColor: SUBTLE_BORDER,
+          borderBottom: '1px solid', borderColor: SUBTLE_BORDER,
         }}
       >
         <Box sx={{ display: 'flex', gap: 3, flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
@@ -361,18 +201,17 @@ export default function PolicyDetailPage() {
         </Box>
       </Box>
 
-      {/* ── Execution History band ────────────────────────────────────── */}
+      {/* Execution History band */}
       <Box sx={{ mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3 }}>
         <ExecutionHistoryTable
           executions={executions}
-          policyId={policyId}
           onRowClick={setSelectedExec}
         />
       </Box>
 
       <LogViewer execution={selectedExec} onClose={() => setSelectedExec(null)} />
 
-      {/* ── Dialogs ───────────────────────────────────────────────────── */}
+      {/* Dialogs */}
       <CreatePolicyDialog
         open={editOpen}
         onClose={() => setEditOpen(false)}
@@ -401,5 +240,13 @@ export default function PolicyDetailPage() {
       </Snackbar>
     </Box>
     </ErrorBoundary>
+  )
+}
+
+export default function PolicyDetailPage() {
+  return (
+    <Suspense>
+      <PolicyDetailContent />
+    </Suspense>
   )
 }

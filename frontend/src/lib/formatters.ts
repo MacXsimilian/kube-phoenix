@@ -2,6 +2,11 @@
  * Shared formatting utilities used across cluster, overview, and history components.
  */
 
+const GiB = 1_073_741_824
+const MiB = 1_048_576
+const SECONDS_PER_HOUR = 3_600
+const SECONDS_PER_DAY = 86_400
+
 /** Format millicores → "1.5c" or "500m" */
 export function fmtCpu(m: number): string {
   return m >= 1000 ? `${(m / 1000).toFixed(1)}c` : `${m}m`
@@ -9,17 +14,17 @@ export function fmtCpu(m: number): string {
 
 /** Format bytes → "1.5G" or "512M" */
 export function fmtMem(bytes: number): string {
-  const gib = bytes / 1073741824
-  return gib >= 1 ? `${gib.toFixed(1)}G` : `${Math.round(bytes / 1048576)}M`
+  const gib = bytes / GiB
+  return gib >= 1 ? `${gib.toFixed(1)}G` : `${Math.round(bytes / MiB)}M`
 }
 
 /** Format an ISO timestamp as a short age string: "5m", "3h", "2d" */
 export function podAge(iso: string): string {
   if (!iso) return '—'
   const ageSeconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (ageSeconds < 3600) return `${Math.floor(ageSeconds / 60)}m`
-  if (ageSeconds < 86400) return `${Math.floor(ageSeconds / 3600)}h`
-  return `${Math.floor(ageSeconds / 86400)}d`
+  if (ageSeconds < SECONDS_PER_HOUR) return `${Math.floor(ageSeconds / 60)}m`
+  if (ageSeconds < SECONDS_PER_DAY) return `${Math.floor(ageSeconds / SECONDS_PER_HOUR)}h`
+  return `${Math.floor(ageSeconds / SECONDS_PER_DAY)}d`
 }
 
 /** Format a millisecond timestamp as "just now", "5s ago", "3m ago" */

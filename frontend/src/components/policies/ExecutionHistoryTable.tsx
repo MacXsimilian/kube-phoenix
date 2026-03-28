@@ -23,11 +23,9 @@ const STATUS_OPTIONS = ['all', 'running', 'success', 'failed'] as const
 
 export default function ExecutionHistoryTable({
   executions,
-  policyId,
   onRowClick,
 }: {
   executions: PolicyExecutionPage | undefined
-  policyId: number
   onRowClick: (exec: PolicyExecution) => void
 }) {
   const [statusFilter, setStatusFilter] = useState<string>('all')

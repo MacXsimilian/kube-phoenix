@@ -105,9 +105,10 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 **Purpose:** Evaluate policies on a configurable tick interval (default 30 seconds) and orchestrate sleep/wake executions when intended state diverges from actual state.
 
 **Key types:**
-- `PolicyScheduler` -- owns the tick loop, in-memory policy cache (`map[uint]cachedPolicy`), `PolicyRunner` (from `scaler`), and `Broker`. Protected by `sync.Mutex`.
+- `PolicyScheduler` -- owns the tick loop, in-memory policy cache (`map[uint]cachedPolicy`), runner, and `Broker`. Store and runner dependencies are held as interfaces (`schedulerStore`, `policyRunner`) for testability. Protected by `sync.Mutex`.
 - `cachedPolicy` -- pairs a `store.Policy` with its parsed `[]policy.SleepWindow`.
 - `PolicyState` -- string enum: `"sleeping"`, `"awake"`, `"unknown"`.
+- `evalContext` -- per-tick configuration passed through evaluation functions: `now`, `autoWake`, `reconcileWhileAwake`.
 - `Broker` -- in-process pub/sub for execution log lines (see `broker.go`).
 - `SchedulerConfig` -- groups the three runtime-tunable settings: `TickInterval`, `AutoWake`, `ReconcileWhileAwake`.
 
@@ -119,8 +120,12 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `RunSleepNow(policyID, trigger)` / `RunWakeNow(policyID, trigger)` -- manual triggers; return the new execution ID.
 - `TickExceptions(ctx)` -- called every 60s; delegates to `maybeStartException` (pending → active when `StartsAt` passes) and `maybeEndException` (active → completed when `EndsAt` passes, triggers sleep-on-end if configured).
 - `run(ctx, policy, direction, trigger)` -- core orchestration: sets `transitioning` state, creates `PolicyExecution`, spawns goroutine that runs `PolicyRunner.RunPolicySleep/Wake`, persists log lines, publishes to broker. Post-execution cleanup is delegated to extracted helpers: `finalizeExecution` (determines final status, calls `FinishPolicyExecution`), `recordExecutionMetrics` (Prometheus counters and histograms), and `updatePolicyState` (sets `sleeping`, `awake`, or `unknown` in both DB and cache).
-- `evaluateAll()` -- snapshots the cached policy map and calls `evaluatePolicy` for each.
-- `evaluatePolicy(cp, now)` -- computes `IntendedState`, checks for skip overrides, fires `run()` on mismatch.
+- `evaluateAll()` -- snapshots the cached policy map, builds an `evalContext`, and calls `evaluatePolicy` for each.
+- `evaluatePolicy(cp, ctx)` -- computes `IntendedState` and routes to one of three paths: `reconcilePolicy` (current matches intended), `resetStuckTransition` (stuck in transitioning), or `executeTransition` (state change needed).
+- `reconcilePolicy(p, ctx)` -- called when a policy is already in its intended state. When `reconcileWhileAwake` is enabled and the policy is awake, delegates to `reconcileAwakePolicy`.
+- `reconcileAwakePolicy(p, now)` -- detects drift from failed wakes by counting open snapshots that need restoring (`CountOpenSnapshotsForRestore`). If drift is found and the per-policy backoff (5 minutes) has elapsed, runs a corrective wake with trigger `"reconcile"`. Bypasses the `autoWake` gate and `skip_wake` overrides.
+- `executeTransition(p, intended, overrides, ctx)` -- handles scheduled sleep/wake transitions, respecting the `autoWake` gate and skip overrides.
+- `resetStuckTransition(p, now)` -- resets policies stuck in `transitioning` for longer than `stuckTransitionTimeout` (10 minutes) back to `unknown`.
 - `UpdateSettings(cfg SchedulerConfig) error` -- apply new eval interval, auto-wake, and reconcile-while-awake at runtime; restarts the ticker goroutine only if the interval changed.
 
 **Policy Engine (`policy_engine.go`):**
@@ -234,7 +239,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `store.go` | `New(dsn)` -- opens PostgreSQL connection, configures pool (10 open, 5 idle, 5m lifetime), runs `AutoMigrate`, adds CHECK constraints, migrates legacy cron columns. `Ping()`, `DB()`, `Tx()`. |
 | `models.go` | All GORM model struct definitions with tags. |
 | `status.go` | String constants: `PolicyState*`, `PolicyMode*`, `ExecStatus*`, `ExceptionStatus*`. |
-| `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning`, `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`. Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines`. Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `GetSnapshotsForExecution/Policy`, `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`. Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason), `ListOpenExceptions`, `UpdateScheduledExceptionStatus`. |
+| `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning`, `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`. Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines`. Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `CountOpenSnapshotsForRestore`, `GetSnapshotsForExecution/Policy`, `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`. Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason), `ListOpenExceptions`, `UpdateScheduledExceptionStatus`. |
 | `queries.go` | `GetGuardrails`, `UpdateGuardrails`, `SeedDefaults`, `DropAllTables`, `MigrateSchema`. |
 | `users.go` | `CreateUser`, `GetUserByID/Username`, `ListUsers`, `UpdateUser`, `DeleteUser` (transactional), `UpdateLastLogin`, `ChangePassword`, `GetOrCreateOIDCUser`, `HashPassword`, `CheckPassword`. |
 | `sessions.go` | `GenerateToken`, `CreateSession`, `GetSessionByToken` (with expiry check), `ExtendSession` (sliding window capped at `max_expires_at`), `DeleteSession`, `DeleteUserSessions`, `CleanExpiredSessions`, `CountActiveSessions`. |
@@ -343,7 +348,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 ### `internal/nodeutil` -- Node Protection Utilities
 
-**File:** `backend/internal/nodeutil/nodeutil.go`
+**File:** `backend/internal/nodeutil/protection.go`
 
 **Purpose:** Shared node protection logic used by both `api/cluster_nodes.go` (for computing node protection status in API responses) and `scaler/scaler.go` (for deciding which nodes to drain).
 
@@ -497,7 +502,7 @@ type PolicyExecution struct {
     ID         uint
     PolicyID   uint       // FK -> policies (CASCADE)
     Direction  string     // "sleep" | "wake"
-    Trigger    string     // "scheduled" | "manual_sleep" | "manual_wake" | "recovery" | "exception_start" | "exception_end"
+    Trigger    string     // "scheduled" | "manual_sleep" | "manual_wake" | "recovery" | "reconcile" | "exception_start" | "exception_end"
     StartedAt  time.Time
     FinishedAt *time.Time
     Status     string     // "running" | "success" | "failed" | "interrupted" | "skipped"
@@ -638,10 +643,10 @@ The `transitioning` state is the concurrency guard. While a policy is `transitio
 
 ```mermaid
 stateDiagram-v2
-    [*] --> running: execution created
-    running --> success: completed without error
-    running --> failed: completed with error
-    running --> interrupted: server restarted (MarkInterruptedPolicyExecutions)
+    [*] --> running: created
+    running --> success: no error
+    running --> failed: error
+    running --> interrupted: server restart
 ```
 
 Note: `skipped` exists as a constant but is not currently used in the normal flow.
@@ -650,11 +655,11 @@ Note: `skipped` exists as a constant but is not currently used in the normal flo
 
 ```mermaid
 stateDiagram-v2
-    [*] --> pending: exception created
-    pending --> active: StartsAt reached (TickExceptions)
-    active --> completed: EndsAt reached (TickExceptions)
-    pending --> cancelled: deleted via API
-    active --> cancelled: deleted via API (triggers sleep-on-end)
+    [*] --> pending: created
+    pending --> active: StartsAt reached
+    active --> completed: EndsAt reached
+    pending --> cancelled: deleted
+    active --> cancelled: deleted (sleep-on-end)
 ```
 
 ### Sleep Window Storage and Evaluation
@@ -1100,6 +1105,8 @@ Test files exist for:
 |:--------|:----------|:-------------|
 | `internal/policy` | `evaluator_test.go` | `Evaluate()` and `NextTransition()` -- same-day windows, overnight windows, all-day windows, timezone handling |
 | `internal/policy` | `windows_test.go` | `ValidateWindows()` -- structural validation, `CronsToWindows()` -- legacy migration |
+| `internal/scheduler` | `policy_scheduler_test.go` | Scheduler evaluation pipeline with mock store and runner interfaces -- drift detection, reconcile backoff, stuck transition reset, skip overrides |
+| `internal/scheduler` | `policy_engine_test.go` | `IntendedState()` override precedence, `HasSkipOverride()` consumption |
 | `internal/auth` | `permissions_test.go` | `HasPermission()`, `PermissionsForRole()`, `ValidRole()` |
 | `internal/auth` | `ratelimit_test.go` | `RateLimiter.Allow()`, `Reset()`, sliding window behavior |
 | `internal/auth` | `oidc_test.go` | `MapGroupsToRole()`, `OIDCConfigFromEnv()` |
