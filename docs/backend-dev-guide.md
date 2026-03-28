@@ -76,7 +76,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | File | Handlers |
 |:-----|:---------|
 | `router.go` | `NewRouter()` -- builds the full Chi router with middleware stack and route registration |
-| `auth.go` | `login`, `logout`, `me`, `changePassword`, `createSessionCookies`, `clearSessionCookies` |
+| `auth.go` | `login`, `logout`, `me`, `changePassword`, `updateUserSettings`, `createSessionCookies`, `clearSessionCookies` |
 | `oidc.go` | `oidcConfig`, `oidcLogin`, `oidcCallback`, `oidcExchangeAndVerify`, `oidcExtractClaims` |
 | `policies.go` | `listPolicies`, `getPolicy`, `createPolicy`, `updatePolicy`, `deletePolicy`, `triggerPolicySleep`, `triggerPolicyWake` |
 | `exceptions.go` | `listExceptions`, `getException`, `createException`, `updateException`, `deleteException` |
@@ -92,6 +92,8 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `admin.go` | `resetDB` -- streams NDJSON progress events while dropping/recreating all tables |
 | `ws.go` | `wsReadPump`, `wsSendLines`, `wsDrainChannel`, `wsStreamLoop` -- WebSocket helpers |
 | `helpers.go` | `jsonOK`, `jsonCreated`, `jsonError`, `jsonInternalError`, `parseID`, `parsePageSize`, `reloadScheduler` |
+| `cluster_info.go` | `getClusterInfo` -- returns Kubernetes API server URL, version, auth mode, and cluster name |
+| `version.go` | `getVersion` -- returns build version (set via `-ldflags`), Go version, and server uptime. No auth required. |
 | `errmsg.go` | String constants: `ErrInvalidID`, `ErrNotFound`, `ErrInvalidBody` |
 
 **Validation helpers:** `validatePolicyMode` and `validatePolicyTimezone` are shared functions used by both `createPolicy` and `updatePolicy` to enforce valid mode and timezone values.
@@ -179,6 +181,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 **Key types:**
 - `Client` -- wraps `*kubernetes.Clientset`. Created via `New()` which tries in-cluster config first, then falls back to `KUBECONFIG` or `~/.kube/config`.
+- `ClusterInfoResult` -- `{APIServer, KubernetesVersion, AuthMode, ClusterName}` returned by `ClusterInfo()`.
 - `ContainerMetrics` -- `{CPUMillis, MemBytes}` from the Metrics Server API.
 - `ClusterCache` -- in-memory mirror of cluster state driven by SharedInformers (see below).
 - `CachedSnapshot` -- point-in-time copy: `Nodes`, `Pods`, `Deployments`, `StatefulSets`, `FetchedAt`.
@@ -197,6 +200,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `GetPodEvents(ctx, ns, podName)` -- events filtered by `involvedObject.name`.
 - `GetAllPodMetrics(ctx)` -- hits `/apis/metrics.k8s.io/v1beta1/pods`, returns `map[string]ContainerMetrics` keyed by `"namespace/podName"`. Returns empty map (not error) when metrics server is unavailable.
 - `GetPodMetrics(ctx, ns, name)` -- per-container metrics for a single pod.
+- `ClusterInfo(ctx)` -- returns `ClusterInfoResult{APIServer, KubernetesVersion, AuthMode, ClusterName}`. Cached with a 5-minute TTL. `ClusterName` is read from the `CLUSTER_NAME` env var.
 
 **Dependencies:** `k8s.io/client-go`, `k8s.io/api`, `k8s.io/apimachinery`.
 
@@ -243,7 +247,8 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `status.go` | String constants: `PolicyState*`, `PolicyMode*`, `ExecStatus*`, `ExceptionStatus*`. |
 | `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning` (atomic conditional update, returns `ErrTransitionAlreadyClaimed` on race), `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`, `ResetStuckTransitioningPolicies`. Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines`. Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `CountOpenSnapshotsForRestore`, `GetSnapshotsForExecution/Policy`, `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`. Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason), `ListOpenExceptions`, `UpdateScheduledExceptionStatus`. |
 | `queries.go` | `GetGuardrails`, `UpdateGuardrails`, `SeedDefaults`, `DropAllTables`, `MigrateSchema`. |
-| `users.go` | `CreateUser`, `GetUserByID/Username`, `ListUsers`, `UpdateUser`, `DeleteUser` (transactional), `UpdateLastLogin`, `ChangePassword`, `GetOrCreateOIDCUser`, `HashPassword`, `CheckPassword`. |
+| `store_helpers.go` | `selectiveUpdate` -- shared GORM helper that applies only allowed fields from an update map. Used by `UpdateUser`. |
+| `users.go` | `CreateUser`, `GetUserByID/Username`, `ListUsers`, `UpdateUser`, `DeleteUser` (transactional), `UpdateLastLogin`, `ChangePassword`, `UpdateUserTimezone`, `GetOrCreateOIDCUser`, `HashPassword`, `CheckPassword`. |
 | `sessions.go` | `GenerateToken`, `CreateSession`, `GetSessionByToken` (with expiry check), `ExtendSession` (sliding window capped at `max_expires_at`), `DeleteSession`, `DeleteUserSessions`, `CleanExpiredSessions`, `CountActiveSessions`. |
 | `audit.go` | `CreateAuditLog`, `ListAuditLogs` (filtered, paginated), `CleanOldAuditLogs`. |
 
@@ -405,19 +410,20 @@ Seeded with production defaults in `SeedDefaults()`. The scaler reads these befo
 
 ```go
 type User struct {
-    ID           uint
-    Username     string    // unique composite index with Source
-    GivenName    string    // from OIDC claims
-    FamilyName   string    // from OIDC claims
-    Email        string
-    PasswordHash string    // bcrypt, omitted from JSON
-    Role         string    // "admin" | "operator" | "viewer"
-    Source       string    // "local" | "oidc"
-    OIDCSubject  *string   // OIDC sub claim, unique, nullable
-    Enabled      bool      // disabled users cannot log in or use existing sessions
-    CreatedAt    time.Time
-    UpdatedAt    time.Time
-    LastLoginAt  *time.Time
+    ID              uint
+    Username        string    // unique composite index with Source
+    GivenName       string    // from OIDC claims
+    FamilyName      string    // from OIDC claims
+    Email           string
+    PasswordHash    string    // bcrypt, omitted from JSON
+    Role            string    // "admin" | "operator" | "viewer"
+    Source          string    // "local" | "oidc"
+    OIDCSubject     *string   // OIDC sub claim, unique, nullable
+    Enabled         bool      // disabled users cannot log in or use existing sessions
+    DefaultTimezone string    // IANA timezone (default "UTC"), used as default for new policies
+    CreatedAt       time.Time
+    UpdatedAt       time.Time
+    LastLoginAt     *time.Time
 }
 ```
 

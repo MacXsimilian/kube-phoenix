@@ -83,8 +83,8 @@ Prometheus metrics from a single HTTP listener on port 8080.
 **Key responsibilities:**
 - Route requests through a middleware stack: request ID, structured logging,
   panic recovery, CORS, body size limit, session auth, CSRF protection, RBAC.
-- Expose 25+ REST endpoints under `/api/*` for policies, executions, cluster
-  state, guardrails, users, audit logs, and exceptions.
+- Expose 30+ REST endpoints under `/api/*` for policies, executions, cluster
+  state, guardrails, users, audit logs, exceptions, and system info.
 - Serve the embedded Next.js SPA for all non-API paths (SPA fallback to
   `index.html` for client-side routing).
 - Expose `/healthz` (liveness probe) and `/metrics` (Prometheus) without
@@ -254,6 +254,7 @@ erDiagram
         varchar source "local/oidc"
         varchar oidc_subject "nullable"
         boolean enabled
+        varchar default_timezone "UTC"
     }
 
     policies {
@@ -442,6 +443,8 @@ kube-phoenix/
 │   │   │   ├── guardrails.go        # Guardrails get/update
 │   │   │   ├── users.go             # User CRUD (admin only)
 │   │   │   ├── audit.go             # AuditWriter (buffered async channel), audit() enqueue helper, marshalOrNull()
+│   │   │   ├── cluster_info.go       # Cluster metadata (API server, K8s version, auth mode, name)
+│   │   │   ├── version.go           # Build version, Go version, server uptime (no auth)
 │   │   │   ├── admin.go             # DB reset (streaming NDJSON)
 │   │   │   ├── errmsg.go            # Centralized error message constants
 │   │   │   ├── ws.go                # WebSocket helpers
@@ -458,21 +461,27 @@ kube-phoenix/
 │   │   │   ├── annotation_fallback_test.go # Tests for annotation-based recovery path
 │   │   │   └── scale_down.go        # Node drain/delete helpers (classifyNodes, drainNodes, drainAndDeleteNode)
 │   │   ├── policy/
-│   │   │   └── windows.go           # SleepWindow type, validation, evaluator
+│   │   │   ├── evaluator.go         # Pure sleep window evaluation (Evaluate, NextTransition)
+│   │   │   └── windows.go           # SleepWindow type definition and validation
 │   │   ├── k8s/
 │   │   │   ├── client.go            # Typed Kubernetes API wrapper
 │   │   │   └── cache.go             # ClusterCache: SharedInformer-driven event cache
 │   │   ├── store/
 │   │   │   ├── models.go            # GORM model structs
 │   │   │   ├── store.go             # DB connection, AutoMigrate, connection pool
-│   │   │   └── queries.go           # All DB queries, SeedDefaults
+│   │   │   ├── policies.go          # Policy CRUD, executions, log lines, snapshots, overrides, exceptions
+│   │   │   ├── queries.go           # Guardrails queries, SeedDefaults, DropAllTables
+│   │   │   ├── store_helpers.go     # Shared GORM helpers (selectiveUpdate)
+│   │   │   ├── sessions.go          # Session CRUD, sliding window, cleanup
+│   │   │   ├── users.go             # User CRUD, OIDC provisioning, password hashing, timezone updates
+│   │   │   ├── audit.go             # Audit log CRUD, retention cleanup
+│   │   │   └── status.go            # String constants for policy/execution/exception states
 │   │   ├── auth/
 │   │   │   ├── oidc.go              # OIDC provider discovery, token exchange, claim mapping
 │   │   │   ├── permissions.go       # RBAC permission checks by role
 │   │   │   └── ratelimit.go         # Per-IP and per-username login throttling
 │   │   ├── middleware/
-│   │   │   ├── auth.go              # Session auth, CSRF double-submit
-│   │   │   └── ratelimit.go         # Per-IP and per-username login throttling
+│   │   │   └── auth.go              # Session auth, CSRF double-submit
 │   │   ├── metrics/
 │   │   │   └── metrics.go           # Prometheus metrics (promauto registration)
 │   │   ├── nodeutil/
@@ -495,7 +504,7 @@ kube-phoenix/
 │   │   │   ├── guardrails/          # GuardrailsForm, ProtectedChipInput
 │   │   │   ├── history/             # ExecutionTable, LogViewer, ExecutionSummary, parseSummary, useExecutionLogs
 │   │   │   ├── policies/            # PolicyCard, timelines, WindowPicker, PolicyHeroBand, timelineSegments
-│   │   │   └── settings/            # AccountSettings, AppearanceSettings, DatabaseSettings, OIDCStatusCard
+│   │   │   └── settings/            # AccountSettings, AppearanceSettings, DatabaseSettings, OIDCStatusCard, ActiveSessionsCard, ClusterConnectionCard, AboutBar
 │   │   ├── lib/                     # API client, auth, types, query client, utilities, shared hooks
 │   │   └── theme/                   # MUI theme (dark + light mode)
 │   ├── next.config.mjs              # Static export, trailing slash

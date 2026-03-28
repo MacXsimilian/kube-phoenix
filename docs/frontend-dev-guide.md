@@ -62,7 +62,7 @@ frontend/
       history/page.tsx          # /history -- execution history
       audit/page.tsx            # /audit -- audit log (viewer and above)
       users/page.tsx            # /users -- user management (admin)
-      settings/page.tsx         # /settings -- appearance, account, OIDC, DB reset
+      settings/page.tsx         # /settings -- two-column grid: account, appearance, OIDC, sessions, cluster, DB reset, about
       guardrails/page.tsx       # /guardrails -- guardrails editor
     components/
       layout/
@@ -125,15 +125,18 @@ frontend/
         GuardrailsForm.tsx      # Chip-based namespace/label/taint editor (uses ChipInput + ProtectedChipInput)
         ProtectedChipInput.tsx  # ChipInput variant with removal confirmation dialog
       settings/
-        AccountSettings.tsx     # Password change (local users only)
+        AccountSettings.tsx     # Timezone selector (defaults from user preference)
         DatabaseSettings.tsx    # Multi-step DB reset with confirmation phrase
-        AppearanceSettings.tsx  # Light/dark/system theme selector
-        OIDCStatusCard.tsx      # OIDC provider connection status display
+        AppearanceSettings.tsx  # Light/dark/system theme selector with card header icon
+        OIDCStatusCard.tsx      # OIDC provider connection status (green status bar)
+        ActiveSessionsCard.tsx  # Active sessions placeholder
+        ClusterConnectionCard.tsx # Kubernetes cluster connection details
+        AboutBar.tsx            # Version and uptime footer bar
       ErrorBoundary.tsx         # React error boundary
     lib/
       api.ts                    # Centralized fetch wrapper + all API functions
-      auth.tsx                  # AuthContext provider, login/logout, session management
-      types.ts                  # TypeScript interfaces for all backend models + shared UI types (SnackMessage)
+      auth.tsx                  # AuthContext provider, login/logout, refreshUser, session management
+      types.ts                  # TypeScript interfaces for all backend models + shared UI types (SnackMessage, ClusterInfo, VersionInfo)
       colors.ts                 # Semantic color palette, useColors() hook, TIMELINE_COLORS
       statusColors.ts           # Color maps for states, executions, modes, types, log levels
       constants.ts              # Polling intervals, drawer constraints, log limits, timezones
@@ -818,16 +821,29 @@ A summary line above the panel shows the count of changed fields.
 
 **Page:** `src/app/settings/page.tsx`
 
-Composes multiple settings cards: `AppearanceSettings`, `AccountSettings`, `OIDCStatusCard`, and `DatabaseSettings`.
+Full-width two-column Grid layout composing: `AccountSettings`, `AppearanceSettings`, `OIDCStatusCard`, `ActiveSessionsCard`, `ClusterConnectionCard`, `DatabaseSettings`, and `AboutBar`.
 
 #### AccountSettings
 
 `src/components/settings/AccountSettings.tsx`
 
 - Displays username, role, source (local/OIDC)
-- "Change Password" button (only for `source === 'local'`) opens a dialog
-- Uses direct `async/await` with `changePasswordAPI()` rather than `useMutation` (simpler for single-use forms)
-- Validation: current password required, new password minimum 8 characters
+- Timezone selector: IANA timezone dropdown that persists via `PUT /api/auth/settings`
+- The selected timezone is used as the default when creating new policies
+
+#### ClusterConnectionCard
+
+`src/components/settings/ClusterConnectionCard.tsx`
+
+- Displays Kubernetes API server URL, version, auth mode, and cluster name
+- Fetches from `GET /api/cluster/info`
+
+#### AboutBar
+
+`src/components/settings/AboutBar.tsx`
+
+- Displays build version and server uptime
+- Fetches from `GET /api/version` (no auth required)
 
 #### DatabaseSettings
 
@@ -1073,7 +1089,7 @@ sx={{ bgcolor: stateStyle.bg, color: stateStyle.color }}
 - **Resize handle:** `display: { xs: 'none', md: 'block' }` -- hidden on mobile
 - **Sidebar:** Temporary drawer on mobile (`xs`), permanent on desktop (`md`)
 - **Grid layouts:** `<Grid size={{ xs: 12, md: 6 }}>` -- full width on mobile, half on desktop
-- **Page max-width:** Settings page uses `maxWidth: 720` with `mx: 'auto'` (form-centric layout). All other pages fill the available width provided by AppShell padding
+- **Page max-width:** Settings page uses a full-width two-column Grid layout. All other pages fill the available width provided by AppShell padding
 
 ### Typography and Spacing
 
