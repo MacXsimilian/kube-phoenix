@@ -379,7 +379,11 @@ func RevertExceptionAction(ps *PolicyScheduler, policyID uint, exType string, tr
 	}
 	now := time.Now()
 	windows := parsePolicyWindows(*p)
-	overrides, _ := ps.store.ListActiveOverrides(policyID, now)
+	overrides, err := ps.store.ListActiveOverrides(policyID, now)
+	if err != nil {
+		slog.Warn("exception revert: failed to fetch overrides, proceeding without",
+			"policyID", policyID, "err", err)
+	}
 	// Do NOT include exceptions — this is called as the exception ends,
 	// so we want the schedule-only + override view.
 	intended := IntendedState(StateInput{
@@ -887,9 +891,11 @@ func (ps *PolicyScheduler) updatePolicyState(policyID uint, direction, status st
 			"policyID", policyID, "newState", newState, "err", err)
 	}
 
+	now := time.Now()
 	ps.mu.Lock()
 	if cp, ok := ps.policies[policyID]; ok {
 		cp.policy.CurrentState = newState
+		cp.policy.StateSince = &now
 		ps.policies[policyID] = cp
 	}
 	ps.mu.Unlock()
