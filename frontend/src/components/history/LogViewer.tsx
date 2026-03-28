@@ -45,7 +45,7 @@ type WorkloadEntry = {
   kind: 'Deployment' | 'StatefulSet'
   ns: string
   name: string
-  to: number
+  targetReplicas: number
   action: 'scaled' | 'restored' | 'plan'
 }
 
@@ -71,21 +71,21 @@ function parseSummary(lines: LogLine[]): ParsedSummary {
     // scale-down: "Scaled Deployment ns/name → 0"
     const scaled = m.match(/^Scaled (Deployment|StatefulSet) (\S+)\/(\S+) → (\d+)$/)
     if (scaled) {
-      workloads.push({ kind: scaled[1] as WorkloadEntry['kind'], ns: scaled[2], name: scaled[3], to: parseInt(scaled[4]), action: 'scaled' })
+      workloads.push({ kind: scaled[1] as WorkloadEntry['kind'], ns: scaled[2], name: scaled[3], targetReplicas: parseInt(scaled[4]), action: 'scaled' })
       continue
     }
 
     // scale-up: "Restored Deployment ns/name → N"
     const restored = m.match(/^Restored (Deployment|StatefulSet) (\S+)\/(\S+) → (\d+)$/)
     if (restored) {
-      workloads.push({ kind: restored[1] as WorkloadEntry['kind'], ns: restored[2], name: restored[3], to: parseInt(restored[4]), action: 'restored' })
+      workloads.push({ kind: restored[1] as WorkloadEntry['kind'], ns: restored[2], name: restored[3], targetReplicas: parseInt(restored[4]), action: 'restored' })
       continue
     }
 
     // plan: "Would scale|restore Deployment ns/name → N"
     const planned = m.match(/^Would (?:scale|restore) (Deployment|StatefulSet) (\S+)\/(\S+) → (\d+)$/)
     if (planned) {
-      workloads.push({ kind: planned[1] as WorkloadEntry['kind'], ns: planned[2], name: planned[3], to: parseInt(planned[4]), action: 'plan' })
+      workloads.push({ kind: planned[1] as WorkloadEntry['kind'], ns: planned[2], name: planned[3], targetReplicas: parseInt(planned[4]), action: 'plan' })
       continue
     }
 
@@ -207,7 +207,7 @@ function PolicyExecutionSummary({ lines }: { lines: LogLine[] }) {
                           </TableCell>
                           <TableCell sx={{ width: 70, textAlign: 'right' }}>
                             <Chip
-                              label={w.action === 'restored' ? `→ ${w.to}` : chip.label}
+                              label={w.action === 'restored' ? `→ ${w.targetReplicas}` : chip.label}
                               size="small"
                               sx={{ height: 16, fontSize: 10, bgcolor: `${chip.color}22`, color: chip.color, '& .MuiChip-label': { px: 0.75 } }}
                             />
@@ -308,7 +308,7 @@ export default function LogViewer({
   const [liveLines, setLiveLines] = useState<LogLine[]>([])
   const [copied, setCopied] = useState(false)
   const [wsError, setWsError] = useState(false)
-  const [drawerWidth, handleResizeMouseDown, handleResizeTouchStart] = useDrawerResize(640)
+  const { width: drawerWidth, onMouseDown: handleResizeMouseDown, onTouchStart: handleResizeTouchStart } = useDrawerResize(640)
   const [currentErrorIdx, setCurrentErrorIdx] = useState(-1)
   const bottomRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)

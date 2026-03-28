@@ -75,10 +75,10 @@ export function windowsToText(windows: SleepWindow[]): string {
   if (!windows || windows.length === 0) return ''
 
   return windows
-    .map(window => {
-      const days = formatDayRange(window.daysOfWeek)
-      if (window.allDay) return `${days} all day`
-      return `${days} ${formatTime(window.startTime)} \u2013 ${formatTime(window.endTime)}`
+    .map(sw => {
+      const days = formatDayRange(sw.daysOfWeek)
+      if (sw.allDay) return `${days} all day`
+      return `${days} ${formatTime(sw.startTime)} \u2013 ${formatTime(sw.endTime)}`
     })
     .join(', ')
 }
@@ -102,21 +102,21 @@ export function hasSleepWindows(windows: SleepWindow[] | null | undefined): wind
 export function computeWeeklyStats(windows: SleepWindow[]): { sleepHours: number; awakeHours: number } {
   let sleepMinutes = 0
 
-  for (const window of windows) {
-    if (window.daysOfWeek.length === 0) continue
+  for (const sw of windows) {
+    if (sw.daysOfWeek.length === 0) continue
     let minutesPerDay: number
-    if (window.allDay) {
+    if (sw.allDay) {
       minutesPerDay = MINUTES_PER_DAY
     } else {
-      const [sh, sm] = window.startTime.split(':').map(Number)
-      const [eh, em] = window.endTime.split(':').map(Number)
+      const [sh, sm] = sw.startTime.split(':').map(Number)
+      const [eh, em] = sw.endTime.split(':').map(Number)
       const startMin = sh * MINUTES_PER_HOUR + sm
       const endMin = eh * MINUTES_PER_HOUR + em
       minutesPerDay = endMin <= startMin
         ? (MINUTES_PER_DAY - startMin) + endMin // overnight
         : endMin - startMin
     }
-    sleepMinutes += minutesPerDay * window.daysOfWeek.length
+    sleepMinutes += minutesPerDay * sw.daysOfWeek.length
   }
 
   const sleepHours = Math.round(sleepMinutes / MINUTES_PER_HOUR)
@@ -128,27 +128,47 @@ export function computeWeeklyStats(windows: SleepWindow[]): { sleepHours: number
  * optionally converted to the given IANA timezone.
  */
 export function nowInTimezone(tz?: string): { dayOfWeek: number; fractionalHour: number } {
-  let now = new Date()
-  if (tz) {
-    const dateInTimezone = now.toLocaleString('en-US', { timeZone: tz })
-    now = new Date(dateInTimezone)
+  const now = new Date()
+  if (!tz) {
+    return {
+      dayOfWeek: now.getDay(),
+      fractionalHour: now.getHours() + now.getMinutes() / 60,
+    }
   }
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  })
+  const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value]))
+  const inTz = new Date(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second)
   return {
-    dayOfWeek: now.getDay(),
-    fractionalHour: now.getHours() + now.getMinutes() / 60,
+    dayOfWeek: inTz.getDay(),
+    fractionalHour: inTz.getHours() + inTz.getMinutes() / 60,
   }
 }
 
 // ── Shared timeline math ─────────────────────────────────────────────────────
 
-/** Day-of-week index mapping: array index -> JS getDay() value */
-export const DOW_MAP = [1, 2, 3, 4, 5, 6, 0] // Mon..Sun
+/** Day-of-week index mapping: array index -> JS getDay() value (Monday-first layout) */
+export const MONDAY_FIRST_DOW_MAP = [1, 2, 3, 4, 5, 6, 0] // Mon..Sun
+
+/** @deprecated Use MONDAY_FIRST_DOW_MAP instead */
+export const DOW_MAP = MONDAY_FIRST_DOW_MAP
 
 /** Convert an ISO timestamp to a Date in the given IANA timezone. */
 export function toTimezone(iso: string, tz?: string): Date {
   const d = new Date(iso)
   if (!tz) return d
-  return new Date(d.toLocaleString('en-US', { timeZone: tz }))
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  })
+  const parts = Object.fromEntries(fmt.formatToParts(d).map(p => [p.type, p.value]))
+  return new Date(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second)
 }
 
 /** A day-row + fractional-hour range, independent of visual layout. */
@@ -173,7 +193,7 @@ export function computeTimeRangeBlocks(startISO: string, endISO: string, tz?: st
   endDay.setHours(0, 0, 0, 0)
 
   while (cursor <= endDay) {
-    const row = DOW_MAP.indexOf(cursor.getDay())
+    const row = MONDAY_FIRST_DOW_MAP.indexOf(cursor.getDay())
     if (row !== -1) {
       const isSameAsStart = cursor.getTime() === new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
       const isSameAsEnd = cursor.getTime() === endDay.getTime()

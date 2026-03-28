@@ -4,7 +4,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import { EXECUTION_STATUS_COLORS, EXECUTION_STATUS_FALLBACK } from '@/lib/statusColors'
 
 export default function StatusChip({ status }: { status: string }) {
-  const statusStyle = EXECUTION_STATUS_COLORS[status] ?? EXECUTION_STATUS_FALLBACK
+  const statusStyle = EXECUTION_STATUS_COLORS[status as keyof typeof EXECUTION_STATUS_COLORS] ?? EXECUTION_STATUS_FALLBACK
 
   if (status === 'running') {
     return (
@@ -17,7 +17,7 @@ export default function StatusChip({ status }: { status: string }) {
 
   return (
     <Chip
-      label={status}
+      label={status.charAt(0).toUpperCase() + status.slice(1)}
       size="small"
       sx={{ height: 18, fontSize: 10, bgcolor: statusStyle.bg, color: statusStyle.color }}
     />

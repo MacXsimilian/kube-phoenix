@@ -161,7 +161,7 @@ function TaintChip({ taint, effectColors }: { taint: NodeTaint; effectColors: Re
 
 export default function NodeDetailDrawer({ node, onClose }: { node: Node | null; onClose: () => void }) {
   const [search, setSearch] = useState('')
-  const [drawerWidth, handleResizeMouseDown, handleResizeTouchStart] = useDrawerResize(540)
+  const { width: drawerWidth, onMouseDown: handleResizeMouseDown, onTouchStart: handleResizeTouchStart } = useDrawerResize(540)
   const [selectedPod, setSelectedPod] = useState<NodePod | null>(null)
   const isDark = useTheme().palette.mode === 'dark'
   const colors = useColors()

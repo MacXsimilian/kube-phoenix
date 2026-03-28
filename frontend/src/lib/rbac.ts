@@ -4,9 +4,9 @@ export function hasPerm(permissions: string[] | undefined, perm: string): boolea
 }
 
 // Convenience wrappers for common checks.
-export const canEditSchedules    = (p?: string[]) => hasPerm(p, 'schedule.edit')
-export const canTriggerSchedules = (p?: string[]) => hasPerm(p, 'schedule.trigger')
-export const canEditGuardrails   = (p?: string[]) => hasPerm(p, 'guardrail.edit')
-export const canManageUsers      = (p?: string[]) => hasPerm(p, 'user.manage')
-export const canResetDB          = (p?: string[]) => hasPerm(p, 'admin.reset_db')
-export const canViewAudit        = (p?: string[]) => hasPerm(p, 'audit.view')
+export const canEditSchedules    = (permissions?: string[]) => hasPerm(permissions, 'schedule.edit')
+export const canTriggerSchedules = (permissions?: string[]) => hasPerm(permissions, 'schedule.trigger')
+export const canEditGuardrails   = (permissions?: string[]) => hasPerm(permissions, 'guardrail.edit')
+export const canManageUsers      = (permissions?: string[]) => hasPerm(permissions, 'user.manage')
+export const canResetDB          = (permissions?: string[]) => hasPerm(permissions, 'admin.reset_db')
+export const canViewAudit        = (permissions?: string[]) => hasPerm(permissions, 'audit.view')

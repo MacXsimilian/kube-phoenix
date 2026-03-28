@@ -2,7 +2,9 @@ import type { LogLine } from './types'
 
 // ── Policy state colors ──────────────────────────────────────────────────────
 
-export const STATE_COLORS: Record<string, { bg: string; color: string; label: string }> = {
+type PolicyState = 'sleeping' | 'awake' | 'transitioning' | 'unknown'
+
+export const STATE_COLORS: Record<PolicyState, { bg: string; color: string; label: string }> = {
   sleeping:      { bg: 'rgba(99,102,241,0.18)',  color: '#a5b4fc', label: 'Sleeping' },
   awake:         { bg: 'rgba(34,197,94,0.18)',   color: '#86efac', label: 'Awake' },
   transitioning: { bg: 'rgba(245,158,11,0.18)',  color: '#fcd34d', label: 'Transitioning' },
@@ -11,7 +13,9 @@ export const STATE_COLORS: Record<string, { bg: string; color: string; label: st
 
 // ── Execution / exception status colors ──────────────────────────────────────
 
-export const EXECUTION_STATUS_COLORS: Record<string, { bg: string; color: string }> = {
+type ExecutionStatus = 'running' | 'success' | 'failed' | 'interrupted' | 'skipped' | 'pending' | 'active' | 'completed' | 'cancelled'
+
+export const EXECUTION_STATUS_COLORS: Record<ExecutionStatus, { bg: string; color: string }> = {
   running:     { bg: 'rgba(245,158,11,0.18)',  color: '#fcd34d' },
   success:     { bg: 'rgba(34,197,94,0.18)',   color: '#86efac' },
   failed:      { bg: 'rgba(239,68,68,0.18)',   color: '#fca5a5' },
@@ -30,7 +34,9 @@ export const EXECUTION_STATUS_FALLBACK: { bg: string; color: string } = {
 
 // ── Mode colors (plan / apply chips) ─────────────────────────────────────────
 
-export const MODE_COLORS: Record<string, { bg: string; color: string }> = {
+type ExecutionMode = 'apply' | 'plan'
+
+export const MODE_COLORS: Record<ExecutionMode, { bg: string; color: string }> = {
   apply: { bg: 'rgba(245,158,11,0.18)', color: '#FCD34D' },
   plan:  { bg: 'rgba(59,130,246,0.18)',  color: '#93C5FD' },
 }
@@ -40,7 +46,7 @@ export const SMALL_CHIP_SX = { height: 18, fontSize: 10 } as const
 // ── Header gradient bars (per policy state) ──────────────────────────────────
 
 /** Horizontal gradient for PolicyCard top edge */
-export const CARD_HEADER_GRADIENTS: Record<string, string> = {
+export const CARD_HEADER_GRADIENTS: Record<PolicyState, string> = {
   sleeping:      'linear-gradient(90deg, #7C3AED 0%, #a5b4fc 50%, rgba(165,180,252,0.15) 100%)',
   awake:         'linear-gradient(90deg, #22C55E 0%, #86efac 50%, rgba(134,239,172,0.15) 100%)',
   transitioning: 'linear-gradient(90deg, #F59E0B 0%, #fcd34d 50%, rgba(252,211,77,0.15) 100%)',
@@ -48,7 +54,7 @@ export const CARD_HEADER_GRADIENTS: Record<string, string> = {
 }
 
 /** Vertical gradient for detail page hero band background */
-export const HERO_HEADER_GRADIENTS: Record<string, string> = {
+export const HERO_HEADER_GRADIENTS: Record<PolicyState, string> = {
   sleeping:      'linear-gradient(180deg, rgba(124,58,237,0.08) 0%, transparent 100%)',
   awake:         'linear-gradient(180deg, rgba(34,197,94,0.06) 0%, transparent 100%)',
   transitioning: 'linear-gradient(180deg, rgba(245,158,11,0.06) 0%, transparent 100%)',
@@ -56,7 +62,7 @@ export const HERO_HEADER_GRADIENTS: Record<string, string> = {
 }
 
 /** LED dot colors per policy state */
-export const LED_COLORS: Record<string, { bg: string; glow: string }> = {
+export const LED_COLORS: Record<PolicyState, { bg: string; glow: string }> = {
   sleeping:      { bg: '#a5b4fc', glow: 'rgba(165,180,252,0.5)' },
   awake:         { bg: '#86efac', glow: 'rgba(134,239,172,0.5)' },
   transitioning: { bg: '#fcd34d', glow: 'rgba(252,211,77,0.5)' },
@@ -68,7 +74,9 @@ export const SUBTLE_BORDER = 'rgba(255,255,255,0.04)'
 
 // ── Exception / override type labels ─────────────────────────────────────────
 
-export const TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+type OverrideType = 'stay_awake' | 'force_sleep' | 'skip_sleep' | 'skip_wake'
+
+export const TYPE_LABELS: Record<OverrideType, { label: string; color: string; bg: string }> = {
   stay_awake:  { label: 'Stay Awake',  color: '#FCD34D', bg: 'rgba(245,158,11,0.15)' },
   force_sleep: { label: 'Force Sleep', color: '#FCA5A5', bg: 'rgba(239,68,68,0.15)' },
   skip_sleep:  { label: 'Skip Sleep',  color: '#A5B4FC', bg: 'rgba(99,102,241,0.15)' },
@@ -97,7 +105,15 @@ export const LOG_LEVEL_COLORS_LIGHT: Record<LogLine['level'], string> = {
 
 // ── Audit action labels ─────────────────────────────────────────────────────
 
-export const ACTION_LABELS: Record<string, string> = {
+type AuditAction =
+  | 'policy.create' | 'policy.update' | 'policy.delete' | 'policy.sleep' | 'policy.wake'
+  | 'policy.override.create' | 'policy.override.delete'
+  | 'exception.create' | 'exception.update' | 'exception.delete'
+  | 'guardrail.update' | 'admin.reset_db'
+  | 'user.create' | 'user.update' | 'user.delete'
+  | 'auth.login' | 'auth.logout' | 'auth.password_change'
+
+export const ACTION_LABELS: Record<AuditAction, string> = {
   'policy.create': 'Policy Create', 'policy.update': 'Policy Update', 'policy.delete': 'Policy Delete',
   'policy.sleep': 'Policy Sleep', 'policy.wake': 'Policy Wake',
   'policy.override.create': 'Override Create', 'policy.override.delete': 'Override Delete',
@@ -109,7 +125,7 @@ export const ACTION_LABELS: Record<string, string> = {
 }
 
 export function formatActionLabel(action: string): string {
-  return ACTION_LABELS[action] ?? action.replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return (ACTION_LABELS as Record<string, string>)[action] ?? action.replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
 export function actionColor(action: string): 'error' | 'warning' | 'info' | 'success' | 'default' {
