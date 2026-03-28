@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.1...v0.5.2) (2026-03-28)
+
+
+### Features
+
+* **sessions:** add active sessions API, light mode support, and UI/UX improvements ([#268](https://github.com/MacXsimilian/kube-phoenix/issues/268)) ([c3caded](https://github.com/MacXsimilian/kube-phoenix/commit/c3cadedcea9dfbbc577541fa67a3c3af6f6eaed9))
+
 ## [0.5.1](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.0...v0.5.1) (2026-03-28)
 
 
