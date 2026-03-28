@@ -55,6 +55,11 @@ func main() {
 	} else if n > 0 {
 		slog.Warn("startup: marked policy executions as interrupted", "count", n)
 	}
+	if n, err := st.ResetStuckTransitioningPolicies(); err != nil {
+		slog.Error("startup: failed to reset stuck transitioning policies", "err", err)
+	} else if n > 0 {
+		slog.Warn("startup: reset stuck transitioning policies to unknown", "count", n)
+	}
 
 	// ── Kubernetes client ─────────────────────────────────────────────────
 	k8s, err := k8sclient.New()

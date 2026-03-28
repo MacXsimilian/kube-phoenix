@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"time"
 
@@ -16,8 +17,8 @@ import (
 const defaultScalingConcurrency = 10
 
 // PolicyRunner wraps Runner and adds DB-backed WorkloadSnapshot logic for
-// the policy model. RunPolicySleep / RunPolicyWake replace RunScaleDown /
-// RunScaleUp when a Policy drives the execution.
+// the policy model. RunPolicySleep and RunPolicyWake are the sole entry
+// points for all policy-driven scaling operations.
 type PolicyRunner struct {
 	base  *Runner
 	store *store.Store
@@ -361,7 +362,116 @@ func (r *PolicyRunner) RunPolicyWake(
 		return r.wakeWorkload(wakeParams, snap)
 	}, counts)
 
+	r.restoreOrphanedFromAnnotations(annotationFallbackParams{
+		ctx:        ctx,
+		policy:     policy,
+		guardrails: guardrails,
+		dbSnaps:    snaps,
+		logCh:      logCh,
+		counts:     counts,
+	})
+
 	emit(logCh, "info", fmt.Sprintf("Wake complete — restored %d workloads, %d skipped, %d errors",
 		counts.Scaled, counts.Skipped, counts.Errors))
 	return counts, nil
+}
+
+// annotationFallbackParams holds all context for the annotation-based recovery sweep.
+type annotationFallbackParams struct {
+	ctx        context.Context
+	policy     store.Policy
+	guardrails *store.Guardrails
+	dbSnaps    []store.WorkloadSnapshot
+	logCh      chan<- LogLine
+	counts     *Counts
+}
+
+// restoreOrphanedFromAnnotations scans workloads in the policy's scope for
+// leftover previous-replicas annotations that have no matching open snapshot.
+// This handles the edge case where the DB lost snapshot data but the K8s
+// annotation was written during sleep.
+func (r *PolicyRunner) restoreOrphanedFromAnnotations(p annotationFallbackParams) {
+	if !isApply(p.policy.Mode) {
+		return
+	}
+
+	snapshotedWorkloads := buildSnapshotedSet(p.dbSnaps)
+	entries := r.listAnnotatedWorkloads(p.ctx, p.policy, p.guardrails, p.logCh)
+
+	recovered := 0
+	for _, e := range entries {
+		if snapshotedWorkloads[workloadKey(e.Kind, e.Namespace, e.Name)] {
+			continue
+		}
+		if r.restoreFromAnnotation(p.ctx, e, p.logCh, p.counts) {
+			recovered++
+		}
+	}
+	if recovered > 0 {
+		emit(p.logCh, "info", fmt.Sprintf("Annotation fallback: recovered %d workloads from K8s annotations", recovered))
+	}
+}
+
+// buildSnapshotedSet returns the set of workload keys that already have DB snapshots.
+func buildSnapshotedSet(snaps []store.WorkloadSnapshot) map[string]bool {
+	set := make(map[string]bool, len(snaps))
+	for _, s := range snaps {
+		set[workloadKey(s.Kind, s.Namespace, s.Name)] = true
+	}
+	return set
+}
+
+// listAnnotatedWorkloads fetches all workloads matching the policy scope.
+// Deployments and StatefulSets are fetched independently so a failure in one
+// does not prevent recovery of the other.
+func (r *PolicyRunner) listAnnotatedWorkloads(
+	ctx context.Context,
+	policy store.Policy,
+	guardrails *store.Guardrails,
+	logCh chan<- LogLine,
+) []workloadEntry {
+	skipNS := splitCSV(guardrails.SystemNamespaces)
+	discardCounts := &Counts{}
+
+	deps, err := r.base.k8s.ListDeploymentsBySelector(ctx, "", policy.LabelSelector)
+	if err != nil {
+		emit(logCh, "warn", "Annotation fallback: failed to list deployments: "+err.Error())
+	}
+
+	ssets, err := r.base.k8s.ListStatefulSetsBySelector(ctx, "", policy.LabelSelector)
+	if err != nil {
+		emit(logCh, "warn", "Annotation fallback: failed to list statefulsets: "+err.Error())
+	}
+
+	return r.base.collectFilteredEntries(deps, ssets, skipNS, policy.NamespaceFilter, discardCounts, false)
+}
+
+// restoreFromAnnotation reads the previous-replicas annotation from a single
+// workload and restores it. Returns true when the workload was restored.
+func (r *PolicyRunner) restoreFromAnnotation(ctx context.Context, e workloadEntry, logCh chan<- LogLine, counts *Counts) bool {
+	savedStr, ok := e.Annotations[annotationKey]
+	if !ok {
+		return false
+	}
+
+	wl := formatWorkload(e.Kind, e.Namespace, e.Name)
+
+	target, parseErr := strconv.ParseInt(savedStr, 10, 32)
+	if parseErr != nil {
+		emit(logCh, "warn", fmt.Sprintf("Annotation fallback: invalid annotation value %q on %s: %s", savedStr, wl, parseErr))
+		return false
+	}
+	if target <= 0 {
+		return false
+	}
+
+	emit(logCh, "warn", fmt.Sprintf("Annotation fallback: restoring %s → %d (no DB snapshot found)", wl, target))
+	if err := r.restoreWorkload(ctx, e.Kind, e.Namespace, e.Name, int32(target)); err != nil {
+		emit(logCh, "error", fmt.Sprintf("Annotation fallback: failed to restore %s: %s", wl, err))
+		counts.Errors++
+		return false
+	}
+	emit(logCh, "ok", fmt.Sprintf("Annotation fallback: restored %s → %d replicas", wl, target))
+	counts.Scaled++
+	return true
 }

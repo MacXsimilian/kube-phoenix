@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +18,9 @@ type mockStore struct {
 	overrides          []store.PolicyOverride
 	openSnapshotCount  int64
 	policies           []store.Policy
+
+	// Stubbed errors — set before calling to inject failures.
+	transitionErr error
 
 	// Spy fields — record calls for assertions.
 	mu                     sync.Mutex
@@ -55,8 +59,9 @@ func (m *mockStore) UpdatePolicyState(id uint, state string, _ *time.Time) error
 func (m *mockStore) SetPolicyTransitioning(id uint) error {
 	m.mu.Lock()
 	m.transitioningClaims = append(m.transitioningClaims, id)
+	err := m.transitionErr
 	m.mu.Unlock()
-	return nil
+	return err
 }
 func (m *mockStore) DeletePolicyOverride(id uint) error {
 	m.mu.Lock()
@@ -338,5 +343,53 @@ func TestEvaluatePolicy_ScheduledTransition_RespectsAutoWake(t *testing.T) {
 	defer ms.mu.Unlock()
 	if len(ms.createdExecutions) != 0 {
 		t.Errorf("scheduled wake should respect autoWake=false, got %d executions", len(ms.createdExecutions))
+	}
+}
+
+// ─── Transition claim tests ──────────────────────────────────────────────────
+
+func TestClaimTransition_AlreadyClaimed_ReturnsErrPolicyTransitioning(t *testing.T) {
+	ms := &mockStore{
+		transitionErr: store.ErrTransitionAlreadyClaimed,
+	}
+	ps := newTestScheduler(ms)
+
+	err := ps.claimTransition(1)
+
+	if err == nil {
+		t.Fatal("expected error when transition already claimed")
+	}
+	if !errors.Is(err, ErrPolicyTransitioning) {
+		t.Errorf("expected ErrPolicyTransitioning, got %v", err)
+	}
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if len(ms.createdExecutions) != 0 {
+		t.Error("no execution should be created when claim fails")
+	}
+}
+
+func TestClaimTransition_Success_UpdatesCache(t *testing.T) {
+	ms := &mockStore{}
+	ps := newTestScheduler(ms)
+	ps.policies[1] = awakePolicy(1)
+
+	err := ps.claimTransition(1)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ps.mu.Lock()
+	cp := ps.policies[1]
+	ps.mu.Unlock()
+	if cp.policy.CurrentState != store.PolicyStateTransitioning {
+		t.Errorf("expected cache state=%q, got %q", store.PolicyStateTransitioning, cp.policy.CurrentState)
+	}
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if len(ms.transitioningClaims) != 1 || ms.transitioningClaims[0] != 1 {
+		t.Errorf("expected transitioning claim for policy 1, got %v", ms.transitioningClaims)
 	}
 }

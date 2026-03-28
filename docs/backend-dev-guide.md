@@ -45,7 +45,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 **Purpose:** Bootstrap the application, wire dependencies, start background goroutines, and handle graceful shutdown.
 
 **Key responsibilities:**
-- Parse `DATABASE_URL` from env, initialize `store.Store`, run `SeedDefaults()` and `MarkInterruptedPolicyExecutions()`.
+- Parse `DATABASE_URL` from env, initialize `store.Store`, run `SeedDefaults()`, `MarkInterruptedPolicyExecutions()`, and `ResetStuckTransitioningPolicies()`.
 - Create the Kubernetes client (`k8s.New()`), tolerating its absence (sets `k8s = nil`).
 - Start `ClusterCache`, `PolicyScheduler`, and maintenance tickers (session cleanup every 15m, audit retention daily).
 - Build the Chi router via `api.NewRouter()` and start `http.Server` with `ReadTimeout=15s`, `WriteTimeout=0` (disabled for WebSocket/SSE), `IdleTimeout=60s`.
@@ -165,8 +165,6 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 **Key functions (Runner):**
 - `collectFilteredEntries(deployments, statefulsets, skipNS, nsFilter, counts, countSkipped)` -- filters workloads by namespace and converts to `workloadEntry` slice.
-- `scaleDownWorkloads(ctx, mode, entries, logCh, counts)` -- annotate + scale to 0 for each entry.
-- `restoreWorkloads(ctx, mode, entries, logCh, counts)` -- restore from `previous-replicas` annotation.
 - `drainNodes(ctx, mode, guardrails, logCh, counts)` -- list nodes, identify protected ones, drain and delete the rest.
 - `drainAndDeleteNode(ctx, mode, name, podCount, drainTimeout, logCh, counts)` -- cordon, drain (dynamic timeout: `podCount*15 + 60` seconds), delete node object.
 - `isLabelProtected(labels, skipNodeLabels)` / `isTaintProtected(taints, skipNodeTaints)` -- thin wrappers that delegate to `nodeutil.MatchLabel` and `nodeutil.MatchTaint` respectively.
@@ -243,7 +241,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `store.go` | `New(dsn)` -- opens PostgreSQL connection, configures pool (10 open, 5 idle, 5m lifetime), runs `AutoMigrate`, adds CHECK constraints, migrates legacy cron columns. `Ping()`, `DB()`, `Tx()`. |
 | `models.go` | All GORM model struct definitions with tags. |
 | `status.go` | String constants: `PolicyState*`, `PolicyMode*`, `ExecStatus*`, `ExceptionStatus*`. |
-| `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning`, `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`. Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines`. Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `CountOpenSnapshotsForRestore`, `GetSnapshotsForExecution/Policy`, `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`. Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason), `ListOpenExceptions`, `UpdateScheduledExceptionStatus`. |
+| `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning` (atomic conditional update, returns `ErrTransitionAlreadyClaimed` on race), `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`, `ResetStuckTransitioningPolicies`. Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines`. Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `CountOpenSnapshotsForRestore`, `GetSnapshotsForExecution/Policy`, `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`. Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason), `ListOpenExceptions`, `UpdateScheduledExceptionStatus`. |
 | `queries.go` | `GetGuardrails`, `UpdateGuardrails`, `SeedDefaults`, `DropAllTables`, `MigrateSchema`. |
 | `users.go` | `CreateUser`, `GetUserByID/Username`, `ListUsers`, `UpdateUser`, `DeleteUser` (transactional), `UpdateLastLogin`, `ChangePassword`, `GetOrCreateOIDCUser`, `HashPassword`, `CheckPassword`. |
 | `sessions.go` | `GenerateToken`, `CreateSession`, `GetSessionByToken` (with expiry check), `ExtendSession` (sliding window capped at `max_expires_at`), `DeleteSession`, `DeleteUserSessions`, `CleanExpiredSessions`, `CountActiveSessions`. |
@@ -516,6 +514,7 @@ type PolicyExecution struct {
 ```
 
 - `MarkInterruptedPolicyExecutions()` runs at startup to mark any `running` executions as `interrupted` (server crashed mid-execution).
+- `ResetStuckTransitioningPolicies()` runs at startup to move any policy stuck in `transitioning` back to `unknown`, so the scheduler can re-evaluate immediately instead of waiting for the 10-minute stuck-transition timeout.
 - Count fields are populated by `FinishPolicyExecution` from the `Counts` struct returned by the scaler.
 
 #### PolicyLogLine

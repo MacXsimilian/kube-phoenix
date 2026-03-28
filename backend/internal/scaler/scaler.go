@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"strings"
 	"time"
 
@@ -165,87 +164,6 @@ func (r *Runner) collectFilteredEntries(
 		entries = append(entries, r.statefulSetToEntry(ss))
 	}
 	return entries
-}
-
-// scaleDownWorkloads annotates current replicas then scales each workload to 0.
-func (r *Runner) scaleDownWorkloads(ctx context.Context, mode string, entries []workloadEntry, logCh chan<- LogLine, counts *Counts) {
-	for _, e := range entries {
-		wl := formatWorkload(e.Kind, e.Namespace, e.Name)
-
-		if !r.saveAnnotation(ctx, mode, e, wl, logCh, counts) {
-			continue
-		}
-		if e.Replicas == 0 {
-			r.info(logCh, fmt.Sprintf("Already scaled down: %s", wl))
-			counts.Skipped++
-			continue
-		}
-		if isApply(mode) {
-			if err := e.Scale(ctx, e.Namespace, e.Name, 0); err != nil {
-				r.errLog(logCh, fmt.Sprintf("Failed to scale %s: %s", wl, err))
-				counts.Errors++
-				continue
-			}
-			r.ok(logCh, fmt.Sprintf("Scaled %s → 0", wl))
-		} else {
-			r.plan(logCh, fmt.Sprintf("Would scale %s → 0", wl))
-		}
-		counts.Scaled++
-	}
-}
-
-// restoreWorkloads restores each workload from the previous-replicas annotation.
-func (r *Runner) restoreWorkloads(ctx context.Context, mode string, entries []workloadEntry, logCh chan<- LogLine, counts *Counts) {
-	for _, e := range entries {
-		savedStr, ok := e.Annotations[annotationKey]
-		if !ok {
-			counts.Skipped++
-			continue
-		}
-		saved, err := strconv.ParseInt(savedStr, 10, 32)
-		if err != nil {
-			r.errLog(logCh, fmt.Sprintf("Invalid annotation on %s %s/%s: %s", e.Kind, e.Namespace, e.Name, savedStr))
-			counts.Errors++
-			continue
-		}
-		wl := formatWorkload(e.Kind, e.Namespace, e.Name)
-
-		if isApply(mode) {
-			if err := e.Scale(ctx, e.Namespace, e.Name, int32(saved)); err != nil {
-				r.errLog(logCh, fmt.Sprintf("Failed to scale up %s: %s", wl, err))
-				counts.Errors++
-				continue
-			}
-			r.ok(logCh, fmt.Sprintf("Restored %s → %d", wl, saved))
-			if err := e.RemoveAnnotation(ctx, e.Namespace, e.Name, annotationKey); err != nil {
-				r.errLog(logCh, fmt.Sprintf("Failed to remove annotation from %s: %s", wl, err))
-			}
-		} else {
-			r.plan(logCh, fmt.Sprintf("Would restore %s → %d", wl, saved))
-		}
-		counts.Scaled++
-	}
-}
-
-// saveAnnotation saves the current replica count annotation. Returns false if the
-// workload should be skipped (annotation error in apply mode).
-func (r *Runner) saveAnnotation(ctx context.Context, mode string, e workloadEntry, wl string, logCh chan<- LogLine, counts *Counts) bool {
-	if _, alreadySaved := e.Annotations[annotationKey]; alreadySaved {
-		r.info(logCh, fmt.Sprintf("Annotation already saved for %s (skipping overwrite)", wl))
-		return true
-	}
-	if isApply(mode) {
-		if err := e.Annotate(ctx, e.Namespace, e.Name, annotationKey, fmt.Sprintf("%d", e.Replicas)); err != nil {
-			r.errLog(logCh, fmt.Sprintf("Failed to annotate %s: %s", wl, err))
-			counts.Errors++
-			return false
-		}
-		r.info(logCh, fmt.Sprintf("Saved replicas=%d for %s", e.Replicas, wl))
-	} else {
-		r.plan(logCh, fmt.Sprintf("Would save replicas=%d for %s", e.Replicas, wl))
-	}
-	counts.Saved++
-	return true
 }
 
 // ── Node protection helpers ──────────────────────────────────────────────────

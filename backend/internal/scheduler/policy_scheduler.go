@@ -85,6 +85,7 @@ type PolicyScheduler struct {
 	parentCtx             context.Context
 	policies              map[uint]cachedPolicy
 	lastReconcileAttempt  map[uint]time.Time
+	inflight              sync.WaitGroup // tracks running execution goroutines
 }
 
 // NewPolicyScheduler creates a PolicyScheduler. Pass nil k8sClient in tests.
@@ -114,7 +115,7 @@ func (ps *PolicyScheduler) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop gracefully shuts down the ticker.
+// Stop gracefully shuts down the ticker and waits for in-flight executions.
 func (ps *PolicyScheduler) Stop() {
 	ps.mu.Lock()
 	cancel := ps.cancel
@@ -122,6 +123,7 @@ func (ps *PolicyScheduler) Stop() {
 	if cancel != nil {
 		cancel()
 	}
+	ps.inflight.Wait()
 }
 
 // UpdateSettings applies new scheduler settings at runtime. If the eval
@@ -514,23 +516,18 @@ func parsePolicyWindows(p store.Policy) []policy.SleepWindow {
 }
 
 func (ps *PolicyScheduler) claimTransition(policyID uint) error {
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-
-	fresh, err := ps.store.GetPolicy(policyID)
-	if err != nil {
-		return fmt.Errorf("policy %d lookup: %w", policyID, err)
-	}
-	if fresh.CurrentState == store.PolicyStateTransitioning {
-		return fmt.Errorf("policy %d: %w", policyID, ErrPolicyTransitioning)
-	}
 	if err := ps.store.SetPolicyTransitioning(policyID); err != nil {
+		if errors.Is(err, store.ErrTransitionAlreadyClaimed) {
+			return fmt.Errorf("policy %d: %w", policyID, ErrPolicyTransitioning)
+		}
 		return fmt.Errorf("policy %d: set transitioning: %w", policyID, err)
 	}
+	ps.mu.Lock()
 	if cp, ok := ps.policies[policyID]; ok {
 		cp.policy.CurrentState = store.PolicyStateTransitioning
 		ps.policies[policyID] = cp
 	}
+	ps.mu.Unlock()
 	return nil
 }
 
@@ -565,7 +562,9 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 	slog.Info("policy scheduler: starting execution",
 		"policyID", p.ID, "execID", execID, "direction", direction, "trigger", trigger)
 
+	ps.inflight.Add(1)
 	go func() {
+		defer ps.inflight.Done()
 		timeout := time.Duration(p.TimeoutMinutes) * time.Minute
 		if timeout <= 0 {
 			timeout = defaultExecutionTimeout

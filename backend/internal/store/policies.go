@@ -53,9 +53,23 @@ func (s *Store) UpdatePolicyState(id uint, state string, nextTransition *time.Ti
 	return s.db.Model(&Policy{}).Where("id = ?", id).Updates(updates).Error
 }
 
+// ErrTransitionAlreadyClaimed is returned by SetPolicyTransitioning when a
+// concurrent caller already moved the policy into the transitioning state.
+var ErrTransitionAlreadyClaimed = fmt.Errorf("transition already claimed by another caller")
+
+// SetPolicyTransitioning atomically claims the transition. Returns
+// ErrTransitionAlreadyClaimed when another caller won the race.
 func (s *Store) SetPolicyTransitioning(id uint) error {
-	return s.db.Model(&Policy{}).Where("id = ?", id).
-		Update("current_state", PolicyStateTransitioning).Error
+	res := s.db.Model(&Policy{}).
+		Where("id = ? AND current_state != ?", id, PolicyStateTransitioning).
+		Update("current_state", PolicyStateTransitioning)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrTransitionAlreadyClaimed
+	}
+	return nil
 }
 
 func (s *Store) DeletePolicy(id uint) error {
@@ -197,6 +211,20 @@ func (s *Store) MarkInterruptedPolicyExecutions() (int64, error) {
 		Updates(map[string]interface{}{
 			"status":      ExecStatusInterrupted,
 			"finished_at": now,
+		})
+	return res.RowsAffected, res.Error
+}
+
+// ResetStuckTransitioningPolicies moves any policy still in "transitioning"
+// back to "unknown" so the scheduler can re-evaluate immediately after a
+// crash. Returns the number of policies reset.
+func (s *Store) ResetStuckTransitioningPolicies() (int64, error) {
+	now := time.Now()
+	res := s.db.Model(&Policy{}).
+		Where("current_state = ?", PolicyStateTransitioning).
+		Updates(map[string]interface{}{
+			"current_state": PolicyStateUnknown,
+			"state_since":   now,
 		})
 	return res.RowsAffected, res.Error
 }
