@@ -250,4 +250,3 @@ func oidcExtractClaims(idToken *gooidc.IDToken, groupsClaim string) (oidcClaims,
 		Groups:            groups,
 	}, true
 }
-

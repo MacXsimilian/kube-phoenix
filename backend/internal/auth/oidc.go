@@ -146,4 +146,3 @@ func OIDCConfigFromEnv() *OIDCConfig {
 		SkipTLSVerify:  strings.EqualFold(os.Getenv("OIDC_SKIP_TLS_VERIFY"), "true"),
 	}
 }
-

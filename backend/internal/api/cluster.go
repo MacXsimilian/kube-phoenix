@@ -60,11 +60,11 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 
 // workloadMeta holds the kind-agnostic fields needed to build a WorkloadResponse.
 type workloadMeta struct {
-	Namespace    string
-	Name         string
-	Kind         string
-	Replicas     *int32
-	Annotations  map[string]string
+	Namespace     string
+	Name          string
+	Kind          string
+	Replicas      *int32
+	Annotations   map[string]string
 	ReadyReplicas int32
 }
 
