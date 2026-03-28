@@ -68,7 +68,7 @@ export default function GuardrailsForm() {
     }
   }, [guardrails])
 
-  const evalIntervalValid = /^\d+(ns|us|µs|ms|s|m|h)$/.test(evalInterval.trim())
+  const evalIntervalValid = /^(\d+(ns|us|µs|ms|s|m|h))+$/.test(evalInterval.trim())
     && !/^0+(ns|us|µs|ms|s|m|h)$/.test(evalInterval.trim())
   const evalIntervalError = evalIntervalValid ? undefined : 'Must be a valid duration (e.g. 30s, 1m, 2m)'
 

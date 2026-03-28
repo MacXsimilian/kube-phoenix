@@ -171,7 +171,7 @@ func (h *Handler) deleteException(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ex.Status == store.ExceptionStatusActive && ex.SleepOnEnd && ex.PolicyID != nil {
+	if ex.Status == store.ExceptionStatusActive && ex.SleepOnEnd && ex.PolicyID != nil && h.policyScheduler != nil {
 		slog.Info("exception cancelled while active — triggering sleep-on-end", "exceptionID", id)
 		if _, runErr := h.policyScheduler.RunSleepNow(*ex.PolicyID, "exception_end"); runErr != nil {
 			slog.Error("exception cancel: sleep-on-end failed", "exceptionID", id, "err", runErr)

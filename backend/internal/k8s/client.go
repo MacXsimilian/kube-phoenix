@@ -87,7 +87,7 @@ func retryOnConflict(fn func() error) error {
 	var lastErr error
 	for attempt := 0; attempt <= len(conflictRetryBackoff); attempt++ {
 		if attempt > 0 {
-			slog.Warn("retrying on conflict", "attempt", attempt+1)
+			slog.Warn("retrying on conflict", "attempt", attempt+1, "maxAttempts", len(conflictRetryBackoff)+1)
 			time.Sleep(conflictRetryBackoff[attempt-1])
 		}
 		err := fn()
@@ -102,7 +102,7 @@ func retryOnConflict(fn func() error) error {
 	return lastErr
 }
 
-func (c *Client) scaleWithRetry(ctx context.Context, kind, namespace, name string, replicas int32,
+func (c *Client) scaleWithRetry(ctx context.Context, namespace, name string, replicas int32,
 	getScale func(ctx context.Context, name string, opts metav1.GetOptions) (*autoscalingv1.Scale, error),
 	updateScale func(ctx context.Context, name string, scale *autoscalingv1.Scale, opts metav1.UpdateOptions) (*autoscalingv1.Scale, error),
 ) error {
@@ -122,7 +122,7 @@ func (c *Client) scaleWithRetry(ctx context.Context, kind, namespace, name strin
 
 func (c *Client) ScaleDeployment(ctx context.Context, namespace, name string, replicas int32) error {
 	dep := c.cs.AppsV1().Deployments(namespace)
-	return c.scaleWithRetry(ctx, "Deployment", namespace, name, replicas, dep.GetScale, dep.UpdateScale)
+	return c.scaleWithRetry(ctx, namespace, name, replicas, dep.GetScale, dep.UpdateScale)
 }
 
 func (c *Client) AnnotateDeployment(ctx context.Context, namespace, name, key, value string) error {
@@ -187,7 +187,7 @@ func (c *Client) GetStatefulSet(ctx context.Context, namespace, name string) (*a
 
 func (c *Client) ScaleStatefulSet(ctx context.Context, namespace, name string, replicas int32) error {
 	ss := c.cs.AppsV1().StatefulSets(namespace)
-	return c.scaleWithRetry(ctx, "StatefulSet", namespace, name, replicas, ss.GetScale, ss.UpdateScale)
+	return c.scaleWithRetry(ctx, namespace, name, replicas, ss.GetScale, ss.UpdateScale)
 }
 
 func (c *Client) AnnotateStatefulSet(ctx context.Context, namespace, name, key, value string) error {
@@ -491,10 +491,12 @@ func (c *Client) GetPodMetrics(ctx context.Context, namespace, name string) (map
 	for _, ctr := range resp.Containers {
 		cpu, err := resource.ParseQuantity(ctr.Usage.CPU)
 		if err != nil {
+			slog.Debug("unparseable CPU metric", "container", ctr.Name, "err", err)
 			continue
 		}
 		mem, err := resource.ParseQuantity(ctr.Usage.Memory)
 		if err != nil {
+			slog.Debug("unparseable memory metric", "container", ctr.Name, "err", err)
 			continue
 		}
 		result[ctr.Name] = ContainerMetrics{

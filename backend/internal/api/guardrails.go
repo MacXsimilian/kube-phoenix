@@ -80,13 +80,21 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 // validateGuardrailFields validates guardrail update fields. Returns an error message or "".
 func validateGuardrailFields(body map[string]interface{}) string {
 	if v, ok := body["skipNodeLabels"]; ok {
-		if msg := validateCSVEntries(fmt.Sprintf("%v", v), "=", 1,
+		s, ok := v.(string)
+		if !ok {
+			return "skipNodeLabels must be a string"
+		}
+		if msg := validateCSVEntries(s, "=", 1,
 			func(entry string) string { return fmt.Sprintf("invalid node label %q: must be key=value", entry) }); msg != "" {
 			return msg
 		}
 	}
 	if v, ok := body["skipNodeTaints"]; ok {
-		for _, entry := range strings.Split(fmt.Sprintf("%v", v), ",") {
+		s, ok := v.(string)
+		if !ok {
+			return "skipNodeTaints must be a string"
+		}
+		for _, entry := range strings.Split(s, ",") {
 			entry = strings.TrimSpace(entry)
 			if entry == "" {
 				continue
@@ -98,13 +106,21 @@ func validateGuardrailFields(body map[string]interface{}) string {
 		}
 	}
 	if v, ok := body["systemNamespaces"]; ok {
-		if strings.TrimSpace(fmt.Sprintf("%v", v)) == "" {
+		s, ok := v.(string)
+		if !ok {
+			return "systemNamespaces must be a string"
+		}
+		if strings.TrimSpace(s) == "" {
 			return "systemNamespaces cannot be empty"
 		}
 	}
 	if v, ok := body["scalingPriorityNamespaces"]; ok {
+		s, ok := v.(string)
+		if !ok {
+			return "scalingPriorityNamespaces must be a string"
+		}
 		seen := map[string]bool{}
-		for _, entry := range strings.Split(fmt.Sprintf("%v", v), ",") {
+		for _, entry := range strings.Split(s, ",") {
 			entry = strings.TrimSpace(entry)
 			if entry == "" {
 				continue
@@ -122,8 +138,11 @@ func validateGuardrailFields(body map[string]interface{}) string {
 		}
 	}
 	if v, ok := body["schedulerEvalInterval"]; ok {
-		s := strings.TrimSpace(fmt.Sprintf("%v", v))
-		d, err := time.ParseDuration(s)
+		s, ok := v.(string)
+		if !ok {
+			return "schedulerEvalInterval must be a string"
+		}
+		d, err := time.ParseDuration(strings.TrimSpace(s))
 		if err != nil || d <= 0 {
 			return "schedulerEvalInterval must be a valid positive duration (e.g. 30s, 1m)"
 		}

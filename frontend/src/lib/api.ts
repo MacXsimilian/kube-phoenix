@@ -7,6 +7,19 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
 // Mutation methods that require a CSRF token.
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'DELETE', 'PATCH'])
 
+async function handleAuthErrors(res: Response): Promise<void> {
+  if (res.status === 401) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('kp-session-expired'))
+    }
+    throw new Error('Session expired')
+  }
+  if (res.status === 403) {
+    const body = await res.json().catch(() => null)
+    throw new Error((body as any)?.error || 'You do not have permission to perform this action')
+  }
+}
+
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const method = options?.method?.toUpperCase() ?? 'GET'
   const incoming = options?.headers
@@ -32,19 +45,7 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
     signal: options?.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   })
 
-  // 401 → session expired or not authenticated.
-  if (res.status === 401) {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('kp-session-expired'))
-    }
-    throw new Error('Session expired')
-  }
-
-  // 403 → permission denied — surface the backend message clearly.
-  if (res.status === 403) {
-    const body = await res.json().catch(() => null)
-    throw new Error(body?.error || 'You do not have permission to perform this action')
-  }
+  await handleAuthErrors(res)
 
   if (!res.ok) {
     const body = await res.json().catch(() => null)
@@ -102,16 +103,7 @@ export async function getPodLogs(
     `${BASE}/api/cluster/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/logs?${q}`,
     { credentials: 'include', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
   )
-  if (res.status === 401) {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('kp-session-expired'))
-    }
-    throw new Error('Session expired')
-  }
-  if (res.status === 403) {
-    const body = await res.json().catch(() => null)
-    throw new Error((body as any)?.error || 'You do not have permission to perform this action')
-  }
+  await handleAuthErrors(res)
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     throw new Error(body?.error || `HTTP ${res.status}`)
@@ -136,16 +128,7 @@ export function streamPodLogs(
     start(onLine, onError, onDone) {
       fetch(url, { credentials: 'include', signal })
         .then(async (res) => {
-          if (res.status === 401) {
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new Event('kp-session-expired'))
-            }
-            throw new Error('Session expired')
-          }
-          if (res.status === 403) {
-            const body = await res.json().catch(() => null)
-            throw new Error((body as any)?.error || 'You do not have permission to perform this action')
-          }
+          await handleAuthErrors(res)
           if (!res.ok) {
             const body = await res.json().catch(() => null)
             throw new Error(body?.error || `HTTP ${res.status}`)
@@ -187,6 +170,8 @@ export async function* resetDatabaseStream(): AsyncGenerator<ResetEvent> {
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken() },
     body: JSON.stringify({ confirm: 'RESET DATABASE' }),
   })
+
+  await handleAuthErrors(res)
 
   if (!res.ok || !res.body) {
     const text = await res.text().catch(() => '')

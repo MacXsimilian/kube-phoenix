@@ -224,7 +224,7 @@ type ScheduledException struct {
 // GetWorkloadTargets deserialises the JSON-stored workload targets.
 func (e *ScheduledException) GetWorkloadTargets() ([]WorkloadTarget, error) {
 	if e.WorkloadTargets == "" || e.WorkloadTargets == "[]" {
-		return nil, nil
+		return []WorkloadTarget{}, nil
 	}
 	var targets []WorkloadTarget
 	if err := json.Unmarshal([]byte(e.WorkloadTargets), &targets); err != nil {

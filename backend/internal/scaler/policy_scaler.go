@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -51,7 +52,7 @@ func runConcurrent[T any](items []T, concurrency int, fn func(T) (scaled, skippe
 			defer func() { <-sem }()
 			defer func() {
 				if r := recover(); r != nil {
-					slog.Error("panic in concurrent worker", "recover", r)
+					slog.Error("panic in concurrent worker", "recover", r, "stack", string(debug.Stack()))
 					mu.Lock()
 					counts.Errors++
 					mu.Unlock()
