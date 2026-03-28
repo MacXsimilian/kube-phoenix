@@ -90,7 +90,7 @@ interface NodeRowProps {
   onSelect: (n: Node | null) => void
 }
 
-function NodeRow({ node, groupByZone, isSelected, onSelect }: NodeRowProps) {
+const NodeRow = React.memo(function NodeRow({ node, groupByZone, isSelected, onSelect }: NodeRowProps) {
   const isDark = useIsDark()
   const colors = useColors()
   const statusColor = nodeStatusMap(isDark)[node.status]
@@ -134,7 +134,7 @@ function NodeRow({ node, groupByZone, isSelected, onSelect }: NodeRowProps) {
       </TableCell>
     </TableRow>
   )
-}
+})
 
 export default function NodesTable() {
   const { data: nodes = [], isLoading, isError, error, dataUpdatedAt, refetch } = useQuery({

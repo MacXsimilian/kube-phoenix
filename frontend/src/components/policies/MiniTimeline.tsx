@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useState, useEffect, useMemo } from 'react'
+import { useId, useRef, useState, useEffect, useMemo } from 'react'
 import Box from '@mui/material/Box'
 import Tooltip from '@mui/material/Tooltip'
 import type { SleepWindow } from '@/lib/types'
@@ -35,22 +35,39 @@ export default function MiniTimeline({
 }) {
   const isDark = useIsDark()
   const uid = useId()
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [isVisible, setIsVisible] = useState(true)
   const gradIdAwake = `spark-awake-${uid}`
   const gradIdSleep = `spark-sleep-${uid}`
 
-  // Real-time current hour — ticks every 30s
+  // Pause interval when off-screen
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsVisible(entry.isIntersecting),
+      { threshold: 0 },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // Real-time current hour — ticks every 30s, paused when not visible
   const [timeState, setTimeState] = useState(() => {
     const now = nowInTimezone(timezone)
     return { currentHour: now.fractionalHour, todayDow: now.dayOfWeek }
   })
 
   useEffect(() => {
+    if (!isVisible) return
+    const now = nowInTimezone(timezone)
+    setTimeState({ currentHour: now.fractionalHour, todayDow: now.dayOfWeek })
     const id = setInterval(() => {
       const now = nowInTimezone(timezone)
       setTimeState({ currentHour: now.fractionalHour, todayDow: now.dayOfWeek })
     }, UPDATE_INTERVAL_MS)
     return () => clearInterval(id)
-  }, [timezone])
+  }, [timezone, isVisible])
 
   const { currentHour, todayDow } = timeState
 
@@ -111,7 +128,7 @@ export default function MiniTimeline({
 
   return (
     <Tooltip title={windowsToText(windows)} placement="top">
-      <Box sx={{ width: '100%' }}>
+      <Box ref={containerRef} sx={{ width: '100%' }}>
         {/* Waveform SVG with tick marks */}
         <Box sx={{ position: 'relative' }}>
           <svg
