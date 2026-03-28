@@ -32,6 +32,7 @@ export const TIMEZONES = [
 export const REQUEST_TIMEOUT_MS = 30_000
 export const DEFAULT_STALE_TIME_MS = 30_000
 export const WORKLOADS_REFETCH_MS = 30_000
+export const NODES_REFETCH_MS = 30_000
 export const ACTIVITY_FEED_STALE_MS = 14_000
 export const ACTIVITY_FEED_REFETCH_MS = 15_000
 export const NODE_PODS_REFETCH_MS = 15_000

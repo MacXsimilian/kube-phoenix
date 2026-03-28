@@ -8,7 +8,7 @@ import { fmtCpu, fmtMem, podAge } from '@/lib/formatters'
 import { getPodStatusStyle } from '@/components/cluster/statusColors'
 import { useColors } from '@/lib/colors'
 
-export interface PodRowPod {
+export interface PodData {
   name: string
   status: string
   readyContainers: number
@@ -34,7 +34,7 @@ export default function PodRow({
   onClick,
   showOwner,
 }: {
-  pod: PodRowPod
+  pod: PodData
   onClick?: () => void
   showOwner?: boolean
 }) {

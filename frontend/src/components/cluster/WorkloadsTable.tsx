@@ -30,6 +30,8 @@ import { useColors } from '@/lib/colors'
 import { WORKLOADS_REFETCH_MS } from '@/lib/constants'
 import WorkloadDetailDrawer from './WorkloadDetailDrawer'
 
+const validStatuses = ['running', 'sleeping', 'partial']
+
 export default function WorkloadsTable() {
   const searchParams = useSearchParams()
   const { data: workloads = [], isLoading, isError, error, dataUpdatedAt, refetch } = useQuery({
@@ -40,14 +42,12 @@ export default function WorkloadsTable() {
 
   const [search, setSearch] = useState('')
   const [nsFilter, setNsFilter] = useState('all')
-  const validStatuses = ['running', 'sleeping', 'partial']
   const initialStatus = searchParams.get('status') ?? 'all'
   const [statusFilter, setStatusFilter] = useState(validStatuses.includes(initialStatus) ? initialStatus : 'all')
 
   useEffect(() => {
     const statusFromUrl = searchParams.get('status') ?? 'all'
     setStatusFilter(validStatuses.includes(statusFromUrl) ? statusFromUrl : 'all')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
   const [sortCol, setSortCol] = useState<'namespace' | 'name' | 'kind' | 'replicas' | 'status' | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -211,7 +211,7 @@ export default function WorkloadsTable() {
                       <TableCell sx={{ fontWeight: 500, fontSize: 13 }}>{w.name}</TableCell>
                       <TableCell>
                         <Chip
-                          label={w.kind === 'Deployment' ? 'Deployment' : 'StatefulSet'}
+                          label={w.kind}
                           size="small"
                           sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(124,58,237,0.12)', color: 'primary.main' }}
                         />

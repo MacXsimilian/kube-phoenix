@@ -6,13 +6,11 @@ import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import IconButton from '@mui/material/IconButton'
-import InputAdornment from '@mui/material/InputAdornment'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import Snackbar from '@mui/material/Snackbar'
 import Stack from '@mui/material/Stack'
 import Switch from '@mui/material/Switch'
-import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
@@ -21,16 +19,10 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import DownloadIcon from '@mui/icons-material/Download'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
-import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
-import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
-import SearchIcon from '@mui/icons-material/Search'
-import { getPodLogs, streamPodLogs } from '@/lib/api'
 import { useColors } from '@/lib/colors'
 import type { PodContainer } from '@/lib/types'
-
-const INITIAL_TAIL = 500
-const LOAD_MORE_INCREMENT = 2000
-const MAX_LINES = 10_000
+import { usePodLogStream } from './usePodLogStream'
+import LogSearchBar from './LogSearchBar'
 
 interface PodLogViewerProps {
   namespace: string
@@ -44,95 +36,21 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
   const [container, setContainer] = useState(containers[0]?.name ?? '')
   const [search, setSearch] = useState('')
   const [copied, setCopied] = useState(false)
-  const [mode, setMode] = useState<'live' | 'previous'>('live')
   const [autoScroll, setAutoScroll] = useState(true)
   const [currentMatchIdx, setCurrentMatchIdx] = useState(-1)
   const logRef = useRef<HTMLDivElement>(null)
   const lineEls = useRef<(HTMLElement | null)[]>([])
 
-  // Streaming state (live mode)
-  const [streamLines, setStreamLines] = useState<string[]>([])
-  const [streaming, setStreaming] = useState(false)
-  const [streamError, setStreamError] = useState<string | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
-  const [tailLines, setTailLines] = useState(INITIAL_TAIL)
-
-  // Previous mode state
-  const [prevLines, setPrevLines] = useState<string[]>([])
-  const [prevLoading, setPrevLoading] = useState(false)
-  const [prevError, setPrevError] = useState<string | null>(null)
+  const {
+    lines, isStreaming, isLoading, hasError, errorMsg,
+    mode, setMode, canLoadMore, handleLoadMore,
+    startStream, fetchPrevious, clear,
+  } = usePodLogStream({ namespace, podName, container })
 
   const selectedContainer = containers.find((c) => c.name === container)
   const hasPreviousInstance = !!selectedContainer?.lastState
 
-  // ── Live streaming ──────────────────────────────────────────────────────────
-
-  const startStream = useCallback((tail: number) => {
-    abortRef.current?.abort()
-    const ac = new AbortController()
-    abortRef.current = ac
-
-    setStreamLines([])
-    setStreaming(true)
-    setStreamError(null)
-
-    const { start } = streamPodLogs(namespace, podName, container || undefined, tail, ac.signal)
-
-    start(
-      (line) => {
-        setStreamLines((prev) => {
-          const next = [...prev, line]
-          return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next
-        })
-      },
-      (err) => {
-        setStreamError(err.message)
-        setStreaming(false)
-      },
-      () => {
-        setStreaming(false)
-      },
-    )
-  }, [namespace, podName, container])
-
-  // Start/restart stream when in live mode
-  useEffect(() => {
-    if (mode !== 'live') {
-      abortRef.current?.abort()
-      setStreaming(false)
-      return
-    }
-    startStream(tailLines)
-    return () => { abortRef.current?.abort() }
-  }, [mode, startStream, tailLines])
-
-  // ── Previous logs fetch ─────────────────────────────────────────────────────
-
-  const fetchPrevious = useCallback(async () => {
-    setPrevLoading(true)
-    setPrevError(null)
-    try {
-      const raw = await getPodLogs(namespace, podName, container || undefined, 5000, true)
-      setPrevLines(raw.split('\n').filter((l) => l.length > 0))
-    } catch (err) {
-      setPrevError(err instanceof Error ? err.message : 'Failed to load previous logs')
-    } finally {
-      setPrevLoading(false)
-    }
-  }, [namespace, podName, container])
-
-  useEffect(() => {
-    if (mode === 'previous') fetchPrevious()
-  }, [mode, fetchPrevious])
-
-  // ── Derived state ───────────────────────────────────────────────────────────
-
-  const lines = mode === 'live' ? streamLines : prevLines
-  const isLoading = mode === 'live' ? (streaming && streamLines.length === 0) : prevLoading
-  const hasError = mode === 'live' ? !!streamError : !!prevError
-  const errorMsg = mode === 'live' ? streamError : prevError
-
-  // Match indices within the full lines array (no filtering — all lines shown)
+  // Match indices within the full lines array (no filtering -- all lines shown)
   const matchIndices = useMemo(() => {
     if (!search) return []
     const lower = search.toLowerCase()
@@ -142,7 +60,12 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
     }, [])
   }, [lines, search])
 
-  // Reset match cursor when search changes
+  // O(1) lookup set for highlighting matched lines
+  const matchSet = useMemo(() => new Set(matchIndices), [matchIndices])
+
+  // Reset match cursor when search text changes.
+  // We intentionally omit matchIndices from deps: the cursor should only reset
+  // when the user edits the search string, not when new log lines arrive.
   useEffect(() => {
     setCurrentMatchIdx(matchIndices.length > 0 ? 0 : -1)
   }, [search]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -179,17 +102,6 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
     setAutoScroll(atBottom)
   }, [])
 
-  // ── Load older lines (scroll-to-top trigger) ───────────────────────────────
-
-  const [canLoadMore, setCanLoadMore] = useState(true)
-
-  const handleLoadMore = useCallback(() => {
-    const next = tailLines + LOAD_MORE_INCREMENT
-    setTailLines(next)
-    setCanLoadMore(next < MAX_LINES)
-    // Stream will restart via the tailLines dependency in the useEffect
-  }, [tailLines])
-
   // ── Actions ─────────────────────────────────────────────────────────────────
 
   const handleCopy = useCallback(() => {
@@ -210,13 +122,9 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
 
   // Reset when container changes
   useEffect(() => {
-    setMode('live')
-    setTailLines(INITIAL_TAIL)
-    setCanLoadMore(true)
-    setPrevLines([])
-    setStreamLines([])
+    clear()
     setAutoScroll(true)
-  }, [container])
+  }, [container, clear])
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -235,7 +143,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
             <Chip label={container} size="small" sx={{ fontFamily: 'monospace', fontSize: 11 }} />
           )}
           {isLoading && <CircularProgress size={14} />}
-          {mode === 'live' && streaming && !isLoading && (
+          {mode === 'live' && isStreaming && !isLoading && (
             <Chip
               icon={<FiberManualRecordIcon sx={{ fontSize: '10px !important', color: `${colors.success} !important` }} />}
               label="LIVE"
@@ -243,12 +151,12 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
               sx={{ height: 18, fontSize: 10, bgcolor: colors.successBg, color: colors.success }}
             />
           )}
-          {mode === 'live' && !streaming && !isLoading && !streamError && (
+          {mode === 'live' && !isStreaming && !isLoading && !hasError && (
             <Chip label="ENDED" size="small" sx={{ height: 18, fontSize: 10, bgcolor: colors.mutedBg, color: colors.muted }} />
           )}
         </Stack>
 
-        {/* Container selector — only for multi-container pods */}
+        {/* Container selector -- only for multi-container pods */}
         {containers.length > 1 && (
           <Select
             size="small"
@@ -265,7 +173,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
         )}
       </Box>
 
-      {/* Previous container banner — only shown when relevant */}
+      {/* Previous container banner */}
       {hasPreviousInstance && mode === 'live' && (
         <Box sx={{ px: 2, py: 1, bgcolor: 'rgba(245,158,11,0.06)', borderBottom: '1px solid', borderColor: 'divider' }}>
           <Stack direction="row" alignItems="center" spacing={1}>
@@ -306,42 +214,12 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
       {/* Search + actions toolbar */}
       <Box sx={{ px: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
         <Stack direction="row" spacing={1} alignItems="center">
-          <TextField
-            size="small"
-            placeholder="Search logs..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && matchIndices.length > 0) {
-                jumpToMatch(e.shiftKey ? 'prev' : 'next')
-              }
-            }}
-            sx={{ flex: 1, maxWidth: 280 }}
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
-                  </InputAdornment>
-                ),
-                endAdornment: search ? (
-                  <InputAdornment position="end">
-                    <Stack direction="row" alignItems="center" spacing={0.25}>
-                      <Typography variant="caption" sx={{ color: matchIndices.length > 0 ? 'primary.main' : 'error.main', whiteSpace: 'nowrap' }}>
-                        {matchIndices.length > 0 ? `${currentMatchIdx + 1}/${matchIndices.length}` : 'No matches'}
-                      </Typography>
-                      <IconButton size="small" onClick={() => jumpToMatch('prev')} disabled={matchIndices.length === 0} sx={{ p: 0.25 }} aria-label="Previous match">
-                        <KeyboardArrowUpIcon sx={{ fontSize: 16 }} />
-                      </IconButton>
-                      <IconButton size="small" onClick={() => jumpToMatch('next')} disabled={matchIndices.length === 0} sx={{ p: 0.25 }} aria-label="Next match">
-                        <KeyboardArrowDownIcon sx={{ fontSize: 16 }} />
-                      </IconButton>
-                    </Stack>
-                  </InputAdornment>
-                ) : undefined,
-                sx: { fontSize: 12 },
-              },
-            }}
+          <LogSearchBar
+            search={search}
+            onSearchChange={setSearch}
+            matchCount={matchIndices.length}
+            currentMatchIdx={currentMatchIdx}
+            onJump={jumpToMatch}
           />
           <Box sx={{ flex: 1 }} />
           <FormControlLabel
@@ -382,7 +260,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
             <Button
               color="inherit"
               size="small"
-              onClick={() => mode === 'live' ? startStream(tailLines) : fetchPrevious()}
+              onClick={() => mode === 'live' ? startStream(0) : fetchPrevious()}
             >
               {mode === 'live' ? 'Reconnect' : 'Retry'}
             </Button>
@@ -397,59 +275,36 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
         ref={logRef}
         onScroll={handleScroll}
         sx={{
-          flex: 1,
-          overflow: 'auto',
-          bgcolor: 'background.default',
-          fontFamily: 'monospace',
-          fontSize: '0.75rem',
-          lineHeight: 1.7,
-          p: 1,
-          minHeight: 0,
+          flex: 1, overflow: 'auto', bgcolor: 'background.default',
+          fontFamily: 'monospace', fontSize: '0.75rem', lineHeight: 1.7, p: 1, minHeight: 0,
         }}
       >
-        {/* Load more button at the top */}
         {mode === 'live' && lines.length > 0 && canLoadMore && (
           <Box sx={{ textAlign: 'center', py: 1 }}>
-            <Button
-              size="small"
-              variant="text"
-              onClick={handleLoadMore}
-              sx={{ fontSize: 11, textTransform: 'none', color: 'text.secondary' }}
-            >
+            <Button size="small" variant="text" onClick={handleLoadMore} sx={{ fontSize: 11, textTransform: 'none', color: 'text.secondary' }}>
               Load older logs
             </Button>
           </Box>
         )}
-
         {isLoading && lines.length === 0 && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress size={24} />
-          </Box>
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={24} /></Box>
         )}
         {!isLoading && lines.length === 0 && !hasError && (
-          <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-            No log lines found.
-          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>No log lines found.</Typography>
         )}
         {lines.map((line, i) => {
-          const isMatch = search && matchIndices.includes(i)
+          const isMatch = search && matchSet.has(i)
           const isCurrent = isMatch && matchIndices[currentMatchIdx] === i
           return (
             <Box
               key={i}
               ref={(el) => { lineEls.current[i] = el as HTMLElement | null }}
               sx={{
-                px: 1,
-                py: 0.125,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all',
-                color: 'text.primary',
+                px: 1, py: 0.125, whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'text.primary',
                 '&:hover': { bgcolor: 'action.hover' },
                 ...(isCurrent
                   ? { bgcolor: 'rgba(124,58,237,0.35)', borderLeft: '2px solid', borderColor: 'primary.main' }
-                  : isMatch
-                    ? { bgcolor: 'rgba(124,58,237,0.12)' }
-                    : {}),
+                  : isMatch ? { bgcolor: 'rgba(124,58,237,0.12)' } : {}),
               }}
             >
               {line}
@@ -466,9 +321,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
             {search && ` (${matchIndices.length} match${matchIndices.length !== 1 ? 'es' : ''})`}
           </Typography>
           {mode === 'previous' && (
-            <Typography variant="caption" sx={{ color: 'text.disabled', fontFamily: 'monospace' }}>
-              previous instance
-            </Typography>
+            <Typography variant="caption" sx={{ color: 'text.disabled', fontFamily: 'monospace' }}>previous instance</Typography>
           )}
         </Stack>
       </Box>

@@ -3,15 +3,12 @@
 import React, { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
-import ButtonBase from '@mui/material/ButtonBase'
 import Chip from '@mui/material/Chip'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
-import Collapse from '@mui/material/Collapse'
 import Divider from '@mui/material/Divider'
 import Drawer from '@mui/material/Drawer'
 import IconButton from '@mui/material/IconButton'
-import LinearProgress from '@mui/material/LinearProgress'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
@@ -22,41 +19,23 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CloseIcon from '@mui/icons-material/Close'
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodePods } from '@/lib/api'
-import { fmtCpu, fmtMem, sinceMs, pct, pctColor } from '@/lib/formatters'
+import { fmtCpu, fmtMem, sinceMs } from '@/lib/formatters'
 import { nodeStatusMap } from '@/components/cluster/statusColors'
 import { useTheme } from '@mui/material/styles'
 import { semanticColors, useColors } from '@/lib/colors'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import { NODE_PODS_REFETCH_MS } from '@/lib/constants'
-import type { Node, NodePod, NodeTaint } from '@/lib/types'
+import type { Node, NodePod } from '@/lib/types'
+import MiniBar from './MiniBar'
+import CollapsibleSection from './CollapsibleSection'
+import LabelChip from './LabelChip'
+import TaintChip from './TaintChip'
 import PodDetailContent from './PodDetailContent'
 import PodRow from './PodRow'
 
-// ── sub-components ────────────────────────────────────────────────────────────
-
-function MiniBar({ used, total, label }: { used: number; total: number; label: string }) {
-  const isDark = useTheme().palette.mode === 'dark'
-  const percentUsed = pct(used, total)
-  const color = pctColor(percentUsed, isDark)
-  return (
-    <Tooltip title={label} arrow>
-      <Box sx={{ minWidth: 80 }}>
-        <Typography variant="caption" sx={{ color, fontWeight: 600, display: 'block', mb: 0.25, fontSize: 11 }}>
-          {percentUsed}%
-        </Typography>
-        <LinearProgress
-          variant="determinate"
-          value={Math.min(percentUsed, 100)}
-          aria-label={label}
-          sx={{ height: 5, borderRadius: 1, bgcolor: 'action.hover', '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 1 } }}
-        />
-      </Box>
-    </Tooltip>
-  )
-}
+// ── helpers ──────────────────────────────────────────────────────────────────
 
 const HIGHLIGHTED_LABEL_KEYS = new Set([
   'node.kubernetes.io/instance-type',
@@ -76,90 +55,15 @@ function taintEffectColors(isDark: boolean) {
     PreferNoSchedule: { color: c.warning,  bg: c.warningBg, borderColor: isDark ? 'rgba(245,158,11,0.2)' : 'rgba(146,64,14,0.2)' },
   } as Record<string, { color: string; bg: string; borderColor: string }>
 }
-const TAINT_EFFECT_FALLBACK = { color: '#9e9e9e', bg: 'rgba(158,158,158,0.12)', borderColor: 'rgba(158,158,158,0.2)' }
-
-function CollapsibleSection({ title, count, defaultOpen = false, children }: {
-  title: string; count: number; defaultOpen?: boolean; children: React.ReactNode
-}) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <Box sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-      <ButtonBase
-        onClick={() => setOpen((v) => !v)}
-        sx={{
-          width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          px: 2.5, py: 1, textAlign: 'left',
-          '&:hover': { bgcolor: 'action.hover' },
-        }}
-      >
-        <Typography variant="caption" sx={{ fontWeight: 600, fontSize: 12 }}>
-          {title}<Typography component="span" variant="caption" sx={{ color: 'text.disabled', ml: 0.75 }}>{count}</Typography>
-        </Typography>
-        <ExpandMoreIcon sx={{ fontSize: 16, color: 'text.disabled', transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-      </ButtonBase>
-      <Collapse in={open}>
-        <Box sx={{ px: 2.5, pb: 1.5 }}>
-          {children}
-        </Box>
-      </Collapse>
-    </Box>
-  )
-}
-
-function LabelChip({ labelKey, value, highlight }: { labelKey: string; value: string; highlight: boolean }) {
-  const isDark = useTheme().palette.mode === 'dark'
-  const mutedBg    = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'
-  const mutedBorder = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)'
-  const accentBg    = isDark ? 'rgba(124,58,237,0.06)'  : 'rgba(109,40,217,0.06)'
-  const accentBorder = isDark ? 'rgba(124,58,237,0.15)' : 'rgba(109,40,217,0.15)'
-  return (
-    <Box
-      component="span"
-      sx={{
-        display: 'inline-block', fontFamily: 'monospace', fontSize: 11, lineHeight: 1.3,
-        px: 1, py: 0.375, borderRadius: 0.5,
-        bgcolor: highlight ? accentBg : mutedBg,
-        border: '1px solid',
-        borderColor: highlight ? accentBorder : mutedBorder,
-      }}
-    >
-      <Box component="span" sx={{ color: 'text.disabled' }}>{labelKey}</Box>
-      <Box component="span" sx={{ color: 'text.disabled', mx: '1px' }}>=</Box>
-      <Box component="span" sx={{ color: highlight ? 'primary.light' : 'text.primary' }}>{value}</Box>
-    </Box>
-  )
-}
-
-function TaintChip({ taint, effectColors }: { taint: NodeTaint; effectColors: Record<string, { color: string; bg: string; borderColor: string }> }) {
-  const style = effectColors[taint.effect] ?? TAINT_EFFECT_FALLBACK
-  return (
-    <Box
-      component="span"
-      sx={{
-        display: 'inline-flex', alignItems: 'center', gap: 0.75,
-        fontFamily: 'monospace', fontSize: 11, lineHeight: 1.3,
-        px: 1.25, py: 0.5, borderRadius: 0.5,
-        bgcolor: style.bg, border: '1px solid', borderColor: style.borderColor,
-        color: style.color,
-      }}
-    >
-      <span>{taint.key}{taint.value ? `=${taint.value}` : ''}</span>
-      <Box
-        component="span"
-        sx={{
-          fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5,
-          px: 0.625, py: '1px', borderRadius: '3px', bgcolor: 'rgba(0,0,0,0.2)',
-        }}
-      >
-        {taint.effect}
-      </Box>
-    </Box>
-  )
-}
 
 // ── main component ────────────────────────────────────────────────────────────
 
-export default function NodeDetailDrawer({ node, onClose }: { node: Node | null; onClose: () => void }) {
+export interface NodeDetailDrawerProps {
+  node: Node | null
+  onClose: () => void
+}
+
+export default function NodeDetailDrawer({ node, onClose }: NodeDetailDrawerProps) {
   const [search, setSearch] = useState('')
   const { width: drawerWidth, onMouseDown: handleResizeMouseDown, onTouchStart: handleResizeTouchStart } = useDrawerResize(540)
   const [selectedPod, setSelectedPod] = useState<NodePod | null>(null)
@@ -173,7 +77,10 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
 
   const { data: pods = [], isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['node-pods', node?.name],
-    queryFn: () => getNodePods(node!.name),
+    queryFn: () => {
+      if (!node) throw new Error('No node selected')
+      return getNodePods(node.name)
+    },
     enabled: node != null,
     refetchInterval: NODE_PODS_REFETCH_MS,
   })
@@ -304,7 +211,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
               </IconButton>
             </Box>
 
-            {/* Resource bars — hidden in pod detail view */}
+            {/* Resource bars -- hidden in pod detail view */}
             {!selectedPod && (
               <Box sx={{ display: 'flex', gap: 3, mt: 1.5, flexWrap: 'wrap' }}>
                 <MiniBar
@@ -325,7 +232,7 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
             )}
           </Box>
 
-          {/* Labels & Taints — hidden in pod detail view */}
+          {/* Labels & Taints -- hidden in pod detail view */}
           {!selectedPod && (
             <>
               <Divider />
@@ -350,18 +257,18 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
 
           <Divider />
 
-          {/* Pod detail content — replaces toolbar + pod list */}
+          {/* Pod detail content -- replaces toolbar + pod list */}
           {selectedPod && (
             <Box sx={{ flex: 1, overflow: 'auto' }}>
               <PodDetailContent namespace={selectedPod.namespace} podName={selectedPod.name} />
             </Box>
           )}
 
-          {/* Toolbar — hidden in pod detail view */}
+          {/* Toolbar -- hidden in pod detail view */}
           {!selectedPod && <Box sx={{ px: 2.5, py: 1.25, display: 'flex', alignItems: 'center', gap: 1 }}>
             <TextField
               size="small"
-              placeholder="Search pods…"
+              placeholder="Search pods..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               sx={{ flex: 1 }}
@@ -377,9 +284,9 @@ export default function NodeDetailDrawer({ node, onClose }: { node: Node | null;
             </Tooltip>
           </Box>}
 
-          {!selectedPod && <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />}
+          {!selectedPod && <Divider sx={{ borderColor: 'divider' }} />}
 
-          {/* Pod list — hidden in pod detail view */}
+          {/* Pod list -- hidden in pod detail view */}
           {!selectedPod && <Box sx={{ flex: 1, overflow: 'auto' }}>
             {isError ? (
               <Alert severity="error" sx={{ m: 2 }}>
