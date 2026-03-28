@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 )
@@ -20,7 +21,10 @@ func (h *Handler) getGuardrails(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
-	old, _ := h.store.GetGuardrails()
+	old, err := h.store.GetGuardrails()
+	if err != nil {
+		slog.Warn("could not fetch current guardrails for audit", "err", err)
+	}
 
 	var body map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -38,6 +42,7 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 		"schedulerAutoWake":            "scheduler_auto_wake",
 		"schedulerReconcileWhileAwake": "scheduler_reconcile_while_awake",
 		"scalingPriorityNamespaces":    "scaling_priority_namespaces",
+		"scalingConcurrency":           "scaling_concurrency",
 	}
 	updates := map[string]interface{}{}
 	for jsonKey, dbCol := range fieldMap {
@@ -75,13 +80,21 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 // validateGuardrailFields validates guardrail update fields. Returns an error message or "".
 func validateGuardrailFields(body map[string]interface{}) string {
 	if v, ok := body["skipNodeLabels"]; ok {
-		if msg := validateCSVEntries(fmt.Sprintf("%v", v), "=", 1,
+		s, ok := v.(string)
+		if !ok {
+			return "skipNodeLabels must be a string"
+		}
+		if msg := validateCSVEntries(s, "=", 1,
 			func(entry string) string { return fmt.Sprintf("invalid node label %q: must be key=value", entry) }); msg != "" {
 			return msg
 		}
 	}
 	if v, ok := body["skipNodeTaints"]; ok {
-		for _, entry := range strings.Split(fmt.Sprintf("%v", v), ",") {
+		s, ok := v.(string)
+		if !ok {
+			return "skipNodeTaints must be a string"
+		}
+		for _, entry := range strings.Split(s, ",") {
 			entry = strings.TrimSpace(entry)
 			if entry == "" {
 				continue
@@ -93,13 +106,21 @@ func validateGuardrailFields(body map[string]interface{}) string {
 		}
 	}
 	if v, ok := body["systemNamespaces"]; ok {
-		if strings.TrimSpace(fmt.Sprintf("%v", v)) == "" {
+		s, ok := v.(string)
+		if !ok {
+			return "systemNamespaces must be a string"
+		}
+		if strings.TrimSpace(s) == "" {
 			return "systemNamespaces cannot be empty"
 		}
 	}
 	if v, ok := body["scalingPriorityNamespaces"]; ok {
+		s, ok := v.(string)
+		if !ok {
+			return "scalingPriorityNamespaces must be a string"
+		}
 		seen := map[string]bool{}
-		for _, entry := range strings.Split(fmt.Sprintf("%v", v), ",") {
+		for _, entry := range strings.Split(s, ",") {
 			entry = strings.TrimSpace(entry)
 			if entry == "" {
 				continue
@@ -108,6 +129,22 @@ func validateGuardrailFields(body map[string]interface{}) string {
 				return fmt.Sprintf("duplicate namespace %q in scalingPriorityNamespaces", entry)
 			}
 			seen[entry] = true
+		}
+	}
+	if v, ok := body["scalingConcurrency"]; ok {
+		n, ok := v.(float64)
+		if !ok || n < 1 || n > 50 || n != float64(int(n)) {
+			return "scalingConcurrency must be a whole number between 1 and 50"
+		}
+	}
+	if v, ok := body["schedulerEvalInterval"]; ok {
+		s, ok := v.(string)
+		if !ok {
+			return "schedulerEvalInterval must be a string"
+		}
+		d, err := time.ParseDuration(strings.TrimSpace(s))
+		if err != nil || d <= 0 {
+			return "schedulerEvalInterval must be a valid positive duration (e.g. 30s, 1m)"
 		}
 	}
 	return ""

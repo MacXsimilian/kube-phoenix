@@ -2,7 +2,7 @@ package store
 
 import (
 	"encoding/json"
-	"log/slog"
+	"fmt"
 	"time"
 )
 
@@ -20,6 +20,7 @@ type Guardrails struct {
 	SchedulerEvalInterval       string `gorm:"size:20;default:'30s'" json:"schedulerEvalInterval"`
 	SchedulerAutoWake           bool   `gorm:"default:true" json:"schedulerAutoWake"`
 	SchedulerReconcileWhileAwake bool  `gorm:"default:true" json:"schedulerReconcileWhileAwake"`
+	ScalingConcurrency           int   `gorm:"default:10" json:"scalingConcurrency"`
 
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -221,16 +222,15 @@ type ScheduledException struct {
 }
 
 // GetWorkloadTargets deserialises the JSON-stored workload targets.
-func (e *ScheduledException) GetWorkloadTargets() []WorkloadTarget {
+func (e *ScheduledException) GetWorkloadTargets() ([]WorkloadTarget, error) {
 	if e.WorkloadTargets == "" || e.WorkloadTargets == "[]" {
-		return nil
+		return []WorkloadTarget{}, nil
 	}
 	var targets []WorkloadTarget
 	if err := json.Unmarshal([]byte(e.WorkloadTargets), &targets); err != nil {
-		slog.Warn("failed to unmarshal workload targets",
-			"scheduledExceptionID", e.ID, "err", err)
+		return nil, fmt.Errorf("unmarshal workload targets for exception %d: %w", e.ID, err)
 	}
-	return targets
+	return targets, nil
 }
 
 // SetWorkloadTargets serialises workload targets to JSON for storage.

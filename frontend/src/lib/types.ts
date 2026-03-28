@@ -8,6 +8,7 @@ export interface Guardrails {
   schedulerEvalInterval: string
   schedulerAutoWake: boolean
   schedulerReconcileWhileAwake: boolean
+  scalingConcurrency: number
   updatedAt: string
 }
 
@@ -217,7 +218,7 @@ export interface PolicyOverride {
 }
 
 export interface WorkloadTarget {
-  kind: string
+  kind: 'Deployment' | 'StatefulSet'
   namespace: string
   name: string
 }

@@ -33,7 +33,12 @@ func (h *Handler) listExceptions(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := make([]exceptionResponseShape, len(items))
 	for i := range items {
-		resp[i] = exceptionWithTargets(&items[i])
+		shape, err := exceptionWithTargets(&items[i])
+		if err != nil {
+			jsonInternalError(w, err, "decode exception targets failed")
+			return
+		}
+		resp[i] = shape
 	}
 	jsonOK(w, resp)
 }
@@ -53,7 +58,12 @@ func (h *Handler) getException(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	jsonOK(w, exceptionWithTargets(ex))
+	shape, err := exceptionWithTargets(ex)
+	if err != nil {
+		jsonInternalError(w, err, "decode exception targets failed")
+		return
+	}
+	jsonOK(w, shape)
 }
 
 func (h *Handler) createException(w http.ResponseWriter, r *http.Request) {
@@ -85,8 +95,13 @@ func (h *Handler) createException(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Info("scheduled exception created",
 		"exceptionID", ex.ID, "ticketRef", ex.TicketRef, "startsAt", ex.StartsAt)
-	h.audit(r, "exception.create", "exception", &ex.ID, nil, exceptionWithTargets(ex))
-	jsonCreated(w, exceptionWithTargets(ex))
+	shape, err := exceptionWithTargets(ex)
+	if err != nil {
+		jsonInternalError(w, err, "decode exception targets failed")
+		return
+	}
+	h.audit(r, "exception.create", "exception", &ex.ID, nil, shape)
+	jsonCreated(w, shape)
 }
 
 func (h *Handler) updateException(w http.ResponseWriter, r *http.Request) {
@@ -126,8 +141,18 @@ func (h *Handler) updateException(w http.ResponseWriter, r *http.Request) {
 		jsonInternalError(w, err, "update exception failed")
 		return
 	}
-	h.audit(r, "exception.update", "exception", &id, exceptionWithTargets(ex), exceptionWithTargets(updated))
-	jsonOK(w, exceptionWithTargets(updated))
+	oldShape, err := exceptionWithTargets(ex)
+	if err != nil {
+		jsonInternalError(w, err, "decode exception targets failed")
+		return
+	}
+	newShape, err := exceptionWithTargets(updated)
+	if err != nil {
+		jsonInternalError(w, err, "decode exception targets failed")
+		return
+	}
+	h.audit(r, "exception.update", "exception", &id, oldShape, newShape)
+	jsonOK(w, newShape)
 }
 
 func (h *Handler) deleteException(w http.ResponseWriter, r *http.Request) {
@@ -146,7 +171,7 @@ func (h *Handler) deleteException(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ex.Status == store.ExceptionStatusActive && ex.SleepOnEnd && ex.PolicyID != nil {
+	if ex.Status == store.ExceptionStatusActive && ex.SleepOnEnd && ex.PolicyID != nil && h.policyScheduler != nil {
 		slog.Info("exception cancelled while active — triggering sleep-on-end", "exceptionID", id)
 		if _, runErr := h.policyScheduler.RunSleepNow(*ex.PolicyID, "exception_end"); runErr != nil {
 			slog.Error("exception cancel: sleep-on-end failed", "exceptionID", id, "err", runErr)
@@ -158,7 +183,11 @@ func (h *Handler) deleteException(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("scheduled exception cancelled", "exceptionID", id)
-	h.audit(r, "exception.delete", "exception", &id, exceptionWithTargets(ex), nil)
+	delShape, err := exceptionWithTargets(ex)
+	if err != nil {
+		slog.Warn("could not decode exception targets for audit", "exceptionID", id, "err", err)
+	}
+	h.audit(r, "exception.delete", "exception", &id, delShape, nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -261,11 +290,15 @@ type exceptionResponseShape struct {
 	Targets []store.WorkloadTarget `json:"workloadTargets"`
 }
 
-func exceptionWithTargets(ex *store.ScheduledException) exceptionResponseShape {
+func exceptionWithTargets(ex *store.ScheduledException) (exceptionResponseShape, error) {
+	targets, err := ex.GetWorkloadTargets()
+	if err != nil {
+		return exceptionResponseShape{}, err
+	}
 	return exceptionResponseShape{
 		ScheduledException: *ex,
-		Targets:            ex.GetWorkloadTargets(),
-	}
+		Targets:            targets,
+	}, nil
 }
 
 func parseIDFromString(s string) (uint, error) {

@@ -237,6 +237,7 @@ erDiagram
         varchar eval_interval "30s"
         boolean auto_wake "true"
         boolean reconcile_awake "true"
+        int scaling_concurrency "10"
     }
 
     users {
@@ -346,8 +347,10 @@ scheduled exception activation.
 4. **PolicyScaler.RunSleep** begins:
    a. Load guardrails (skip namespaces, protected labels/taints).
    b. Match workloads by `namespace_filter` and `label_selector`.
-   c. For each matched workload: save snapshot, annotate `previous-replicas`,
-      scale to 0.
+   c. Scale matched workloads concurrently (bounded by `scaling_concurrency`
+      guardrail, default 10): for each workload, save snapshot, annotate
+      `previous-replicas`, scale to 0. Each scale operation retries on 409
+      Conflict with exponential backoff.
    d. For each unprotected node: cordon, drain (dynamic timeout: `podCount*15+60`s),
       delete.
 5. Log lines are emitted to the log channel. **Broker** fans them out to
@@ -364,8 +367,11 @@ Triggered by the ticker, a manual call, or a scheduled exception ending.
    is `sleeping`.
 2. **PolicyScaler.RunWake** loads `WorkloadSnapshot` records from the most
    recent sleep execution.
-3. For each snapshot: restore the workload to `replicas_before`, remove the
-   `previous-replicas` annotation, update the snapshot with `replicas_restored`.
+3. Restore workloads concurrently (bounded by `scaling_concurrency` guardrail,
+   default 10): for each snapshot, restore the workload to `replicas_before`,
+   remove the `previous-replicas` annotation, update the snapshot with
+   `replicas_restored`. Each scale operation retries on 409 Conflict with
+   exponential backoff.
 4. Nodes are **not** managed. Karpenter detects pending pods and provisions new
    nodes automatically.
 5. `current_state` is set to `awake`.
