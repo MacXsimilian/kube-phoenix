@@ -68,8 +68,8 @@ flowchart TB
 | Backend     | Go 1.26, Chi v5, GORM v1.31, gorilla/websocket, client-go |
 | Frontend    | Next.js 16 (static export), MUI v7, TanStack Query v5 |
 | Database    | PostgreSQL 17                            |
-| Container   | Multi-stage Docker build, distroless base |
-| Deployment  | Helm chart (OCI), GitHub Actions CI/CD   |
+| Container   | Multi-stage Docker build, digest-pinned base images, distroless runtime |
+| Deployment  | Helm chart (OCI, with values schema), GitHub Actions CI/CD, cosign-signed images |
 
 ---
 
@@ -491,10 +491,11 @@ kube-phoenix/
 ├── helm/kube-phoenix/
 │   ├── Chart.yaml
 │   ├── values.yaml
+│   ├── values.schema.json           # JSON Schema for install-time validation
 │   └── templates/                   # Deployment, RBAC, Service, Ingress, PG, etc.
 │
 ├── openapi.yaml                     # OpenAPI 3.1 spec (canonical source)
-├── Dockerfile                       # 3-stage: node -> go -> distroless
+├── Dockerfile                       # 3-stage: node -> go -> distroless (all digest-pinned)
 ├── Makefile                         # Developer workflow targets
 └── .github/workflows/               # CI, security scanning, release automation
 ```

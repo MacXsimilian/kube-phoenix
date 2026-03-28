@@ -97,6 +97,8 @@ The default Helm values include:
 - All capabilities dropped
 - Seccomp profile set to `RuntimeDefault`
 - Secure, HTTP-only, SameSite=Strict session cookies
+- `app.kubernetes.io/part-of` and `app.kubernetes.io/version` labels on all resources
+- Automatic rolling restart on secret changes (checksum annotation)
 
 For multi-replica deployments, also enable:
 
@@ -162,9 +164,13 @@ helm upgrade kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
   --reuse-values
 ```
 
-The deployment strategy defaults to `RollingUpdate` with `maxUnavailable: 0` for zero-downtime rollouts. Database migrations run automatically on startup via GORM AutoMigrate.
+The deployment strategy defaults to `RollingUpdate` with `maxUnavailable: 0` for zero-downtime rollouts. Database migrations run automatically on startup via GORM AutoMigrate. Secret changes (password rotation, DB URL update) trigger an automatic rolling restart via the `checksum/secret` pod annotation — no manual restart needed.
 
 > **Tip:** Pin a specific image tag in production with `--set image.tag=<version>` rather than relying on the chart's default `appVersion`.
+
+### Values Validation
+
+The chart ships a `values.schema.json` that validates values at install/upgrade time. Invalid types, unknown keys, and out-of-range values are rejected before any resources are created.
 
 ## Uninstalling
 
@@ -318,3 +324,12 @@ kubectl delete namespace kube-phoenix
 | `metrics.serviceMonitor.labels` | `{}` | Labels to match Prometheus Operator selector |
 
 Full source: [`helm/kube-phoenix/values.yaml`](../helm/kube-phoenix/values.yaml)
+
+### Supply Chain Security
+
+Released images are:
+
+- **Digest-pinned** — the Dockerfile pins all base images (`node`, `golang`, `distroless`) by manifest digest, not mutable tags.
+- **Signed** — each release image is signed with [cosign](https://github.com/sigstore/cosign) using keyless OIDC. Verify with: `cosign verify ghcr.io/macxsimilian/kube-phoenix:<tag> --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'`
+- **SBOM attached** — a Syft-generated SPDX SBOM is attached to each image via `cosign attach sbom`.
+- **Semver-only tags** — images are tagged with `v0.3.19`, `0.3`, and `0` only. No `latest` tag is published.
