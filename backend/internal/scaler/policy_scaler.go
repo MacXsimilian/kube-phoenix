@@ -197,7 +197,7 @@ func (r *PolicyRunner) RunPolicySleep(
 		return r.sleepWorkload(sleepParams, e)
 	}, counts)
 
-	// ── Drain & Delete Nodes (same as scale_down) ──────────────────────────
+	// ── Drain & Delete Nodes ────────────────────────────────────────────────
 	r.base.drainNodes(ctx, policy.Mode, guardrails, logCh, counts)
 
 	emit(logCh, "info", fmt.Sprintf("Sleep complete — scaled %d workloads, %d skipped, %d errors",
