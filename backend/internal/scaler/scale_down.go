@@ -14,44 +14,6 @@ const (
 	drainTimeoutBase   = 60 // base seconds
 )
 
-// RunScaleDown scales all Deployments and StatefulSets to 0 (excluding skip namespaces)
-// and drains + deletes non-protected nodes.
-// namespaceFilter: comma-separated list of namespaces to target; empty = all.
-func (r *Runner) RunScaleDown(ctx context.Context, mode, namespaceFilter string, logCh chan<- LogLine) (*Counts, error) {
-	counts := &Counts{}
-
-	guardrails, err := r.store.GetGuardrails()
-	if err != nil {
-		return nil, fmt.Errorf("guardrails: %w", err)
-	}
-
-	skipNS := splitCSV(guardrails.SystemNamespaces)
-
-	// ── Scale Deployments & StatefulSets ─────────────────────────────────
-	r.info(logCh, "Fetching Deployments...")
-	deployments, dErr := r.k8s.ListDeployments(ctx, "")
-	if dErr != nil {
-		r.errLog(logCh, "Failed to list deployments: "+dErr.Error())
-		counts.Errors++
-	}
-
-	r.info(logCh, "Fetching StatefulSets...")
-	statefulsets, ssErr := r.k8s.ListStatefulSets(ctx, "")
-	if ssErr != nil {
-		r.errLog(logCh, "Failed to list statefulsets: "+ssErr.Error())
-		counts.Errors++
-	}
-
-	entries := r.collectFilteredEntries(deployments, statefulsets, skipNS, namespaceFilter, counts, true)
-	entries = sortByPriorityNamespaces(entries, guardrails.ScalingPriorityNamespaces)
-	r.scaleDownWorkloads(ctx, mode, entries, logCh, counts)
-
-	// ── Drain & Delete Nodes ──────────────────────────────────────────────
-	r.drainNodes(ctx, mode, guardrails, logCh, counts)
-
-	return counts, nil
-}
-
 // classifyNodes groups pods by node, identifying which nodes run critical
 // workloads (pods in protected namespaces) and how many evictable (non-DaemonSet)
 // pods each node has.
