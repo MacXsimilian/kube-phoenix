@@ -471,7 +471,7 @@ kube-phoenix/
 │   │   │   ├── scaler.go            # Low-level Kubernetes scale helpers and workload entry abstraction
 │   │   │   ├── policy_scaler.go     # DB-backed sleep/wake with WorkloadSnapshot logic + annotation fallback
 │   │   │   ├── annotation_fallback_test.go # Tests for annotation-based recovery path
-│   │   │   └── scale_down.go        # Node drain/delete helpers (classifyNodes, drainNodes, drainAndDeleteNode)
+│   │   │   └── nodes.go             # Concurrent node drain/delete (classifyNodes, drainNodes, drainConcurrent)
 │   │   ├── policy/
 │   │   │   ├── evaluator.go         # Pure sleep window evaluation (Evaluate, NextTransition)
 │   │   │   └── windows.go           # SleepWindow type definition and validation

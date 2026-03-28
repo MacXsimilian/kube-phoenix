@@ -170,7 +170,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 **Key functions (Runner):**
 - `collectFilteredEntries(deployments, statefulsets, skipNS, nsFilter, counts, countSkipped)` -- filters workloads by namespace and converts to `workloadEntry` slice.
-- `drainNodes(ctx, mode, guardrails, logCh, counts)` -- list nodes, identify protected ones, drain and delete the rest.
+- `drainNodes(ctx, mode, guardrails, logCh, counts)` -- list nodes, identify protected ones, drain and delete the rest concurrently (bounded by `ScalingConcurrency`).
 - `drainAndDeleteNode(ctx, mode, name, podCount, drainTimeout, logCh, counts)` -- cordon, drain (dynamic timeout: `podCount*15 + 60` seconds), delete node object.
 - `isLabelProtected(labels, skipNodeLabels)` / `isTaintProtected(taints, skipNodeTaints)` -- thin wrappers that delegate to `nodeutil.MatchLabel` and `nodeutil.MatchTaint` respectively.
 
