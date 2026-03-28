@@ -20,7 +20,6 @@ const (
 	ExecStatusSuccess     = "success"
 	ExecStatusFailed      = "failed"
 	ExecStatusInterrupted = "interrupted"
-	ExecStatusSkipped     = "skipped"
 )
 
 // Exception statuses.

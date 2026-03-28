@@ -1,5 +1,5 @@
 /** Check if the user has a specific permission. */
-export function hasPerm(permissions: string[] | undefined, perm: string): boolean {
+function hasPerm(permissions: string[] | undefined, perm: string): boolean {
   return permissions?.includes(perm) ?? false
 }
 

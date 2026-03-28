@@ -63,11 +63,6 @@ func (s *Store) UpdateLastLogin(id uint) error {
 	return s.db.Model(&User{}).Where("id = ?", id).Update("last_login_at", now).Error
 }
 
-func (s *Store) UserCount() (int64, error) {
-	var count int64
-	return count, s.db.Model(&User{}).Count(&count).Error
-}
-
 func (s *Store) UpdateUserTimezone(id uint, timezone string) error {
 	return s.db.Model(&User{}).Where("id = ?", id).Update("default_timezone", timezone).Error
 }

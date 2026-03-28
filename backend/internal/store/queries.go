@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-
-	"gorm.io/gorm"
 )
 
 // ─── Guardrails ───────────────────────────────────────────────────────────────
@@ -42,11 +40,11 @@ func (s *Store) SeedDefaults() error {
 	}
 	if gCount == 0 {
 		g := Guardrails{
-			SystemNamespaces:            "default,istio-gateway,istio-system,karpenter,kube-node-lease,kube-phoenix,kube-public,kube-system,kyverno,kyverno-notation-aws,monitoring,vault,velero,victoriametrics,gitlab",
-			SkipNsNode:                  "victoriametrics,karpenter",
-			SkipNodeLabels:              "karpenter.k8s.aws/ec2nodeclass=default",
-			SkipNodeTaints:              "karpenter-eks-base=true:NoSchedule",
-			SchedulerEvalInterval:       "30s",
+			SystemNamespaces:             "default,istio-gateway,istio-system,karpenter,kube-node-lease,kube-phoenix,kube-public,kube-system,kyverno,kyverno-notation-aws,monitoring,vault,velero,victoriametrics,gitlab",
+			SkipNsNode:                   "victoriametrics,karpenter",
+			SkipNodeLabels:               "karpenter.k8s.aws/ec2nodeclass=default",
+			SkipNodeTaints:               "karpenter-eks-base=true:NoSchedule",
+			SchedulerEvalInterval:        "30s",
 			SchedulerAutoWake:            true,
 			SchedulerReconcileWhileAwake: true,
 			ScalingConcurrency:           10,
@@ -86,12 +84,6 @@ func (s *Store) SeedDefaults() error {
 	}
 
 	return nil
-}
-
-// ─── Transaction helper ───────────────────────────────────────────────────────
-
-func (s *Store) Tx(fn func(*gorm.DB) error) error {
-	return s.db.Transaction(fn)
 }
 
 // ─── Danger zone ──────────────────────────────────────────────────────────────

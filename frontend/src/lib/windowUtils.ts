@@ -7,7 +7,7 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
  * Format a time string "HH:MM" to locale-friendly display.
  * e.g. "19:00" → "7:00 PM", "07:00" → "7:00 AM"
  */
-export function formatTime(time: string): string {
+function formatTime(time: string): string {
   const [h, m] = time.split(':').map(Number)
   const suffix = h >= 12 ? 'PM' : 'AM'
   const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
@@ -29,7 +29,7 @@ export function isOvernight(window: SleepWindow): boolean {
  * Format an array of day numbers into a compact range string.
  * e.g. [1,2,3,4,5] → "Mon–Fri", [0,6] → "Sat–Sun", [1,3,5] → "Mon, Wed, Fri"
  */
-export function formatDayRange(days: number[]): string {
+function formatDayRange(days: number[]): string {
   if (days.length === 0) return ''
   if (days.length === 7) return 'Every day'
 
@@ -152,13 +152,12 @@ export function nowInTimezone(tz?: string): { dayOfWeek: number; fractionalHour:
 // ── Shared timeline math ─────────────────────────────────────────────────────
 
 /** Day-of-week index mapping: array index -> JS getDay() value (Monday-first layout) */
-export const MONDAY_FIRST_DOW_MAP = [1, 2, 3, 4, 5, 6, 0] // Mon..Sun
+const MONDAY_FIRST_DOW_MAP = [1, 2, 3, 4, 5, 6, 0] // Mon..Sun
 
-/** @deprecated Use MONDAY_FIRST_DOW_MAP instead */
 export const DOW_MAP = MONDAY_FIRST_DOW_MAP
 
 /** Convert an ISO timestamp to a Date in the given IANA timezone. */
-export function toTimezone(iso: string, tz?: string): Date {
+function toTimezone(iso: string, tz?: string): Date {
   const d = new Date(iso)
   if (!tz) return d
   const fmt = new Intl.DateTimeFormat('en-US', {
@@ -172,7 +171,7 @@ export function toTimezone(iso: string, tz?: string): Date {
 }
 
 /** A day-row + fractional-hour range, independent of visual layout. */
-export interface TimeBlock {
+interface TimeBlock {
   row: number       // 0=Mon .. 6=Sun (index into DOW_MAP)
   startHour: number // fractional hour 0–24
   endHour: number   // fractional hour 0–24

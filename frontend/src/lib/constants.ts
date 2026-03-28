@@ -41,20 +41,11 @@ export const ACTIVITY_FEED_REFETCH_MS = 15_000
 export const NODE_PODS_REFETCH_MS = 15_000
 export const WORKLOAD_PODS_REFETCH_MS = 15_000
 export const POD_DETAIL_REFETCH_MS = 15_000
-export const WS_RECONNECT_DELAY_MS = 3_000
 export const SNACKBAR_AUTO_HIDE_MS = 4_000
 
 // ── Drawer constraints ──
 export const DRAWER_MIN_WIDTH = 360
 export const DRAWER_MAX_WIDTH_RATIO = 0.9
-
-// ── Log viewer ──
-export const LOG_INITIAL_TAIL = 500
-export const LOG_LOAD_INCREMENT = 2_000
-export const LOG_MAX_LINES = 10_000
-
-// ── Policy ──
-export const MAX_TIMEOUT_MINUTES = 1_440   // 24 hours
 
 // ── Time units ──
 export const MINUTES_PER_HOUR = 60
