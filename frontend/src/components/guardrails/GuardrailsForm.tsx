@@ -13,7 +13,7 @@ import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Snackbar from '@mui/material/Snackbar'
-import LabeledSwitch from '@/components/common/LabeledSwitch'
+import Switch from '@mui/material/Switch'
 import { ChipInput } from '@/components/common/ChipInput'
 import ProtectedChipInput, { AMBER_40, AMBER_03 } from '@/components/guardrails/ProtectedChipInput'
 import SaveIcon from '@mui/icons-material/Save'
@@ -198,56 +198,67 @@ export default function GuardrailsForm() {
                 <Typography variant="body2" color="text.secondary" mb={2.5}>
                   Control how the policy evaluation loop runs.
                 </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <TextField
-                      label="Eval Interval"
-                      size="small"
-                      sx={{ width: 160 }}
-                      value={evalInterval}
-                      disabled={!hasEdit}
-                      error={!evalIntervalValid}
-                      helperText={evalIntervalError}
-                      onChange={(e) => setEvalInterval(e.target.value)}
-                      slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
-                    />
-                    {evalIntervalValid && (
-                      <Typography variant="body2" color="text.secondary">
-                        How often policies are checked (e.g. 30s, 1m)
+                <Grid container spacing={2}>
+                  {/* Eval Interval tile */}
+                  <Grid size={6}>
+                    <Box sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider', height: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      <Typography variant="body2" fontWeight={600}>Eval Interval</Typography>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={evalInterval}
+                        disabled={!hasEdit}
+                        error={!evalIntervalValid}
+                        onChange={(e) => setEvalInterval(e.target.value)}
+                        slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
+                      />
+                      <Typography variant="caption" color={evalIntervalValid ? 'text.secondary' : 'error'}>
+                        {evalIntervalValid ? 'Go duration format, e.g. 30s, 1m' : evalIntervalError}
                       </Typography>
-                    )}
-                  </Box>
-                  <LabeledSwitch
-                    label="Auto Wake"
-                    description="Automatically wake clusters when outside a sleep window. Disable for sleep-only mode."
-                    checked={autoWake}
-                    disabled={!hasEdit}
-                    onChange={setAutoWake}
-                  />
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <TextField
-                      label="Scaling concurrency"
-                      size="small"
-                      type="number"
-                      sx={{ width: 160 }}
-                      value={scalingConcurrency}
-                      disabled={!hasEdit}
-                      helperText="Max parallel scale operations during sleep/wake (default: 10)"
-                      onChange={(e) => {
-                        const v = parseInt(e.target.value, 10)
-                        if (!isNaN(v)) setScalingConcurrency(Math.max(MIN_SCALING_CONCURRENCY, Math.min(MAX_SCALING_CONCURRENCY, v)))
-                      }}
-                      slotProps={{ htmlInput: { min: MIN_SCALING_CONCURRENCY, max: MAX_SCALING_CONCURRENCY, style: { fontFamily: 'monospace' } } }}
-                    />
-                  </Box>
-                  <LabeledSwitch
-                    label="Reconcile While Awake"
-                    description="Keep evaluating policies during awake windows. Disable to skip checks between sleep windows."
-                    checked={reconcileWhileAwake}
-                    disabled={!hasEdit}
-                    onChange={setReconcileWhileAwake}
-                  />
-                </Box>
+                    </Box>
+                  </Grid>
+                  {/* Scaling Concurrency tile */}
+                  <Grid size={6}>
+                    <Box sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider', height: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      <Typography variant="body2" fontWeight={600}>Scaling Concurrency</Typography>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        type="number"
+                        value={scalingConcurrency}
+                        disabled={!hasEdit}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10)
+                          if (!isNaN(v)) setScalingConcurrency(Math.max(MIN_SCALING_CONCURRENCY, Math.min(MAX_SCALING_CONCURRENCY, v)))
+                        }}
+                        slotProps={{ htmlInput: { min: MIN_SCALING_CONCURRENCY, max: MAX_SCALING_CONCURRENCY, style: { fontFamily: 'monospace' } } }}
+                      />
+                      <Typography variant="caption" color="text.secondary">
+                        1–50 parallel operations per cycle
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  {/* Auto Wake tile */}
+                  <Grid size={6}>
+                    <Box sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="body2" fontWeight={600}>Auto Wake</Typography>
+                      <Switch checked={autoWake} disabled={!hasEdit} onChange={(e) => setAutoWake(e.target.checked)} />
+                      <Typography variant="caption" color="text.secondary" textAlign="center">
+                        Wake clusters outside sleep windows
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  {/* Reconcile While Awake tile */}
+                  <Grid size={6}>
+                    <Box sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="body2" fontWeight={600}>Reconcile While Awake</Typography>
+                      <Switch checked={reconcileWhileAwake} disabled={!hasEdit} onChange={(e) => setReconcileWhileAwake(e.target.checked)} />
+                      <Typography variant="caption" color="text.secondary" textAlign="center">
+                        Evaluate policies during awake windows
+                      </Typography>
+                    </Box>
+                  </Grid>
+                </Grid>
               </CardContent>
             </Card>
           </Box>

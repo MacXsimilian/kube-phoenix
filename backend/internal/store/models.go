@@ -49,9 +49,10 @@ type User struct {
 	Role         string     `gorm:"size:20;default:viewer" json:"role"`                                        // admin | operator | viewer
 	Source       string     `gorm:"uniqueIndex:idx_users_username_source;size:20;default:local" json:"source"` // local | oidc
 	OIDCSubject  *string    `gorm:"column:oidc_subject;uniqueIndex;size:255" json:"-"`                         // OIDC sub claim
-	Enabled      bool       `gorm:"default:true" json:"enabled"`
-	CreatedAt    time.Time  `json:"createdAt"`
-	UpdatedAt    time.Time  `json:"updatedAt"`
+	Enabled         bool       `gorm:"default:true" json:"enabled"`
+	DefaultTimezone string     `gorm:"size:64;default:'UTC'" json:"defaultTimezone"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
 	LastLoginAt  *time.Time `json:"lastLoginAt,omitempty"`
 }
 

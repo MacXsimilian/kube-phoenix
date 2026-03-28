@@ -113,6 +113,9 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	// Version endpoint — no auth, lightweight build/uptime info
+	r.Get("/api/version", h.getVersion)
+
 	// ── Unauthenticated auth routes ──────────────────────────────────────
 	r.Post("/api/auth/login", h.login)
 	r.Get("/api/auth/oidc/config", h.oidcConfig)
@@ -128,6 +131,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 		r.Post("/api/auth/logout", h.logout)
 		r.Get("/api/auth/me", h.me)
 		r.Put("/api/auth/password", h.changePassword)
+		r.Put("/api/auth/settings", h.updateUserSettings)
 
 		// Swagger UI
 		r.Get("/api/docs", func(w http.ResponseWriter, r *http.Request) {
@@ -142,6 +146,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 			r.Get("/overview", h.getOverview)
 			r.Get("/cluster/stream", h.streamCluster)
 			r.Get("/cluster/workloads", h.getWorkloads)
+			r.Get("/cluster/info", h.getClusterInfo)
 			r.Get("/cluster/nodes", h.getNodes)
 			r.Get("/cluster/nodes/{name}/pods", h.getNodePods)
 			r.Get("/cluster/pods/{namespace}/{name}", h.getPodDetail)

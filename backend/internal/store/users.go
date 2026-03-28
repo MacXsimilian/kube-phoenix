@@ -68,6 +68,10 @@ func (s *Store) UserCount() (int64, error) {
 	return count, s.db.Model(&User{}).Count(&count).Error
 }
 
+func (s *Store) UpdateUserTimezone(id uint, timezone string) error {
+	return s.db.Model(&User{}).Where("id = ?", id).Update("default_timezone", timezone).Error
+}
+
 func (s *Store) ChangePassword(id uint, newPassword string) error {
 	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {

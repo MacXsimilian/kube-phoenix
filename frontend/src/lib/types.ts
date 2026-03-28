@@ -258,6 +258,21 @@ export interface ScheduledExceptionInput {
   workloadTargets?: WorkloadTarget[]
 }
 
+// ─── Cluster & version info ──────────────────────────────────────────────────
+
+export interface ClusterInfo {
+  apiServer: string
+  kubernetesVersion: string
+  authMode: string
+  clusterName: string
+}
+
+export interface VersionInfo {
+  version: string
+  goVersion: string
+  uptime: string
+}
+
 // ─── Shared UI types ─────────────────────────────────────────────────────────
 
 export interface SnackMessage {
@@ -282,6 +297,7 @@ export interface User {
   lastLoginAt?: string
   // Stringly-typed for now; future improvement: define a Permission union type
   permissions: string[]
+  defaultTimezone?: string
 }
 
 export interface AuditLogEntry {

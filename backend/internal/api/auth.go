@@ -149,19 +149,9 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		permStrings[i] = string(p)
 	}
 
-	jsonOK(w, map[string]interface{}{
-		"id":          user.ID,
-		"username":    user.Username,
-		"givenName":   user.GivenName,
-		"familyName":  user.FamilyName,
-		"email":       user.Email,
-		"role":        user.Role,
-		"source":      user.Source,
-		"enabled":     user.Enabled,
-		"permissions": permStrings,
-		"createdAt":   user.CreatedAt,
-		"lastLoginAt": user.LastLoginAt,
-	})
+	resp := userResponse(user)
+	resp["permissions"] = permStrings
+	jsonOK(w, resp)
 }
 
 // ─── Change password ─────────────────────────────────────────────────────────
@@ -200,6 +190,38 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	h.audit(r, "auth.password_change", "user", &user.ID, nil, map[string]string{"method": "self-service"})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ─── Update user settings ───────────────────────────────────────────────────
+
+func (h *Handler) updateUserSettings(w http.ResponseWriter, r *http.Request) {
+	user := authmw.UserFromContext(r.Context())
+	if user == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var body struct {
+		DefaultTimezone string `json:"defaultTimezone"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
+		return
+	}
+
+	if body.DefaultTimezone != "" {
+		if _, err := time.LoadLocation(body.DefaultTimezone); err != nil {
+			jsonError(w, "invalid timezone", http.StatusBadRequest)
+			return
+		}
+		if err := h.store.UpdateUserTimezone(user.ID, body.DefaultTimezone); err != nil {
+			jsonInternalError(w, err, "update user settings failed")
+			return
+		}
+		user.DefaultTimezone = body.DefaultTimezone
+	}
+
+	jsonOK(w, userResponse(user))
 }
 
 // ─── Session helpers ─────────────────────────────────────────────────────────
@@ -264,15 +286,16 @@ func clearSessionCookies(w http.ResponseWriter) {
 
 func userResponse(u *store.User) map[string]interface{} {
 	return map[string]interface{}{
-		"id":          u.ID,
-		"username":    u.Username,
-		"givenName":   u.GivenName,
-		"familyName":  u.FamilyName,
-		"email":       u.Email,
-		"role":        u.Role,
-		"source":      u.Source,
-		"enabled":     u.Enabled,
-		"createdAt":   u.CreatedAt,
-		"lastLoginAt": u.LastLoginAt,
+		"id":              u.ID,
+		"username":        u.Username,
+		"givenName":       u.GivenName,
+		"familyName":      u.FamilyName,
+		"email":           u.Email,
+		"role":            u.Role,
+		"source":          u.Source,
+		"enabled":         u.Enabled,
+		"defaultTimezone": u.DefaultTimezone,
+		"createdAt":       u.CreatedAt,
+		"lastLoginAt":     u.LastLoginAt,
 	}
 }

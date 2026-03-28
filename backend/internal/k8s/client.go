@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"time"
 
@@ -25,7 +26,21 @@ import (
 )
 
 type Client struct {
-	cs *kubernetes.Clientset
+	cs        *kubernetes.Clientset
+	apiServer string
+	inCluster bool
+
+	// Cached cluster info to avoid hitting k8s Discovery on every request.
+	cachedClusterInfo *ClusterInfoResult
+	clusterInfoAt     time.Time
+}
+
+// ClusterInfoResult holds metadata about the connected Kubernetes cluster.
+type ClusterInfoResult struct {
+	APIServer         string `json:"apiServer"`
+	KubernetesVersion string `json:"kubernetesVersion"`
+	AuthMode          string `json:"authMode"`
+	ClusterName       string `json:"clusterName"`
 }
 
 // Clientset returns the underlying typed client for use at the composition root.
@@ -34,8 +49,10 @@ func (c *Client) Clientset() kubernetes.Interface {
 }
 
 func New() (*Client, error) {
+	inCluster := true
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
+		inCluster = false
 		// Fall back to kubeconfig
 		kubeconfig := os.Getenv("KUBECONFIG")
 		if kubeconfig == "" {
@@ -54,7 +71,48 @@ func New() (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("k8s client: %w", err)
 	}
-	return &Client{cs: cs}, nil
+	return &Client{cs: cs, apiServer: cfg.Host, inCluster: inCluster}, nil
+}
+
+// clusterInfoTTL controls how long we cache the Discovery call. Kubernetes
+// version and cluster identity change very rarely, so 5 minutes is safe.
+const clusterInfoTTL = 5 * time.Minute
+
+// ClusterInfo returns metadata about the connected Kubernetes cluster.
+// Results are cached for clusterInfoTTL to avoid redundant Discovery calls.
+func (c *Client) ClusterInfo(ctx context.Context) (ClusterInfoResult, error) {
+	if c.cachedClusterInfo != nil && time.Since(c.clusterInfoAt) < clusterInfoTTL {
+		return *c.cachedClusterInfo, nil
+	}
+
+	v, err := c.cs.Discovery().ServerVersion()
+	if err != nil {
+		return ClusterInfoResult{}, fmt.Errorf("get server version: %w", err)
+	}
+
+	authMode := "kubeconfig"
+	if c.inCluster {
+		authMode = "in-cluster"
+	}
+
+	clusterName := os.Getenv("CLUSTER_NAME")
+	if clusterName == "" {
+		if u, err := url.Parse(c.apiServer); err == nil && u.Hostname() != "" {
+			clusterName = u.Hostname()
+		} else {
+			clusterName = c.apiServer
+		}
+	}
+
+	info := ClusterInfoResult{
+		APIServer:         c.apiServer,
+		KubernetesVersion: v.GitVersion,
+		AuthMode:          authMode,
+		ClusterName:       clusterName,
+	}
+	c.cachedClusterInfo = &info
+	c.clusterInfoAt = time.Now()
+	return info, nil
 }
 
 func recordK8sOp(verb, resource string, start time.Time, err error) {
