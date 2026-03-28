@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.20](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.19...v0.3.20) (2026-03-28)
+
+
+### Bug Fixes
+
+* **scheduler:** reconcileWhileAwake drift detection; refactor frontend; harden infra ([#255](https://github.com/MacXsimilian/kube-phoenix/issues/255)) ([99ba62e](https://github.com/MacXsimilian/kube-phoenix/commit/99ba62e368469ce5657c6ddd14c5b55e7070664e))
+
 ## [0.3.19](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.18...v0.3.19) (2026-03-27)
 
 

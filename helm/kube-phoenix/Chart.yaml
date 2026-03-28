@@ -2,8 +2,8 @@ apiVersion: v2
 name: kube-phoenix
 description: Kubernetes cluster sleep/wake schedule manager
 type: application
-version: 0.1.19
-appVersion: 0.3.19
+version: 0.3.20
+appVersion: 0.3.20
 kubeVersion: '>=1.25.0-0'
 keywords:
   - kubernetes
@@ -18,7 +18,6 @@ keywords:
 home: https://github.com/MacXsimilian/kube-phoenix
 sources:
   - https://github.com/MacXsimilian/kube-phoenix
-# icon: https://raw.githubusercontent.com/MacXsimilian/kube-phoenix/master/docs/logo.png  # TODO: add a logo file
 maintainers:
   - name: MacXsimilian
     url: https://github.com/MacXsimilian
