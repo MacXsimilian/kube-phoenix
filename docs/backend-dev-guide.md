@@ -64,7 +64,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 **Purpose:** Define all HTTP endpoints, the middleware stack, request parsing, validation, and JSON response formatting.
 
 **Key types:**
-- `Handler` -- central struct holding `*store.Store`, `*k8s.Client`, `*scheduler.PolicyScheduler`, `*k8s.ClusterCache`, rate limiters, session timeouts, `*AuditWriter`, and OIDC config. Every handler method is a method on `Handler`.
+- `Handler` -- central struct holding `*store.Store`, `*k8s.Client`, `*scheduler.PolicyScheduler`, `*k8s.ClusterCache`, rate limiters, session timeouts, `*AuditWriter`, OIDC config, and `cookieSecure` (derived from `COOKIE_SECURE` env var, defaults to true). Every handler method is a method on `Handler`.
 - `AuditWriter` -- async buffered writer that drains a 1024-entry channel and persists `store.AuditLog` records in the background.
 - `policyResponse` -- wraps `store.Policy` with computed `NextTransitionAt` and deserialized `SleepWindows`.
 - `WorkloadResponse` -- typed JSON response shape for cluster workloads (in `cluster.go`).
@@ -75,10 +75,10 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 | File | Handlers |
 |:-----|:---------|
-| `router.go` | `NewRouter()` -- builds the full Chi router with middleware stack and route registration |
-| `auth.go` | `login`, `logout`, `me`, `changePassword`, `updateUserSettings`, `createSessionCookies`, `clearSessionCookies` |
+| `router.go` | `NewRouter()` -- builds the full Chi router with middleware stack; delegates to `registerAuthRoutes`, `registerPolicyRoutes`, `registerClusterRoutes`, `registerAdminRoutes` |
+| `auth.go` | `login` (delegates to `loginRateLimited`, `verifyCredentials`, `completeLogin`), `logout`, `me`, `listSessions`, `changePassword`, `updateUserSettings`, `createSessionCookies`, `clearSessionCookies` |
 | `oidc.go` | `oidcConfig`, `oidcLogin`, `oidcCallback`, `oidcExchangeAndVerify`, `oidcExtractClaims` |
-| `policies.go` | `listPolicies`, `getPolicy`, `createPolicy`, `updatePolicy`, `deletePolicy`, `triggerPolicySleep`, `triggerPolicyWake` |
+| `policies.go` | `listPolicies`, `getPolicy`, `createPolicy`, `updatePolicy`, `deletePolicy`, `triggerPolicySleep`, `triggerPolicyWake`, `cancelPolicyExecution`, `requirePolicy`, `triggerPolicyAction` (shared helper for manual sleep/wake triggers) |
 | `exceptions.go` | `listExceptions`, `getException`, `createException`, `updateException`, `deleteException` |
 | `overrides.go` | `listPolicyOverrides`, `createPolicyOverride`, `deletePolicyOverride`, `validateOverrideInput` |
 | `policy_executions.go` | `listPolicyExecutions`, `getPolicyExecution`, `getPolicyExecutionLogs`, `getPolicyExecutionSnapshots`, `getPolicySnapshots`, `wsPolicyExecutionLogs` |
@@ -88,17 +88,17 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `overview.go` | `getOverview`, `streamCluster` (SSE), `buildOverview` |
 | `guardrails.go` | `getGuardrails`, `updateGuardrails` |
 | `users.go` | `listUsers`, `createUser`, `updateUser`, `deleteUser` |
-| `audit.go` | `AuditWriter.Start()`, `Handler.audit()`, `marshalOrNull()`, `clientIP()` |
+| `audit.go` | `AuditWriter.Start()`, `Handler.audit()`, `Handler.auditDeniedMiddleware()`, `marshalOrNull()`, `clientIP()`, `listAuditLogs` |
 | `admin.go` | `resetDB` -- streams NDJSON progress events while dropping/recreating all tables |
 | `ws.go` | `wsReadPump`, `wsSendLines`, `wsDrainChannel`, `wsStreamLoop` -- WebSocket helpers |
-| `helpers.go` | `jsonOK`, `jsonCreated`, `jsonError`, `jsonInternalError`, `parseID`, `parsePageSize`, `reloadScheduler` |
+| `helpers.go` | `jsonOK`, `jsonCreated`, `jsonError`, `jsonInternalError`, `parseID`, `parsePageSize`, `reloadScheduler`, `handleStoreError`, `requireUser`, `nonNilMap` |
 | `cluster_info.go` | `getClusterInfo` -- returns Kubernetes API server URL, version, auth mode, and cluster name |
 | `version.go` | `getVersion` -- returns build version (set via `-ldflags`), Go version, and server uptime. No auth required. |
 | `errmsg.go` | Error message constants (`ErrInvalidID`, `ErrNotFound`, `ErrInvalidBody`), field length limits (`maxNameLen`, `maxDescriptionLen`, `maxReasonLen`, `maxTicketRefLen`, `maxLabelSelectorLen`), and valid enum sets (`validExecStatuses`, `validExceptionStatuses`, `validExceptionTypes`) |
 
 **Validation helpers:** `validatePolicyMode` and `validatePolicyTimezone` are shared functions used by both `createPolicy` and `updatePolicy` to enforce valid mode and timezone values.
 
-**Dependencies:** `store`, `k8s`, `scheduler`, `auth`, `middleware`, `metrics`, `policy`, `nodeutil`, `stringutil`, `web`.
+**Dependencies:** `store`, `k8s`, `scheduler`, `auth`, `middleware`, `metrics`, `policy`, `nodeutil`, `stringutil`, `web`, `docs`.
 
 ---
 
@@ -107,7 +107,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 **Purpose:** Evaluate policies on a configurable tick interval (default 30 seconds) and orchestrate sleep/wake executions when intended state diverges from actual state.
 
 **Key types:**
-- `PolicyScheduler` -- owns the tick loop, in-memory policy cache (`map[uint]cachedPolicy`), runner, and `Broker`. Store and runner dependencies are held as interfaces (`schedulerStore`, `policyRunner`) for testability. Protected by `sync.Mutex`.
+- `PolicyScheduler` -- owns the tick loop, in-memory policy cache (`map[uint]cachedPolicy`), runner, `Broker`, `inflightPolicies` (tracks which policies have a running execution), and `inflightCancels` (cancel functions for running executions, used by `CancelExecution`). Store and runner dependencies are held as interfaces (`schedulerStore`, `policyRunner`) for testability. Protected by `sync.Mutex`.
 - `cachedPolicy` -- pairs a `store.Policy` with its parsed `[]policy.SleepWindow`.
 - `PolicyState` -- string enum: `"sleeping"`, `"awake"`, `"unknown"`.
 - `evalContext` -- per-tick configuration passed through evaluation functions: `now`, `autoWake`, `reconcileWhileAwake`.
@@ -116,12 +116,15 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 **Key functions:**
 - `NewPolicyScheduler(st, k8sClient, cfg SchedulerConfig)` -- constructor.
-- `Start(ctx)` / `Stop()` -- lifecycle; `Start` calls `reload()` then launches `tickLoop`.
+- `Start(ctx)` / `Stop()` -- lifecycle; `Start` calls `reload()` then launches `tickLoop`. `Stop` cancels the context and waits for in-flight executions via the `inflight` WaitGroup.
 - `Reload()` -- re-reads all enabled policies from DB; called after any policy CRUD.
 - `RecoverPolicies(ctx)` -- startup reconciliation: compares `CurrentState` against `IntendedState` and queues recovery executions for mismatches.
-- `RunSleepNow(policyID, trigger)` / `RunWakeNow(policyID, trigger)` -- manual triggers; return the new execution ID.
+- `RunSleepNow(policyID, trigger)` / `RunWakeNow(policyID, trigger)` -- manual triggers; both delegate to `runNow(policyID, direction, trigger)` which fetches the policy and calls `run`. Returns the new execution ID.
+- `CancelExecution(policyID)` -- cancels a running execution by calling the stored cancel function from `inflightCancels`. Returns `ErrNoInflightExecution` if nothing is running.
+- `IsAlreadyRunning(err)` -- helper that checks whether an error is `ErrPolicyTransitioning` or `ErrPolicyExecutionInflight`.
 - `TickExceptions(ctx)` -- called every 60s; delegates to `maybeStartException` (pending → active when `StartsAt` passes) and `maybeEndException` (active → completed when `EndsAt` passes, triggers sleep-on-end if configured).
-- `run(ctx, policy, direction, trigger)` -- core orchestration: sets `transitioning` state, creates `PolicyExecution`, spawns goroutine with panic recovery that delegates to `executeScaler` (sleep/wake dispatch) and `drainLogChannel` (batched log persistence + real-time WebSocket publish). Post-execution cleanup is delegated to `finalizeExecution` (determines final status, calls `FinishPolicyExecution`), `recordExecutionMetrics` (Prometheus counters and histograms), and `updatePolicyState` (sets `sleeping`, `awake`, or `unknown` in both DB and cache).
+- `run(ctx, policy, direction, trigger)` -- core orchestration: registers the policy in `inflightPolicies`, sets `transitioning` state via `claimTransition`, creates `PolicyExecution`, spawns goroutine with panic recovery that delegates to `executeAndFinalize`. The goroutine cleans up `inflightPolicies` and `inflightCancels` on exit.
+- `executeAndFinalize(ctx, policy, direction, execID, startedAt)` -- extracted goroutine body: creates a timeout context, stores the cancel function in `inflightCancels`, creates the log channel, and delegates to `executeScaler` (sleep/wake dispatch) and `drainLogChannel` (batched log persistence + real-time WebSocket publish). Post-execution cleanup is delegated to `finalizeExecution` (determines final status -- `success`, `failed`, or `interrupted` when the context was cancelled -- calls `FinishPolicyExecution`), `recordExecutionMetrics` (Prometheus counters and histograms), and `updatePolicyState` (sets `sleeping`, `awake`, or `unknown` in both DB and cache).
 - `evaluateAll()` -- snapshots the cached policy map, batch-fetches active overrides for all enabled policies in a single query (`ListActiveOverridesForPolicies`), builds an `evalContext` with the override map, and calls `evaluatePolicy` for each.
 - `evaluatePolicy(cp, ctx)` -- computes `IntendedState` and routes to one of three paths: `reconcilePolicy` (current matches intended), `resetStuckTransition` (stuck in transitioning), or `executeTransition` (state change needed).
 - `reconcilePolicy(p, ctx)` -- called when a policy is already in its intended state. When `reconcileWhileAwake` is enabled and the policy is awake, delegates to `reconcileAwakePolicy`.
@@ -132,7 +135,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 **Policy Engine (`policy_engine.go`):**
 - `IntendedState(windows, timezone, overrides, now)` -- override precedence: `force_sleep` > `stay_awake` > window evaluation.
-- `HasSkipOverride(overrides, direction, now)` -- checks for `skip_sleep`/`skip_wake` overrides; consumed (deleted) on match.
+- `FindSkipOverride(overrides, direction, now)` -- returns the first matching `skip_sleep`/`skip_wake` override that hasn't expired, or nil if none match. The caller is responsible for consuming (deleting) the override.
 - ~~`ActiveException`~~ -- removed (was unused).
 
 **Broker (`broker.go`):**
@@ -162,11 +165,12 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `sleepWorkload(params, kind, ns, name, replicas, annotate, scale)` -- processes a single workload during sleep; handles already-zero, snapshot creation, rollback on scale failure.
 - `wakeWorkload(params, snap)` -- processes a single snapshot during wake; handles already-zero, lookup errors, external scaling detection, and restore.
 - `runConcurrent[T](items, concurrency, fn, counts)` -- generic worker pool bounded by a semaphore, with mutex-protected counts and panic recovery with stack trace logging.
-- `lookupWorkload(ctx, kind, ns, name)` -- performs a direct Get to check if a workload still exists in the cluster. Returns an error, using `apierrors.IsNotFound` to distinguish 404 from transient errors.
-- `restoreWorkload(ctx, kind, ns, name, target)` -- scales up and removes the annotation. Returns an error for unknown workload kinds.
+- `workloadOps(kind)` -- returns the k8s operations (get-replicas, scale, remove-annotation) for the given workload kind. Eliminates the duplicated Deployment/StatefulSet switch blocks in `lookupWorkload` and `restoreWorkload`.
+- `lookupWorkload(ctx, kind, ns, name)` -- delegates to `workloadOps` to check if a workload still exists in the cluster. Returns `(exists, currentReplicas, error)`, using `apierrors.IsNotFound` to distinguish 404 from transient errors.
+- `restoreWorkload(ctx, kind, ns, name, target)` -- delegates to `workloadOps` to scale up and remove the annotation. Returns an error for unknown workload kinds.
 
 **Key functions (Runner):**
-- `collectFilteredEntries(deployments, statefulsets, skipNS, nsFilter, counts, countSkipped)` -- filters workloads by namespace and converts to `workloadEntry` slice.
+- `collectFilteredEntries(deployments, statefulsets, skipNS, nsFilter, counts)` -- filters workloads by namespace and converts to `workloadEntry` slice. Filtered-out items always increment `counts.Skipped`.
 - `drainNodes(ctx, mode, guardrails, logCh, counts)` -- list nodes, identify protected ones, drain and delete the rest.
 - `drainAndDeleteNode(ctx, mode, name, podCount, drainTimeout, logCh, counts)` -- cordon, drain (dynamic timeout: `podCount*15 + 60` seconds), delete node object.
 - `isLabelProtected(labels, skipNodeLabels)` / `isTaintProtected(taints, skipNodeTaints)` -- thin wrappers that delegate to `nodeutil.MatchLabel` and `nodeutil.MatchTaint` respectively.
@@ -185,18 +189,20 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `ContainerMetrics` -- `{CPUMillis, MemBytes}` from the Metrics Server API.
 - `ClusterCache` -- in-memory mirror of cluster state driven by SharedInformers (see below).
 - `CachedSnapshot` -- point-in-time copy: `Nodes`, `Pods`, `Deployments`, `StatefulSets`, `FetchedAt`.
+- `PodLogOptions` -- `{Container, TailLines, Previous, Follow}` used by `GetPodLogs`.
 
 **Key functions (Client):**
-- `ListDeployments(ctx, namespace)` / `ListDeploymentsBySelector(ctx, namespace, labelSelector)` -- list with optional label filter.
+- `ListDeployments(ctx, namespace)` / `ListDeploymentsBySelector(ctx, namespace, labelSelector)` -- list with optional label filter. `GetDeployment(ctx, ns, name)` -- single fetch.
 - `ScaleDeployment(ctx, ns, name, replicas)` -- get scale subresource, set replicas, update. Uses `scaleWithRetry` for retry-on-conflict with exponential backoff (500ms, 1.5s, 3s).
-- `AnnotateDeployment(ctx, ns, name, key, value)` / `RemoveDeploymentAnnotation(ctx, ns, name, key)` -- read-modify-write on the deployment object. Uses `retryOnConflict` for conflict resilience.
-- Equivalent methods for StatefulSets: `ListStatefulSets`, `ListStatefulSetsBySelector`, `ScaleStatefulSet`, `AnnotateStatefulSet`, `RemoveStatefulSetAnnotation`. Scale and annotation operations use the same retry-on-conflict logic.
+- `AnnotateDeployment(ctx, ns, name, key, value)` / `RemoveDeploymentAnnotation(ctx, ns, name, key)` -- delegates to `annotateResource` / `removeAnnotation` internal helpers.
+- `annotateResource(ns, name, key, value, resource, getAnnotations, setAndUpdate)` / `removeAnnotation(ns, name, key, resource, getAnnotations, setAndUpdate)` -- generic read-modify-write annotation helpers that use `retryOnConflict`. Both Deployment and StatefulSet annotation methods delegate to these.
+- Equivalent methods for StatefulSets: `ListStatefulSets`, `ListStatefulSetsBySelector`, `ScaleStatefulSet`, `GetStatefulSet`, `AnnotateStatefulSet`, `RemoveStatefulSetAnnotation`. Scale and annotation operations use the same retry-on-conflict logic.
 - `ListNodes(ctx)` / `GetNode(ctx, name)` / `CordonNode(ctx, name)` / `DrainNode(ctx, name, timeout)` / `DeleteNode(ctx, name)`. `CordonNode` uses `retryOnConflict`.
 - `retryOnConflict(fn)` -- internal helper that retries a function on 409 Conflict with exponential backoff (500ms, 1.5s, 3s; three attempts).
 - `scaleWithRetry(ctx, ns, name, replicas, getScale, updateScale)` -- thin wrapper calling `retryOnConflict` for scale subresource operations.
 - `DrainNode` -- cordons, evicts all non-DaemonSet pods (falling back to force-delete), then polls until drained or timeout.
 - `ListPods(ctx, ns)` / `ListAllPods(ctx)` / `ListPodsOnNode(ctx, nodeName)` / `GetPod(ctx, ns, name)`.
-- `GetPodLogs(ctx, ns, name, container, tailLines, previous, follow)` -- returns `io.ReadCloser` for streaming.
+- `GetPodLogs(ctx, ns, name, PodLogOptions)` -- returns `io.ReadCloser` for streaming. `PodLogOptions` bundles `Container`, `TailLines`, `Previous`, and `Follow` fields.
 - `GetPodEvents(ctx, ns, podName)` -- events filtered by `involvedObject.name`.
 - `GetAllPodMetrics(ctx)` -- hits `/apis/metrics.k8s.io/v1beta1/pods`, returns `map[string]ContainerMetrics` keyed by `"namespace/podName"`. Returns empty map (not error) when metrics server is unavailable.
 - `GetPodMetrics(ctx, ns, name)` -- per-container metrics for a single pod.
@@ -245,10 +251,10 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `store.go` | `New(dsn)` -- opens PostgreSQL connection, configures pool (10 open, 5 idle, 5m lifetime, 2m idle timeout), runs `AutoMigrate`, adds CHECK constraints via `addEnumCheckConstraints`, migrates legacy cron columns. `Ping()`, `DB()`. |
 | `models.go` | All GORM model struct definitions with tags. |
 | `status.go` | String constants: `PolicyState*`, `PolicyMode*`, `ExecStatus*`, `ExceptionStatus*`, `ExceptionType*`. |
-| `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning` (atomic conditional update, returns `ErrTransitionAlreadyClaimed` on race), `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`, `ResetStuckTransitioningPolicies`. Retention: `CleanOldExecutions` (deletes finished executions older than threshold, preserving those with open snapshots; cascades to log lines and snapshots via FK), `CleanExpiredOverrides` (deletes time-bounded overrides past `ends_at` and old skip overrides). Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines` (capped at 5000 rows). Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `CountOpenSnapshotsForRestore`, `GetSnapshotsForExecution`, `GetSnapshotsForPolicy` (capped at 5000 rows), `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`, `ListActiveOverridesForPolicies` (batch fetch for all policies in one query, used by scheduler tick). Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason, guarded by `WHERE status IN ('pending','active')`), `ListOpenExceptions`, `UpdateScheduledExceptionStatus` (atomic conditional transition: requires `expectedStatus` to match current row state, prevents concurrent double-transitions). |
+| `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning` (atomic conditional update, sets both `current_state` and `state_since`, returns `ErrTransitionAlreadyClaimed` on race), `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`, `ResetStuckTransitioningPolicies`. Retention: `CleanOldExecutions` (deletes finished executions older than threshold, preserving those with open snapshots; cascades to log lines and snapshots via FK), `CleanExpiredOverrides` (deletes time-bounded overrides past `ends_at` and old skip overrides). Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines` (capped at 5000 rows). Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `CountOpenSnapshotsForRestore`, `GetSnapshotsForExecution`, `GetSnapshotsForPolicy` (capped at 5000 rows), `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`, `ListActiveOverridesForPolicies` (batch fetch for all policies in one query, used by scheduler tick). Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason, guarded by `WHERE status IN ('pending','active')`), `ListOpenExceptions`, `UpdateScheduledExceptionStatus` (atomic conditional transition: requires `expectedStatus` to match current row state, prevents concurrent double-transitions). |
 | `queries.go` | `GetGuardrails`, `UpdateGuardrails`, `SeedDefaults`, `DropAllTables`, `MigrateSchema`. |
 | `store_helpers.go` | `selectiveUpdate` -- shared GORM helper that applies only allowed fields from an update map. Used by `UpdateUser`. |
-| `users.go` | `CreateUser`, `GetUserByID`, `GetUserByUsername` (scoped to `source=local`), `ListUsers`, `UpdateUser`, `DeleteUser` (relies on FK CASCADE for session cleanup), `UpdateLastLogin`, `ChangePassword`, `UpdateUserTimezone`, `GetOrCreateOIDCUser`, `HashPassword`, `CheckPassword`, `DeleteUserSessions`. |
+| `users.go` | `OIDCUserInfo` struct (bundles OIDC claims for `GetOrCreateOIDCUser`), `CreateUser`, `GetUserByID`, `GetUserByUsername` (scoped to `source=local`), `ListUsers`, `UpdateUser`, `DeleteUser` (relies on FK CASCADE for session cleanup), `UpdateLastLogin`, `ChangePassword`, `UpdateUserTimezone`, `GetOrCreateOIDCUser(OIDCUserInfo)`, `HashPassword`, `CheckPassword`, `DeleteUserSessions`. |
 | `sessions.go` | `GenerateToken`, `CreateSession`, `GetSessionByToken` (with expiry check), `ExtendSession` (sliding window capped at `max_expires_at`), `DeleteSession`, `DeleteUserSessions`, `CleanExpiredSessions`, `CountActiveSessions`. |
 | `audit.go` | `CreateAuditLog`, `ListAuditLogs` (filtered, paginated), `CleanOldAuditLogs`. |
 
@@ -655,10 +661,10 @@ stateDiagram-v2
     [*] --> running: created
     running --> success: no error
     running --> failed: error
-    running --> interrupted: server restart
+    running --> interrupted: context cancelled (server restart, user cancel, timeout)
 ```
 
-Note: `skipped` exists as a constant but is not currently used in the normal flow.
+`interrupted` is set when the execution context is cancelled -- this covers server restarts (via `MarkInterruptedPolicyExecutions` at startup), user-initiated cancellation (via `POST /policies/{id}/cancel`), and execution timeouts.
 
 #### ScheduledException.Status
 
@@ -811,23 +817,24 @@ When `evaluatePolicy` detects a mismatch (intended != current, and current != tr
 1. **Skip override check:** If there's a matching `skip_sleep`/`skip_wake` override, consume it (delete from DB) and return without executing.
 
 2. **`run(ctx, policy, direction, trigger)`:**
-   - Lock mutex, re-read policy from DB (freshness check).
-   - If `CurrentState == transitioning` -> return error (concurrent guard).
-   - Set `CurrentState = transitioning` in DB.
-   - Unlock mutex.
+   - Lock mutex, check `inflightPolicies` -> return `ErrPolicyExecutionInflight` if already running.
+   - Register in `inflightPolicies`, unlock mutex.
+   - Call `claimTransition` -> sets `CurrentState = transitioning` and `StateSince` in DB. On race, cleans up `inflightPolicies` and returns `ErrTransitionAlreadyClaimed`.
    - Create `PolicyExecution` record with `status=running`.
-   - Spawn goroutine:
+   - Spawn goroutine (tracked by `inflight` WaitGroup, with panic recovery):
 
-3. **Inside the goroutine:**
+3. **Inside the goroutine (`executeAndFinalize`):**
    - Create a `context.WithTimeout` using `policy.TimeoutMinutes` (default 2 hours).
+   - Store the cancel function in `inflightCancels` (enables `CancelExecution`).
    - Create a buffered `logCh` channel (capacity 512).
    - Start a log-persist goroutine that reads from `logCh`, assigns sequential numbers, batch-inserts to `policy_log_lines` (50 per flush via `AppendPolicyLogLines`), and publishes to `Broker`.
    - Call `PolicyRunner.RunPolicySleep` or `RunPolicyWake`.
    - Close `logCh`, wait for the persist goroutine to drain.
    - Call `Broker.Close(execID)` to signal all WebSocket subscribers.
-   - Call `finalizeExecution` -- determines final status (`success` or `failed`), calls `store.FinishPolicyExecution` with final counts.
+   - Call `finalizeExecution` -- determines final status: `success` (no error), `interrupted` (context cancelled), or `failed` (other error). Calls `store.FinishPolicyExecution` with final counts.
    - Call `recordExecutionMetrics` -- records Prometheus counters and histograms.
-   - Call `updatePolicyState` -- sets `sleeping` (if sleep succeeded), `awake` (if wake succeeded), or `unknown` (if failed) in both the DB and in-memory cache.
+   - Call `updatePolicyState` -- sets `sleeping` (if sleep succeeded), `awake` (if wake succeeded), or `unknown` (if failed/interrupted) in both the DB and in-memory cache.
+   - Cleanup: remove from `inflightPolicies` and `inflightCancels`.
 
 ### The Scaling Pipeline
 
@@ -887,7 +894,7 @@ Every scaler operation checks `isApply(mode)`:
 
 ```
 Scaler goroutine
-  -> emit(logCh, level, msg)          [non-blocking send to buffered channel]
+  -> emit(logCh, level, msg)          [package-level helper; non-blocking send to buffered channel]
     -> log-persist goroutine
       -> batch lines (50 per flush)
       -> store.AppendPolicyLogLines()  [batch insert to DB]
@@ -898,15 +905,14 @@ Scaler goroutine
 
 ### Concurrency Guard
 
-The `transitioning` state prevents double execution:
+Two-layer guard prevents double execution:
 
-1. Before starting a run, the scheduler locks the mutex and checks `CurrentState`.
-2. If already `transitioning`, the run is rejected.
-3. The state is set to `transitioning` in the DB and in-memory cache before unlocking. If the DB write fails, the run is aborted.
-4. The evaluation ticker also skips policies in `transitioning` state.
-5. After the execution completes, the state is set to the final value (`sleeping`, `awake`, or `unknown`) in both the DB and in-memory cache.
-6. If `CreatePolicyExecution` fails after entering `transitioning`, the state is rolled back to `unknown`.
-7. A 10-minute staleness timeout resets stuck `transitioning` policies automatically.
+1. Before starting a run, the scheduler locks the mutex and checks `inflightPolicies`. If the policy is already in flight, the run is rejected with `ErrPolicyExecutionInflight`.
+2. The policy is registered in `inflightPolicies`, then `claimTransition` sets `CurrentState = transitioning` and `StateSince` in the DB. If another caller won the race, `ErrTransitionAlreadyClaimed` is returned and `inflightPolicies` is cleaned up.
+3. The evaluation ticker also skips policies in `transitioning` state.
+4. After the execution completes, the state is set to the final value (`sleeping`, `awake`, or `unknown`) in both the DB and in-memory cache, and the policy is removed from `inflightPolicies` and `inflightCancels`.
+5. If `CreatePolicyExecution` fails after entering `transitioning`, the state is rolled back to `unknown`.
+6. A 10-minute staleness timeout resets stuck `transitioning` policies automatically.
 
 ---
 
@@ -939,7 +945,7 @@ The `transitioning` state prevents double execution:
    - CPU/memory: allocatable from node status, requested summed from pod specs.
    - Protection status: computed by `nodeProtectionStatus` (in `cluster_nodes.go`) using `nodeutil.MatchLabel`, `nodeutil.MatchTaint`, and `SkipNsNode` (critical namespace pods).
    - Cordon status from `node.Spec.Unschedulable`.
-   - Full label map from `node.Labels` (nil-safe via `nonNilLabels`).
+   - Full label map from `node.Labels` (nil-safe via `nonNilMap`).
    - Taints converted from `node.Spec.Taints` via `convertTaints` (key, value, effect).
 
 ### `/api/cluster/nodes/{name}/pods` and `/api/cluster/workloads/{ns}/{kind}/{name}/pods`
@@ -1053,6 +1059,7 @@ All metrics are registered via `promauto` in `backend/internal/metrics/metrics.g
 | **Scheduler** | | | |
 | `kube_phoenix_scheduler_evaluations_total` | Counter | -- | Total scheduler evaluation ticks. If this stops incrementing, the scheduler is stuck. |
 | `kube_phoenix_scheduler_evaluation_duration_seconds` | Histogram | -- | Time per evaluation tick. Buckets: 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5. |
+| `kube_phoenix_scheduler_panics_total` | Counter | -- | Recovered panics in scheduler and background goroutines. |
 | **Cluster cache** | | | |
 | `kube_phoenix_cache_rebuilds_total` | Counter | -- | Cluster cache snapshot rebuilds (SharedInformer-backed). |
 | `kube_phoenix_cache_rebuild_duration_seconds` | Histogram | -- | Time spent rebuilding the cache snapshot. Buckets: 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1. |
@@ -1094,7 +1101,7 @@ Chi middleware adds request-level logging (via `chiMiddleware.Logger`).
 - `auth.login` — `after: {"username": "...", "method": "local"|"oidc"}`
 - `auth.logout` — `after: {"method": "local"|"oidc"}`
 - `auth.password_change` — `after: {"method": "self-service"}`
-- `policy.create`, `policy.update`, `policy.delete`, `policy.sleep`, `policy.wake`
+- `policy.create`, `policy.update`, `policy.delete`, `policy.sleep`, `policy.wake`, `policy.cancel`
 - `policy.override.create`, `policy.override.delete`
 - `exception.create`, `exception.update`, `exception.delete`
 - `user.create`, `user.update`, `user.delete`
@@ -1134,7 +1141,7 @@ Test files exist for:
 | `internal/policy` | `evaluator_test.go` | `Evaluate()` and `NextTransition()` -- same-day windows, overnight windows, all-day windows, timezone handling |
 | `internal/policy` | `windows_test.go` | `ValidateWindows()` -- structural validation, `CronsToWindows()` -- legacy migration |
 | `internal/scheduler` | `policy_scheduler_test.go` | Scheduler evaluation pipeline with mock store and runner interfaces -- drift detection, reconcile backoff, stuck transition reset, skip overrides |
-| `internal/scheduler` | `policy_engine_test.go` | `IntendedState()` override precedence, `HasSkipOverride()` consumption |
+| `internal/scheduler` | `policy_engine_test.go` | `IntendedState()` override precedence, `FindSkipOverride()` matching and expiry |
 | `internal/auth` | `permissions_test.go` | `HasPermission()`, `PermissionsForRole()`, `ValidRole()` |
 | `internal/auth` | `ratelimit_test.go` | `RateLimiter.Allow()`, `Reset()`, sliding window behavior |
 | `internal/auth` | `oidc_test.go` | `MapGroupsToRole()`, `OIDCConfigFromEnv()` |
@@ -1281,7 +1288,7 @@ List endpoints that support pagination use `page` and `pageSize` (or `page_size`
 
 Example: `GET /api/policy-executions?policy_id=1&status=success&direction=sleep&page=0&page_size=20`
 
-Supported filters: `policy_id` (uint), `status` (running/success/failed/interrupted/skipped), `direction` (sleep/wake).
+Supported filters: `policy_id` (uint), `status` (running/success/failed/interrupted), `direction` (sleep/wake).
 
 ### Audit Logging
 
@@ -1318,6 +1325,9 @@ PolicyModeApply, PolicyModePlan
 
 // Execution statuses
 ExecStatusRunning, ExecStatusSuccess, ExecStatusFailed, ExecStatusInterrupted
+
+// Exception types
+ExceptionTypeStayAwake, ExceptionTypeForceSleep
 
 // Exception statuses
 ExceptionStatusPending, ExceptionStatusActive, ExceptionStatusCompleted, ExceptionStatusCancelled
