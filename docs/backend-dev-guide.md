@@ -53,8 +53,8 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 **Key functions:**
 - `main()` -- orchestrates all of the above.
-- `startMaintenanceTickers(ctx, st, retentionDays, wg)` -- spawns session cleanup and audit retention goroutines.
-- `runTicker(ctx, interval, name, fn)` -- generic ticker loop used by all background tasks.
+- `startMaintenanceTickers(ctx, st, retentionDays, wg)` -- spawns session cleanup and data retention goroutines (audit logs, old executions, expired overrides).
+- `runTicker(ctx, interval, name, fn)` -- generic ticker loop used by all background tasks. Each tick is wrapped in `safeTick` with panic recovery.
 - `parseIntEnv(key, fallback)` -- reads an integer from the environment with a default.
 
 ---
@@ -80,7 +80,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `oidc.go` | `oidcConfig`, `oidcLogin`, `oidcCallback`, `oidcExchangeAndVerify`, `oidcExtractClaims` |
 | `policies.go` | `listPolicies`, `getPolicy`, `createPolicy`, `updatePolicy`, `deletePolicy`, `triggerPolicySleep`, `triggerPolicyWake` |
 | `exceptions.go` | `listExceptions`, `getException`, `createException`, `updateException`, `deleteException` |
-| `overrides.go` | `listPolicyOverrides`, `createPolicyOverride`, `deletePolicyOverride` |
+| `overrides.go` | `listPolicyOverrides`, `createPolicyOverride`, `deletePolicyOverride`, `validateOverrideInput` |
 | `policy_executions.go` | `listPolicyExecutions`, `getPolicyExecution`, `getPolicyExecutionLogs`, `getPolicyExecutionSnapshots`, `getPolicySnapshots`, `wsPolicyExecutionLogs` |
 | `cluster.go` | `getWorkloads`, `buildWorkloadResponse` |
 | `cluster_nodes.go` | `getNodes`, `buildNodeResponse`, `nodeProtectionStatus` |
@@ -121,8 +121,8 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `RecoverPolicies(ctx)` -- startup reconciliation: compares `CurrentState` against `IntendedState` and queues recovery executions for mismatches.
 - `RunSleepNow(policyID, trigger)` / `RunWakeNow(policyID, trigger)` -- manual triggers; return the new execution ID.
 - `TickExceptions(ctx)` -- called every 60s; delegates to `maybeStartException` (pending → active when `StartsAt` passes) and `maybeEndException` (active → completed when `EndsAt` passes, triggers sleep-on-end if configured).
-- `run(ctx, policy, direction, trigger)` -- core orchestration: sets `transitioning` state, creates `PolicyExecution`, spawns goroutine that runs `PolicyRunner.RunPolicySleep/Wake`, persists log lines, publishes to broker. Post-execution cleanup is delegated to extracted helpers: `finalizeExecution` (determines final status, calls `FinishPolicyExecution`), `recordExecutionMetrics` (Prometheus counters and histograms), and `updatePolicyState` (sets `sleeping`, `awake`, or `unknown` in both DB and cache).
-- `evaluateAll()` -- snapshots the cached policy map, builds an `evalContext`, and calls `evaluatePolicy` for each.
+- `run(ctx, policy, direction, trigger)` -- core orchestration: sets `transitioning` state, creates `PolicyExecution`, spawns goroutine with panic recovery that delegates to `executeScaler` (sleep/wake dispatch) and `drainLogChannel` (batched log persistence + real-time WebSocket publish). Post-execution cleanup is delegated to `finalizeExecution` (determines final status, calls `FinishPolicyExecution`), `recordExecutionMetrics` (Prometheus counters and histograms), and `updatePolicyState` (sets `sleeping`, `awake`, or `unknown` in both DB and cache).
+- `evaluateAll()` -- snapshots the cached policy map, batch-fetches active overrides for all enabled policies in a single query (`ListActiveOverridesForPolicies`), builds an `evalContext` with the override map, and calls `evaluatePolicy` for each.
 - `evaluatePolicy(cp, ctx)` -- computes `IntendedState` and routes to one of three paths: `reconcilePolicy` (current matches intended), `resetStuckTransition` (stuck in transitioning), or `executeTransition` (state change needed).
 - `reconcilePolicy(p, ctx)` -- called when a policy is already in its intended state. When `reconcileWhileAwake` is enabled and the policy is awake, delegates to `reconcileAwakePolicy`.
 - `reconcileAwakePolicy(p, now)` -- detects drift from failed wakes by counting open snapshots that need restoring (`CountOpenSnapshotsForRestore`). If drift is found and the per-policy backoff (5 minutes) has elapsed, runs a corrective wake with trigger `"reconcile"`. Bypasses the `autoWake` gate and `skip_wake` overrides.
@@ -242,13 +242,13 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 | File | Content |
 |:-----|:--------|
-| `store.go` | `New(dsn)` -- opens PostgreSQL connection, configures pool (10 open, 5 idle, 5m lifetime), runs `AutoMigrate`, adds CHECK constraints, migrates legacy cron columns. `Ping()`, `DB()`. |
+| `store.go` | `New(dsn)` -- opens PostgreSQL connection, configures pool (10 open, 5 idle, 5m lifetime, 2m idle timeout), runs `AutoMigrate`, adds CHECK constraints via `addEnumCheckConstraints`, migrates legacy cron columns. `Ping()`, `DB()`. |
 | `models.go` | All GORM model struct definitions with tags. |
-| `status.go` | String constants: `PolicyState*`, `PolicyMode*`, `ExecStatus*`, `ExceptionStatus*`. |
-| `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning` (atomic conditional update, returns `ErrTransitionAlreadyClaimed` on race), `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`, `ResetStuckTransitioningPolicies`. Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines`. Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `CountOpenSnapshotsForRestore`, `GetSnapshotsForExecution/Policy`, `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`. Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason, guarded by `WHERE status IN ('pending','active')`), `ListOpenExceptions`, `UpdateScheduledExceptionStatus` (atomic conditional transition: requires `expectedStatus` to match current row state, prevents concurrent double-transitions). |
+| `status.go` | String constants: `PolicyState*`, `PolicyMode*`, `ExecStatus*`, `ExceptionStatus*`, `ExceptionType*`. |
+| `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning` (atomic conditional update, returns `ErrTransitionAlreadyClaimed` on race), `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`, `ResetStuckTransitioningPolicies`. Retention: `CleanOldExecutions` (deletes finished executions older than threshold, preserving those with open snapshots; cascades to log lines and snapshots via FK), `CleanExpiredOverrides` (deletes time-bounded overrides past `ends_at` and old skip overrides). Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines` (capped at 5000 rows). Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `CountOpenSnapshotsForRestore`, `GetSnapshotsForExecution`, `GetSnapshotsForPolicy` (capped at 5000 rows), `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`, `ListActiveOverridesForPolicies` (batch fetch for all policies in one query, used by scheduler tick). Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason, guarded by `WHERE status IN ('pending','active')`), `ListOpenExceptions`, `UpdateScheduledExceptionStatus` (atomic conditional transition: requires `expectedStatus` to match current row state, prevents concurrent double-transitions). |
 | `queries.go` | `GetGuardrails`, `UpdateGuardrails`, `SeedDefaults`, `DropAllTables`, `MigrateSchema`. |
 | `store_helpers.go` | `selectiveUpdate` -- shared GORM helper that applies only allowed fields from an update map. Used by `UpdateUser`. |
-| `users.go` | `CreateUser`, `GetUserByID/Username`, `ListUsers`, `UpdateUser`, `DeleteUser` (transactional), `UpdateLastLogin`, `ChangePassword`, `UpdateUserTimezone`, `GetOrCreateOIDCUser`, `HashPassword`, `CheckPassword`, `DeleteUserSessions`. |
+| `users.go` | `CreateUser`, `GetUserByID`, `GetUserByUsername` (scoped to `source=local`), `ListUsers`, `UpdateUser`, `DeleteUser` (relies on FK CASCADE for session cleanup), `UpdateLastLogin`, `ChangePassword`, `UpdateUserTimezone`, `GetOrCreateOIDCUser`, `HashPassword`, `CheckPassword`, `DeleteUserSessions`. |
 | `sessions.go` | `GenerateToken`, `CreateSession`, `GetSessionByToken` (with expiry check), `ExtendSession` (sliding window capped at `max_expires_at`), `DeleteSession`, `DeleteUserSessions`, `CleanExpiredSessions`, `CountActiveSessions`. |
 | `audit.go` | `CreateAuditLog`, `ListAuditLogs` (filtered, paginated), `CleanOldAuditLogs`. |
 
@@ -384,7 +384,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 ### GORM Models
 
-All models are defined in `backend/internal/store/models.go`. GORM's `AutoMigrate` manages the schema. CHECK constraints for enum fields are added via raw SQL in `runMigrations()`, which is called from `store.New()`.
+All models are defined in `backend/internal/store/models.go`. GORM's `AutoMigrate` manages the schema. CHECK constraints for all enum-like columns (`policies.mode`, `policies.current_state`, `policy_executions.status`, `policy_executions.direction`, `policy_overrides.override_type`, `scheduled_exceptions.status`, `users.role`, `users.source`) are added via `addEnumCheckConstraints()` in `store.go`. All FK relationships use GORM association tags with explicit `OnDelete` behavior (CASCADE or SET NULL).
 
 #### Guardrails (singleton, ID=1)
 
@@ -471,8 +471,8 @@ type AuditLog struct {
 ```
 
 - Written asynchronously via `AuditWriter` (buffered channel, capacity 1024).
-- If the buffer is full, the entry is dropped and `kube_phoenix_audit_drops_total` is incremented.
-- Retention is configurable via `AUDIT_RETENTION_DAYS` (default 90). Daily cleanup deletes entries older than the threshold.
+- If the buffer is full, the writer blocks up to 500ms before dropping and incrementing `kube_phoenix_audit_drops_total`.
+- Retention is configurable via `AUDIT_RETENTION_DAYS` (default 90). A daily maintenance ticker deletes audit logs, finished policy executions (cascading to log lines and snapshots), and expired overrides older than the threshold. Executions with open (un-restored) snapshots are preserved regardless of age.
 
 #### Policy
 
@@ -742,9 +742,9 @@ Client
 
 1. Client sends `POST /api/auth/login` with `{username, password}`.
 2. Rate limiting: `ipLimiter.Allow(r.RemoteAddr)` (10 attempts per 15 min per IP) and `userLimiter.Allow(username)` (5 per 15 min per user). On rejection, returns 429 with `Retry-After: 900`.
-3. Look up user by username via `store.GetUserByUsername`.
-4. Verify password with `bcrypt.CompareHashAndPassword`.
-5. Check `user.Enabled` -- disabled accounts get 403.
+3. Look up local user by username via `store.GetUserByUsername` (scoped to `source=local`; OIDC users authenticate via the OIDC callback, not this endpoint). Failed lookups are audited as `auth.login_failed`.
+4. Verify password with `bcrypt.CompareHashAndPassword`. Bad passwords are audited as `auth.login_failed`.
+5. Check `user.Enabled` -- disabled accounts get 403 and are audited as `auth.login_failed`.
 6. On success: reset both rate limiters, create session:
    - Generate 64-char hex token via `crypto/rand`.
    - Create `Session` record with `ExpiresAt = now + idleTimeout` (default 8h) and `MaxExpiresAt = now + maxLifetime` (default 24h).
