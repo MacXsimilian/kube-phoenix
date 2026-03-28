@@ -140,7 +140,7 @@ kubectl logs -n kube-phoenix deployment/kube-phoenix
 
 - **Running locally without a cluster:** Expected behavior. Cluster endpoints return empty data.
 - **RBAC not applied:** Verify the ClusterRoleBinding exists: `kubectl get clusterrolebinding kube-phoenix`.
-- **Cache not yet populated:** On cold start, the cluster cache populates asynchronously. Wait a few seconds and refresh.
+- **Cache not yet populated:** On cold start, the cluster cache waits up to 30 seconds for SharedInformer sync. If the API server is slow, `Snapshot().Ready()` may still be false. Wait a few seconds and refresh.
 
 ## WebSocket log streaming disconnects immediately
 

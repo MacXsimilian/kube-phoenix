@@ -76,4 +76,19 @@ var (
 		Name: "kube_phoenix_audit_drops_total",
 		Help: "Total audit log entries dropped because the async write buffer was full.",
 	})
+
+	// ─── Cluster cache metrics ───────────────────────────────────────────
+
+	// CacheRebuildsTotal counts cluster cache snapshot rebuilds.
+	CacheRebuildsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "kube_phoenix_cache_rebuilds_total",
+		Help: "Total number of cluster cache snapshot rebuilds.",
+	})
+
+	// CacheRebuildDuration observes the time spent rebuilding the snapshot.
+	CacheRebuildDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "kube_phoenix_cache_rebuild_duration_seconds",
+		Help:    "Time spent rebuilding the cluster cache snapshot.",
+		Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1},
+	})
 )

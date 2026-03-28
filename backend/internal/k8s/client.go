@@ -27,6 +27,11 @@ type Client struct {
 	cs *kubernetes.Clientset
 }
 
+// Clientset returns the underlying typed client for use at the composition root.
+func (c *Client) Clientset() kubernetes.Interface {
+	return c.cs
+}
+
 func New() (*Client, error) {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {

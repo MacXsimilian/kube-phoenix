@@ -182,7 +182,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 **Key types:**
 - `Client` -- wraps `*kubernetes.Clientset`. Created via `New()` which tries in-cluster config first, then falls back to `KUBECONFIG` or `~/.kube/config`.
 - `ContainerMetrics` -- `{CPUMillis, MemBytes}` from the Metrics Server API.
-- `ClusterCache` -- in-memory mirror of cluster state refreshed every 10s (see below).
+- `ClusterCache` -- in-memory mirror of cluster state driven by SharedInformers (see below).
 - `CachedSnapshot` -- point-in-time copy: `Nodes`, `Pods`, `Deployments`, `StatefulSets`, `FetchedAt`.
 
 **Key functions (Client):**
@@ -208,22 +208,22 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 **File:** `backend/internal/k8s/cache.go`
 
-**Purpose:** Background goroutine that refreshes an in-memory snapshot of cluster state every 10 seconds, so HTTP handlers read from memory instead of hitting the K8s API on every request.
+**Purpose:** Event-driven in-memory mirror of cluster state using SharedInformers, so HTTP handlers read from memory instead of hitting the K8s API on every request.
 
 **Key types:**
-- `ClusterCache` -- holds `*Client`, `CachedSnapshot` behind `sync.RWMutex`, and subscriber channels.
+- `ClusterCache` -- holds a `SharedInformerFactory`, typed listers, `CachedSnapshot` behind `sync.RWMutex`, subscriber channels, and a debouncer.
 - `CachedSnapshot` -- `{Nodes, Pods, Deployments, StatefulSets, FetchedAt}`.
 
 **Key functions:**
-- `NewClusterCache(client)` -- constructor.
-- `Start(ctx)` -- begins the background refresh loop; first refresh is immediate.
-- `refresh(ctx)` -- fetches all four resource types in parallel (4 goroutines). Partial failures preserve previously-good data for unaffected resource types. `FetchedAt` is only advanced when at least one fetch succeeds.
+- `NewClusterCache(clientset)` -- constructor; accepts `kubernetes.Interface`, creates informers and wires event handlers.
+- `Start(ctx)` -- starts informer watches and blocks until caches sync (30s timeout). After return, `Snapshot().Ready()` is true.
+- `Stop()` -- cancels pending debounce timer and clears subscribers.
+- `rebuildSnapshot()` -- serialised (via `rebuildMu`) rebuild that reads all four listers, deep-copies results, swaps the snapshot, and notifies subscribers. Partial failures preserve previously-good data per resource type. `FetchedAt` is only advanced when at least one lister succeeds.
 - `Snapshot()` -- returns a copy of the current state (read lock).
-- `Subscribe()` -- returns a `chan struct{}` (buffer 1) that receives a signal on each refresh.
+- `Subscribe()` -- returns a `chan struct{}` (buffer 1) that receives a signal on each rebuild.
 - `Unsubscribe(ch)` -- removes a subscriber.
-- `notify()` -- non-blocking send to all subscribers after each refresh.
 
-**Dependencies:** `k8s` (Client), `k8s.io/api`.
+**Dependencies:** `k8s.io/client-go/informers`, `k8s.io/client-go/listers`, `metrics`.
 
 ---
 
@@ -911,11 +911,9 @@ The `transitioning` state prevents double execution:
 
 **What it caches:** Nodes, Pods, Deployments, StatefulSets.
 
-**Refresh interval:** Every 10 seconds (`cacheRefreshInterval`).
+**Update mechanism:** SharedInformers maintain persistent WATCH connections. Any resource change triggers a debounced snapshot rebuild (2-second trailing edge). Each resource type is updated independently -- if a lister fails, the cached value for that resource is preserved from the last successful read. `FetchedAt` is advanced only when at least one lister succeeds.
 
-**Refresh logic:** 4 goroutines fetch in parallel. Each resource type is updated independently -- if nodes fail but pods succeed, the cached nodes are preserved from the last successful fetch. `FetchedAt` is advanced only when at least one fetch succeeds.
-
-**SSE streaming:** Each refresh calls `notify()`, which sends a non-blocking signal to all subscriber channels. The SSE handler (`streamCluster`) subscribes on connect and writes `data: {...}\n\n` on each signal.
+**SSE streaming:** Each rebuild calls `notify()`, which sends a non-blocking signal to all subscriber channels. The SSE handler (`streamCluster`) subscribes on connect and writes `data: {...}\n\n` on each signal.
 
 ### `/api/cluster/workloads`
 

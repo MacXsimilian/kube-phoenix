@@ -63,17 +63,20 @@ func main() {
 		k8s = nil
 	}
 
+	// ── Cancellable context for all background work ─────��────────────────
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// ── Cluster cache ─────────────────────────────────────────────────────
 	var cache *k8sclient.ClusterCache
 	if k8s != nil {
-		cache = k8sclient.NewClusterCache(k8s)
-		cache.Start(context.Background())
+		cache = k8sclient.NewClusterCache(k8s.Clientset())
+		cache.Start(ctx)
+		defer cache.Stop()
 	}
 
 	// ── Background maintenance tickers ────────────────────────────────────
 	var tickerWg sync.WaitGroup
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// ── Policy scheduler ──────────────────────────────────────────────────
 	g, err := st.GetGuardrails()
