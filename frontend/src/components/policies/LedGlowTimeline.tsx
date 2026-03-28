@@ -1,6 +1,5 @@
 'use client'
 
-import React from 'react'
 import Box from '@mui/material/Box'
 import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
 import { useIsDark } from '@/lib/useIsDark'

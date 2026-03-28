@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { formatError } from '@/lib/formatters'
 import Tooltip from '@mui/material/Tooltip'
 import Grid from '@mui/material/Grid'
 import Card from '@mui/material/Card'
@@ -13,6 +14,7 @@ import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Switch from '@mui/material/Switch'
+import CenteredSpinner from '@/components/common/CenteredSpinner'
 import { ChipInput } from '@/components/common/ChipInput'
 import ProtectedChipInput, { AMBER_40, AMBER_03 } from '@/components/guardrails/ProtectedChipInput'
 import SaveIcon from '@mui/icons-material/Save'
@@ -29,8 +31,8 @@ const MAX_SCALING_CONCURRENCY = 50
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function joinCsv(arr: string[]) { return arr.join(',') }
-function parseCsv(s: string) { return s.split(',').map((v) => v.trim()).filter(Boolean) }
+function joinCommaList(arr: string[]) { return arr.join(',') }
+function splitCommaList(s: string) { return s.split(',').map((v) => v.trim()).filter(Boolean) }
 
 // ── Main form ─────────────────────────────────────────────────────────────────
 
@@ -56,11 +58,11 @@ export default function GuardrailsForm() {
   useEffect(() => {
     if (guardrails && !initialised.current) {
       initialised.current = true
-      setSystemNs(parseCsv(guardrails.systemNamespaces).sort())
-      setSkipNsNode(parseCsv(guardrails.skipNsNode))
-      setSkipLabels(parseCsv(guardrails.skipNodeLabels))
-      setSkipTaints(parseCsv(guardrails.skipNodeTaints))
-      setPriorityNs(parseCsv(guardrails.scalingPriorityNamespaces))
+      setSystemNs(splitCommaList(guardrails.systemNamespaces).sort())
+      setSkipNsNode(splitCommaList(guardrails.skipNsNode))
+      setSkipLabels(splitCommaList(guardrails.skipNodeLabels))
+      setSkipTaints(splitCommaList(guardrails.skipNodeTaints))
+      setPriorityNs(splitCommaList(guardrails.scalingPriorityNamespaces))
       setEvalInterval(guardrails.schedulerEvalInterval)
       setAutoWake(guardrails.schedulerAutoWake)
       setReconcileWhileAwake(guardrails.schedulerReconcileWhileAwake)
@@ -76,11 +78,11 @@ export default function GuardrailsForm() {
     mutationFn: () => {
       if (!evalIntervalValid) return Promise.reject(new Error(evalIntervalError))
       return updateGuardrails({
-        systemNamespaces: joinCsv(systemNs),
-        skipNsNode: joinCsv(skipNsNode),
-        skipNodeLabels: joinCsv(skipLabels),
-        skipNodeTaints: joinCsv(skipTaints),
-        scalingPriorityNamespaces: joinCsv(priorityNs),
+        systemNamespaces: joinCommaList(systemNs),
+        skipNsNode: joinCommaList(skipNsNode),
+        skipNodeLabels: joinCommaList(skipLabels),
+        skipNodeTaints: joinCommaList(skipTaints),
+        scalingPriorityNamespaces: joinCommaList(priorityNs),
         schedulerEvalInterval: evalInterval.trim(),
         schedulerAutoWake: autoWake,
         schedulerReconcileWhileAwake: reconcileWhileAwake,
@@ -93,16 +95,12 @@ export default function GuardrailsForm() {
       notify('Guardrails saved successfully.', 'success')
     },
     onError: (err: unknown) => {
-      setSaveError(err instanceof Error ? err.message : 'Failed to save guardrails')
+      setSaveError(formatError(err))
     },
   })
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-        <CircularProgress />
-      </Box>
-    )
+    return <CenteredSpinner />
   }
 
   if (loadError && !guardrails) {

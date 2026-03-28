@@ -109,7 +109,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
   const handleCopy = useCallback(() => {
     const text = lines.join('\n')
     navigator.clipboard.writeText(text).then(() => notify('Logs copied to clipboard', 'success'))
-  }, [lines])
+  }, [lines, notify])
 
   const handleDownload = useCallback(() => {
     const text = lines.join('\n')

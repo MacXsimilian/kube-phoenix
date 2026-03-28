@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { formatError } from '@/lib/formatters'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
@@ -13,17 +14,13 @@ import TableBody from '@mui/material/TableBody'
 import TableRow from '@mui/material/TableRow'
 import TableCell from '@mui/material/TableCell'
 import IconButton from '@mui/material/IconButton'
-import Dialog from '@mui/material/Dialog'
-import DialogTitle from '@mui/material/DialogTitle'
-import DialogContent from '@mui/material/DialogContent'
-import DialogContentText from '@mui/material/DialogContentText'
-import DialogActions from '@mui/material/DialogActions'
+import ConfirmDialog from '@/components/common/ConfirmDialog'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { deletePolicyOverride } from '@/lib/api'
 import { fmtDt } from '@/lib/formatters'
 import { useIsDark } from '@/lib/useIsDark'
-import { typeLabels, typeLabelFallback } from '@/lib/statusColors'
+import { getTypeLabel } from '@/lib/statusColors'
 import type { PolicyOverride } from '@/lib/types'
 import CreateOverrideForm from './CreateOverrideForm'
 
@@ -43,15 +40,13 @@ export default function OverridesSection({
   onNotify: (msg: string, severity: 'success' | 'error') => void
 }) {
   const isDark = useIsDark()
-  const TYPE_LABELS = typeLabels(isDark)
-  const TYPE_LABEL_FALLBACK = typeLabelFallback(isDark)
   const [addOverrideOpen, setAddOverrideOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null)
 
   const deleteOverrideMut = useMutation({
     mutationFn: (overrideId: number) => deletePolicyOverride(policyId, overrideId),
     onSuccess: () => { onRefetch(); onNotify('Override deleted', 'success') },
-    onError: (err: unknown) => onNotify(err instanceof Error ? err.message : 'Delete failed', 'error'),
+    onError: (err: unknown) => onNotify(formatError(err), 'error'),
   })
 
   return (
@@ -82,7 +77,7 @@ export default function OverridesSection({
             </TableHead>
             <TableBody>
               {overrides.map(ov => {
-                const typeLabel = TYPE_LABELS[ov.overrideType] ?? TYPE_LABEL_FALLBACK
+                const typeLabel = getTypeLabel(isDark, ov.overrideType)
                 return (
                 <TableRow key={ov.id}>
                   <TableCell>
@@ -114,27 +109,14 @@ export default function OverridesSection({
         )}
       </Box>
 
-      <Dialog open={deleteTarget !== null} onClose={() => setDeleteTarget(null)}>
-        <DialogTitle>Delete this override?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            This will permanently delete the override. This action cannot be undone.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
-          <Button
-            color="error"
-            variant="contained"
-            onClick={() => {
-              if (deleteTarget !== null) deleteOverrideMut.mutate(deleteTarget)
-              setDeleteTarget(null)
-            }}
-          >
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete this override?"
+        message="This will permanently delete the override. This action cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={() => { if (deleteTarget !== null) deleteOverrideMut.mutate(deleteTarget) }}
+        onClose={() => setDeleteTarget(null)}
+      />
 
       {addOverrideOpen && (
         <CreateOverrideForm

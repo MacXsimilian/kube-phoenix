@@ -10,6 +10,7 @@ import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
 import { useAuth } from '@/lib/auth'
+import { formatError } from '@/lib/formatters'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
 
@@ -27,7 +28,7 @@ export default function LoginScreen() {
     try {
       await login(username, password)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : ''
+      const msg = formatError(err)
       if (msg === 'Invalid credentials' || msg.includes('401')) {
         setError('Invalid credentials. Please try again.')
       } else if (msg === 'Too many attempts' || msg.includes('429')) {

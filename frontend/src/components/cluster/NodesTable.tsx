@@ -10,7 +10,6 @@ import TableCell from '@mui/material/TableCell'
 import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
-import TableSortLabel from '@mui/material/TableSortLabel'
 import TablePagination from '@mui/material/TablePagination'
 import Chip from '@mui/material/Chip'
 import Tooltip from '@mui/material/Tooltip'
@@ -19,22 +18,23 @@ import TextField from '@mui/material/TextField'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Switch from '@mui/material/Switch'
 import Alert from '@mui/material/Alert'
-import CircularProgress from '@mui/material/CircularProgress'
+import CenteredSpinner from '@/components/common/CenteredSpinner'
 import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodes } from '@/lib/api'
 import type { Node } from '@/lib/types'
-import { fmtCpu, fmtMem, podAge, sinceMs, pct, pctColor } from '@/lib/formatters'
+import { fmtCpu, fmtMem, podAge, sinceMs, pct, pctColor, formatError } from '@/lib/formatters'
 import { nodeStatusMap } from '@/components/cluster/statusColors'
 import { useIsDark } from '@/lib/useIsDark'
 import { useColors } from '@/lib/colors'
 import { NODES_REFETCH_MS } from '@/lib/constants'
+import { useTriStateSort, type SortDir } from '@/lib/useTriStateSort'
+import SortHeader from '@/lib/SortHeader'
 import MiniBar from './MiniBar'
 import NodeDetailDrawer from './NodeDetailDrawer'
 
 type SortCol = 'name' | 'age' | 'instanceType' | 'zone' | 'pods' | 'cpu' | 'mem' | 'status'
-type SortDir = 'asc' | 'desc'
 
 const SELECTED_ROW_BG = 'rgba(124,58,237,0.08)'
 
@@ -53,24 +53,6 @@ function sortNodes(nodes: Node[], col: SortCol, dir: SortDir): Node[] {
     }
     return dir === 'asc' ? cmp : -cmp
   })
-}
-
-function SortHeader({
-  col, label, active, dir, onSort, align,
-}: {
-  col: SortCol; label: string; active: SortCol | null; dir: SortDir; onSort: (c: SortCol) => void; align?: 'left' | 'right'
-}) {
-  return (
-    <TableCell align={align} sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12, whiteSpace: 'nowrap' }}>
-      <TableSortLabel
-        active={active === col}
-        direction={active === col ? dir : 'asc'}
-        onClick={() => onSort(col)}
-      >
-        {label}
-      </TableSortLabel>
-    </TableCell>
-  )
 }
 
 interface ZoneStats {
@@ -145,23 +127,12 @@ export default function NodesTable() {
 
   const [search, setSearch] = useState('')
   const [groupByZone, setGroupByZone] = useState(false)
-  const [sortCol, setSortCol] = useState<SortCol | null>(null)
-  const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const { sortCol, sortDir, handleSort } = useTriStateSort<SortCol>()
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(20)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const isDark = useIsDark()
   const colors = useColors()
-
-  function handleSort(col: SortCol) {
-    if (sortCol === col) {
-      if (sortDir === 'asc') setSortDir('desc')
-      else { setSortCol(null); setSortDir('asc') }
-    } else {
-      setSortCol(col)
-      setSortDir('asc')
-    }
-  }
 
   const filtered = useMemo(
     () => nodes.filter((n) => !search || n.name.toLowerCase().includes(search.toLowerCase())),
@@ -234,12 +205,10 @@ export default function NodesTable() {
 
       {isError ? (
         <Alert severity="error">
-          Failed to load nodes: {error instanceof Error ? error.message : 'Unknown error'}
+          Failed to load nodes: {formatError(error)}
         </Alert>
       ) : isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress />
-        </Box>
+        <CenteredSpinner />
       ) : (
         <TableContainer component={Paper}>
           <Table size="small">

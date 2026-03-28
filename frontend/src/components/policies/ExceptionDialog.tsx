@@ -12,6 +12,7 @@ import MenuItem from '@mui/material/MenuItem'
 import LabeledSwitch from '@/components/common/LabeledSwitch'
 import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
+import { formatError } from '@/lib/formatters'
 import CircularProgress from '@mui/material/CircularProgress'
 import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
@@ -128,7 +129,7 @@ export default function ExceptionDialog({
       onClose()
     },
     onError: (err: unknown) => {
-      setError(err instanceof Error ? err.message : 'Save failed')
+      setError(formatError(err))
     },
   })
 

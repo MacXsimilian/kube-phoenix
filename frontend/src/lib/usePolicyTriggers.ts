@@ -3,41 +3,50 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { triggerPolicySleep, triggerPolicyWake } from '@/lib/api'
+import { formatError } from '@/lib/formatters'
 import type { SnackMessage } from '@/lib/types'
 
 /**
  * Encapsulates sleep/wake trigger mutations for a policy,
  * including query invalidation and navigation on success.
+ *
+ * Pass `onSuccessOverride` to replace the default navigation behaviour
+ * (e.g. to invalidate extra query keys or navigate to a different page).
  */
 export function usePolicyTriggers(
   policyId: number,
   onNotify?: (msg: string, severity: SnackMessage['severity']) => void,
+  onSuccessOverride?: (result: { executionId: number }) => void,
 ) {
   const queryClient = useQueryClient()
   const router = useRouter()
 
-  function onSuccess({ executionId }: { executionId: number }) {
+  function onSuccess(result: { executionId: number }) {
     queryClient.invalidateQueries({ queryKey: ['policies'] })
     queryClient.invalidateQueries({ queryKey: ['policy', policyId] })
     queryClient.invalidateQueries({ queryKey: ['policy-executions'] })
     queryClient.invalidateQueries({ queryKey: ['policy-executions', policyId] })
-    router.push(`/policies/detail/?id=${policyId}&exec=${executionId}`)
+    if (onSuccessOverride) {
+      onSuccessOverride(result)
+    } else {
+      router.push(`/policies/detail/?id=${policyId}&exec=${result.executionId}`)
+    }
   }
 
-  function onError(err: unknown, fallback: string) {
-    onNotify?.(err instanceof Error ? err.message : fallback, 'error')
+  function onError(err: unknown) {
+    onNotify?.(formatError(err), 'error')
   }
 
   const sleepMut = useMutation({
     mutationFn: () => triggerPolicySleep(policyId),
     onSuccess,
-    onError: (err: unknown) => onError(err, 'Trigger sleep failed'),
+    onError: (err: unknown) => onError(err),
   })
 
   const wakeMut = useMutation({
     mutationFn: () => triggerPolicyWake(policyId),
     onSuccess,
-    onError: (err: unknown) => onError(err, 'Trigger wake failed'),
+    onError: (err: unknown) => onError(err),
   })
 
   return {
