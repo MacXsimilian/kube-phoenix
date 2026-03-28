@@ -317,13 +317,15 @@ func (ps *PolicyScheduler) tickLoop(ctx context.Context, interval time.Duration)
 }
 
 func (ps *PolicyScheduler) evaluateAll() {
+	start := time.Now()
+
 	ps.mu.Lock()
 	snapshot := make([]cachedPolicy, 0, len(ps.policies))
 	for _, cp := range ps.policies {
 		snapshot = append(snapshot, cp)
 	}
 	ctx := evalContext{
-		now:                 time.Now(),
+		now:                 start,
 		autoWake:            ps.cfg.AutoWake,
 		reconcileWhileAwake: ps.cfg.ReconcileWhileAwake,
 	}
@@ -332,6 +334,9 @@ func (ps *PolicyScheduler) evaluateAll() {
 	for _, cp := range snapshot {
 		ps.evaluatePolicy(cp, ctx)
 	}
+
+	metrics.SchedulerEvaluationsTotal.Inc()
+	metrics.SchedulerEvaluationDuration.Observe(time.Since(start).Seconds())
 }
 
 func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, ctx evalContext) {
@@ -668,7 +673,7 @@ func (ps *PolicyScheduler) finalizeExecution(execID uint, status string, counts 
 
 // recordExecutionMetrics records Prometheus metrics for a completed execution.
 func recordExecutionMetrics(mode, direction, status string, duration float64, counts *scaler.Counts) {
-	metrics.ExecutionsTotal.WithLabelValues(status, mode, direction).Inc()
+	metrics.ExecutionsTotal.WithLabelValues(mode, direction, status).Inc()
 	metrics.ExecutionDuration.WithLabelValues(mode, direction, status).Observe(duration)
 	if counts != nil {
 		metrics.WorkloadsScaledTotal.WithLabelValues(direction).Add(float64(counts.Scaled))

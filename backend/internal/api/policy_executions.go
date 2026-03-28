@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"gorm.io/gorm"
 )
@@ -133,10 +134,13 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	slog.Info("ws policy: client connected", "execID", id, "remote_addr", conn.RemoteAddr())
+	metrics.WSConnectionsTotal.Inc()
+	metrics.WSActiveConnections.Inc()
 
 	done := wsReadPump(conn)
 	defer func() { <-done }()
 	defer func() {
+		metrics.WSActiveConnections.Dec()
 		slog.Info("ws policy: client disconnected", "execID", id)
 		_ = conn.Close()
 	}()

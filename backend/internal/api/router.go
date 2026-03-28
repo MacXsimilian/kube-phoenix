@@ -14,6 +14,7 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/auth"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/docs"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
@@ -86,6 +87,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 	r.Use(chiMiddleware.RequestID)
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
+	r.Use(prometheusMiddleware)
 	r.Use(corsHandler())
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -277,6 +279,26 @@ func corsHandler() func(http.Handler) http.Handler {
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Content-Type", "X-CSRF-Token"},
 		AllowCredentials: true,
+	})
+}
+
+func prometheusMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		ww := chiMiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
+
+		next.ServeHTTP(ww, r)
+
+		routePattern := chi.RouteContext(r.Context()).RoutePattern()
+		if routePattern == "" {
+			routePattern = "unmatched"
+		}
+
+		status := strconv.Itoa(ww.Status())
+		duration := time.Since(start).Seconds()
+
+		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, routePattern, status).Inc()
+		metrics.HTTPRequestDuration.WithLabelValues(r.Method, routePattern).Observe(duration)
 	})
 }
 

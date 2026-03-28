@@ -29,7 +29,7 @@ kube-phoenix replaces ad-hoc cron scripts with a proper operator for scheduling 
 - **Live cluster visibility** -- Real-time view of deployments, stateful sets, nodes, pod metrics, Kubernetes events, and streaming container logs with search.
 - **Guardrails** -- Protect namespaces, node labels, and taints from the scaler. Priority namespace scaling ensures critical workloads are processed first.
 - **RBAC and OIDC** -- Session-based auth with admin/operator/viewer roles. Optional Keycloak SSO with AD group-to-role mapping.
-- **Prometheus metrics** -- Built-in `/metrics` endpoint with counters for executions, workloads scaled, nodes drained, auth attempts, and more.
+- **Prometheus metrics** -- Built-in `/metrics` endpoint with 24 metrics covering HTTP requests, K8s API calls, policy executions, CRUD operations, scheduler health, WebSocket connections, auth, and caching.
 
 ---
 

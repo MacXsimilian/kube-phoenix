@@ -1,5 +1,7 @@
 // Package metrics defines and registers all Prometheus metrics for kube-phoenix.
 // Metrics are registered once via promauto and exposed at /metrics.
+// Covers: HTTP requests, K8s API calls, policy executions, CRUD operations,
+// scheduler health, WebSocket connections, auth, and cluster cache.
 package metrics
 
 import (
@@ -12,7 +14,7 @@ var (
 	ExecutionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "kube_phoenix_executions_total",
 		Help: "Total number of policy executions, partitioned by status, mode, and direction.",
-	}, []string{"status", "mode", "direction"})
+	}, []string{"mode", "direction", "status"})
 
 	// ExecutionDuration observes the wall-clock duration of each execution.
 	ExecutionDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -90,5 +92,84 @@ var (
 		Name:    "kube_phoenix_cache_rebuild_duration_seconds",
 		Help:    "Time spent rebuilding the cluster cache snapshot.",
 		Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1},
+	})
+
+	// ─── HTTP request metrics ────────────────────────────────────────────
+
+	// HTTPRequestsTotal counts every HTTP request by method, route pattern, and status code.
+	HTTPRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "kube_phoenix_http_requests_total",
+		Help: "Total HTTP requests, partitioned by method, path, and status_code.",
+	}, []string{"method", "path", "status_code"})
+
+	// HTTPRequestDuration observes HTTP request latency by method and route pattern.
+	HTTPRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "kube_phoenix_http_request_duration_seconds",
+		Help:    "Duration of HTTP requests in seconds.",
+		Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+	}, []string{"method", "path"})
+
+	// ─── Kubernetes client metrics ───────────────────────────────────────
+
+	// K8sRequestsTotal counts Kubernetes API calls by verb, resource, and outcome.
+	K8sRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "kube_phoenix_k8s_requests_total",
+		Help: "Total Kubernetes API requests, partitioned by verb, resource, and status.",
+	}, []string{"verb", "resource", "status"})
+
+	// K8sRequestDuration observes Kubernetes API call latency.
+	K8sRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "kube_phoenix_k8s_request_duration_seconds",
+		Help:    "Duration of Kubernetes API requests in seconds.",
+		Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
+	}, []string{"verb", "resource"})
+
+	// ─── CRUD operation metrics ──────────────────────────────────────────
+
+	// PolicyOperationsTotal counts policy create/update/delete outcomes.
+	PolicyOperationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "kube_phoenix_policy_operations_total",
+		Help: "Total policy CRUD operations, partitioned by operation and status.",
+	}, []string{"operation", "status"})
+
+	// OverrideOperationsTotal counts override create/delete outcomes.
+	OverrideOperationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "kube_phoenix_override_operations_total",
+		Help: "Total override CRUD operations, partitioned by operation and status.",
+	}, []string{"operation", "status"})
+
+	// ExceptionOperationsTotal counts exception create/update/delete outcomes.
+	ExceptionOperationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "kube_phoenix_exception_operations_total",
+		Help: "Total exception CRUD operations, partitioned by operation and status.",
+	}, []string{"operation", "status"})
+
+	// ─── WebSocket metrics ───────────────────────────────────────────────
+
+	// WSConnectionsTotal counts total WebSocket connections opened.
+	WSConnectionsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "kube_phoenix_ws_connections_total",
+		Help: "Total WebSocket connections opened.",
+	})
+
+	// WSActiveConnections tracks currently active WebSocket connections.
+	WSActiveConnections = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "kube_phoenix_ws_active_connections",
+		Help: "Number of currently active WebSocket connections.",
+	})
+
+	// ─── Scheduler metrics ───────────────────────────────────────────────
+
+	// SchedulerEvaluationsTotal counts scheduler evaluation ticks.
+	SchedulerEvaluationsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "kube_phoenix_scheduler_evaluations_total",
+		Help: "Total scheduler tick evaluations.",
+	})
+
+	// SchedulerEvaluationDuration observes time spent per evaluation tick.
+	SchedulerEvaluationDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "kube_phoenix_scheduler_evaluation_duration_seconds",
+		Help:    "Duration of each scheduler evaluation tick in seconds.",
+		Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5},
 	})
 )
