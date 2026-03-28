@@ -142,7 +142,9 @@ func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	// Compute the initial state from sleep windows instead of defaulting to "unknown".
 	now := time.Now()
-	initialState := scheduler.IntendedState(input.SleepWindows, p.Timezone, nil, now)
+	initialState := scheduler.IntendedState(scheduler.StateInput{
+		Windows: input.SleepWindows, Timezone: p.Timezone, Now: now,
+	})
 	p.CurrentState = string(initialState)
 	p.StateSince = &now
 

@@ -434,6 +434,42 @@ func (s *Store) ListScheduledExceptions(f ScheduledExceptionFilter) ([]Scheduled
 	return items, query.Order("starts_at asc").Limit(500).Find(&items).Error
 }
 
+// ListActiveExceptionsForPolicies returns active exceptions for multiple policies
+// in a single query, grouped by policy ID. Used by the scheduler's evaluateAll
+// to avoid N+1 queries.
+func (s *Store) ListActiveExceptionsForPolicies(policyIDs []uint, now time.Time) (map[uint][]ScheduledException, error) {
+	if len(policyIDs) == 0 {
+		return map[uint][]ScheduledException{}, nil
+	}
+	var exceptions []ScheduledException
+	err := s.db.Where(
+		"policy_id IN (?) AND status = ? AND starts_at <= ? AND ends_at >= ?",
+		policyIDs, ExceptionStatusActive, now, now,
+	).Find(&exceptions).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[uint][]ScheduledException, len(policyIDs))
+	for i := range exceptions {
+		if exceptions[i].PolicyID != nil {
+			pid := *exceptions[i].PolicyID
+			result[pid] = append(result[pid], exceptions[i])
+		}
+	}
+	return result, nil
+}
+
+// ListActiveExceptionsForPolicy returns active exceptions for a single policy.
+// Used by RecoverPolicies at startup.
+func (s *Store) ListActiveExceptionsForPolicy(policyID uint, now time.Time) ([]ScheduledException, error) {
+	var exceptions []ScheduledException
+	err := s.db.Where(
+		"policy_id = ? AND status = ? AND starts_at <= ? AND ends_at >= ?",
+		policyID, ExceptionStatusActive, now, now,
+	).Find(&exceptions).Error
+	return exceptions, err
+}
+
 // ListOpenExceptions returns all pending or active exceptions for scheduler evaluation.
 func (s *Store) ListOpenExceptions() ([]ScheduledException, error) {
 	var items []ScheduledException

@@ -29,23 +29,56 @@ func hasActiveWindowedOverride(overrides []store.PolicyOverride, overrideType st
 	return false
 }
 
+// hasActiveException checks if any exception of the given type is in the slice.
+// Exceptions passed here are already filtered to active + time-bounded by the
+// store query, so no additional time check is needed.
+func hasActiveException(exceptions []store.ScheduledException, exType string) bool {
+	for _, ex := range exceptions {
+		if ex.ExceptionType == exType {
+			return true
+		}
+	}
+	return false
+}
+
+// StateInput holds the inputs needed to compute a policy's intended state.
+type StateInput struct {
+	Windows    []policy.SleepWindow
+	Timezone   string
+	Overrides  []store.PolicyOverride
+	Exceptions []store.ScheduledException
+	Now        time.Time
+}
+
 // IntendedState computes the policy's intended state at the given time.
 //
-// Override precedence (highest to lowest):
-//  1. Active force_sleep override → sleeping
-//  2. Active stay_awake override  → awake
-//  3. Window-based evaluation
-func IntendedState(windows []policy.SleepWindow, timezone string, overrides []store.PolicyOverride, now time.Time) PolicyState {
-	if hasActiveWindowedOverride(overrides, "force_sleep", now) {
+// Precedence (highest to lowest):
+//  1. Active force_sleep override    → sleeping
+//  2. Active stay_awake override     → awake
+//  3. Active force_sleep exception   → sleeping
+//  4. Active stay_awake exception    → awake
+//  5. Window-based evaluation
+//
+// Overrides always outrank exceptions. Within each tier, force_sleep beats stay_awake.
+func IntendedState(in StateInput) PolicyState {
+	// Tier 1: overrides (operator-created, highest priority)
+	if hasActiveWindowedOverride(in.Overrides, "force_sleep", in.Now) {
 		return PolicyStateSleeping
 	}
-	if hasActiveWindowedOverride(overrides, "stay_awake", now) {
+	if hasActiveWindowedOverride(in.Overrides, "stay_awake", in.Now) {
 		return PolicyStateAwake
 	}
-	if len(windows) == 0 {
+	// Tier 2: exceptions (pre-scheduled, lower than overrides)
+	if hasActiveException(in.Exceptions, store.ExceptionTypeForceSleep) {
+		return PolicyStateSleeping
+	}
+	if hasActiveException(in.Exceptions, store.ExceptionTypeStayAwake) {
+		return PolicyStateAwake
+	}
+	if len(in.Windows) == 0 {
 		return PolicyStateUnknown
 	}
-	state := policy.Evaluate(windows, timezone, now)
+	state := policy.Evaluate(in.Windows, in.Timezone, in.Now)
 	if state == policy.StateSleeping {
 		return PolicyStateSleeping
 	}
