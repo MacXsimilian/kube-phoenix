@@ -23,7 +23,7 @@ import { useAuth } from '@/lib/auth'
 import { TIMEZONES } from '@/lib/constants'
 import type { Policy, PolicyInput, SleepWindow } from '@/lib/types'
 import { windowsToText, computeWeeklyStats } from '@/lib/windowUtils'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import WindowPicker from './WindowPicker'
 import WeeklyTimeline from './WeeklyTimeline'
 
@@ -60,7 +60,7 @@ export default function CreatePolicyDialog({
   existing?: Policy
 }) {
   const queryClient = useQueryClient()
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const { user } = useAuth()
   const isEdit = !!existing
 
@@ -97,12 +97,12 @@ export default function CreatePolicyDialog({
     setForm(f => ({ ...f, [key]: val }))
   }
 
-  function validate(): string {
+  function validate(): string | null {
     if (!form.name.trim()) return 'Name is required'
     if (form.editingWindows.length === 0) return 'At least one sleep window is required'
     if (form.editingWindows.every(w => w.daysOfWeek.length === 0)) return 'Select at least one day'
     if ((form.timeoutMinutes ?? 0) < 0 || (form.timeoutMinutes ?? 0) > 1440) return 'Timeout must be 0\u20131440 minutes'
-    return ''
+    return null
   }
 
   const mutation = useMutation({
@@ -132,7 +132,7 @@ export default function CreatePolicyDialog({
 
   function handleSave() {
     const msg = validate()
-    if (msg) { setError(msg); return }
+    if (msg !== null) { setError(msg); return }
     setError('')
     mutation.mutate()
   }

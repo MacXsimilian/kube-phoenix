@@ -16,7 +16,7 @@ async function handleAuthErrors(res: Response): Promise<void> {
   }
   if (res.status === 403) {
     const body = await res.json().catch(() => null)
-    throw new Error((body as any)?.error || 'You do not have permission to perform this action')
+    throw new Error((body as { error?: string } | null)?.error || 'You do not have permission to perform this action')
   }
 }
 

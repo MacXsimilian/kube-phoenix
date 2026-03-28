@@ -46,8 +46,8 @@ export function useExecutionLogs(executionId: number | undefined, isRunning: boo
         try {
           const line: LogLine = JSON.parse(e.data)
           setLiveLines((prev) => [...prev, line])
-        } catch {
-          // ignore parse errors
+        } catch (err) {
+          if (process.env.NODE_ENV === 'development') console.warn('[kp] skipping malformed WS message:', err)
         }
       }
 
