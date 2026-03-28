@@ -501,13 +501,13 @@ kube-phoenix/
 │   │   ├── app/                     # Next.js pages (overview, cluster, policies, ...)
 │   │   ├── components/              # React components by domain
 │   │   │   ├── audit/               # AuditRow, DiffLineRow, JsonDiffView, auditDiff helpers
-│   │   │   ├── cluster/             # Tables, drawers, extracted subcomponents (MiniBar, LabelChip, etc.)
-│   │   │   ├── common/              # ChipInput, LabeledSwitch, EmptyStateBox
+│   │   │   ├── cluster/             # Tables, drawers, DetailDrawer, extracted subcomponents (MiniBar, LabelChip, etc.)
+│   │   │   ├── common/              # ChipInput, LabeledSwitch
 │   │   │   ├── guardrails/          # GuardrailsForm, ProtectedChipInput
 │   │   │   ├── history/             # ExecutionTable, LogViewer, ExecutionSummary, parseSummary, useExecutionLogs
-│   │   │   ├── policies/            # PolicyCard, timelines, WindowPicker, PolicyHeroBand, timelineSegments
-│   │   │   └── settings/            # AccountSettings, AppearanceSettings, DatabaseSettings, OIDCStatusCard, ActiveSessionsCard, ClusterConnectionCard, AboutBar
-│   │   ├── lib/                     # API client, auth, types, query client, utilities, shared hooks
+│   │   │   ├── policies/            # PolicyCard, timelines, WindowPicker, PolicyHeroBand, CreateOverrideForm, TimelineLegend, timelineSegments
+│   │   │   └── settings/            # AccountSettings, AppearanceSettings, DatabaseSettings, OIDCStatusCard, ActiveSessionsCard (live data), ClusterConnectionCard, AboutBar
+│   │   ├── lib/                     # API client, auth, types, query client, utilities, shared hooks (useSnackbar, useIsDark, layoutConstants)
 │   │   └── theme/                   # MUI theme (dark + light mode)
 │   ├── next.config.mjs              # Static export, trailing slash
 │   └── package.json

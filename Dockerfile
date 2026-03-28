@@ -40,6 +40,8 @@ COPY --from=frontend-builder /app/frontend/out ./web/static/
 COPY openapi.yaml ./internal/docs/openapi.yaml
 
 # Reuse module cache and incremental build cache across invocations.
+# -ldflags -X injects the build version into the api.Version variable so that
+# GET /api/version returns the correct release tag instead of "dev".
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
