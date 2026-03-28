@@ -14,6 +14,13 @@ func (s *Store) ListPolicies() ([]Policy, error) {
 	return policies, s.db.Order("id asc").Find(&policies).Error
 }
 
+// ListEnabledPolicies returns only enabled policies, avoiding fetching
+// disabled policies that will be filtered out in-memory anyway.
+func (s *Store) ListEnabledPolicies() ([]Policy, error) {
+	var policies []Policy
+	return policies, s.db.Where("enabled = true").Order("id asc").Find(&policies).Error
+}
+
 func (s *Store) GetPolicy(id uint) (*Policy, error) {
 	var p Policy
 	return &p, s.db.First(&p, id).Error
@@ -60,9 +67,13 @@ var ErrTransitionAlreadyClaimed = fmt.Errorf("transition already claimed by anot
 // SetPolicyTransitioning atomically claims the transition. Returns
 // ErrTransitionAlreadyClaimed when another caller won the race.
 func (s *Store) SetPolicyTransitioning(id uint) error {
+	now := time.Now()
 	res := s.db.Model(&Policy{}).
 		Where("id = ? AND current_state != ?", id, PolicyStateTransitioning).
-		Update("current_state", PolicyStateTransitioning)
+		Updates(map[string]interface{}{
+			"current_state": PolicyStateTransitioning,
+			"state_since":   now,
+		})
 	if res.Error != nil {
 		return res.Error
 	}

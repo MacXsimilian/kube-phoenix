@@ -202,6 +202,9 @@ func (r *PolicyRunner) RunPolicySleep(
 
 	emit(logCh, "info", fmt.Sprintf("Sleep complete — scaled %d workloads, %d skipped, %d errors",
 		counts.Scaled, counts.Skipped, counts.Errors))
+	if counts.Errors > 0 && counts.Scaled == 0 {
+		return counts, fmt.Errorf("sleep failed: all %d workloads errored", counts.Errors)
+	}
 	return counts, nil
 }
 
@@ -401,6 +404,9 @@ func (r *PolicyRunner) RunPolicyWake(
 
 	emit(logCh, "info", fmt.Sprintf("Wake complete — restored %d workloads, %d skipped, %d errors",
 		counts.Scaled, counts.Skipped, counts.Errors))
+	if counts.Errors > 0 && counts.Scaled == 0 {
+		return counts, fmt.Errorf("wake failed: all %d workloads errored", counts.Errors)
+	}
 	return counts, nil
 }
 

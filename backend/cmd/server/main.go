@@ -100,9 +100,6 @@ func main() {
 			os.Exit(1)
 		}
 		defer policySched.Stop()
-		if err := policySched.RecoverPolicies(ctx); err != nil {
-			slog.Error("policy recovery failed", "err", err)
-		}
 		tickerWg.Add(1)
 		go func() {
 			defer tickerWg.Done()

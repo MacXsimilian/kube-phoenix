@@ -44,6 +44,15 @@ func (m *mockStore) GetPolicy(id uint) (*store.Policy, error) {
 	return &store.Policy{ID: id, Enabled: true}, nil
 }
 func (m *mockStore) ListPolicies() ([]store.Policy, error) { return m.policies, nil }
+func (m *mockStore) ListEnabledPolicies() ([]store.Policy, error) {
+	var enabled []store.Policy
+	for _, p := range m.policies {
+		if p.Enabled {
+			enabled = append(enabled, p)
+		}
+	}
+	return enabled, nil
+}
 func (m *mockStore) ListActiveOverrides(_ uint, _ time.Time) ([]store.PolicyOverride, error) {
 	return m.overrides, nil
 }
@@ -110,6 +119,7 @@ func newTestScheduler(st schedulerStore) *PolicyScheduler {
 		Broker:               NewBroker(),
 		policies:             map[uint]cachedPolicy{},
 		lastReconcileAttempt: map[uint]time.Time{},
+		lastFailedTransition: map[uint]time.Time{},
 		cfg: SchedulerConfig{
 			TickInterval: 30 * time.Second,
 		},
