@@ -94,7 +94,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `helpers.go` | `jsonOK`, `jsonCreated`, `jsonError`, `jsonInternalError`, `parseID`, `parsePageSize`, `reloadScheduler` |
 | `cluster_info.go` | `getClusterInfo` -- returns Kubernetes API server URL, version, auth mode, and cluster name |
 | `version.go` | `getVersion` -- returns build version (set via `-ldflags`), Go version, and server uptime. No auth required. |
-| `errmsg.go` | String constants: `ErrInvalidID`, `ErrNotFound`, `ErrInvalidBody` |
+| `errmsg.go` | Error message constants (`ErrInvalidID`, `ErrNotFound`, `ErrInvalidBody`), field length limits (`maxNameLen`, `maxDescriptionLen`, `maxReasonLen`, `maxTicketRefLen`, `maxLabelSelectorLen`), and valid enum sets (`validExecStatuses`, `validExceptionStatuses`, `validExceptionTypes`) |
 
 **Validation helpers:** `validatePolicyMode` and `validatePolicyTimezone` are shared functions used by both `createPolicy` and `updatePolicy` to enforce valid mode and timezone values.
 
@@ -242,13 +242,13 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 | File | Content |
 |:-----|:--------|
-| `store.go` | `New(dsn)` -- opens PostgreSQL connection, configures pool (10 open, 5 idle, 5m lifetime), runs `AutoMigrate`, adds CHECK constraints, migrates legacy cron columns. `Ping()`, `DB()`, `Tx()`. |
+| `store.go` | `New(dsn)` -- opens PostgreSQL connection, configures pool (10 open, 5 idle, 5m lifetime), runs `AutoMigrate`, adds CHECK constraints, migrates legacy cron columns. `Ping()`, `DB()`. |
 | `models.go` | All GORM model struct definitions with tags. |
 | `status.go` | String constants: `PolicyState*`, `PolicyMode*`, `ExecStatus*`, `ExceptionStatus*`. |
-| `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning` (atomic conditional update, returns `ErrTransitionAlreadyClaimed` on race), `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`, `ResetStuckTransitioningPolicies`. Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines`. Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `CountOpenSnapshotsForRestore`, `GetSnapshotsForExecution/Policy`, `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`. Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason), `ListOpenExceptions`, `UpdateScheduledExceptionStatus`. |
+| `policies.go` | `ListPolicies`, `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning` (atomic conditional update, returns `ErrTransitionAlreadyClaimed` on race), `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`, `ResetStuckTransitioningPolicies`. Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines`. Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `CountOpenSnapshotsForRestore`, `GetSnapshotsForExecution/Policy`, `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`. Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason, guarded by `WHERE status IN ('pending','active')`), `ListOpenExceptions`, `UpdateScheduledExceptionStatus` (atomic conditional transition: requires `expectedStatus` to match current row state, prevents concurrent double-transitions). |
 | `queries.go` | `GetGuardrails`, `UpdateGuardrails`, `SeedDefaults`, `DropAllTables`, `MigrateSchema`. |
 | `store_helpers.go` | `selectiveUpdate` -- shared GORM helper that applies only allowed fields from an update map. Used by `UpdateUser`. |
-| `users.go` | `CreateUser`, `GetUserByID/Username`, `ListUsers`, `UpdateUser`, `DeleteUser` (transactional), `UpdateLastLogin`, `ChangePassword`, `UpdateUserTimezone`, `GetOrCreateOIDCUser`, `HashPassword`, `CheckPassword`. |
+| `users.go` | `CreateUser`, `GetUserByID/Username`, `ListUsers`, `UpdateUser`, `DeleteUser` (transactional), `UpdateLastLogin`, `ChangePassword`, `UpdateUserTimezone`, `GetOrCreateOIDCUser`, `HashPassword`, `CheckPassword`, `DeleteUserSessions`. |
 | `sessions.go` | `GenerateToken`, `CreateSession`, `GetSessionByToken` (with expiry check), `ExtendSession` (sliding window capped at `max_expires_at`), `DeleteSession`, `DeleteUserSessions`, `CleanExpiredSessions`, `CountActiveSessions`. |
 | `audit.go` | `CreateAuditLog`, `ListAuditLogs` (filtered, paginated), `CleanOldAuditLogs`. |
 
@@ -1217,12 +1217,28 @@ jsonInternalError(w, err, msg)  // logs err, returns 500 + {"error": "internal s
 
 `jsonInternalError` intentionally hides the real error from the client (logged server-side only).
 
-Standard error messages are defined in `backend/internal/api/errmsg.go`:
+Standard error messages, field length limits, and valid enum sets are defined in `backend/internal/api/errmsg.go`:
 ```go
 const (
     ErrInvalidID   = "invalid id"
     ErrNotFound    = "not found"
     ErrInvalidBody = "invalid body"
+)
+
+// Field length limits — must match the gorm:"size:..." tags in store models.
+const (
+    maxNameLen          = 255
+    maxDescriptionLen   = 1024
+    maxReasonLen        = 1024
+    maxTicketRefLen     = 255
+    maxLabelSelectorLen = 4096
+)
+
+// Valid enum sets for query-parameter validation.
+var (
+    validExecStatuses      = map[string]bool{...} // from store constants
+    validExceptionStatuses = map[string]bool{...}
+    validExceptionTypes    = map[string]bool{...}
 )
 ```
 
@@ -1233,9 +1249,17 @@ URL parameters are parsed with `parseID`:
 ```go
 func parseID(r *http.Request, param string) (uint, error) {
     id, err := strconv.ParseUint(chi.URLParam(r, param), 10, 64)
-    return uint(id), err
+    if err != nil {
+        return 0, err
+    }
+    if id == 0 {
+        return 0, strconv.ErrRange
+    }
+    return uint(id), nil
 }
 ```
+
+ID=0 is rejected because GORM's `First(&p, 0)` may return the first record in the table rather than a "not found" error.
 
 Used consistently at the top of every handler that takes an ID:
 
@@ -1293,7 +1317,7 @@ PolicyStateSleeping, PolicyStateAwake, PolicyStateUnknown, PolicyStateTransition
 PolicyModeApply, PolicyModePlan
 
 // Execution statuses
-ExecStatusRunning, ExecStatusSuccess, ExecStatusFailed, ExecStatusInterrupted, ExecStatusSkipped
+ExecStatusRunning, ExecStatusSuccess, ExecStatusFailed, ExecStatusInterrupted
 
 // Exception statuses
 ExceptionStatusPending, ExceptionStatusActive, ExceptionStatusCompleted, ExceptionStatusCancelled
