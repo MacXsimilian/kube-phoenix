@@ -23,6 +23,7 @@ import { useIsDark } from '@/lib/useIsDark'
 import { getPodDetail } from '@/lib/api'
 import { fmtCpu, fmtMem, podAge } from '@/lib/formatters'
 import { useColors } from '@/lib/colors'
+import { POD_DETAIL_REFETCH_MS } from '@/lib/constants'
 import PodLogViewer from './PodLogViewer'
 import type { PodContainer, PodCondition, PodEvent } from '@/lib/types'
 
@@ -216,7 +217,7 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
   const { data: pod, isLoading, isError, error } = useQuery({
     queryKey: ['pod-detail', namespace, podName],
     queryFn: () => getPodDetail(namespace, podName),
-    refetchInterval: 15_000,
+    refetchInterval: POD_DETAIL_REFETCH_MS,
   })
 
   if (isLoading) {
