@@ -128,11 +128,11 @@ sleeping or awake at a given point in time.
 
 **Key responsibilities:**
 - Evaluate sleep windows against the current time in the policy's timezone.
-- Apply override precedence: `force_sleep` > `stay_awake` > window evaluation.
+- Apply override and exception precedence: `force_sleep` override > `stay_awake` override > `force_sleep` exception > `stay_awake` exception > window evaluation.
 - Compute the next state transition time for dashboard display.
 
 **Key interfaces:**
-- `IntendedState(policy, overrides, now) string` -- returns `"sleeping"` or `"awake"`.
+- `IntendedState(StateInput) PolicyState` -- accepts a `StateInput` struct containing windows, timezone, overrides, exceptions, and time. Returns `"sleeping"`, `"awake"`, or `"unknown"`.
 - `Evaluate(windows, timezone, now) string` -- window-only evaluation.
 - `NextTransition(windows, timezone, now) *time.Time` -- next sleep/wake edge.
 
@@ -354,7 +354,8 @@ erDiagram
 Triggered by the 30-second ticker (scheduled), a manual API call, or a
 scheduled exception activation.
 
-1. **PolicyScheduler** evaluates `IntendedState(now)` for each enabled policy.
+1. **PolicyScheduler** evaluates `IntendedState(StateInput)` for each enabled policy,
+   considering overrides, active exceptions, and sleep windows.
    If intended state is `sleeping` but `current_state` is `awake`, a sleep
    execution is created.
 2. `current_state` is set to `transitioning` (prevents concurrent runs).
@@ -396,7 +397,7 @@ Triggered by the ticker, a manual call, or a scheduled exception ending.
 ```
 Every configurable interval (default 30s):
   for each enabled policy:
-    intended = PolicyEngine.IntendedState(policy, overrides, now)
+    intended = PolicyEngine.IntendedState(StateInput{windows, tz, overrides, exceptions, now})
     if current_state == intended:
       if reconcileWhileAwake and intended == "awake":
         if backoff elapsed and open snapshots needing restore > 0:
@@ -408,10 +409,12 @@ Every configurable interval (default 30s):
     spawn goroutine -> run(policy, intended_direction, "scheduled")
 ```
 
-Override precedence within `IntendedState`:
-- Active `force_sleep` override: always return `sleeping`.
-- Active `stay_awake` override: always return `awake`.
-- No active override: evaluate sleep windows against current time in policy timezone.
+Precedence within `IntendedState` (highest to lowest):
+1. Active `force_sleep` override → `sleeping`
+2. Active `stay_awake` override → `awake`
+3. Active `force_sleep` exception → `sleeping`
+4. Active `stay_awake` exception → `awake`
+5. Sleep window evaluation against current time in policy timezone
 
 ### 4. Real-Time Log Streaming (WebSocket)
 

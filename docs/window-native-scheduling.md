@@ -75,7 +75,7 @@ Windowed overrides (`stay_awake`, `force_sleep`) have a `StartsAt`/`EndsAt` rang
 ```go
 type ScheduledException struct {
     ID              uint
-    PolicyID        *uint      // optional — can be freestanding
+    PolicyID        *uint      // required (freestanding exceptions are rejected at the API layer)
     ExceptionType   string     // "stay_awake" | "force_sleep"
     StartsAt        time.Time
     EndsAt          time.Time
@@ -244,13 +244,15 @@ The `PolicyScheduler` runs a `time.Ticker` at a 30-second interval. Each tick ca
 
 The `IntendedState()` function in `policy_engine.go` resolves the intended state with this precedence (highest to lowest):
 
-| Priority | Override Type | Result |
-|----------|--------------|--------|
+| Priority | Source | Result |
+|----------|--------|--------|
 | 1 | Active `force_sleep` override (time window) | Sleeping |
 | 2 | Active `stay_awake` override (time window) | Awake |
-| 3 | Window evaluator result | Sleeping or Awake |
+| 3 | Active `force_sleep` exception | Sleeping |
+| 4 | Active `stay_awake` exception | Awake |
+| 5 | Window evaluator result | Sleeping or Awake |
 
-If no windows are configured and no overrides apply, the state is `Unknown` (no action taken).
+Overrides always outrank exceptions. Within each tier, `force_sleep` beats `stay_awake`. If no windows are configured and no overrides or exceptions apply, the state is `Unknown` (no action taken).
 
 ### Skip Overrides
 
@@ -283,8 +285,8 @@ When a transition is triggered:
 
 `TickExceptions()` is called periodically to manage `ScheduledException` lifecycle:
 
-- **Pending -> Active:** When `now >= StartsAt`, sets status to `"active"` and triggers a wake execution on the associated policy.
-- **Active -> Completed:** When `now > EndsAt`, sets status to `"completed"` and optionally triggers a sleep execution if `SleepOnEnd` is true.
+- **Pending -> Active:** When `now >= StartsAt`, sets status to `"active"` and triggers the initial action based on exception type (`stay_awake` → wake, `force_sleep` → sleep). Once active, the exception also feeds into `IntendedState()` on every scheduler tick, preventing the normal schedule from overriding it.
+- **Active -> Completed:** When `now > EndsAt`, sets status to `"completed"` and optionally triggers the inverse revert action if `SleepOnEnd` is true (`stay_awake` → sleep, `force_sleep` → wake).
 
 ### Sequence Diagram: Full Tick Cycle
 
@@ -300,10 +302,13 @@ sequenceDiagram
     T->>PS: tick
     PS->>PS: snapshot policies
 
+    PS->>DB: ListActiveOverridesForPolicies()
+    DB-->>PS: overridesByPolicy
+    PS->>DB: ListActiveExceptionsForPolicies()
+    DB-->>PS: exceptionsByPolicy
+
     loop Each enabled policy
-        PS->>DB: ListActiveOverrides()
-        DB-->>PS: overrides[]
-        PS->>E: IntendedState()
+        PS->>E: IntendedState(StateInput)
         E-->>PS: intended
 
         alt no change / transitioning
