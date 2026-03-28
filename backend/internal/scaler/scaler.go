@@ -12,7 +12,6 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/nodeutil"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
-	"github.com/macxsimilian/kube-phoenix/backend/internal/stringutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -54,16 +53,6 @@ func emit(ch chan<- LogLine, level, msg string) {
 	default:
 		slog.Warn("scaler: log line dropped — channel full", "level", level)
 	}
-}
-
-func (r *Runner) info(ch chan<- LogLine, msg string)   { emit(ch, "info", msg) }
-func (r *Runner) ok(ch chan<- LogLine, msg string)     { emit(ch, "ok", msg) }
-func (r *Runner) plan(ch chan<- LogLine, msg string)   { emit(ch, "plan", msg) }
-func (r *Runner) errLog(ch chan<- LogLine, msg string) { emit(ch, "error", msg) }
-
-// splitCSV splits a comma-separated string into a trimmed set.
-func splitCSV(s string) map[string]bool {
-	return stringutil.SplitCSVSet(s)
 }
 
 func isApply(mode string) bool { return mode == store.PolicyModeApply }
@@ -134,31 +123,26 @@ func (r *Runner) statefulSetToEntry(ss appsv1.StatefulSet) workloadEntry {
 }
 
 // collectFilteredEntries converts Deployments and StatefulSets to workloadEntry
-// slices, filtering by skipNS and namespaceFilter. countSkipped controls whether
-// filtered-out items increment counts.Skipped (used by scale-down but not scale-up).
+// slices, filtering by skipNS and namespaceFilter. Filtered-out items always
+// increment counts.Skipped.
 func (r *Runner) collectFilteredEntries(
 	deployments []appsv1.Deployment,
 	statefulsets []appsv1.StatefulSet,
 	skipNS map[string]bool,
 	namespaceFilter string,
 	counts *Counts,
-	countSkipped bool,
 ) []workloadEntry {
 	entries := make([]workloadEntry, 0, len(deployments)+len(statefulsets))
 	for _, d := range deployments {
 		if skipNS[d.Namespace] || !namespaceAllowed(d.Namespace, namespaceFilter) {
-			if countSkipped {
-				counts.Skipped++
-			}
+			counts.Skipped++
 			continue
 		}
 		entries = append(entries, r.deploymentToEntry(d))
 	}
 	for _, ss := range statefulsets {
 		if skipNS[ss.Namespace] || !namespaceAllowed(ss.Namespace, namespaceFilter) {
-			if countSkipped {
-				counts.Skipped++
-			}
+			counts.Skipped++
 			continue
 		}
 		entries = append(entries, r.statefulSetToEntry(ss))

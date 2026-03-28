@@ -11,6 +11,7 @@ import (
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/stringutil"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -37,17 +38,26 @@ func workloadKey(kind, namespace, name string) string {
 }
 
 // runConcurrent processes items in parallel, bounded by concurrency.
-func runConcurrent[T any](items []T, concurrency int, fn func(T) (scaled, skipped, errored bool), counts *Counts) {
+func runConcurrent[T any](ctx context.Context, items []T, concurrency int, fn func(T) (scaled, skipped, errored bool), counts *Counts) {
 	if concurrency <= 0 {
 		concurrency = defaultScalingConcurrency
 	}
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
+loop:
 	for _, item := range items {
+		if ctx.Err() != nil {
+			break
+		}
 		item := item
 		wg.Add(1)
-		sem <- struct{}{}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			wg.Done()
+			break loop
+		}
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
@@ -59,6 +69,9 @@ func runConcurrent[T any](items []T, concurrency int, fn func(T) (scaled, skippe
 					mu.Unlock()
 				}
 			}()
+			if ctx.Err() != nil {
+				return
+			}
 			scaled, skipped, errored := fn(item)
 			mu.Lock()
 			switch {
@@ -157,7 +170,7 @@ func (r *PolicyRunner) RunPolicySleep(
 	if err != nil {
 		return nil, fmt.Errorf("guardrails: %w", err)
 	}
-	skipNS := splitCSV(guardrails.SystemNamespaces)
+	skipNS := stringutil.SplitCSVSet(guardrails.SystemNamespaces)
 
 	emit(logCh, "info", fmt.Sprintf("Policy sleep — namespace filter: %q  label selector: %q", policy.NamespaceFilter, policy.LabelSelector))
 
@@ -165,10 +178,7 @@ func (r *PolicyRunner) RunPolicySleep(
 	if err != nil {
 		slog.Warn("failed to fetch open snapshots", "policyID", policy.ID, "err", err)
 	}
-	snappedSet := make(map[string]bool, len(openSnaps))
-	for _, s := range openSnaps {
-		snappedSet[workloadKey(s.Kind, s.Namespace, s.Name)] = true
-	}
+	snappedSet := buildSnapshotedSet(openSnaps)
 
 	sleepParams := sleepWorkloadParams{ctx: ctx, policy: policy, execID: execID, logCh: logCh, snapped: snappedSet}
 
@@ -187,76 +197,97 @@ func (r *PolicyRunner) RunPolicySleep(
 		counts.Errors++
 	}
 
-	entries := r.base.collectFilteredEntries(deps, ssets, skipNS, policy.NamespaceFilter, counts, true)
+	entries := r.base.collectFilteredEntries(deps, ssets, skipNS, policy.NamespaceFilter, counts)
 	entries = sortByPriorityNamespaces(entries, guardrails.ScalingPriorityNamespaces)
 	if _, hasPriority := parsePriorityList(guardrails.ScalingPriorityNamespaces); hasPriority {
 		emit(logCh, "info", fmt.Sprintf("Scaling priority namespaces first: %s", guardrails.ScalingPriorityNamespaces))
 	}
 
-	runConcurrent(entries, guardrails.ScalingConcurrency, func(e workloadEntry) (scaled, skipped, errored bool) {
+	runConcurrent(ctx, entries, guardrails.ScalingConcurrency, func(e workloadEntry) (scaled, skipped, errored bool) {
 		return r.sleepWorkload(sleepParams, e)
 	}, counts)
 
 	// ── Drain & Delete Nodes (same as scale_down) ──────────────────────────
 	r.base.drainNodes(ctx, policy.Mode, guardrails, logCh, counts)
 
+	if ctx.Err() != nil {
+		emit(logCh, "warn", "Sleep interrupted")
+		return counts, ctx.Err()
+	}
+
 	emit(logCh, "info", fmt.Sprintf("Sleep complete — scaled %d workloads, %d skipped, %d errors",
 		counts.Scaled, counts.Skipped, counts.Errors))
 	return counts, nil
 }
 
+// workloadOps returns the k8s operations (get-replicas, scale, remove-annotation)
+// for the given workload kind. This eliminates the duplicated Deployment/StatefulSet
+// switch blocks in lookupWorkload and restoreWorkload.
+func (r *PolicyRunner) workloadOps(kind string) (
+	getReplicas func(ctx context.Context, ns, name string) (*int32, error),
+	scale func(ctx context.Context, ns, name string, replicas int32) error,
+	removeAnnotation func(ctx context.Context, ns, name, key string) error,
+	err error,
+) {
+	switch kind {
+	case "Deployment":
+		return func(ctx context.Context, ns, name string) (*int32, error) {
+				d, err := r.base.k8s.GetDeployment(ctx, ns, name)
+				if err != nil {
+					return nil, err
+				}
+				return d.Spec.Replicas, nil
+			},
+			r.base.k8s.ScaleDeployment,
+			r.base.k8s.RemoveDeploymentAnnotation,
+			nil
+	case "StatefulSet":
+		return func(ctx context.Context, ns, name string) (*int32, error) {
+				ss, err := r.base.k8s.GetStatefulSet(ctx, ns, name)
+				if err != nil {
+					return nil, err
+				}
+				return ss.Spec.Replicas, nil
+			},
+			r.base.k8s.ScaleStatefulSet,
+			r.base.k8s.RemoveStatefulSetAnnotation,
+			nil
+	default:
+		return nil, nil, nil, fmt.Errorf("unsupported workload kind: %q", kind)
+	}
+}
+
 // lookupWorkload checks if a workload still exists in the cluster and returns its current replicas.
 // Returns (false, 0, nil) when the workload is genuinely not found (HTTP 404).
 func (r *PolicyRunner) lookupWorkload(ctx context.Context, kind, namespace, name string) (exists bool, currentReplicas int32, err error) {
-	switch kind {
-	case "Deployment":
-		d, err := r.base.k8s.GetDeployment(ctx, namespace, name)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				return false, 0, nil
-			}
-			return false, 0, err
-		}
-		if d.Spec.Replicas != nil {
-			return true, *d.Spec.Replicas, nil
-		}
-		return true, 0, nil
-	case "StatefulSet":
-		ss, err := r.base.k8s.GetStatefulSet(ctx, namespace, name)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				return false, 0, nil
-			}
-			return false, 0, err
-		}
-		if ss.Spec.Replicas != nil {
-			return true, *ss.Spec.Replicas, nil
-		}
-		return true, 0, nil
-	default:
-		return false, 0, fmt.Errorf("unsupported workload kind: %q", kind)
+	getReplicas, _, _, err := r.workloadOps(kind)
+	if err != nil {
+		return false, 0, err
 	}
+	replicasPtr, err := getReplicas(ctx, namespace, name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, 0, nil
+		}
+		return false, 0, err
+	}
+	if replicasPtr != nil {
+		return true, *replicasPtr, nil
+	}
+	return true, 0, nil
 }
 
 // restoreWorkload scales a workload back to its target replicas and removes the annotation.
 func (r *PolicyRunner) restoreWorkload(ctx context.Context, kind, namespace, name string, target int32) error {
-	switch kind {
-	case "Deployment":
-		if err := r.base.k8s.ScaleDeployment(ctx, namespace, name, target); err != nil {
-			return err
-		}
-		if err := r.base.k8s.RemoveDeploymentAnnotation(ctx, namespace, name, annotationKey); err != nil {
-			slog.Warn("failed to remove annotation", "kind", kind, "namespace", namespace, "name", name, "err", err)
-		}
-	case "StatefulSet":
-		if err := r.base.k8s.ScaleStatefulSet(ctx, namespace, name, target); err != nil {
-			return err
-		}
-		if err := r.base.k8s.RemoveStatefulSetAnnotation(ctx, namespace, name, annotationKey); err != nil {
-			slog.Warn("failed to remove annotation", "kind", kind, "namespace", namespace, "name", name, "err", err)
-		}
-	default:
-		return fmt.Errorf("unsupported workload kind: %q", kind)
+	_, scale, removeAnnotation, err := r.workloadOps(kind)
+	if err != nil {
+		return err
+	}
+	if err := scale(ctx, namespace, name, target); err != nil {
+		return err
+	}
+	if err := removeAnnotation(ctx, namespace, name, annotationKey); err != nil {
+		slog.Warn("failed to remove annotation", "kind", kind, "namespace", namespace, "name", name, "err", err)
 	}
 	return nil
 }
@@ -358,7 +389,7 @@ func (r *PolicyRunner) RunPolicyWake(
 
 	wakeParams := wakeWorkloadParams{ctx: ctx, policy: policy, execID: execID, logCh: logCh}
 
-	runConcurrent(snaps, guardrails.ScalingConcurrency, func(snap store.WorkloadSnapshot) (scaled, skipped, errored bool) {
+	runConcurrent(ctx, snaps, guardrails.ScalingConcurrency, func(snap store.WorkloadSnapshot) (scaled, skipped, errored bool) {
 		return r.wakeWorkload(wakeParams, snap)
 	}, counts)
 
@@ -370,6 +401,11 @@ func (r *PolicyRunner) RunPolicyWake(
 		logCh:      logCh,
 		counts:     counts,
 	})
+
+	if ctx.Err() != nil {
+		emit(logCh, "warn", "Wake interrupted")
+		return counts, ctx.Err()
+	}
 
 	emit(logCh, "info", fmt.Sprintf("Wake complete — restored %d workloads, %d skipped, %d errors",
 		counts.Scaled, counts.Skipped, counts.Errors))
@@ -430,7 +466,7 @@ func (r *PolicyRunner) listAnnotatedWorkloads(
 	guardrails *store.Guardrails,
 	logCh chan<- LogLine,
 ) []workloadEntry {
-	skipNS := splitCSV(guardrails.SystemNamespaces)
+	skipNS := stringutil.SplitCSVSet(guardrails.SystemNamespaces)
 	discardCounts := &Counts{}
 
 	deps, err := r.base.k8s.ListDeploymentsBySelector(ctx, "", policy.LabelSelector)
@@ -443,7 +479,7 @@ func (r *PolicyRunner) listAnnotatedWorkloads(
 		emit(logCh, "warn", "Annotation fallback: failed to list statefulsets: "+err.Error())
 	}
 
-	return r.base.collectFilteredEntries(deps, ssets, skipNS, policy.NamespaceFilter, discardCounts, false)
+	return r.base.collectFilteredEntries(deps, ssets, skipNS, policy.NamespaceFilter, discardCounts)
 }
 
 // restoreFromAnnotation reads the previous-replicas annotation from a single
