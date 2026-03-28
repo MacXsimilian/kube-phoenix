@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.21](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.20...v0.3.21) (2026-03-28)
+
+
+### Features
+
+* **scaler:** concurrent scaling with configurable concurrency and retry-on-conflict ([#257](https://github.com/MacXsimilian/kube-phoenix/issues/257)) ([1955e3c](https://github.com/MacXsimilian/kube-phoenix/commit/1955e3c454dd3fbfbea1af683a60cc3957ce5bb1))
+
 ## [0.3.20](https://github.com/MacXsimilian/kube-phoenix/compare/v0.3.19...v0.3.20) (2026-03-28)
 
 
