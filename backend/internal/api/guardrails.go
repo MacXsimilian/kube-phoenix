@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 )
@@ -20,7 +21,10 @@ func (h *Handler) getGuardrails(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
-	old, _ := h.store.GetGuardrails()
+	old, err := h.store.GetGuardrails()
+	if err != nil {
+		slog.Warn("could not fetch current guardrails for audit", "err", err)
+	}
 
 	var body map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -38,6 +42,7 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 		"schedulerAutoWake":            "scheduler_auto_wake",
 		"schedulerReconcileWhileAwake": "scheduler_reconcile_while_awake",
 		"scalingPriorityNamespaces":    "scaling_priority_namespaces",
+		"scalingConcurrency":           "scaling_concurrency",
 	}
 	updates := map[string]interface{}{}
 	for jsonKey, dbCol := range fieldMap {
@@ -108,6 +113,19 @@ func validateGuardrailFields(body map[string]interface{}) string {
 				return fmt.Sprintf("duplicate namespace %q in scalingPriorityNamespaces", entry)
 			}
 			seen[entry] = true
+		}
+	}
+	if v, ok := body["scalingConcurrency"]; ok {
+		n, ok := v.(float64)
+		if !ok || n < 1 || n > 50 || n != float64(int(n)) {
+			return "scalingConcurrency must be a whole number between 1 and 50"
+		}
+	}
+	if v, ok := body["schedulerEvalInterval"]; ok {
+		s := strings.TrimSpace(fmt.Sprintf("%v", v))
+		d, err := time.ParseDuration(s)
+		if err != nil || d <= 0 {
+			return "schedulerEvalInterval must be a valid positive duration (e.g. 30s, 1m)"
 		}
 	}
 	return ""

@@ -12,8 +12,10 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -31,7 +33,10 @@ func New() (*Client, error) {
 		// Fall back to kubeconfig
 		kubeconfig := os.Getenv("KUBECONFIG")
 		if kubeconfig == "" {
-			home, _ := os.UserHomeDir()
+			home, homeErr := os.UserHomeDir()
+			if homeErr != nil {
+				return nil, fmt.Errorf("k8s config: cannot determine home directory: %w", homeErr)
+			}
 			kubeconfig = home + "/.kube/config"
 		}
 		cfg, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
@@ -74,46 +79,83 @@ func (c *Client) GetDeployment(ctx context.Context, namespace, name string) (*ap
 	return d, nil
 }
 
+var conflictRetryBackoff = []time.Duration{500 * time.Millisecond, 1500 * time.Millisecond, 3 * time.Second}
+
+// retryOnConflict retries fn on 409 Conflict errors using the shared backoff schedule.
+// fn should re-fetch the resource on each call to get a fresh resourceVersion.
+func retryOnConflict(fn func() error) error {
+	var lastErr error
+	for attempt := 0; attempt <= len(conflictRetryBackoff); attempt++ {
+		if attempt > 0 {
+			slog.Warn("retrying on conflict", "attempt", attempt+1)
+			time.Sleep(conflictRetryBackoff[attempt-1])
+		}
+		err := fn()
+		if err == nil {
+			return nil
+		}
+		if !apierrors.IsConflict(err) {
+			return err
+		}
+		lastErr = err
+	}
+	return lastErr
+}
+
+func (c *Client) scaleWithRetry(ctx context.Context, kind, namespace, name string, replicas int32,
+	getScale func(ctx context.Context, name string, opts metav1.GetOptions) (*autoscalingv1.Scale, error),
+	updateScale func(ctx context.Context, name string, scale *autoscalingv1.Scale, opts metav1.UpdateOptions) (*autoscalingv1.Scale, error),
+) error {
+	return retryOnConflict(func() error {
+		scale, err := getScale(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("get scale %s/%s: %w", namespace, name, err)
+		}
+		scale.Spec.Replicas = replicas
+		_, err = updateScale(ctx, name, scale, metav1.UpdateOptions{})
+		if err != nil {
+			return fmt.Errorf("update scale %s/%s: %w", namespace, name, err)
+		}
+		return nil
+	})
+}
+
 func (c *Client) ScaleDeployment(ctx context.Context, namespace, name string, replicas int32) error {
-	scale, err := c.cs.AppsV1().Deployments(namespace).GetScale(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("get scale %s/%s: %w", namespace, name, err)
-	}
-	scale.Spec.Replicas = replicas
-	_, err = c.cs.AppsV1().Deployments(namespace).UpdateScale(ctx, name, scale, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("update scale %s/%s: %w", namespace, name, err)
-	}
-	return nil
+	dep := c.cs.AppsV1().Deployments(namespace)
+	return c.scaleWithRetry(ctx, "Deployment", namespace, name, replicas, dep.GetScale, dep.UpdateScale)
 }
 
 func (c *Client) AnnotateDeployment(ctx context.Context, namespace, name, key, value string) error {
-	d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
-	}
-	if d.Annotations == nil {
-		d.Annotations = map[string]string{}
-	}
-	d.Annotations[key] = value
-	_, err = c.cs.AppsV1().Deployments(namespace).Update(ctx, d, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("annotate deployment %s/%s: %w", namespace, name, err)
-	}
-	return nil
+	return retryOnConflict(func() error {
+		d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
+		}
+		if d.Annotations == nil {
+			d.Annotations = map[string]string{}
+		}
+		d.Annotations[key] = value
+		_, err = c.cs.AppsV1().Deployments(namespace).Update(ctx, d, metav1.UpdateOptions{})
+		if err != nil {
+			return fmt.Errorf("annotate deployment %s/%s: %w", namespace, name, err)
+		}
+		return nil
+	})
 }
 
 func (c *Client) RemoveDeploymentAnnotation(ctx context.Context, namespace, name, key string) error {
-	d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
-	}
-	delete(d.Annotations, key)
-	_, err = c.cs.AppsV1().Deployments(namespace).Update(ctx, d, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("remove annotation deployment %s/%s: %w", namespace, name, err)
-	}
-	return nil
+	return retryOnConflict(func() error {
+		d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
+		}
+		delete(d.Annotations, key)
+		_, err = c.cs.AppsV1().Deployments(namespace).Update(ctx, d, metav1.UpdateOptions{})
+		if err != nil {
+			return fmt.Errorf("remove annotation deployment %s/%s: %w", namespace, name, err)
+		}
+		return nil
+	})
 }
 
 // ─── StatefulSets ─────────────────────────────────────────────────────────────
@@ -144,45 +186,41 @@ func (c *Client) GetStatefulSet(ctx context.Context, namespace, name string) (*a
 }
 
 func (c *Client) ScaleStatefulSet(ctx context.Context, namespace, name string, replicas int32) error {
-	scale, err := c.cs.AppsV1().StatefulSets(namespace).GetScale(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("get scale %s/%s: %w", namespace, name, err)
-	}
-	scale.Spec.Replicas = replicas
-	_, err = c.cs.AppsV1().StatefulSets(namespace).UpdateScale(ctx, name, scale, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("update scale %s/%s: %w", namespace, name, err)
-	}
-	return nil
+	ss := c.cs.AppsV1().StatefulSets(namespace)
+	return c.scaleWithRetry(ctx, "StatefulSet", namespace, name, replicas, ss.GetScale, ss.UpdateScale)
 }
 
 func (c *Client) AnnotateStatefulSet(ctx context.Context, namespace, name, key, value string) error {
-	ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
-	}
-	if ss.Annotations == nil {
-		ss.Annotations = map[string]string{}
-	}
-	ss.Annotations[key] = value
-	_, err = c.cs.AppsV1().StatefulSets(namespace).Update(ctx, ss, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("annotate statefulset %s/%s: %w", namespace, name, err)
-	}
-	return nil
+	return retryOnConflict(func() error {
+		ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
+		}
+		if ss.Annotations == nil {
+			ss.Annotations = map[string]string{}
+		}
+		ss.Annotations[key] = value
+		_, err = c.cs.AppsV1().StatefulSets(namespace).Update(ctx, ss, metav1.UpdateOptions{})
+		if err != nil {
+			return fmt.Errorf("annotate statefulset %s/%s: %w", namespace, name, err)
+		}
+		return nil
+	})
 }
 
 func (c *Client) RemoveStatefulSetAnnotation(ctx context.Context, namespace, name, key string) error {
-	ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
-	}
-	delete(ss.Annotations, key)
-	_, err = c.cs.AppsV1().StatefulSets(namespace).Update(ctx, ss, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("remove annotation statefulset %s/%s: %w", namespace, name, err)
-	}
-	return nil
+	return retryOnConflict(func() error {
+		ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
+		}
+		delete(ss.Annotations, key)
+		_, err = c.cs.AppsV1().StatefulSets(namespace).Update(ctx, ss, metav1.UpdateOptions{})
+		if err != nil {
+			return fmt.Errorf("remove annotation statefulset %s/%s: %w", namespace, name, err)
+		}
+		return nil
+	})
 }
 
 // ─── Nodes ────────────────────────────────────────────────────────────────────
@@ -196,16 +234,18 @@ func (c *Client) ListNodes(ctx context.Context) ([]corev1.Node, error) {
 }
 
 func (c *Client) CordonNode(ctx context.Context, name string) error {
-	node, err := c.cs.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("cordon node %q: %w", name, err)
-	}
-	node.Spec.Unschedulable = true
-	_, err = c.cs.CoreV1().Nodes().Update(ctx, node, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("cordon node %q: %w", name, err)
-	}
-	return nil
+	return retryOnConflict(func() error {
+		node, err := c.cs.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("get node %q: %w", name, err)
+		}
+		node.Spec.Unschedulable = true
+		_, err = c.cs.CoreV1().Nodes().Update(ctx, node, metav1.UpdateOptions{})
+		if err != nil {
+			return fmt.Errorf("cordon node %q: %w", name, err)
+		}
+		return nil
+	})
 }
 
 // isDaemonSetPod returns true if any owner reference is a DaemonSet.
@@ -308,7 +348,10 @@ func (c *Client) waitForDrain(ctx context.Context, nodeName string, timeout time
 }
 
 func (c *Client) DeleteNode(ctx context.Context, name string) error {
-	return c.cs.CoreV1().Nodes().Delete(ctx, name, metav1.DeleteOptions{})
+	if err := c.cs.CoreV1().Nodes().Delete(ctx, name, metav1.DeleteOptions{}); err != nil {
+		return fmt.Errorf("delete node %q: %w", name, err)
+	}
+	return nil
 }
 
 // ─── Pods ─────────────────────────────────────────────────────────────────────
@@ -401,16 +444,20 @@ func (c *Client) GetAllPodMetrics(ctx context.Context) (map[string]ContainerMetr
 
 	result := make(map[string]ContainerMetrics, len(resp.Items))
 	for _, item := range resp.Items {
+		key := item.Metadata.Namespace + "/" + item.Metadata.Name
 		var totalCPU, totalMem int64
-		for _, c := range item.Containers {
-			if q, err := resource.ParseQuantity(c.Usage.CPU); err == nil {
+		for _, ctr := range item.Containers {
+			if q, err := resource.ParseQuantity(ctr.Usage.CPU); err == nil {
 				totalCPU += q.MilliValue()
+			} else {
+				slog.Debug("unparseable CPU metric", "pod", key, "raw", ctr.Usage.CPU, "err", err)
 			}
-			if q, err := resource.ParseQuantity(c.Usage.Memory); err == nil {
+			if q, err := resource.ParseQuantity(ctr.Usage.Memory); err == nil {
 				totalMem += q.Value()
+			} else {
+				slog.Debug("unparseable memory metric", "pod", key, "raw", ctr.Usage.Memory, "err", err)
 			}
 		}
-		key := item.Metadata.Namespace + "/" + item.Metadata.Name
 		result[key] = ContainerMetrics{CPUMillis: totalCPU, MemBytes: totalMem}
 	}
 	return result, nil
@@ -441,16 +488,16 @@ func (c *Client) GetPodMetrics(ctx context.Context, namespace, name string) (map
 	}
 
 	result := make(map[string]ContainerMetrics)
-	for _, c := range resp.Containers {
-		cpu, err := resource.ParseQuantity(c.Usage.CPU)
+	for _, ctr := range resp.Containers {
+		cpu, err := resource.ParseQuantity(ctr.Usage.CPU)
 		if err != nil {
 			continue
 		}
-		mem, err := resource.ParseQuantity(c.Usage.Memory)
+		mem, err := resource.ParseQuantity(ctr.Usage.Memory)
 		if err != nil {
 			continue
 		}
-		result[c.Name] = ContainerMetrics{
+		result[ctr.Name] = ContainerMetrics{
 			CPUMillis: cpu.MilliValue(),
 			MemBytes:  mem.Value(),
 		}

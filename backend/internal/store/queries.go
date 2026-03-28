@@ -12,15 +12,22 @@ import (
 
 func (s *Store) GetGuardrails() (*Guardrails, error) {
 	var g Guardrails
-	return &g, s.db.First(&g).Error
+	if err := s.db.First(&g).Error; err != nil {
+		return nil, fmt.Errorf("get guardrails: %w", err)
+	}
+	return &g, nil
 }
 
 func (s *Store) UpdateGuardrails(updates map[string]interface{}) (*Guardrails, error) {
+	existing, err := s.GetGuardrails()
+	if err != nil {
+		return nil, fmt.Errorf("get existing guardrails: %w", err)
+	}
 	keys := make([]string, 0, len(updates))
 	for key := range updates {
 		keys = append(keys, key)
 	}
-	if err := s.db.Model(&Guardrails{}).Where("id = 1").Select(keys).Updates(updates).Error; err != nil {
+	if err := s.db.Model(existing).Select(keys).Updates(updates).Error; err != nil {
 		return nil, err
 	}
 	return s.GetGuardrails()
@@ -40,8 +47,9 @@ func (s *Store) SeedDefaults() error {
 			SkipNodeLabels:              "karpenter.k8s.aws/ec2nodeclass=default",
 			SkipNodeTaints:              "karpenter-eks-base=true:NoSchedule",
 			SchedulerEvalInterval:       "30s",
-			SchedulerAutoWake:           true,
+			SchedulerAutoWake:            true,
 			SchedulerReconcileWhileAwake: true,
+			ScalingConcurrency:           10,
 		}
 		if err := s.db.Create(&g).Error; err != nil {
 			return err

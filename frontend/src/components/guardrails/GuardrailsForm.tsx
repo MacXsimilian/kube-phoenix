@@ -21,6 +21,12 @@ import { getGuardrails, updateGuardrails } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { canEditGuardrails } from '@/lib/rbac'
 
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const DEFAULT_SCALING_CONCURRENCY = 10
+const MIN_SCALING_CONCURRENCY = 1
+const MAX_SCALING_CONCURRENCY = 50
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function joinCsv(arr: string[]) { return arr.join(',') }
@@ -42,6 +48,7 @@ export default function GuardrailsForm() {
   const [evalInterval, setEvalInterval] = useState('30s')
   const [autoWake, setAutoWake] = useState(true)
   const [reconcileWhileAwake, setReconcileWhileAwake] = useState(true)
+  const [scalingConcurrency, setScalingConcurrency] = useState(DEFAULT_SCALING_CONCURRENCY)
   const [snackOpen, setSnackOpen] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const initialised = useRef(false)
@@ -57,10 +64,12 @@ export default function GuardrailsForm() {
       setEvalInterval(guardrails.schedulerEvalInterval)
       setAutoWake(guardrails.schedulerAutoWake)
       setReconcileWhileAwake(guardrails.schedulerReconcileWhileAwake)
+      setScalingConcurrency(guardrails.scalingConcurrency ?? DEFAULT_SCALING_CONCURRENCY)
     }
   }, [guardrails])
 
   const evalIntervalValid = /^\d+(ns|us|µs|ms|s|m|h)$/.test(evalInterval.trim())
+    && !/^0+(ns|us|µs|ms|s|m|h)$/.test(evalInterval.trim())
   const evalIntervalError = evalIntervalValid ? undefined : 'Must be a valid duration (e.g. 30s, 1m, 2m)'
 
   const save = useMutation({
@@ -75,6 +84,7 @@ export default function GuardrailsForm() {
         schedulerEvalInterval: evalInterval.trim(),
         schedulerAutoWake: autoWake,
         schedulerReconcileWhileAwake: reconcileWhileAwake,
+        scalingConcurrency,
       })
     },
     onSuccess: () => {
@@ -214,6 +224,22 @@ export default function GuardrailsForm() {
                     disabled={!hasEdit}
                     onChange={setAutoWake}
                   />
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <TextField
+                      label="Scaling concurrency"
+                      size="small"
+                      type="number"
+                      sx={{ width: 160 }}
+                      value={scalingConcurrency}
+                      disabled={!hasEdit}
+                      helperText="Max parallel scale operations during sleep/wake (default: 10)"
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10)
+                        if (!isNaN(v)) setScalingConcurrency(Math.max(MIN_SCALING_CONCURRENCY, Math.min(MAX_SCALING_CONCURRENCY, v)))
+                      }}
+                      slotProps={{ htmlInput: { min: MIN_SCALING_CONCURRENCY, max: MAX_SCALING_CONCURRENCY, style: { fontFamily: 'monospace' } } }}
+                    />
+                  </Box>
                   <LabeledSwitch
                     label="Reconcile While Awake"
                     description="Keep evaluating policies during awake windows. Disable to skip checks between sleep windows."

@@ -60,19 +60,10 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
 export const getGuardrails = (): Promise<Guardrails> =>
   req<Guardrails>('/api/guardrails')
 
-export const updateGuardrails = (data: Partial<Guardrails>): Promise<Guardrails> =>
+export const updateGuardrails = (data: Omit<Partial<Guardrails>, 'id' | 'updatedAt'>): Promise<Guardrails> =>
   req<Guardrails>('/api/guardrails', {
     method: 'PUT',
-    body: JSON.stringify({
-      systemNamespaces: data.systemNamespaces,
-      skipNsNode: data.skipNsNode,
-      skipNodeLabels: data.skipNodeLabels,
-      skipNodeTaints: data.skipNodeTaints,
-      scalingPriorityNamespaces: data.scalingPriorityNamespaces,
-      schedulerEvalInterval: data.schedulerEvalInterval,
-      schedulerAutoWake: data.schedulerAutoWake,
-      schedulerReconcileWhileAwake: data.schedulerReconcileWhileAwake,
-    }),
+    body: JSON.stringify(data),
   })
 
 // ── Overview ──────────────────────────────────────────────────────────────────
@@ -109,8 +100,18 @@ export async function getPodLogs(
   if (previous) q.set('previous', 'true')
   const res = await fetch(
     `${BASE}/api/cluster/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}/logs?${q}`,
-    { credentials: 'include' },
+    { credentials: 'include', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
   )
+  if (res.status === 401) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('kp-session-expired'))
+    }
+    throw new Error('Session expired')
+  }
+  if (res.status === 403) {
+    const body = await res.json().catch(() => null)
+    throw new Error((body as any)?.error || 'You do not have permission to perform this action')
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     throw new Error(body?.error || `HTTP ${res.status}`)
@@ -135,6 +136,16 @@ export function streamPodLogs(
     start(onLine, onError, onDone) {
       fetch(url, { credentials: 'include', signal })
         .then(async (res) => {
+          if (res.status === 401) {
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new Event('kp-session-expired'))
+            }
+            throw new Error('Session expired')
+          }
+          if (res.status === 403) {
+            const body = await res.json().catch(() => null)
+            throw new Error((body as any)?.error || 'You do not have permission to perform this action')
+          }
           if (!res.ok) {
             const body = await res.json().catch(() => null)
             throw new Error(body?.error || `HTTP ${res.status}`)
