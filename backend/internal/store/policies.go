@@ -40,8 +40,8 @@ func (s *Store) UpdatePolicy(id uint, updates map[string]interface{}) (*Policy, 
 func (s *Store) UpdatePolicyState(id uint, state string, nextTransition *time.Time) error {
 	now := time.Now()
 	updates := map[string]interface{}{
-		"current_state":     state,
-		"state_since":       now,
+		"current_state":      state,
+		"state_since":        now,
 		"next_transition_at": nextTransition,
 	}
 	switch state {
@@ -385,21 +385,43 @@ func (s *Store) ListOpenExceptions() ([]ScheduledException, error) {
 	return items, s.db.Where("status IN (?,?)", ExceptionStatusPending, ExceptionStatusActive).Order("starts_at asc").Find(&items).Error
 }
 
-func (s *Store) UpdateScheduledExceptionStatus(id uint, status string) error {
-	updates := map[string]interface{}{"status": status}
-	if status == ExceptionStatusCancelled {
+// UpdateScheduledExceptionStatus atomically transitions an exception from
+// expectedStatus to newStatus. Returns ErrRecordNotFound if the row does not
+// exist or is not in the expected state (prevents concurrent double-transitions).
+func (s *Store) UpdateScheduledExceptionStatus(id uint, expectedStatus, newStatus string) error {
+	updates := map[string]interface{}{"status": newStatus}
+	if newStatus == ExceptionStatusCancelled {
 		updates["cancelled_at"] = time.Now()
 	}
-	return s.db.Model(&ScheduledException{}).Where("id = ?", id).Updates(updates).Error
+	result := s.db.Model(&ScheduledException{}).
+		Where("id = ? AND status = ?", id, expectedStatus).
+		Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
-// CancelScheduledException atomically sets status, cancelled_at, and cancel_reason in one write.
+// CancelScheduledException atomically sets status, cancelled_at, and cancel_reason
+// in one write. Only transitions from pending or active states.
 func (s *Store) CancelScheduledException(id uint, reason string) error {
-	return s.db.Model(&ScheduledException{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"status":        ExceptionStatusCancelled,
-		"cancelled_at":  time.Now(),
-		"cancel_reason": reason,
-	}).Error
+	result := s.db.Model(&ScheduledException{}).
+		Where("id = ? AND status IN (?, ?)", id, ExceptionStatusPending, ExceptionStatusActive).
+		Updates(map[string]interface{}{
+			"status":        ExceptionStatusCancelled,
+			"cancelled_at":  time.Now(),
+			"cancel_reason": reason,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (s *Store) UpdateScheduledException(id uint, updates map[string]interface{}) (*ScheduledException, error) {

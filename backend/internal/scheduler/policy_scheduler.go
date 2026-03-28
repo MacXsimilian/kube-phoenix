@@ -19,13 +19,11 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/policy"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scaler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	"gorm.io/gorm"
 )
 
 // ErrPolicyTransitioning is returned when a policy is already mid-transition.
 var ErrPolicyTransitioning = errors.New("policy is already transitioning")
-
-// PolicyBroker is an alias for Broker, used for policy executions.
-type PolicyBroker = Broker
 
 // schedulerStore abstracts the store methods the scheduler depends on,
 // enabling test doubles.
@@ -41,7 +39,7 @@ type schedulerStore interface {
 	FinishPolicyExecution(id uint, status string, counts map[string]int) error
 	AppendPolicyLogLines(lines []store.PolicyLogLine) error
 	ListOpenExceptions() ([]store.ScheduledException, error)
-	UpdateScheduledExceptionStatus(id uint, status string) error
+	UpdateScheduledExceptionStatus(id uint, expectedStatus, newStatus string) error
 }
 
 // policyRunner abstracts the execution engine for sleep/wake operations.
@@ -77,15 +75,15 @@ type cachedPolicy struct {
 type PolicyScheduler struct {
 	store  schedulerStore
 	runner policyRunner
-	Broker *PolicyBroker
+	Broker *Broker
 	cfg    SchedulerConfig
 
-	mu                    sync.Mutex
-	cancel                context.CancelFunc
-	parentCtx             context.Context
-	policies              map[uint]cachedPolicy
-	lastReconcileAttempt  map[uint]time.Time
-	inflight              sync.WaitGroup // tracks running execution goroutines
+	mu                   sync.Mutex
+	cancel               context.CancelFunc
+	parentCtx            context.Context
+	policies             map[uint]cachedPolicy
+	lastReconcileAttempt map[uint]time.Time
+	inflight             sync.WaitGroup // tracks running execution goroutines
 }
 
 // NewPolicyScheduler creates a PolicyScheduler. Pass nil k8sClient in tests.
@@ -163,6 +161,31 @@ func (ps *PolicyScheduler) NextTransition(policyID uint) *time.Time {
 		return nil
 	}
 	return policy.NextTransition(cp.windows, cp.policy.Timezone, time.Now())
+}
+
+// NextTransitions returns the next transition time for each requested policy
+// in a single lock acquisition.
+func (ps *PolicyScheduler) NextTransitions(policyIDs []uint) map[uint]*time.Time {
+	ps.mu.Lock()
+	type entry struct {
+		id      uint
+		windows []policy.SleepWindow
+		tz      string
+	}
+	entries := make([]entry, 0, len(policyIDs))
+	for _, id := range policyIDs {
+		if cp, ok := ps.policies[id]; ok {
+			entries = append(entries, entry{id, cp.windows, cp.policy.Timezone})
+		}
+	}
+	ps.mu.Unlock()
+
+	now := time.Now()
+	result := make(map[uint]*time.Time, len(entries))
+	for _, e := range entries {
+		result[e.id] = policy.NextTransition(e.windows, e.tz, now)
+	}
+	return result
 }
 
 // RunSleepNow triggers an immediate sleep execution for a policy.
@@ -254,8 +277,11 @@ func (ps *PolicyScheduler) maybeStartException(ex store.ScheduledException, now 
 	if now.Before(ex.StartsAt) {
 		return
 	}
-	if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusActive); err != nil {
-		slog.Error("exception: set active failed", "exceptionID", ex.ID, "err", err)
+	if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusPending, store.ExceptionStatusActive); err != nil {
+		// ErrRecordNotFound means another tick already transitioned it — not an error.
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			slog.Error("exception: set active failed", "exceptionID", ex.ID, "err", err)
+		}
 		return
 	}
 	slog.Info("exception started", "exceptionID", ex.ID, "ticketRef", ex.TicketRef)
@@ -263,7 +289,7 @@ func (ps *PolicyScheduler) maybeStartException(ex store.ScheduledException, now 
 		if _, err := ps.RunWakeNow(*ex.PolicyID, "exception_start"); err != nil {
 			slog.Warn("exception: wake failed, reverting to pending",
 				"exceptionID", ex.ID, "err", err)
-			if rbErr := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusPending); rbErr != nil {
+			if rbErr := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusActive, store.ExceptionStatusPending); rbErr != nil {
 				slog.Error("exception: revert to pending failed",
 					"exceptionID", ex.ID, "err", rbErr)
 			}
@@ -275,8 +301,10 @@ func (ps *PolicyScheduler) maybeEndException(ex store.ScheduledException, now ti
 	if !now.After(ex.EndsAt) {
 		return
 	}
-	if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusCompleted); err != nil {
-		slog.Error("exception: set completed failed", "exceptionID", ex.ID, "err", err)
+	if err := ps.store.UpdateScheduledExceptionStatus(ex.ID, store.ExceptionStatusActive, store.ExceptionStatusCompleted); err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			slog.Error("exception: set completed failed", "exceptionID", ex.ID, "err", err)
+		}
 		return
 	}
 	slog.Info("exception ended", "exceptionID", ex.ID, "ticketRef", ex.TicketRef)
@@ -299,8 +327,8 @@ const (
 	// reconcileBackoff is the minimum interval between corrective-wake
 	// attempts for the same policy. Prevents flooding history when failures
 	// persist.
-	reconcileBackoff        = 5 * time.Minute
-	stuckTransitionTimeout  = 10 * time.Minute
+	reconcileBackoff       = 5 * time.Minute
+	stuckTransitionTimeout = 10 * time.Minute
 )
 
 func (ps *PolicyScheduler) tickLoop(ctx context.Context, interval time.Duration) {

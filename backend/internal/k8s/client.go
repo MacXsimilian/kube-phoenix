@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
@@ -31,8 +32,19 @@ type Client struct {
 	inCluster bool
 
 	// Cached cluster info to avoid hitting k8s Discovery on every request.
+	clusterInfoMu     sync.Mutex
 	cachedClusterInfo *ClusterInfoResult
 	clusterInfoAt     time.Time
+
+	// Cached pod metrics to avoid hitting the Metrics Server on every request.
+	podMetricsMu     sync.Mutex
+	cachedPodMetrics map[string]ContainerMetrics
+	podMetricsAt     time.Time
+
+	// Cached ReplicaSets for owner resolution.
+	rsMu     sync.Mutex
+	cachedRS []appsv1.ReplicaSet
+	rsAt     time.Time
 }
 
 // ClusterInfoResult holds metadata about the connected Kubernetes cluster.
@@ -81,6 +93,9 @@ const clusterInfoTTL = 5 * time.Minute
 // ClusterInfo returns metadata about the connected Kubernetes cluster.
 // Results are cached for clusterInfoTTL to avoid redundant Discovery calls.
 func (c *Client) ClusterInfo(ctx context.Context) (ClusterInfoResult, error) {
+	c.clusterInfoMu.Lock()
+	defer c.clusterInfoMu.Unlock()
+
 	if c.cachedClusterInfo != nil && time.Since(c.clusterInfoAt) < clusterInfoTTL {
 		return *c.cachedClusterInfo, nil
 	}
@@ -499,24 +514,27 @@ func (c *Client) ListPodsOnNode(ctx context.Context, nodeName string) ([]corev1.
 	return list.Items, nil
 }
 
+const rsCacheTTL = 60 * time.Second
+
+// ListAllReplicaSets returns cached ReplicaSets, refreshing from the API
+// at most once every 60 seconds.
 func (c *Client) ListAllReplicaSets(ctx context.Context) ([]appsv1.ReplicaSet, error) {
+	c.rsMu.Lock()
+	defer c.rsMu.Unlock()
+
+	if c.cachedRS != nil && time.Since(c.rsAt) < rsCacheTTL {
+		return c.cachedRS, nil
+	}
+
 	start := time.Now()
 	list, err := c.cs.AppsV1().ReplicaSets("").List(ctx, metav1.ListOptions{})
 	recordK8sOp("list", "replicaset", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list replicasets: %w", err)
 	}
-	return list.Items, nil
-}
-
-func (c *Client) ListNamespaces(ctx context.Context) ([]corev1.Namespace, error) {
-	start := time.Now()
-	list, err := c.cs.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
-	recordK8sOp("list", "namespace", start, err)
-	if err != nil {
-		return nil, fmt.Errorf("list namespaces: %w", err)
-	}
-	return list.Items, nil
+	c.cachedRS = list.Items
+	c.rsAt = time.Now()
+	return c.cachedRS, nil
 }
 
 func (c *Client) GetPod(ctx context.Context, namespace, name string) (*corev1.Pod, error) {
@@ -544,9 +562,30 @@ type ContainerMetrics struct {
 	MemBytes  int64
 }
 
-// GetAllPodMetrics fetches cluster-wide pod metrics from the Metrics Server.
-// Returns a map keyed by "namespace/podName" with the summed CPU+mem across all containers.
+const podMetricsTTL = 10 * time.Second
+
+// GetAllPodMetrics returns cached cluster-wide pod metrics, refreshing from
+// the Metrics Server at most once every 10 seconds.
 func (c *Client) GetAllPodMetrics(ctx context.Context) (map[string]ContainerMetrics, error) {
+	c.podMetricsMu.Lock()
+	defer c.podMetricsMu.Unlock()
+
+	if c.cachedPodMetrics != nil && time.Since(c.podMetricsAt) < podMetricsTTL {
+		return c.cachedPodMetrics, nil
+	}
+
+	m, err := c.fetchAllPodMetrics(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.cachedPodMetrics = m
+	c.podMetricsAt = time.Now()
+	return m, nil
+}
+
+// fetchAllPodMetrics fetches cluster-wide pod metrics from the Metrics Server.
+// Returns a map keyed by "namespace/podName" with the summed CPU+mem across all containers.
+func (c *Client) fetchAllPodMetrics(ctx context.Context) (map[string]ContainerMetrics, error) {
 	start := time.Now()
 	res := c.cs.RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/pods").Do(ctx)
 	data, err := res.Raw()
