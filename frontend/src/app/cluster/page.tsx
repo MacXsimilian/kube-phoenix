@@ -10,6 +10,7 @@ import Box from '@mui/material/Box'
 import WorkloadsTable from '@/components/cluster/WorkloadsTable'
 import NodesTable from '@/components/cluster/NodesTable'
 import { getWorkloads, getNodes } from '@/lib/api'
+import { WORKLOADS_REFETCH_MS, NODES_REFETCH_MS } from '@/lib/constants'
 
 function ClusterTabs() {
   const searchParams = useSearchParams()
@@ -19,8 +20,8 @@ function ClusterTabs() {
     setTab(searchParams.get('tab') === 'nodes' ? 1 : 0)
   }, [searchParams])
 
-  const { data: workloads = [], isError: workloadsError } = useQuery({ queryKey: ['workloads'], queryFn: getWorkloads, refetchInterval: 30_000 })
-  const { data: nodes = [], isError: nodesError } = useQuery({ queryKey: ['nodes'], queryFn: getNodes, refetchInterval: 30_000 })
+  const { data: workloads = [], isError: workloadsError } = useQuery({ queryKey: ['workloads'], queryFn: getWorkloads, refetchInterval: WORKLOADS_REFETCH_MS })
+  const { data: nodes = [], isError: nodesError } = useQuery({ queryKey: ['nodes'], queryFn: getNodes, refetchInterval: NODES_REFETCH_MS })
 
   const workloadLabel = workloadsError ? 'Workloads (?)' : workloads.length ? `Workloads (${workloads.length})` : 'Workloads'
   const nodeLabel = nodesError ? 'Nodes (?)' : nodes.length ? `Nodes (${nodes.length})` : 'Nodes'

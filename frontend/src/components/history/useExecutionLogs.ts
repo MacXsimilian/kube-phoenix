@@ -59,6 +59,8 @@ export function useExecutionLogs(executionId: number | undefined, isRunning: boo
           if (isRunningRef.current && wsRef.current === null) openWs()
         }, 3000)
       }
+
+      ws.onclose = () => setIsConnected(false)
     }
 
     openWs()

@@ -16,7 +16,7 @@ import Alert from '@mui/material/Alert'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
 import { updateUserSettings } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
-import { TIMEZONES } from '@/lib/constants'
+import { TIMEZONES, SNACKBAR_AUTO_HIDE_MS } from '@/lib/constants'
 import type { User } from '@/lib/types'
 
 const LABEL_SX = { textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 500 } as const
@@ -126,7 +126,7 @@ export default function AccountSettings({ user }: { user: User }) {
 
       <Snackbar
         open={!!snack}
-        autoHideDuration={3000}
+        autoHideDuration={SNACKBAR_AUTO_HIDE_MS}
         onClose={() => setSnack(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

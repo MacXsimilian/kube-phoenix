@@ -7,6 +7,7 @@ import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import Table from '@mui/material/Table'
+import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableBody from '@mui/material/TableBody'
 import TableRow from '@mui/material/TableRow'
@@ -16,6 +17,11 @@ import IconButton from '@mui/material/IconButton'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogContentText from '@mui/material/DialogContentText'
+import DialogActions from '@mui/material/DialogActions'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { deletePolicyOverride, createPolicyOverride } from '@/lib/api'
@@ -44,8 +50,30 @@ export default function OverridesSection({
   const TYPE_LABEL_FALLBACK = typeLabelFallback(isDark)
   const [addOverrideOpen, setAddOverrideOpen] = useState(false)
   const [overrideForm, setOverrideForm] = useState({ type: 'stay_awake', reason: '', startsAt: '', endsAt: '', targetCronTime: '' })
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null)
 
   const isWindowed = overrideForm.type === 'stay_awake' || overrideForm.type === 'force_sleep'
+
+  // Form validation
+  const hasEitherDate = overrideForm.startsAt !== '' || overrideForm.endsAt !== ''
+  const hasBothDates = overrideForm.startsAt !== '' && overrideForm.endsAt !== ''
+  const endAfterStart = hasBothDates && new Date(overrideForm.endsAt) > new Date(overrideForm.startsAt)
+
+  let dateError = ''
+  if (isWindowed) {
+    if (!hasBothDates) dateError = 'Both start and end dates are required'
+    else if (!endAfterStart) dateError = 'End date must be after start date'
+  } else if (hasEitherDate) {
+    if (!hasBothDates) dateError = 'Both start and end dates are required'
+    else if (!endAfterStart) dateError = 'End date must be after start date'
+  }
+
+  const startsAtError = isWindowed && overrideForm.startsAt === '' ? 'Required' : ''
+  const endsAtError = isWindowed && overrideForm.endsAt === ''
+    ? 'Required'
+    : hasBothDates && !endAfterStart
+      ? 'Must be after start date'
+      : ''
 
   const deleteOverrideMut = useMutation({
     mutationFn: (overrideId: number) => deletePolicyOverride(policyId, overrideId),
@@ -73,6 +101,8 @@ export default function OverridesSection({
     onError: (err: unknown) => onNotify(err instanceof Error ? err.message : 'Create failed', 'error'),
   })
 
+  const saveDisabled = createOverrideMut.isPending || dateError !== ''
+
   return (
     <>
       <Box sx={{ mb: 3 }}>
@@ -88,6 +118,7 @@ export default function OverridesSection({
           <Typography variant="body2" color="text.secondary">No active overrides.</Typography>
         )}
         {overrides && overrides.length > 0 && (
+          <TableContainer>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -116,7 +147,7 @@ export default function OverridesSection({
                       <IconButton
                         size="small"
                         color="error"
-                        onClick={() => deleteOverrideMut.mutate(ov.id)}
+                        onClick={() => setDeleteTarget(ov.id)}
                         aria-label="Delete override"
                       >
                         <DeleteOutlineIcon fontSize="small" />
@@ -128,8 +159,31 @@ export default function OverridesSection({
               })}
             </TableBody>
           </Table>
+          </TableContainer>
         )}
       </Box>
+
+      <Dialog open={deleteTarget !== null} onClose={() => setDeleteTarget(null)}>
+        <DialogTitle>Delete this override?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This will permanently delete the override. This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => {
+              if (deleteTarget !== null) deleteOverrideMut.mutate(deleteTarget)
+              setDeleteTarget(null)
+            }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Add override form */}
       {addOverrideOpen && (
@@ -159,6 +213,8 @@ export default function OverridesSection({
                   onChange={e => setOverrideForm(f => ({ ...f, startsAt: e.target.value }))}
                   slotProps={{ inputLabel: { shrink: true } }}
                   sx={{ minWidth: 200 }}
+                  error={!!startsAtError}
+                  helperText={startsAtError}
                 />
                 <TextField
                   type="datetime-local"
@@ -168,6 +224,8 @@ export default function OverridesSection({
                   onChange={e => setOverrideForm(f => ({ ...f, endsAt: e.target.value }))}
                   slotProps={{ inputLabel: { shrink: true } }}
                   sx={{ minWidth: 200 }}
+                  error={!!endsAtError}
+                  helperText={endsAtError}
                 />
               </>
             ) : (
@@ -189,7 +247,7 @@ export default function OverridesSection({
               onChange={e => setOverrideForm(f => ({ ...f, reason: e.target.value }))}
               sx={{ flex: 1, minWidth: 160 }}
             />
-            <Button size="small" variant="contained" onClick={() => createOverrideMut.mutate()} disabled={createOverrideMut.isPending}>
+            <Button size="small" variant="contained" onClick={() => createOverrideMut.mutate()} disabled={saveDisabled}>
               Save
             </Button>
             <Button size="small" onClick={() => setAddOverrideOpen(false)} sx={{ color: 'text.secondary' }}>

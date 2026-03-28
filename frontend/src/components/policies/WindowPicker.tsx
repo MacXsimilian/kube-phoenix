@@ -351,7 +351,7 @@ export default function WindowPicker({
   return (
     <Box>
       {/* Presets — pill buttons with dots */}
-      <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2 }}>
         {PRESETS.map(preset => (
           <Button
             key={preset.label}

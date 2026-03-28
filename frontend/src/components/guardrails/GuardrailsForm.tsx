@@ -20,6 +20,7 @@ import SaveIcon from '@mui/icons-material/Save'
 import { getGuardrails, updateGuardrails } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { canEditGuardrails } from '@/lib/rbac'
+import { SNACKBAR_AUTO_HIDE_MS } from '@/lib/constants'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -305,9 +306,9 @@ export default function GuardrailsForm() {
 
       <Snackbar
         open={snackOpen}
-        autoHideDuration={3000}
+        autoHideDuration={SNACKBAR_AUTO_HIDE_MS}
         onClose={() => setSnackOpen(false)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert severity="success" onClose={() => setSnackOpen(false)} sx={{ width: '100%' }}>
           Guardrails saved successfully.

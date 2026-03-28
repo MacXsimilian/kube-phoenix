@@ -15,6 +15,8 @@ import PolicyCard from '@/components/policies/PolicyCard'
 import CreatePolicyDialog from '@/components/policies/CreatePolicyDialog'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules, canTriggerSchedules } from '@/lib/rbac'
+import Tooltip from '@mui/material/Tooltip'
+import { SNACKBAR_AUTO_HIDE_MS, POLICIES_REFETCH_MS } from '@/lib/constants'
 
 export default function PoliciesPage() {
   const { user } = useAuth()
@@ -25,7 +27,7 @@ export default function PoliciesPage() {
   const { data: policies, isLoading, error } = useQuery({
     queryKey: ['policies'],
     queryFn: getPolicies,
-    refetchInterval: 30_000,
+    refetchInterval: POLICIES_REFETCH_MS,
   })
 
   function handleEdit(p: Policy) {
@@ -50,14 +52,18 @@ export default function PoliciesPage() {
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Typography variant="h5" fontWeight={700}>Policies</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleCreate}
-          disabled={!canEdit}
-        >
-          New Policy
-        </Button>
+        <Tooltip title={!canEdit ? 'You do not have permission to create policies' : ''}>
+          <span>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={handleCreate}
+              disabled={!canEdit}
+            >
+              New Policy
+            </Button>
+          </span>
+        </Tooltip>
       </Box>
 
       {isLoading && (
@@ -110,7 +116,7 @@ export default function PoliciesPage() {
 
       <Snackbar
         open={!!snack}
-        autoHideDuration={4000}
+        autoHideDuration={SNACKBAR_AUTO_HIDE_MS}
         onClose={() => setSnack(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

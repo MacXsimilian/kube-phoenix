@@ -20,6 +20,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import DownloadIcon from '@mui/icons-material/Download'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import { useColors } from '@/lib/colors'
+import { SNACKBAR_AUTO_HIDE_MS } from '@/lib/constants'
 import type { PodContainer } from '@/lib/types'
 import { usePodLogStream } from './usePodLogStream'
 import LogSearchBar from './LogSearchBar'
@@ -328,7 +329,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
 
       <Snackbar
         open={copied}
-        autoHideDuration={2000}
+        autoHideDuration={SNACKBAR_AUTO_HIDE_MS}
         onClose={() => setCopied(false)}
         message="Logs copied to clipboard"
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}

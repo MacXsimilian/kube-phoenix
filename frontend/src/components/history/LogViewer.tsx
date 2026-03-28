@@ -28,6 +28,7 @@ import type { PolicyExecution, LogLine } from '@/lib/types'
 import { LOG_LEVEL_COLORS_DARK, LOG_LEVEL_COLORS_LIGHT, modeColors } from '@/lib/statusColors'
 import ExecutionSummary from './ExecutionSummary'
 import { useExecutionLogs } from './useExecutionLogs'
+import { SNACKBAR_AUTO_HIDE_MS } from '@/lib/constants'
 
 // ── Log line row ──────────────────────────────────────────────────────────────
 
@@ -269,7 +270,7 @@ export default function LogViewer({
 
       <Snackbar
         open={copied}
-        autoHideDuration={2000}
+        autoHideDuration={SNACKBAR_AUTO_HIDE_MS}
         onClose={() => setCopied(false)}
         message="Logs copied to clipboard"
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}

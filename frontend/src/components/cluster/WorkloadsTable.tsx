@@ -11,6 +11,7 @@ import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import TableSortLabel from '@mui/material/TableSortLabel'
+import TablePagination from '@mui/material/TablePagination'
 import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
 import TextField from '@mui/material/TextField'
@@ -51,6 +52,8 @@ export default function WorkloadsTable() {
   }, [searchParams])
   const [sortCol, setSortCol] = useState<'namespace' | 'name' | 'kind' | 'replicas' | 'status' | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(20)
   const [selectedWorkload, setSelectedWorkload] = useState<Workload | null>(null)
   const isDark = useTheme().palette.mode === 'dark'
   const colors = useColors()
@@ -96,6 +99,14 @@ export default function WorkloadsTable() {
       return sortDir === 'asc' ? cmp : -cmp
     })
   }, [filtered, sortCol, sortDir])
+
+  const paginatedRows = useMemo(
+    () => sorted.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [sorted, page, rowsPerPage],
+  )
+
+  // Reset page when filters change
+  useEffect(() => { setPage(0) }, [search, nsFilter, statusFilter])
 
   return (
     <>
@@ -202,7 +213,7 @@ export default function WorkloadsTable() {
                   </TableCell>
                 </TableRow>
               ) : (
-                sorted.map((w) => {
+                paginatedRows.map((w) => {
                   const statusColor = STATUS_COLORS[w.status]
                   const unhealthy = w.readyReplicas < w.currentReplicas && w.currentReplicas > 0
                   return (
@@ -246,6 +257,15 @@ export default function WorkloadsTable() {
               )}
             </TableBody>
           </Table>
+          <TablePagination
+            component="div"
+            count={sorted.length}
+            page={page}
+            onPageChange={(_, p) => setPage(p)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0) }}
+            rowsPerPageOptions={[10, 20, 50]}
+          />
         </TableContainer>
       )}
 

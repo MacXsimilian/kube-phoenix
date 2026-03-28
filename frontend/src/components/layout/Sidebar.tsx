@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import { alpha, useTheme } from '@mui/material/styles'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
@@ -13,7 +12,6 @@ import Box from '@mui/material/Box'
 import ButtonBase from '@mui/material/ButtonBase'
 import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
-import AboutModal from './AboutModal'
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
 import HubOutlinedIcon from '@mui/icons-material/HubOutlined'
 import SecurityOutlinedIcon from '@mui/icons-material/SecurityOutlined'
@@ -51,12 +49,12 @@ interface Props {
   width: number
   mobileOpen: boolean
   onMobileClose: () => void
+  onAboutClick: () => void
 }
 
-export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
+export default function Sidebar({ width, mobileOpen, onMobileClose, onAboutClick }: Props) {
   const pathname = usePathname()
   const { logout, user } = useAuth()
-  const [aboutOpen, setAboutOpen] = useState(false)
   const theme = useTheme()
   const primary = theme.palette.primary.main
 
@@ -68,7 +66,7 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Logo — click to open About */}
       <ButtonBase
-        onClick={() => setAboutOpen(true)}
+        onClick={onAboutClick}
         aria-label="About kube-phoenix"
         sx={{
           p: 2.5,
@@ -170,7 +168,6 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
         {content}
       </Drawer>
 
-      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </>
   )
 }

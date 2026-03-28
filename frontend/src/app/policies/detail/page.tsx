@@ -32,6 +32,7 @@ import { fmtDt, timeUntil } from '@/lib/formatters'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
 import { useTheme } from '@mui/material/styles'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import { SNACKBAR_AUTO_HIDE_MS } from '@/lib/constants'
 
 const BLEED_MARGIN_X = { xs: -2, sm: -2.5, md: -3 }
 const BLEED_PADDING_X = { xs: 2, sm: 2.5, md: 3 }
@@ -233,7 +234,7 @@ function PolicyDetailContent() {
 
       <Snackbar
         open={!!snack}
-        autoHideDuration={4000}
+        autoHideDuration={SNACKBAR_AUTO_HIDE_MS}
         onClose={() => setSnack(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

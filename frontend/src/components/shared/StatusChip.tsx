@@ -22,7 +22,7 @@ export default function StatusChip({ status }: { status: string }) {
     <Chip
       label={status.charAt(0).toUpperCase() + status.slice(1)}
       size="small"
-      sx={{ height: 18, fontSize: 10, bgcolor: statusStyle.bg, color: statusStyle.color }}
+      sx={{ height: 20, fontSize: 10, bgcolor: statusStyle.bg, color: statusStyle.color }}
     />
   )
 }

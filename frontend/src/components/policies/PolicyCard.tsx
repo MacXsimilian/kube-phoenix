@@ -120,8 +120,8 @@ export default function PolicyCard({
   const colors = useColors()
 
   const actionBtnSx = {
-    width: 32,
-    height: 32,
+    width: 40,
+    height: 40,
     borderRadius: '8px',
     border: `1px solid ${isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.09)'}`,
     bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
@@ -160,7 +160,7 @@ export default function PolicyCard({
           opacity: isDisabled ? DISABLED_OPACITY : 1,
           '&:hover': {
             borderColor: 'rgba(124,58,237,0.3)',
-            boxShadow: '0 0 0 1px rgba(124,58,237,0.08), 0 4px 24px rgba(0,0,0,0.3)',
+            boxShadow: isDark ? '0 0 0 1px rgba(124,58,237,0.08), 0 4px 24px rgba(0,0,0,0.3)' : '0 0 0 1px rgba(124,58,237,0.08), 0 4px 24px rgba(0,0,0,0.08)',
           },
           transition: 'border-color 0.2s, box-shadow 0.2s, opacity 0.2s',
           p: 0,

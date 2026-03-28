@@ -23,6 +23,7 @@ import { useAuth } from '@/lib/auth'
 import { canTriggerSchedules } from '@/lib/rbac'
 import { useColors } from '@/lib/colors'
 import { useClusterStream } from '@/lib/useClusterStream'
+import { SNACKBAR_AUTO_HIDE_MS } from '@/lib/constants'
 
 const statusPulseAnimation = {
   animation: 'statusPulse 2s ease-in-out infinite',
@@ -192,18 +193,21 @@ export default function ClusterStatusCard() {
                 <Chip
                   label={`${activeNodes} Nodes Active`}
                   size="small"
+                  role="link"
                   onClick={() => router.push('/cluster/?tab=nodes')}
                   sx={{ bgcolor: 'rgba(34,197,94,0.1)', color: 'success.main', fontWeight: 600, cursor: 'pointer' }}
                 />
                 <Chip
                   label={`${running} Workloads Running`}
                   size="small"
+                  role="link"
                   onClick={() => router.push('/cluster/?status=running')}
                   sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: 'info.main', fontWeight: 600, cursor: 'pointer' }}
                 />
                 <Chip
                   label={`${sleeping} Workloads Sleeping`}
                   size="small"
+                  role="link"
                   onClick={() => router.push('/cluster/?status=sleeping')}
                   sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: 'warning.main', fontWeight: 600, cursor: 'pointer' }}
                 />
@@ -268,7 +272,7 @@ export default function ClusterStatusCard() {
       {/* Trigger error snackbar */}
       <Snackbar
         open={triggerError !== null}
-        autoHideDuration={6000}
+        autoHideDuration={SNACKBAR_AUTO_HIDE_MS}
         onClose={() => setTriggerError(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

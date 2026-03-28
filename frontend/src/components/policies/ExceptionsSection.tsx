@@ -5,6 +5,7 @@ import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import Table from '@mui/material/Table'
+import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableBody from '@mui/material/TableBody'
 import TableRow from '@mui/material/TableRow'
@@ -47,6 +48,7 @@ export default function ExceptionsSection({
         <Typography variant="body2" color="text.secondary">No exceptions scheduled.</Typography>
       )}
       {exceptions && exceptions.length > 0 && (
+        <TableContainer>
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -91,6 +93,7 @@ export default function ExceptionsSection({
             })}
           </TableBody>
         </Table>
+        </TableContainer>
       )}
     </Box>
   )

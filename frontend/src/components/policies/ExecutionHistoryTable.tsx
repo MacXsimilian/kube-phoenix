@@ -5,6 +5,7 @@ import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
 import Table from '@mui/material/Table'
+import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableBody from '@mui/material/TableBody'
 import TableRow from '@mui/material/TableRow'
@@ -65,6 +66,7 @@ export default function ExecutionHistoryTable({
         </Typography>
       )}
       {filtered && filtered.length > 0 && (
+        <TableContainer>
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -118,6 +120,7 @@ export default function ExecutionHistoryTable({
             })}
           </TableBody>
         </Table>
+        </TableContainer>
       )}
     </Box>
   )

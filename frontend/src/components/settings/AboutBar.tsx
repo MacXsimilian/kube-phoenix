@@ -36,6 +36,7 @@ export default function AboutBar() {
             target="_blank"
             rel="noopener"
             size="small"
+            aria-label="View on GitHub"
             sx={{ color: 'text.disabled', '&:hover': { color: 'primary.light' } }}
           >
             <GitHubIcon sx={{ fontSize: 20 }} />

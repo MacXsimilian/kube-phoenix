@@ -10,6 +10,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
 import Snackbar from '@mui/material/Snackbar'
 import Table from '@mui/material/Table'
+import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableBody from '@mui/material/TableBody'
 import TableRow from '@mui/material/TableRow'
@@ -34,6 +35,7 @@ import { canEditSchedules } from '@/lib/rbac'
 import { fmtDt } from '@/lib/formatters'
 import { useTheme } from '@mui/material/styles'
 import { executionStatusColors, executionStatusFallback, typeLabels, typeLabelFallback } from '@/lib/statusColors'
+import { SNACKBAR_AUTO_HIDE_MS, EXCEPTIONS_REFETCH_MS } from '@/lib/constants'
 
 const STATUS_TABS = ['all', 'pending', 'active', 'completed', 'cancelled']
 
@@ -52,7 +54,7 @@ export default function ExceptionsPage() {
   const { data: exceptions, isLoading, isError } = useQuery({
     queryKey: ['exceptions', statusFilter],
     queryFn: () => getExceptions(statusFilter ? { status: statusFilter } : undefined),
-    refetchInterval: 30_000,
+    refetchInterval: EXCEPTIONS_REFETCH_MS,
   })
 
   const deleteMut = useMutation({
@@ -83,14 +85,18 @@ export default function ExceptionsPage() {
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5" fontWeight={700}>Scheduled Exceptions</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => { setEditing(undefined); setDialogOpen(true) }}
-          disabled={!canEdit}
-        >
-          New Exception
-        </Button>
+        <Tooltip title={!canEdit ? 'You do not have permission to create exceptions' : ''}>
+          <span>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => { setEditing(undefined); setDialogOpen(true) }}
+              disabled={!canEdit}
+            >
+              New Exception
+            </Button>
+          </span>
+        </Tooltip>
       </Box>
 
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -130,6 +136,7 @@ export default function ExceptionsPage() {
       )}
 
       {exceptions && exceptions.length > 0 && (
+        <TableContainer>
         <Table aria-label="Scheduled exceptions">
           <TableHead>
             <TableRow>
@@ -195,6 +202,7 @@ export default function ExceptionsPage() {
             })}
           </TableBody>
         </Table>
+        </TableContainer>
       )}
 
       <ExceptionDialog
@@ -223,7 +231,7 @@ export default function ExceptionsPage() {
 
       <Snackbar
         open={!!snack}
-        autoHideDuration={4000}
+        autoHideDuration={SNACKBAR_AUTO_HIDE_MS}
         onClose={() => setSnack(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

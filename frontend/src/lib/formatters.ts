@@ -63,7 +63,10 @@ export function pctColor(p: number, isDark: boolean): string {
 /** Format an ISO date-time string to a locale string, returning an em-dash for nullish values */
 export function fmtDt(iso: string | null | undefined): string {
   if (!iso) return '\u2014'
-  return new Date(iso).toLocaleString()
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
 }
 
 /** Format an ISO date-time string as a short date: "Mar 24, 2026, 2:15 PM" */
