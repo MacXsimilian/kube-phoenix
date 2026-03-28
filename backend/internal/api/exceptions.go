@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"gorm.io/gorm"
@@ -90,9 +91,11 @@ func (h *Handler) createException(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.CreateScheduledException(ex); err != nil {
+		metrics.ExceptionOperationsTotal.WithLabelValues("create", "error").Inc()
 		jsonInternalError(w, err, "create exception failed")
 		return
 	}
+	metrics.ExceptionOperationsTotal.WithLabelValues("create", "success").Inc()
 	slog.Info("scheduled exception created",
 		"exceptionID", ex.ID, "ticketRef", ex.TicketRef, "startsAt", ex.StartsAt)
 	shape, err := exceptionWithTargets(ex)
@@ -138,9 +141,11 @@ func (h *Handler) updateException(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := h.store.UpdateScheduledException(id, updates)
 	if err != nil {
+		metrics.ExceptionOperationsTotal.WithLabelValues("update", "error").Inc()
 		jsonInternalError(w, err, "update exception failed")
 		return
 	}
+	metrics.ExceptionOperationsTotal.WithLabelValues("update", "success").Inc()
 	oldShape, err := exceptionWithTargets(ex)
 	if err != nil {
 		jsonInternalError(w, err, "decode exception targets failed")
@@ -179,9 +184,11 @@ func (h *Handler) deleteException(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.CancelScheduledException(id, "deleted via API"); err != nil {
+		metrics.ExceptionOperationsTotal.WithLabelValues("delete", "error").Inc()
 		jsonInternalError(w, err, "cancel exception failed")
 		return
 	}
+	metrics.ExceptionOperationsTotal.WithLabelValues("delete", "success").Inc()
 	slog.Info("scheduled exception cancelled", "exceptionID", id)
 	delShape, err := exceptionWithTargets(ex)
 	if err != nil {

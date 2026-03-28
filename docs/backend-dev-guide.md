@@ -1018,17 +1018,38 @@ All metrics are registered via `promauto` in `backend/internal/metrics/metrics.g
 
 | Metric | Type | Labels | What it measures |
 |:-------|:-----|:-------|:-----------------|
-| `kube_phoenix_executions_total` | Counter | `status`, `mode`, `direction` | Completed policy executions. `status` is success/failed. `mode` is plan/apply. `direction` is sleep/wake. |
+| **Policy execution** | | | |
+| `kube_phoenix_executions_total` | Counter | `mode`, `direction`, `status` | Completed policy executions. `mode` is plan/apply. `direction` is sleep/wake. `status` is success/failed. |
 | `kube_phoenix_execution_duration_seconds` | Histogram | `mode`, `direction`, `status` | Wall-clock duration of each execution. Buckets: 5, 15, 30, 60, 120, 300, 600, 1800. |
 | `kube_phoenix_workloads_scaled_total` | Counter | `direction` | Workloads (Deployments + StatefulSets) affected by scaling operations. |
 | `kube_phoenix_nodes_drained_total` | Counter | -- | Nodes drained during sleep operations. |
 | `kube_phoenix_nodes_deleted_total` | Counter | -- | Nodes deleted during sleep operations. |
 | `kube_phoenix_active_policies` | Gauge | `mode` | Number of enabled policies, partitioned by plan/apply. Updated on scheduler reload. |
+| **HTTP request** | | | |
+| `kube_phoenix_http_requests_total` | Counter | `method`, `path`, `status_code` | Every HTTP request. `path` is the Chi route pattern (e.g. `/api/policies/{id}`), not the actual URL. |
+| `kube_phoenix_http_request_duration_seconds` | Histogram | `method`, `path` | HTTP request latency. Buckets: 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10. |
+| **Kubernetes client** | | | |
+| `kube_phoenix_k8s_requests_total` | Counter | `verb`, `resource`, `status` | Every K8s API call. `verb`: list/get/scale/annotate/cordon/drain/delete. `resource`: deployment/statefulset/node/pod/etc. `status`: success/error. |
+| `kube_phoenix_k8s_request_duration_seconds` | Histogram | `verb`, `resource` | K8s API call latency. Buckets: 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30. |
+| **CRUD operations** | | | |
+| `kube_phoenix_policy_operations_total` | Counter | `operation`, `status` | Policy create/update/delete outcomes (store-level, not validation rejections). |
+| `kube_phoenix_override_operations_total` | Counter | `operation`, `status` | Override create/delete outcomes. |
+| `kube_phoenix_exception_operations_total` | Counter | `operation`, `status` | Scheduled exception create/update/delete outcomes. |
+| **Auth & sessions** | | | |
 | `kube_phoenix_auth_attempts_total` | Counter | `status`, `method` | Login attempts. `status` is success/failure. `method` is local/oidc. |
 | `kube_phoenix_user_actions_total` | Counter | `action`, `resource_type` | User-initiated mutations. `action` is e.g. `policy.create`, `user.delete`. |
 | `kube_phoenix_active_sessions` | Gauge | -- | Currently valid sessions. Incremented on login, decremented on logout/cleanup. |
 | `kube_phoenix_rate_limit_hits_total` | Counter | `type` | Rate limit rejections. `type` is `per_ip` or `per_username`. |
 | `kube_phoenix_audit_drops_total` | Counter | -- | Audit log entries dropped because the async write buffer was full. |
+| **WebSocket** | | | |
+| `kube_phoenix_ws_connections_total` | Counter | -- | Total WebSocket connections opened (live execution log streaming). |
+| `kube_phoenix_ws_active_connections` | Gauge | -- | Currently active WebSocket connections. |
+| **Scheduler** | | | |
+| `kube_phoenix_scheduler_evaluations_total` | Counter | -- | Total scheduler evaluation ticks. If this stops incrementing, the scheduler is stuck. |
+| `kube_phoenix_scheduler_evaluation_duration_seconds` | Histogram | -- | Time per evaluation tick. Buckets: 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5. |
+| **Cluster cache** | | | |
+| `kube_phoenix_cache_rebuilds_total` | Counter | -- | Cluster cache snapshot rebuilds (SharedInformer-backed). |
+| `kube_phoenix_cache_rebuild_duration_seconds` | Histogram | -- | Time spent rebuilding the cache snapshot. Buckets: 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1. |
 
 ### Structured Logging
 

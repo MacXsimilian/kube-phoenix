@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/policy"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
@@ -154,9 +155,11 @@ func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.CreatePolicy(&p); err != nil {
+		metrics.PolicyOperationsTotal.WithLabelValues("create", "error").Inc()
 		jsonInternalError(w, err, "create policy failed")
 		return
 	}
+	metrics.PolicyOperationsTotal.WithLabelValues("create", "success").Inc()
 	slog.Info("policy created", "policyID", p.ID, "name", p.Name)
 	h.audit(r, "policy.create", "policy", &p.ID, nil, p)
 	h.reloadScheduler(p.ID)
@@ -295,9 +298,11 @@ func (h *Handler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 
 	p, err := h.store.UpdatePolicy(id, updates)
 	if err != nil {
+		metrics.PolicyOperationsTotal.WithLabelValues("update", "error").Inc()
 		jsonInternalError(w, err, "update policy failed")
 		return
 	}
+	metrics.PolicyOperationsTotal.WithLabelValues("update", "success").Inc()
 
 	h.audit(r, "policy.update", "policy", &id, old, p)
 	h.reloadScheduler(id)
@@ -320,6 +325,7 @@ func (h *Handler) deletePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.DeletePolicy(id); err != nil {
+		metrics.PolicyOperationsTotal.WithLabelValues("delete", "error").Inc()
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			jsonError(w, ErrNotFound, http.StatusNotFound)
 		} else {
@@ -327,6 +333,7 @@ func (h *Handler) deletePolicy(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	metrics.PolicyOperationsTotal.WithLabelValues("delete", "success").Inc()
 	slog.Info("policy deleted", "policyID", id)
 	h.audit(r, "policy.delete", "policy", &id, old, nil)
 	h.reloadScheduler(id)

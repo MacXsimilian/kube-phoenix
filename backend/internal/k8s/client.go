@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -56,10 +57,21 @@ func New() (*Client, error) {
 	return &Client{cs: cs}, nil
 }
 
+func recordK8sOp(verb, resource string, start time.Time, err error) {
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+	metrics.K8sRequestsTotal.WithLabelValues(verb, resource, status).Inc()
+	metrics.K8sRequestDuration.WithLabelValues(verb, resource).Observe(time.Since(start).Seconds())
+}
+
 // ─── Deployments ─────────────────────────────────────────────────────────────
 
 func (c *Client) ListDeployments(ctx context.Context, namespace string) ([]appsv1.Deployment, error) {
+	start := time.Now()
 	list, err := c.cs.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+	recordK8sOp("list", "deployment", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list deployments in %q: %w", namespace, err)
 	}
@@ -69,7 +81,9 @@ func (c *Client) ListDeployments(ctx context.Context, namespace string) ([]appsv
 // ListDeploymentsBySelector lists deployments filtered by a label selector string.
 // An empty labelSelector returns all deployments (same as ListDeployments).
 func (c *Client) ListDeploymentsBySelector(ctx context.Context, namespace, labelSelector string) ([]appsv1.Deployment, error) {
+	start := time.Now()
 	list, err := c.cs.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
+	recordK8sOp("list", "deployment", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list deployments by selector in %q: %w", namespace, err)
 	}
@@ -77,7 +91,9 @@ func (c *Client) ListDeploymentsBySelector(ctx context.Context, namespace, label
 }
 
 func (c *Client) GetDeployment(ctx context.Context, namespace, name string) (*appsv1.Deployment, error) {
+	start := time.Now()
 	d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	recordK8sOp("get", "deployment", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
 	}
@@ -126,12 +142,16 @@ func (c *Client) scaleWithRetry(ctx context.Context, namespace, name string, rep
 }
 
 func (c *Client) ScaleDeployment(ctx context.Context, namespace, name string, replicas int32) error {
+	start := time.Now()
 	dep := c.cs.AppsV1().Deployments(namespace)
-	return c.scaleWithRetry(ctx, namespace, name, replicas, dep.GetScale, dep.UpdateScale)
+	err := c.scaleWithRetry(ctx, namespace, name, replicas, dep.GetScale, dep.UpdateScale)
+	recordK8sOp("scale", "deployment", start, err)
+	return err
 }
 
 func (c *Client) AnnotateDeployment(ctx context.Context, namespace, name, key, value string) error {
-	return retryOnConflict(func() error {
+	start := time.Now()
+	err := retryOnConflict(func() error {
 		d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
@@ -146,10 +166,13 @@ func (c *Client) AnnotateDeployment(ctx context.Context, namespace, name, key, v
 		}
 		return nil
 	})
+	recordK8sOp("annotate", "deployment", start, err)
+	return err
 }
 
 func (c *Client) RemoveDeploymentAnnotation(ctx context.Context, namespace, name, key string) error {
-	return retryOnConflict(func() error {
+	start := time.Now()
+	err := retryOnConflict(func() error {
 		d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
@@ -161,12 +184,16 @@ func (c *Client) RemoveDeploymentAnnotation(ctx context.Context, namespace, name
 		}
 		return nil
 	})
+	recordK8sOp("annotate", "deployment", start, err)
+	return err
 }
 
 // ─── StatefulSets ─────────────────────────────────────────────────────────────
 
 func (c *Client) ListStatefulSets(ctx context.Context, namespace string) ([]appsv1.StatefulSet, error) {
+	start := time.Now()
 	list, err := c.cs.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
+	recordK8sOp("list", "statefulset", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list statefulsets in %q: %w", namespace, err)
 	}
@@ -175,7 +202,9 @@ func (c *Client) ListStatefulSets(ctx context.Context, namespace string) ([]apps
 
 // ListStatefulSetsBySelector lists statefulsets filtered by a label selector string.
 func (c *Client) ListStatefulSetsBySelector(ctx context.Context, namespace, labelSelector string) ([]appsv1.StatefulSet, error) {
+	start := time.Now()
 	list, err := c.cs.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
+	recordK8sOp("list", "statefulset", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list statefulsets by selector in %q: %w", namespace, err)
 	}
@@ -183,7 +212,9 @@ func (c *Client) ListStatefulSetsBySelector(ctx context.Context, namespace, labe
 }
 
 func (c *Client) GetStatefulSet(ctx context.Context, namespace, name string) (*appsv1.StatefulSet, error) {
+	start := time.Now()
 	ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+	recordK8sOp("get", "statefulset", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
 	}
@@ -191,12 +222,16 @@ func (c *Client) GetStatefulSet(ctx context.Context, namespace, name string) (*a
 }
 
 func (c *Client) ScaleStatefulSet(ctx context.Context, namespace, name string, replicas int32) error {
+	start := time.Now()
 	ss := c.cs.AppsV1().StatefulSets(namespace)
-	return c.scaleWithRetry(ctx, namespace, name, replicas, ss.GetScale, ss.UpdateScale)
+	err := c.scaleWithRetry(ctx, namespace, name, replicas, ss.GetScale, ss.UpdateScale)
+	recordK8sOp("scale", "statefulset", start, err)
+	return err
 }
 
 func (c *Client) AnnotateStatefulSet(ctx context.Context, namespace, name, key, value string) error {
-	return retryOnConflict(func() error {
+	start := time.Now()
+	err := retryOnConflict(func() error {
 		ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
@@ -211,10 +246,13 @@ func (c *Client) AnnotateStatefulSet(ctx context.Context, namespace, name, key, 
 		}
 		return nil
 	})
+	recordK8sOp("annotate", "statefulset", start, err)
+	return err
 }
 
 func (c *Client) RemoveStatefulSetAnnotation(ctx context.Context, namespace, name, key string) error {
-	return retryOnConflict(func() error {
+	start := time.Now()
+	err := retryOnConflict(func() error {
 		ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
@@ -226,12 +264,16 @@ func (c *Client) RemoveStatefulSetAnnotation(ctx context.Context, namespace, nam
 		}
 		return nil
 	})
+	recordK8sOp("annotate", "statefulset", start, err)
+	return err
 }
 
 // ─── Nodes ────────────────────────────────────────────────────────────────────
 
 func (c *Client) ListNodes(ctx context.Context) ([]corev1.Node, error) {
+	start := time.Now()
 	list, err := c.cs.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	recordK8sOp("list", "node", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list nodes: %w", err)
 	}
@@ -239,7 +281,8 @@ func (c *Client) ListNodes(ctx context.Context) ([]corev1.Node, error) {
 }
 
 func (c *Client) CordonNode(ctx context.Context, name string) error {
-	return retryOnConflict(func() error {
+	start := time.Now()
+	err := retryOnConflict(func() error {
 		node, err := c.cs.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("get node %q: %w", name, err)
@@ -251,6 +294,8 @@ func (c *Client) CordonNode(ctx context.Context, name string) error {
 		}
 		return nil
 	})
+	recordK8sOp("cordon", "node", start, err)
+	return err
 }
 
 // isDaemonSetPod returns true if any owner reference is a DaemonSet.
@@ -266,9 +311,11 @@ func isDaemonSetPod(pod corev1.Pod) bool {
 // CountNonDaemonSetPods returns the number of non-DaemonSet pods on a node.
 // Used to compute a dynamic drain timeout before calling DrainNode.
 func (c *Client) CountNonDaemonSetPods(ctx context.Context, nodeName string) (int, error) {
+	start := time.Now()
 	pods, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + nodeName,
 	})
+	recordK8sOp("list", "pod", start, err)
 	if err != nil {
 		return 0, fmt.Errorf("list pods on %s: %w", nodeName, err)
 	}
@@ -288,15 +335,19 @@ func (c *Client) DrainNode(ctx context.Context, name string, timeout time.Durati
 		return fmt.Errorf("cordon %s: %w", name, err)
 	}
 
+	start := time.Now()
 	pods, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + name,
 	})
 	if err != nil {
+		recordK8sOp("drain", "node", start, err)
 		return fmt.Errorf("list pods on %s: %w", name, err)
 	}
 
 	c.evictPods(ctx, name, pods.Items)
-	return c.waitForDrain(ctx, name, timeout)
+	err = c.waitForDrain(ctx, name, timeout)
+	recordK8sOp("drain", "node", start, err)
+	return err
 }
 
 // evictPods attempts to evict all non-DaemonSet pods, falling back to force delete.
@@ -353,7 +404,10 @@ func (c *Client) waitForDrain(ctx context.Context, nodeName string, timeout time
 }
 
 func (c *Client) DeleteNode(ctx context.Context, name string) error {
-	if err := c.cs.CoreV1().Nodes().Delete(ctx, name, metav1.DeleteOptions{}); err != nil {
+	start := time.Now()
+	err := c.cs.CoreV1().Nodes().Delete(ctx, name, metav1.DeleteOptions{})
+	recordK8sOp("delete", "node", start, err)
+	if err != nil {
 		return fmt.Errorf("delete node %q: %w", name, err)
 	}
 	return nil
@@ -362,7 +416,9 @@ func (c *Client) DeleteNode(ctx context.Context, name string) error {
 // ─── Pods ─────────────────────────────────────────────────────────────────────
 
 func (c *Client) ListPods(ctx context.Context, namespace string) ([]corev1.Pod, error) {
+	start := time.Now()
 	list, err := c.cs.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+	recordK8sOp("list", "pod", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list pods in %q: %w", namespace, err)
 	}
@@ -374,9 +430,11 @@ func (c *Client) ListAllPods(ctx context.Context) ([]corev1.Pod, error) {
 }
 
 func (c *Client) ListPodsOnNode(ctx context.Context, nodeName string) ([]corev1.Pod, error) {
+	start := time.Now()
 	list, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + nodeName,
 	})
+	recordK8sOp("list", "pod", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list pods on node %q: %w", nodeName, err)
 	}
@@ -384,7 +442,9 @@ func (c *Client) ListPodsOnNode(ctx context.Context, nodeName string) ([]corev1.
 }
 
 func (c *Client) ListAllReplicaSets(ctx context.Context) ([]appsv1.ReplicaSet, error) {
+	start := time.Now()
 	list, err := c.cs.AppsV1().ReplicaSets("").List(ctx, metav1.ListOptions{})
+	recordK8sOp("list", "replicaset", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list replicasets: %w", err)
 	}
@@ -392,7 +452,9 @@ func (c *Client) ListAllReplicaSets(ctx context.Context) ([]appsv1.ReplicaSet, e
 }
 
 func (c *Client) ListNamespaces(ctx context.Context) ([]corev1.Namespace, error) {
+	start := time.Now()
 	list, err := c.cs.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	recordK8sOp("list", "namespace", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list namespaces: %w", err)
 	}
@@ -400,7 +462,9 @@ func (c *Client) ListNamespaces(ctx context.Context) ([]corev1.Namespace, error)
 }
 
 func (c *Client) GetPod(ctx context.Context, namespace, name string) (*corev1.Pod, error) {
+	start := time.Now()
 	pod, err := c.cs.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+	recordK8sOp("get", "pod", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("get pod %s/%s: %w", namespace, name, err)
 	}
@@ -408,7 +472,9 @@ func (c *Client) GetPod(ctx context.Context, namespace, name string) (*corev1.Po
 }
 
 func (c *Client) GetNode(ctx context.Context, name string) (*corev1.Node, error) {
+	start := time.Now()
 	node, err := c.cs.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
+	recordK8sOp("get", "node", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("get node %q: %w", name, err)
 	}
@@ -423,8 +489,10 @@ type ContainerMetrics struct {
 // GetAllPodMetrics fetches cluster-wide pod metrics from the Metrics Server.
 // Returns a map keyed by "namespace/podName" with the summed CPU+mem across all containers.
 func (c *Client) GetAllPodMetrics(ctx context.Context) (map[string]ContainerMetrics, error) {
+	start := time.Now()
 	res := c.cs.RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/pods").Do(ctx)
 	data, err := res.Raw()
+	recordK8sOp("get", "podmetrics", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("fetch pod metrics: %w", err)
 	}
@@ -471,10 +539,12 @@ func (c *Client) GetAllPodMetrics(ctx context.Context) (map[string]ContainerMetr
 // GetPodMetrics queries the Metrics Server API for current pod resource usage.
 // Returns an empty map (no error) when Metrics Server is unavailable.
 func (c *Client) GetPodMetrics(ctx context.Context, namespace, name string) (map[string]ContainerMetrics, error) {
+	start := time.Now()
 	data, err := c.cs.RESTClient().
 		Get().
 		AbsPath(fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods/%s", namespace, name)).
 		DoRaw(ctx)
+	recordK8sOp("get", "podmetrics", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("fetch pod metrics %s/%s: %w", namespace, name, err)
 	}
@@ -516,6 +586,7 @@ func (c *Client) GetPodMetrics(ctx context.Context, namespace, name string) (map
 // When follow is true the stream stays open and tails new output (like kubectl logs -f).
 // The caller is responsible for closing the returned io.ReadCloser.
 func (c *Client) GetPodLogs(ctx context.Context, namespace, name, container string, tailLines int64, previous, follow bool) (io.ReadCloser, error) {
+	start := time.Now()
 	opts := &corev1.PodLogOptions{
 		Container: container,
 		Previous:  previous,
@@ -525,6 +596,7 @@ func (c *Client) GetPodLogs(ctx context.Context, namespace, name, container stri
 		opts.TailLines = &tailLines
 	}
 	stream, err := c.cs.CoreV1().Pods(namespace).GetLogs(name, opts).Stream(ctx)
+	recordK8sOp("get", "podlogs", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("get logs %s/%s (container=%s): %w", namespace, name, container, err)
 	}
@@ -532,9 +604,11 @@ func (c *Client) GetPodLogs(ctx context.Context, namespace, name, container stri
 }
 
 func (c *Client) GetPodEvents(ctx context.Context, namespace, podName string) ([]corev1.Event, error) {
+	start := time.Now()
 	list, err := c.cs.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
 		FieldSelector: "involvedObject.name=" + podName,
 	})
+	recordK8sOp("list", "event", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("get events for pod %s/%s: %w", namespace, podName, err)
 	}

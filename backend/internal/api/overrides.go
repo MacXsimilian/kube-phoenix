@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"gorm.io/gorm"
@@ -93,9 +94,11 @@ func (h *Handler) createPolicyOverride(w http.ResponseWriter, r *http.Request) {
 		CreatedBy:      createdBy,
 	}
 	if err := h.store.CreatePolicyOverride(override); err != nil {
+		metrics.OverrideOperationsTotal.WithLabelValues("create", "error").Inc()
 		jsonInternalError(w, err, "create override failed")
 		return
 	}
+	metrics.OverrideOperationsTotal.WithLabelValues("create", "success").Inc()
 	slog.Info("policy override created", "policyID", policyID, "type", body.OverrideType)
 	h.audit(r, "policy.override.create", "policy", &policyID, nil, override)
 
@@ -130,9 +133,11 @@ func (h *Handler) deletePolicyOverride(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.DeletePolicyOverride(overrideID); err != nil {
+		metrics.OverrideOperationsTotal.WithLabelValues("delete", "error").Inc()
 		jsonInternalError(w, err, "delete override failed")
 		return
 	}
+	metrics.OverrideOperationsTotal.WithLabelValues("delete", "success").Inc()
 	slog.Info("policy override deleted", "policyID", policyID, "overrideID", overrideID)
 	h.audit(r, "policy.override.delete", "policy", &policyID, existing, nil)
 	w.WriteHeader(http.StatusNoContent)
