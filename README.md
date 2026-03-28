@@ -37,15 +37,13 @@ kube-phoenix replaces ad-hoc cron scripts with a proper operator for scheduling 
 
 A **policy** declares when workloads should sleep using sleep windows -- human-readable time ranges evaluated on a 30-second tick loop. When the intended state (sleeping or awake) differs from the actual state, kube-phoenix executes a transition: scaling deployments and stateful sets to zero and draining nodes on sleep, or restoring saved replica counts and uncordoning nodes on wake. Overrides and scheduled exceptions take precedence over the normal schedule when active.
 
-```
-  Sleep                                Wake
-  ─────                                ────
-  Save replica counts (DB + annotation)   Read saved replica counts
-  Scale replicas to 0                     Restore replicas
-  Cordon nodes                            Uncordon nodes
-  Evict pods                              (Autoscaler provisions new nodes
-  Delete nodes                             as pending pods appear)
-```
+| Sleep | Wake |
+| :-- | :-- |
+| Save replica counts (DB + annotation) | Read saved replica counts |
+| Scale replicas to 0 | Restore replicas |
+| Cordon nodes | Uncordon nodes |
+| Evict pods | Autoscaler provisions new nodes as pending pods appear |
+| Delete nodes | |
 
 ---
 
