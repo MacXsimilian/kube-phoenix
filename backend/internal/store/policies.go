@@ -243,9 +243,13 @@ func (s *Store) AppendPolicyLogLines(lines []PolicyLogLine) error {
 	return s.db.Create(&lines).Error
 }
 
+// maxLogLines caps the number of log lines returned per execution to prevent
+// unbounded memory growth. Executions with more lines are truncated.
+const maxLogLines = 5000
+
 func (s *Store) GetPolicyLogLines(executionID uint) ([]PolicyLogLine, error) {
 	var lines []PolicyLogLine
-	return lines, s.db.Where("execution_id = ?", executionID).Order("seq asc").Find(&lines).Error
+	return lines, s.db.Where("execution_id = ?", executionID).Order("seq asc").Limit(maxLogLines).Find(&lines).Error
 }
 
 // ─── Workload Snapshots ───────────────────────────────────────────────────────
@@ -279,10 +283,11 @@ func (s *Store) GetSnapshotsForExecution(sleepExecID uint) ([]WorkloadSnapshot, 
 	return snaps, s.db.Where("sleep_execution_id = ?", sleepExecID).Find(&snaps).Error
 }
 
-// GetSnapshotsForPolicy returns all snapshots for a policy (open and closed).
+// GetSnapshotsForPolicy returns the most recent snapshots for a policy (open and closed).
+// Capped at 1000 rows to prevent unbounded memory growth.
 func (s *Store) GetSnapshotsForPolicy(policyID uint) ([]WorkloadSnapshot, error) {
 	var snaps []WorkloadSnapshot
-	return snaps, s.db.Where("policy_id = ?", policyID).Order("captured_at desc").Find(&snaps).Error
+	return snaps, s.db.Where("policy_id = ?", policyID).Order("captured_at desc").Limit(1000).Find(&snaps).Error
 }
 
 // CloseSnapshot marks a snapshot as restored by linking it to the wake execution.
@@ -340,6 +345,27 @@ func (s *Store) ListActiveOverrides(policyID uint, now time.Time) ([]PolicyOverr
 	return overrides, err
 }
 
+// ListActiveOverridesForPolicies returns overrides currently in effect for
+// multiple policies in a single query. Results are grouped by policy ID.
+func (s *Store) ListActiveOverridesForPolicies(policyIDs []uint, now time.Time) (map[uint][]PolicyOverride, error) {
+	if len(policyIDs) == 0 {
+		return map[uint][]PolicyOverride{}, nil
+	}
+	var overrides []PolicyOverride
+	err := s.db.Where(
+		"policy_id IN (?) AND ((override_type IN ('stay_awake','force_sleep') AND starts_at <= ? AND ends_at >= ?) OR override_type IN ('skip_sleep','skip_wake'))",
+		policyIDs, now, now,
+	).Find(&overrides).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[uint][]PolicyOverride, len(policyIDs))
+	for i := range overrides {
+		result[overrides[i].PolicyID] = append(result[overrides[i].PolicyID], overrides[i])
+	}
+	return result, nil
+}
+
 func (s *Store) DeletePolicyOverride(id uint) error {
 	result := s.db.Delete(&PolicyOverride{}, id)
 	if result.Error != nil {
@@ -376,7 +402,7 @@ func (s *Store) ListScheduledExceptions(f ScheduledExceptionFilter) ([]Scheduled
 		query = query.Where("status = ?", f.Status)
 	}
 	var items []ScheduledException
-	return items, query.Order("starts_at asc").Find(&items).Error
+	return items, query.Order("starts_at asc").Limit(500).Find(&items).Error
 }
 
 // ListOpenExceptions returns all pending or active exceptions for scheduler evaluation.

@@ -123,11 +123,11 @@ type Policy struct {
 // PolicyExecution records a single sleep or wake run driven by a Policy.
 type PolicyExecution struct {
 	ID         uint       `gorm:"primaryKey" json:"id"`
-	PolicyID   uint       `gorm:"index" json:"policyId"`
+	PolicyID   uint       `gorm:"index;index:idx_pe_policy_started,priority:1" json:"policyId"`
 	Policy     Policy     `gorm:"foreignKey:PolicyID;constraint:OnDelete:CASCADE" json:"policy"`
 	Direction  string     `gorm:"size:10;index" json:"direction"` // "sleep" | "wake"
 	Trigger    string     `gorm:"size:30" json:"trigger"`         // scheduled|manual_sleep|manual_wake|recovery|skip_applied|override_start|override_end|exception_start|exception_end
-	StartedAt  time.Time  `gorm:"index" json:"startedAt"`
+	StartedAt  time.Time  `gorm:"index;index:idx_pe_policy_started,priority:2,sort:desc" json:"startedAt"`
 	FinishedAt *time.Time `json:"finishedAt"`
 	Status     string     `gorm:"index;size:20" json:"status"` // running|success|failed|interrupted|skipped
 	Mode       string     `gorm:"size:10" json:"mode"`         // "plan" | "apply"
