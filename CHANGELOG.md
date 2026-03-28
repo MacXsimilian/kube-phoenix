@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/MacXsimilian/kube-phoenix/compare/v0.4.1...v0.4.2) (2026-03-28)
+
+
+### Bug Fixes
+
+* **scheduler:** harden reliability for wake failures, race conditions, and crash recovery ([#262](https://github.com/MacXsimilian/kube-phoenix/issues/262)) ([298eba7](https://github.com/MacXsimilian/kube-phoenix/commit/298eba75dba68dd8c3b33da053b232beeba5d515))
+
 ## [0.4.1](https://github.com/MacXsimilian/kube-phoenix/compare/v0.4.0...v0.4.1) (2026-03-28)
 
 
