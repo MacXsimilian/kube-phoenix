@@ -93,11 +93,65 @@ func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID
 	select {
 	case h.auditWriter.ch <- entry:
 	default:
-		metrics.AuditDropsTotal.Inc()
-		slog.Warn("audit-writer: buffer full, entry dropped", "action", action, "user", username)
+		// Buffer full — block briefly before dropping to improve delivery guarantees.
+		select {
+		case h.auditWriter.ch <- entry:
+		case <-time.After(500 * time.Millisecond):
+			metrics.AuditDropsTotal.Inc()
+			slog.Error("audit-writer: buffer full after 500ms, entry dropped", "action", action, "user", username)
+		}
 	}
 
 	metrics.UserActionsTotal.WithLabelValues(action, resourceType).Inc()
+}
+
+// auditDeniedMiddleware logs an audit entry when a request receives a 403 Forbidden
+// response (e.g. from RequirePermission). Must be placed after SessionAuth so that
+// the user context is available.
+func (h *Handler) auditDeniedMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ww := &statusCapture{ResponseWriter: w}
+		next.ServeHTTP(ww, r)
+		if ww.code == http.StatusForbidden {
+			h.audit(r, "auth.denied", "permission", nil, nil, map[string]string{
+				"method": r.Method,
+				"path":   r.URL.Path,
+			})
+		}
+	})
+}
+
+// statusCapture wraps http.ResponseWriter to capture the status code.
+type statusCapture struct {
+	http.ResponseWriter
+	code    int
+	written bool
+}
+
+func (w *statusCapture) WriteHeader(code int) {
+	if !w.written {
+		w.code = code
+		w.written = true
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusCapture) Write(b []byte) (int, error) {
+	if !w.written {
+		w.code = http.StatusOK
+		w.written = true
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *statusCapture) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (w *statusCapture) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }
 
 // clientIP extracts the real client IP from the request. It trusts
