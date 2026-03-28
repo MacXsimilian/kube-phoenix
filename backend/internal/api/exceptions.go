@@ -83,7 +83,11 @@ func (h *Handler) createException(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.PolicyID != nil {
 		if _, err := h.store.GetPolicy(*body.PolicyID); err != nil {
-			jsonError(w, "policy not found", http.StatusBadRequest)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				jsonError(w, "policy not found", http.StatusBadRequest)
+			} else {
+				jsonInternalError(w, err, "get policy failed")
+			}
 			return
 		}
 	}

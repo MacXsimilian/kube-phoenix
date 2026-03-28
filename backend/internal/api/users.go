@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -123,7 +124,9 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 
 	// If the user was disabled, revoke all their sessions.
 	if enabled, ok := body["enabled"].(bool); ok && !enabled {
-		_ = h.store.DeleteUserSessions(id)
+		if err := h.store.DeleteUserSessions(id); err != nil {
+			slog.Error("failed to revoke sessions for disabled user", "userID", id, "err", err)
+		}
 	}
 
 	jsonOK(w, updated)

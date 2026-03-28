@@ -351,7 +351,11 @@ func (h *Handler) triggerPolicySleep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.store.GetPolicy(id); err != nil {
-		jsonError(w, ErrNotFound, http.StatusNotFound)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			jsonError(w, ErrNotFound, http.StatusNotFound)
+		} else {
+			jsonInternalError(w, err, "get policy failed")
+		}
 		return
 	}
 	execID, err := h.policyScheduler.RunSleepNow(id, "manual_sleep")
@@ -375,7 +379,11 @@ func (h *Handler) triggerPolicyWake(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.store.GetPolicy(id); err != nil {
-		jsonError(w, ErrNotFound, http.StatusNotFound)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			jsonError(w, ErrNotFound, http.StatusNotFound)
+		} else {
+			jsonInternalError(w, err, "get policy failed")
+		}
 		return
 	}
 	execID, err := h.policyScheduler.RunWakeNow(id, "manual_wake")

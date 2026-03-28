@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -75,7 +76,9 @@ func NewOIDCProvider(ctx context.Context, cfg OIDCConfig) (*OIDCProvider, error)
 	var rawClaims struct {
 		EndSessionEndpoint string `json:"end_session_endpoint"`
 	}
-	_ = provider.Claims(&rawClaims)
+	if err := provider.Claims(&rawClaims); err != nil {
+		slog.Warn("oidc: failed to extract end_session_endpoint from discovery", "err", err)
+	}
 
 	return &OIDCProvider{
 		Verifier:      provider.Verifier(oidcConfig),

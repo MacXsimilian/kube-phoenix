@@ -31,6 +31,7 @@ func NewAuditWriter(s *store.Store, bufSize int) *AuditWriter {
 }
 
 // Start drains the channel and writes entries to the database. Blocks until ctx is cancelled.
+// Recovers from panics to prevent a single bad entry from killing the audit pipeline.
 func (aw *AuditWriter) Start(ctx context.Context) {
 	for {
 		select {
@@ -47,10 +48,19 @@ func (aw *AuditWriter) Start(ctx context.Context) {
 				}
 			}
 		case entry := <-aw.ch:
-			if err := aw.store.CreateAuditLog(entry); err != nil {
-				slog.Error("audit-writer: write failed", "action", entry.Action, "err", err)
-			}
+			aw.safeWrite(entry)
 		}
+	}
+}
+
+func (aw *AuditWriter) safeWrite(entry *store.AuditLog) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("audit-writer: panic during write (recovered)", "action", entry.Action, "panic", r)
+		}
+	}()
+	if err := aw.store.CreateAuditLog(entry); err != nil {
+		slog.Error("audit-writer: write failed", "action", entry.Action, "err", err)
 	}
 }
 

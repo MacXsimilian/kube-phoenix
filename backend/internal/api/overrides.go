@@ -34,7 +34,11 @@ func (h *Handler) createPolicyOverride(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.store.GetPolicy(policyID); err != nil {
-		jsonError(w, "policy not found", http.StatusNotFound)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			jsonError(w, "policy not found", http.StatusNotFound)
+		} else {
+			jsonInternalError(w, err, "get policy failed")
+		}
 		return
 	}
 
