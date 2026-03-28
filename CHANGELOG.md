@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.4.2...v0.5.0) (2026-03-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **metrics:** kube_phoenix_executions_total label order changed from [status, mode, direction] to [mode, direction, status]. Named PromQL selectors (e.g. {status="success"}) are unaffected; only positional WithLabelValues() callers need updating.
+
+### Features
+
+* **metrics:** expand Prometheus instrumentation across all layers ([#264](https://github.com/MacXsimilian/kube-phoenix/issues/264)) ([f65a15e](https://github.com/MacXsimilian/kube-phoenix/commit/f65a15ecb56b54752e98499db8b51404ea936476))
+
 ## [0.4.2](https://github.com/MacXsimilian/kube-phoenix/compare/v0.4.1...v0.4.2) (2026-03-28)
 
 
