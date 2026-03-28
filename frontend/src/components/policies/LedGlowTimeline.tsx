@@ -3,6 +3,7 @@
 import React from 'react'
 import Box from '@mui/material/Box'
 import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
+import { useTheme } from '@mui/material/styles'
 import { nowInTimezone, DOW_MAP } from '@/lib/windowUtils'
 import { TIMELINE_COLORS } from '@/lib/colors'
 import LegendItem from './LegendItem'
@@ -60,6 +61,7 @@ export default function LedGlowTimeline({
   exceptions?: ScheduledException[]
   timezone?: string
 }) {
+  const isDark = useTheme().palette.mode === 'dark'
   if (!windows || windows.length === 0) return null
 
   const { dayOfWeek, fractionalHour: nowH } = nowInTimezone(timezone)
@@ -94,7 +96,7 @@ export default function LedGlowTimeline({
             x={hourToX(h)}
             y={10}
             textAnchor="middle"
-            fill="rgba(148,163,184,0.45)"
+            fill={isDark ? 'rgba(148,163,184,0.45)' : 'rgba(71,85,105,0.5)'}
             fontSize={8}
             fontFamily="monospace"
           >
@@ -113,7 +115,7 @@ export default function LedGlowTimeline({
                 x={LABEL_W - 4}
                 y={y + STRIP_H / 2 + 1}
                 textAnchor="end"
-                fill={isToday ? '#e2e8f0' : 'rgba(148,163,184,0.5)'}
+                fill={isToday ? (isDark ? '#e2e8f0' : '#1E293B') : (isDark ? 'rgba(148,163,184,0.5)' : 'rgba(71,85,105,0.5)')}
                 fontSize={9}
                 fontWeight={isToday ? 700 : 400}
                 fontFamily="monospace"

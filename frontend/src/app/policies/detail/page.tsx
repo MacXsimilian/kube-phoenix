@@ -27,9 +27,10 @@ import LogViewer from '@/components/history/LogViewer'
 import { windowsToText, computeWeeklyStats, hasSleepWindows } from '@/lib/windowUtils'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules, canTriggerSchedules } from '@/lib/rbac'
-import { STATE_COLORS, SUBTLE_BORDER } from '@/lib/statusColors'
+import { stateColors, subtleBorder } from '@/lib/statusColors'
 import { fmtDt, timeUntil } from '@/lib/formatters'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
+import { useTheme } from '@mui/material/styles'
 import ErrorBoundary from '@/components/ErrorBoundary'
 
 const BLEED_MARGIN_X = { xs: -2, sm: -2.5, md: -3 }
@@ -40,6 +41,10 @@ function PolicyDetailContent() {
   const router = useRouter()
   const { user } = useAuth()
   const queryClient = useQueryClient()
+
+  const isDark = useTheme().palette.mode === 'dark'
+  const STATE_COLORS = stateColors(isDark)
+  const SUBTLE_BORDER = subtleBorder(isDark)
 
   const raw = searchParams.get('id')
   const policyId = raw ? parseInt(raw, 10) : NaN
@@ -175,7 +180,7 @@ function PolicyDetailContent() {
       <Box
         sx={{
           mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3,
-          bgcolor: 'rgba(255,255,255,0.015)',
+          bgcolor: isDark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.015)',
           borderBottom: '1px solid', borderColor: SUBTLE_BORDER,
         }}
       >

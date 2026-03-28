@@ -56,7 +56,7 @@ export function pct(used: number, total: number): number {
 /** Return a colour for a percentage value, red >= 85, amber >= 65, green otherwise */
 export function pctColor(p: number, isDark: boolean): string {
   if (p >= 85) return isDark ? '#F87171' : '#B91C1C'
-  if (p >= 65) return '#FBBF24'
+  if (p >= 65) return isDark ? '#FBBF24' : '#92400E'
   return isDark ? '#22C55E' : '#15803D'
 }
 

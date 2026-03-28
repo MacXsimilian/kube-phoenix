@@ -1,7 +1,9 @@
 import Box from '@mui/material/Box'
+import { useTheme } from '@mui/material/styles'
 import type { NodeTaint } from '@/lib/types'
 
-const TAINT_EFFECT_FALLBACK = { color: '#9e9e9e', bg: 'rgba(158,158,158,0.12)', borderColor: 'rgba(158,158,158,0.2)' }
+const TAINT_FALLBACK_DARK = { color: '#9e9e9e', bg: 'rgba(158,158,158,0.12)', borderColor: 'rgba(158,158,158,0.2)' }
+const TAINT_FALLBACK_LIGHT = { color: '#616161', bg: 'rgba(158,158,158,0.12)', borderColor: 'rgba(158,158,158,0.2)' }
 
 interface TaintChipProps {
   taint: NodeTaint
@@ -9,7 +11,8 @@ interface TaintChipProps {
 }
 
 export default function TaintChip({ taint, effectColors }: TaintChipProps) {
-  const style = effectColors[taint.effect] ?? TAINT_EFFECT_FALLBACK
+  const isDark = useTheme().palette.mode === 'dark'
+  const style = effectColors[taint.effect] ?? (isDark ? TAINT_FALLBACK_DARK : TAINT_FALLBACK_LIGHT)
   return (
     <Box
       component="span"
@@ -26,7 +29,7 @@ export default function TaintChip({ taint, effectColors }: TaintChipProps) {
         component="span"
         sx={{
           fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5,
-          px: 0.625, py: '1px', borderRadius: '3px', bgcolor: 'rgba(0,0,0,0.2)',
+          px: 0.625, py: '1px', borderRadius: '3px', bgcolor: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.08)',
         }}
       >
         {taint.effect}

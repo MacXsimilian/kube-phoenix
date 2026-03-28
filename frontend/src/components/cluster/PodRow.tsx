@@ -20,14 +20,23 @@ export interface PodData {
   ownerName?: string
 }
 
-const POD_OWNER_COLORS: Record<string, { color: string; bgcolor: string }> = {
-  Deployment:  { color: '#7C3AED', bgcolor: 'rgba(124,58,237,0.12)' },
-  StatefulSet: { color: '#6366F1', bgcolor: 'rgba(99,102,241,0.12)' },
-  Job:         { color: '#14B8A6', bgcolor: 'rgba(20,184,166,0.12)' },
-  CronJob:     { color: '#14B8A6', bgcolor: 'rgba(20,184,166,0.12)' },
+function podOwnerColors(isDark: boolean): Record<string, { color: string; bgcolor: string }> {
+  return isDark ? {
+    Deployment:  { color: '#7C3AED', bgcolor: 'rgba(124,58,237,0.12)' },
+    StatefulSet: { color: '#6366F1', bgcolor: 'rgba(99,102,241,0.12)' },
+    Job:         { color: '#14B8A6', bgcolor: 'rgba(20,184,166,0.12)' },
+    CronJob:     { color: '#14B8A6', bgcolor: 'rgba(20,184,166,0.12)' },
+  } : {
+    Deployment:  { color: '#6D28D9', bgcolor: 'rgba(124,58,237,0.12)' },
+    StatefulSet: { color: '#4338CA', bgcolor: 'rgba(99,102,241,0.12)' },
+    Job:         { color: '#0F766E', bgcolor: 'rgba(20,184,166,0.12)' },
+    CronJob:     { color: '#0F766E', bgcolor: 'rgba(20,184,166,0.12)' },
+  }
 }
 
-const POD_OWNER_FALLBACK = { color: '#94A3B8', bgcolor: 'rgba(148,163,184,0.12)' }
+function podOwnerFallback(isDark: boolean) {
+  return { color: isDark ? '#94A3B8' : '#475569', bgcolor: 'rgba(148,163,184,0.12)' }
+}
 
 export default function PodRow({
   pod,
@@ -41,7 +50,7 @@ export default function PodRow({
   const isDark = useTheme().palette.mode === 'dark'
   const colors = useColors()
   const statusStyle = getPodStatusStyle(pod.status, isDark)
-  const ownerColor = showOwner && pod.ownerKind ? (POD_OWNER_COLORS[pod.ownerKind] ?? POD_OWNER_FALLBACK) : null
+  const ownerColor = showOwner && pod.ownerKind ? (podOwnerColors(isDark)[pod.ownerKind] ?? podOwnerFallback(isDark)) : null
   const readyColor = pod.readyContainers === pod.totalContainers
     ? colors.success
     : pod.readyContainers > 0

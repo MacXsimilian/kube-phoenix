@@ -14,7 +14,8 @@ import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import StatusChip from '@/components/shared/StatusChip'
 import { fmtDt } from '@/lib/formatters'
-import { TYPE_LABELS, TYPE_LABEL_FALLBACK } from '@/lib/statusColors'
+import { useTheme } from '@mui/material/styles'
+import { typeLabels, typeLabelFallback } from '@/lib/statusColors'
 import type { ScheduledException } from '@/lib/types'
 
 export default function ExceptionsSection({
@@ -28,6 +29,10 @@ export default function ExceptionsSection({
   onAddException: () => void
   onEditException: (ex: ScheduledException) => void
 }) {
+  const isDark = useTheme().palette.mode === 'dark'
+  const TYPE_LABELS = typeLabels(isDark)
+  const TYPE_LABEL_FALLBACK = typeLabelFallback(isDark)
+
   return (
     <Box sx={{ mb: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>

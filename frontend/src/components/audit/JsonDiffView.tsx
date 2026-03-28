@@ -13,7 +13,7 @@ export default function JsonDiffView({ before, after }: { before?: string; after
       <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
         {formatChangeSummary(changedCount)}
       </Typography>
-      <Box sx={{ borderRadius: 1, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', maxHeight: 320, overflowY: 'auto' }}>
+      <Box sx={{ borderRadius: 1, overflow: 'hidden', border: 1, borderColor: 'divider', maxHeight: 320, overflowY: 'auto' }}>
         {lines.map(line => <DiffLineRow key={line.key} line={line} />)}
       </Box>
     </Box>

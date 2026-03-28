@@ -4,6 +4,7 @@ import { useId, useState, useEffect, useMemo } from 'react'
 import Box from '@mui/material/Box'
 import Tooltip from '@mui/material/Tooltip'
 import type { SleepWindow } from '@/lib/types'
+import { useTheme } from '@mui/material/styles'
 import { timeToHours, isOvernight, windowsToText, nowInTimezone } from '@/lib/windowUtils'
 import { TIMELINE_COLORS } from '@/lib/colors'
 
@@ -32,6 +33,7 @@ export default function MiniTimeline({
   height?: number
   timezone?: string
 }) {
+  const isDark = useTheme().palette.mode === 'dark'
   const uid = useId()
   const gradIdAwake = `spark-awake-${uid}`
   const gradIdSleep = `spark-sleep-${uid}`
@@ -150,7 +152,7 @@ export default function MiniTimeline({
                   y1={height}
                   x2={x}
                   y2={height + TICK_H}
-                  stroke="#475569"
+                  stroke={isDark ? '#94A3B8' : '#475569'}
                   strokeWidth={1}
                 />
               )
@@ -188,7 +190,7 @@ export default function MiniTimeline({
                 height: NOW_DOT_R * 2,
                 borderRadius: '50%',
                 bgcolor: TIMELINE_COLORS.exceptionBg,
-                border: '1.5px solid rgba(15,15,19,0.9)',
+                border: `1.5px solid ${isDark ? 'rgba(15,15,19,0.9)' : 'rgba(255,255,255,0.9)'}`,
               }}
             />
           </Box>
@@ -204,7 +206,7 @@ export default function MiniTimeline({
                 left: `${(hr / 24) * 100}%`,
                 transform: 'translateX(-50%)',
                 fontSize: 7,
-                color: '#64748b',
+                color: isDark ? '#94A3B8' : '#64748b',
                 fontFamily: "'SF Mono', SFMono-Regular, Menlo, Consolas, monospace",
                 whiteSpace: 'nowrap',
               }}

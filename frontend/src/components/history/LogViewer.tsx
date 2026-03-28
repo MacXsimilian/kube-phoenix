@@ -25,7 +25,7 @@ import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import { useTheme } from '@mui/material/styles'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { PolicyExecution, LogLine } from '@/lib/types'
-import { LOG_LEVEL_COLORS_DARK, LOG_LEVEL_COLORS_LIGHT, MODE_COLORS } from '@/lib/statusColors'
+import { LOG_LEVEL_COLORS_DARK, LOG_LEVEL_COLORS_LIGHT, modeColors } from '@/lib/statusColors'
 import ExecutionSummary from './ExecutionSummary'
 import { useExecutionLogs } from './useExecutionLogs'
 
@@ -62,6 +62,7 @@ export default function LogViewer({
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
+  const MODE_COLORS = modeColors(useTheme().palette.mode === 'dark')
   const [copied, setCopied] = useState(false)
   const { width: drawerWidth, onMouseDown: handleResizeMouseDown, onTouchStart: handleResizeTouchStart } = useDrawerResize(640)
   const [currentErrorIdx, setCurrentErrorIdx] = useState(-1)

@@ -53,6 +53,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 function ContainersSection({ containers }: { containers: PodContainer[] }) {
+  const isDark = useTheme().palette.mode === 'dark'
   const colors = useColors()
   return (
     <Box>
@@ -86,7 +87,7 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
                   sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c.ready ? colors.success : colors.errorLight }}
                 />
               </TableCell>
-              <TableCell sx={{ py: 0.75, fontFamily: 'monospace', color: c.restartCount > 0 ? '#FBBF24' : 'text.primary' }}>
+              <TableCell sx={{ py: 0.75, fontFamily: 'monospace', color: c.restartCount > 0 ? (isDark ? '#FBBF24' : '#92400E') : 'text.primary' }}>
                 {c.restartCount}
               </TableCell>
               <TableCell sx={{ py: 0.75, fontFamily: 'monospace', color: 'text.secondary', whiteSpace: 'nowrap' }}>

@@ -40,11 +40,13 @@ export interface DiffEntry {
 
 type DiffStyle = { bg: string; border: string; text: string; prefix: string }
 
-export const DIFF_STYLE: Record<DiffType, DiffStyle> = {
-  added:     { bg: 'rgba(34,197,94,0.10)',  border: '#86efac', text: '#86efac', prefix: '+' },
-  removed:   { bg: 'rgba(239,68,68,0.10)',  border: '#fca5a5', text: '#fca5a5', prefix: '-' },
-  changed:   { bg: 'rgba(245,158,11,0.10)', border: '#fcd34d', text: '#fcd34d', prefix: '~' },
-  unchanged: { bg: 'transparent',           border: 'transparent', text: '',    prefix: ' ' },
+export function diffStyle(isDark: boolean): Record<DiffType, DiffStyle> {
+  return {
+    added:     { bg: 'rgba(34,197,94,0.10)',  border: isDark ? '#86efac' : '#15803D', text: isDark ? '#86efac' : '#15803D', prefix: '+' },
+    removed:   { bg: 'rgba(239,68,68,0.10)',  border: isDark ? '#fca5a5' : '#B91C1C', text: isDark ? '#fca5a5' : '#B91C1C', prefix: '-' },
+    changed:   { bg: 'rgba(245,158,11,0.10)', border: isDark ? '#fcd34d' : '#92400E', text: isDark ? '#fcd34d' : '#92400E', prefix: '~' },
+    unchanged: { bg: 'transparent',           border: 'transparent', text: '',    prefix: ' ' },
+  }
 }
 
 function classifyLine(key: string, beforeValue: string | undefined, afterValue: string | undefined): DiffEntry {

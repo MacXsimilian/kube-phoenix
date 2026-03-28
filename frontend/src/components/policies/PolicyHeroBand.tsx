@@ -11,9 +11,10 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import AddIcon from '@mui/icons-material/Add'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
+import { useTheme } from '@mui/material/styles'
 import {
-  STATE_COLORS, MODE_COLORS, SMALL_CHIP_SX,
-  HERO_HEADER_GRADIENTS, SUBTLE_BORDER,
+  stateColors, modeColors, SMALL_CHIP_SX,
+  HERO_HEADER_GRADIENTS, subtleBorder,
 } from '@/lib/statusColors'
 import type { Policy } from '@/lib/types'
 
@@ -46,6 +47,9 @@ export default function PolicyHeroBand({
   sleepPending, wakePending,
   onBack, onSleep, onWake, onEdit, onAddException,
 }: PolicyHeroBandProps) {
+  const isDark = useTheme().palette.mode === 'dark'
+  const STATE_COLORS = stateColors(isDark)
+  const MODE_COLORS = modeColors(isDark)
   const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
   const modeStyle = MODE_COLORS[policy.mode] ?? MODE_COLORS.plan
 
@@ -57,7 +61,7 @@ export default function PolicyHeroBand({
         py: { xs: 3, md: 4 },
         background: HERO_HEADER_GRADIENTS[policy.currentState] ?? HERO_HEADER_GRADIENTS.unknown,
         borderBottom: '1px solid',
-        borderColor: SUBTLE_BORDER,
+        borderColor: subtleBorder(isDark),
       }}
     >
       <Box sx={{ mb: 2 }}>

@@ -34,7 +34,7 @@ function nodeChip(isDark: boolean): Record<NodeEntry['action'], { label: string;
     drained:   { label: 'drained',   color: c.warning },
     deleted:   { label: 'deleted',   color: c.error },
     plan:      { label: 'plan',      color: c.info },
-    protected: { label: 'protected', color: '#6B7280' },
+    protected: { label: 'protected', color: isDark ? '#6B7280' : '#374151' },
   }
 }
 

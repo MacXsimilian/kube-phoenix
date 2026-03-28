@@ -20,7 +20,8 @@ import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { deletePolicyOverride, createPolicyOverride } from '@/lib/api'
 import { fmtDt } from '@/lib/formatters'
-import { TYPE_LABELS, TYPE_LABEL_FALLBACK } from '@/lib/statusColors'
+import { useTheme } from '@mui/material/styles'
+import { typeLabels, typeLabelFallback } from '@/lib/statusColors'
 import type { PolicyOverride } from '@/lib/types'
 
 export default function OverridesSection({
@@ -38,6 +39,9 @@ export default function OverridesSection({
   onInvalidateExceptions: () => void
   onNotify: (msg: string, severity: 'success' | 'error') => void
 }) {
+  const isDark = useTheme().palette.mode === 'dark'
+  const TYPE_LABELS = typeLabels(isDark)
+  const TYPE_LABEL_FALLBACK = typeLabelFallback(isDark)
   const [addOverrideOpen, setAddOverrideOpen] = useState(false)
   const [overrideForm, setOverrideForm] = useState({ type: 'stay_awake', reason: '', startsAt: '', endsAt: '', targetCronTime: '' })
 

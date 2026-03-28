@@ -32,12 +32,14 @@ import ExceptionDialog from '@/components/policies/ExceptionDialog'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules } from '@/lib/rbac'
 import { fmtDt } from '@/lib/formatters'
-import { EXECUTION_STATUS_COLORS, EXECUTION_STATUS_FALLBACK, TYPE_LABELS, TYPE_LABEL_FALLBACK } from '@/lib/statusColors'
+import { useTheme } from '@mui/material/styles'
+import { executionStatusColors, executionStatusFallback, typeLabels, typeLabelFallback } from '@/lib/statusColors'
 
 const STATUS_TABS = ['all', 'pending', 'active', 'completed', 'cancelled']
 
 export default function ExceptionsPage() {
   const { user } = useAuth()
+  const isDark = useTheme().palette.mode === 'dark'
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ScheduledException | undefined>()
@@ -143,8 +145,8 @@ export default function ExceptionsPage() {
           </TableHead>
           <TableBody>
             {exceptions.map(ex => {
-              const statusColor = EXECUTION_STATUS_COLORS[ex.status] ?? EXECUTION_STATUS_FALLBACK
-              const typeLabel = TYPE_LABELS[ex.exceptionType] ?? TYPE_LABEL_FALLBACK
+              const statusColor = executionStatusColors(isDark)[ex.status] ?? executionStatusFallback(isDark)
+              const typeLabel = typeLabels(isDark)[ex.exceptionType] ?? typeLabelFallback(isDark)
               return (
                 <TableRow key={ex.id} hover>
                   <TableCell>

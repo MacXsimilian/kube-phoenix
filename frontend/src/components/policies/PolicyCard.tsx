@@ -20,10 +20,11 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import { useTheme } from '@mui/material/styles'
 import { deletePolicy } from '@/lib/api'
 import type { Policy, SnackMessage } from '@/lib/types'
 import { windowsToText, hasSleepWindows } from '@/lib/windowUtils'
-import { STATE_COLORS, MODE_COLORS, SMALL_CHIP_SX, CARD_HEADER_GRADIENTS, LED_COLORS } from '@/lib/statusColors'
+import { stateColors, modeColors, SMALL_CHIP_SX, CARD_HEADER_GRADIENTS, LED_COLORS } from '@/lib/statusColors'
 import { timeUntil } from '@/lib/formatters'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
 import { useColors } from '@/lib/colors'
@@ -38,17 +39,6 @@ const LED_PULSE_KEYFRAMES = {
   '50%': { boxShadow: '0 0 14px rgba(252,211,77,0.75), 0 0 28px rgba(252,211,77,0.25)' },
 } as const
 
-const ACTION_BTN_SX = {
-  width: 32,
-  height: 32,
-  borderRadius: '8px',
-  border: '1px solid rgba(255,255,255,0.07)',
-  bgcolor: 'rgba(255,255,255,0.03)',
-  color: '#94a3b8',
-  '&:hover': { bgcolor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.12)' },
-} as const
-
-const STAT_LABEL_SX = { fontSize: 11, color: '#64748b', lineHeight: 1.3 } as const
 const STAT_VALUE_SX = { fontSize: 13, lineHeight: 1.3 } as const
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -120,11 +110,27 @@ export default function PolicyCard({
 }) {
   const queryClient = useQueryClient()
   const router = useRouter()
+  const isDark = useTheme().palette.mode === 'dark'
   const [deleteDialog, setDeleteDialog] = useState(false)
+  const STATE_COLORS = stateColors(isDark)
+  const MODE_COLORS = modeColors(isDark)
   const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
   const led = LED_COLORS[policy.currentState] ?? LED_COLORS.unknown
   const { sleepMut, wakeMut, isBusy } = usePolicyTriggers(policy.id, onNotify)
   const colors = useColors()
+
+  const actionBtnSx = {
+    width: 32,
+    height: 32,
+    borderRadius: '8px',
+    border: `1px solid ${isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.09)'}`,
+    bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+    color: colors.muted,
+    '&:hover': {
+      bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+      borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
+    },
+  } as const
 
   const deleteMut = useMutation({
     mutationFn: () => deletePolicy(policy.id),
@@ -139,6 +145,9 @@ export default function PolicyCard({
 
   const isDisabled = !policy.enabled
   const windows = policy.sleepWindows ?? []
+
+  const sleepIconColor = isDark ? '#a5b4fc' : '#4F46E5'
+  const wakeIconColor = isDark ? '#fcd34d' : '#92400E'
 
   return (
     <>
@@ -243,19 +252,19 @@ export default function PolicyCard({
               }}
             >
               <Box>
-                <Typography sx={STAT_LABEL_SX}>State</Typography>
+                <Typography sx={{ fontSize: 11, color: 'text.secondary', lineHeight: 1.3 }}>State</Typography>
                 <Typography sx={{ ...STAT_VALUE_SX, color: stateStyle.color, fontWeight: 600 }}>
                   {stateStyle.label}
                 </Typography>
               </Box>
               <Box>
-                <Typography sx={STAT_LABEL_SX}>Next</Typography>
+                <Typography sx={{ fontSize: 11, color: 'text.secondary', lineHeight: 1.3 }}>Next</Typography>
                 <Typography sx={{ ...STAT_VALUE_SX, color: 'text.primary' }}>
                   {nextTransitionLabel(policy)}
                 </Typography>
               </Box>
               <Box>
-                <Typography sx={STAT_LABEL_SX}>TZ</Typography>
+                <Typography sx={{ fontSize: 11, color: 'text.secondary', lineHeight: 1.3 }}>TZ</Typography>
                 <Typography sx={{ ...STAT_VALUE_SX, color: 'text.primary' }}>
                   {policy.timezone || 'UTC'}
                 </Typography>
@@ -272,7 +281,7 @@ export default function PolicyCard({
               gap: 0.5,
               p: 1.5,
               borderLeft: '1px solid',
-              borderColor: 'rgba(255,255,255,0.05)',
+              borderColor: 'divider',
               flexShrink: 0,
             }}
           >
@@ -281,7 +290,7 @@ export default function PolicyCard({
                 size="small"
                 onClick={() => router.push(`/policies/detail/?id=${policy.id}`)}
                 aria-label="View policy"
-                sx={ACTION_BTN_SX}
+                sx={actionBtnSx}
               >
                 <OpenInNewIcon sx={{ fontSize: 14 }} />
               </IconButton>
@@ -293,7 +302,7 @@ export default function PolicyCard({
                   onClick={() => sleepMut.mutate()}
                   disabled={!canTrigger || isBusy}
                   aria-label="Trigger sleep"
-                  sx={{ ...ACTION_BTN_SX, color: '#a5b4fc', '&:hover': { bgcolor: 'rgba(99,102,241,0.15)' } }}
+                  sx={{ ...actionBtnSx, color: sleepIconColor, '&:hover': { bgcolor: 'rgba(99,102,241,0.15)' } }}
                 >
                   {sleepMut.isPending ? <CircularProgress size={14} /> : <BedtimeIcon sx={{ fontSize: 14 }} />}
                 </IconButton>
@@ -306,7 +315,7 @@ export default function PolicyCard({
                   onClick={() => wakeMut.mutate()}
                   disabled={!canTrigger || isBusy}
                   aria-label="Trigger wake"
-                  sx={{ ...ACTION_BTN_SX, color: '#fcd34d', '&:hover': { bgcolor: 'rgba(245,158,11,0.15)' } }}
+                  sx={{ ...actionBtnSx, color: wakeIconColor, '&:hover': { bgcolor: 'rgba(245,158,11,0.15)' } }}
                 >
                   {wakeMut.isPending ? <CircularProgress size={14} /> : <WbSunnyIcon sx={{ fontSize: 14 }} />}
                 </IconButton>
@@ -314,7 +323,7 @@ export default function PolicyCard({
             </Tooltip>
             <Tooltip title={canEdit ? 'Edit' : 'No permission'} placement="left">
               <span>
-                <IconButton size="small" onClick={onEdit} disabled={!canEdit} aria-label="Edit policy" sx={ACTION_BTN_SX}>
+                <IconButton size="small" onClick={onEdit} disabled={!canEdit} aria-label="Edit policy" sx={actionBtnSx}>
                   <EditOutlinedIcon sx={{ fontSize: 14 }} />
                 </IconButton>
               </span>
@@ -326,7 +335,7 @@ export default function PolicyCard({
                   onClick={() => setDeleteDialog(true)}
                   disabled={!canEdit}
                   aria-label="Delete policy"
-                  sx={{ ...ACTION_BTN_SX, color: colors.errorLight, '&:hover': { bgcolor: colors.errorBg } }}
+                  sx={{ ...actionBtnSx, color: colors.errorLight, '&:hover': { bgcolor: colors.errorBg } }}
                 >
                   <DeleteOutlineIcon sx={{ fontSize: 14 }} />
                 </IconButton>

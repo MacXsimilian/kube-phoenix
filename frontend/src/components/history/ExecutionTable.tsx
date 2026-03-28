@@ -27,7 +27,8 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import { getPolicyExecutions } from '@/lib/api'
 import { fmtDtShort, fmtDuration } from '@/lib/formatters'
-import { MODE_COLORS, SMALL_CHIP_SX } from '@/lib/statusColors'
+import { useTheme } from '@mui/material/styles'
+import { modeColors, SMALL_CHIP_SX } from '@/lib/statusColors'
 import StatusChip from '@/components/shared/StatusChip'
 import type { PolicyExecution } from '@/lib/types'
 
@@ -82,6 +83,7 @@ export default function PolicyExecutionTable({
   onSelect: (e: PolicyExecution) => void
   initialExecId?: number
 }) {
+  const MODE_COLORS = modeColors(useTheme().palette.mode === 'dark')
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(20)
   const [autoOpened, setAutoOpened] = useState(false)
