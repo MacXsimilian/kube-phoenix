@@ -130,7 +130,7 @@ export default function GuardrailsForm() {
 
         {/* Node protection */}
         <Grid size={{ xs: 12, md: 6 }}>
-          <Card sx={{ height: '100%' }}>
+          <Card>
             <CardContent sx={{ p: 3 }}>
               <Typography variant="subtitle1" fontWeight={700} mb={0.5}>
                 Node Protection
@@ -264,29 +264,44 @@ export default function GuardrailsForm() {
           </Box>
         </Grid>
 
-        {/* Save */}
-        <Grid size={12}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Tooltip title={hasEdit ? '' : 'You do not have permission to edit guardrails'}>
-              <span>
-                <Button
-                  variant="contained"
-                  startIcon={save.isPending ? <CircularProgress size={14} /> : <SaveIcon fontSize="small" />}
-                  disabled={save.isPending || !hasEdit}
-                  onClick={() => save.mutate()}
-                >
-                  Save Guardrails
-                </Button>
-              </span>
-            </Tooltip>
-            {saveError && (
-              <Alert severity="error" sx={{ py: 0.5 }}>
-                {saveError}
-              </Alert>
-            )}
-          </Box>
-        </Grid>
       </Grid>
+
+      {/* Sticky save bar */}
+      <Box
+        sx={{
+          position: 'sticky',
+          bottom: 0,
+          zIndex: 10,
+          mt: 3,
+          mx: -3,
+          px: 3,
+          py: 1.5,
+          bgcolor: 'background.paper',
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2,
+        }}
+      >
+        <Tooltip title={hasEdit ? '' : 'You do not have permission to edit guardrails'}>
+          <span>
+            <Button
+              variant="contained"
+              startIcon={save.isPending ? <CircularProgress size={14} /> : <SaveIcon fontSize="small" />}
+              disabled={save.isPending || !hasEdit}
+              onClick={() => save.mutate()}
+            >
+              Save Guardrails
+            </Button>
+          </span>
+        </Tooltip>
+        {saveError && (
+          <Alert severity="error" sx={{ py: 0.5 }}>
+            {saveError}
+          </Alert>
+        )}
+      </Box>
 
       <Snackbar
         open={snackOpen}
