@@ -109,13 +109,13 @@ executions when intended state diverges from actual state.
 - Recover on startup by reconciling every enabled policy against current cluster
   state (handles server restarts mid-sleep).
 - Manage an in-memory policy cache for fast tick evaluation.
-- Guard against concurrent runs via the `transitioning` state.
+- Guard against concurrent runs via an atomic conditional DB update that claims the `transitioning` state (only one caller wins the race).
 - Skip automatic wake transitions when `AutoWake` is disabled — the scheduler will only put policies to sleep, not wake them.
 - When `ReconcileWhileAwake` is enabled (default), detect drift from failed or partial wake executions by counting open snapshots that still need restoring. If drift is found, run a corrective wake (trigger `"reconcile"`) that bypasses the `AutoWake` gate and `skip_wake` overrides. Retries back off at a minimum interval of 5 minutes per policy to avoid flooding history. When disabled, skip reconciliation entirely for policies already awake — reduces DB load between sleep windows.
 
 **Key interfaces:**
 - `NewPolicyScheduler(st, k8sClient, cfg SchedulerConfig)` -- construct scheduler with configurable settings.
-- `Start(ctx)` / `Stop()` -- lifecycle management.
+- `Start(ctx)` / `Stop()` -- lifecycle management. `Stop()` waits for all in-flight execution goroutines to complete before returning.
 - `RunSleepNow(ctx, policyID, trigger)` / `RunWakeNow(...)` -- manual triggers.
 - `RecoverPolicies(ctx)` -- startup reconciliation.
 - `TickExceptions(ctx)` -- exception lifecycle.
@@ -146,8 +146,11 @@ operations, persisting workload snapshots for reliable restoration.
   `WorkloadSnapshot`, annotate the resource with `previous-replicas`, and scale
   to zero. Then cordon, drain, and delete unprotected nodes.
 - **Wake:** Load snapshots from the most recent sleep execution, restore each
-  workload to its saved replica count, and remove the annotation. Nodes are not
-  managed -- Karpenter provisions new nodes in response to pending pods.
+  workload to its saved replica count, and remove the annotation. After
+  processing DB snapshots, an annotation fallback sweep scans for workloads
+  with `previous-replicas` annotations but no matching snapshot (recovers
+  from DB data loss). Nodes are not managed -- Karpenter provisions new nodes
+  in response to pending pods.
 - Respect guardrails: skip protected namespaces, labeled nodes, tainted nodes,
   and nodes hosting critical-namespace pods.
 - Emit structured log lines to a channel for real-time streaming via the Broker.
@@ -422,7 +425,7 @@ Override precedence within `IntendedState`:
 ```
 kube-phoenix/
 ├── backend/
-│   ├── cmd/server/main.go           # Entry point: bootstrap, graceful shutdown
+│   ├── cmd/server/main.go           # Entry point: bootstrap, crash recovery, graceful shutdown
 │   ├── internal/
 │   │   ├── api/                     # HTTP handlers and Chi router construction
 │   │   │   ├── router.go            # Route registration, middleware stack
@@ -450,10 +453,10 @@ kube-phoenix/
 │   │   │   ├── policy_engine_test.go # Engine unit tests
 │   │   │   └── broker.go            # WebSocket log pub/sub
 │   │   ├── scaler/
-│   │   │   ├── scaler.go            # Low-level Kubernetes scale/drain operations
-│   │   │   ├── policy_scaler.go     # DB-backed sleep/wake with WorkloadSnapshot logic
-│   │   │   ├── scale_down.go        # Workload annotation + scale-to-zero helpers
-│   │   │   └── scale_up.go          # Workload restore + annotation cleanup helpers
+│   │   │   ├── scaler.go            # Low-level Kubernetes scale helpers and workload entry abstraction
+│   │   │   ├── policy_scaler.go     # DB-backed sleep/wake with WorkloadSnapshot logic + annotation fallback
+│   │   │   ├── annotation_fallback_test.go # Tests for annotation-based recovery path
+│   │   │   └── scale_down.go        # Node drain/delete helpers (classifyNodes, drainNodes, drainAndDeleteNode)
 │   │   ├── policy/
 │   │   │   └── windows.go           # SleepWindow type, validation, evaluator
 │   │   ├── k8s/

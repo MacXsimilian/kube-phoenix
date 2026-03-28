@@ -47,7 +47,7 @@ If you need to resolve it immediately:
 
 **Problem:** An execution remains in `running` state, or appears as `interrupted` in the History page.
 
-**Cause:** The pod was terminated while an execution was in progress (OOMKill, eviction, rollout). On startup, kube-phoenix calls `MarkInterruptedPolicyExecutions` to transition any leftover `running` executions to `interrupted`.
+**Cause:** The pod was terminated while an execution was in progress (OOMKill, eviction, rollout). On startup, kube-phoenix calls `MarkInterruptedPolicyExecutions` to transition any leftover `running` executions to `interrupted`, and `ResetStuckTransitioningPolicies` to move any policy stuck in `transitioning` back to `unknown` for immediate re-evaluation.
 
 **Solution:**
 

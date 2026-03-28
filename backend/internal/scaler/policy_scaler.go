@@ -17,8 +17,8 @@ import (
 const defaultScalingConcurrency = 10
 
 // PolicyRunner wraps Runner and adds DB-backed WorkloadSnapshot logic for
-// the policy model. RunPolicySleep / RunPolicyWake replace RunScaleDown /
-// RunScaleUp when a Policy drives the execution.
+// the policy model. RunPolicySleep and RunPolicyWake are the sole entry
+// points for all policy-driven scaling operations.
 type PolicyRunner struct {
 	base  *Runner
 	store *store.Store

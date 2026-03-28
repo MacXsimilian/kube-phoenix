@@ -32,9 +32,7 @@ The kube-phoenix frontend is the operator-facing UI for managing Kubernetes slee
 | MUI (Material UI) | v7 |
 | TanStack Query | v5 |
 | Emotion | v11 (MUI's styling engine) |
-| dnd-kit | v6/v9/v10 (drag-and-drop for policy ordering) |
-| cronstrue | v3 (human-readable cron descriptions) |
-| TypeScript | 5 |
+| TypeScript | 6 |
 
 **Running locally:**
 
