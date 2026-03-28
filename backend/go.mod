@@ -17,6 +17,11 @@ require (
 require golang.org/x/crypto v0.49.0
 
 require (
+	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+)
+
+require (
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 )
