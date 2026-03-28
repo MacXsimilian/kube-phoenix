@@ -2,12 +2,16 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	"gorm.io/gorm"
 )
 
 func jsonOK(w http.ResponseWriter, v interface{}) {
@@ -53,6 +57,35 @@ func (h *Handler) reloadScheduler(policyID uint) {
 	if err := h.policyScheduler.Reload(); err != nil {
 		slog.Error("policy scheduler reload failed", "policyID", policyID, "err", err)
 	}
+}
+
+// handleStoreError writes a 404 if the error is gorm.ErrRecordNotFound,
+// otherwise a 500 internal server error. logMsg is used for server-side logging.
+func handleStoreError(w http.ResponseWriter, err error, notFoundMsg, logMsg string) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		jsonError(w, notFoundMsg, http.StatusNotFound)
+	} else {
+		jsonInternalError(w, err, logMsg)
+	}
+}
+
+// requireUser extracts the authenticated user from the request context. If no
+// user is present it writes a 401 response and returns nil.
+func requireUser(w http.ResponseWriter, r *http.Request) *store.User {
+	user := authmw.UserFromContext(r.Context())
+	if user == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return nil
+	}
+	return user
+}
+
+// nonNilMap returns m, or an empty map if m is nil (ensures JSON "{}").
+func nonNilMap(m map[string]string) map[string]string {
+	if m == nil {
+		return map[string]string{}
+	}
+	return m
 }
 
 // parsePageSize extracts a page size from query parameters, checking both

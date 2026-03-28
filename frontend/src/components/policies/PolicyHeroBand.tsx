@@ -13,7 +13,7 @@ import AddIcon from '@mui/icons-material/Add'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 import { useIsDark } from '@/lib/useIsDark'
 import {
-  stateColors, modeColors, SMALL_CHIP_SX,
+  stateColors, getModeStyle, SMALL_CHIP_SX,
   HERO_HEADER_GRADIENTS, subtleBorder,
 } from '@/lib/statusColors'
 import type { Policy } from '@/lib/types'
@@ -51,9 +51,8 @@ export default function PolicyHeroBand({
   const { isBusy, sleepPending, wakePending, onSleep, onWake } = trigger
   const isDark = useIsDark()
   const STATE_COLORS = stateColors(isDark)
-  const MODE_COLORS = modeColors(isDark)
   const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
-  const modeStyle = MODE_COLORS[policy.mode] ?? MODE_COLORS.plan
+  const modeStyle = getModeStyle(isDark, policy.mode)
 
   return (
     <Box

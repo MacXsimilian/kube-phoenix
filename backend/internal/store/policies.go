@@ -62,7 +62,10 @@ var ErrTransitionAlreadyClaimed = fmt.Errorf("transition already claimed by anot
 func (s *Store) SetPolicyTransitioning(id uint) error {
 	res := s.db.Model(&Policy{}).
 		Where("id = ? AND current_state != ?", id, PolicyStateTransitioning).
-		Update("current_state", PolicyStateTransitioning)
+		Updates(map[string]interface{}{
+			"current_state": PolicyStateTransitioning,
+			"state_since":   time.Now(),
+		})
 	if res.Error != nil {
 		return res.Error
 	}

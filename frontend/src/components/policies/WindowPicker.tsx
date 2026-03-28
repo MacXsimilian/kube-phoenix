@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import type React from 'react'
 import Box from '@mui/material/Box'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
@@ -101,14 +101,14 @@ const PRESETS: Preset[] = [
 // ── WindowCard sub-component ─────────────────────────────────────────────────
 
 function WindowCard({
-  w,
+  window,
   idx,
   totalWindows,
   onUpdate,
   onRemove,
   onToggleDay,
 }: {
-  w: SleepWindow
+  window: SleepWindow
   idx: number
   totalWindows: number
   onUpdate: (idx: number, patch: Partial<SleepWindow>) => void
@@ -116,9 +116,9 @@ function WindowCard({
   onToggleDay: (windowIdx: number, day: number) => void
 }) {
   const isDark = useIsDark()
-  const [sH, sM] = w.allDay ? [0, 0] : parseHM(w.startTime)
-  const [eH, eM] = w.allDay ? [0, 0] : parseHM(w.endTime)
-  const overnightWin = !w.allDay && isOvernight(w)
+  const [sH, sM] = window.allDay ? [0, 0] : parseHM(window.startTime)
+  const [eH, eM] = window.allDay ? [0, 0] : parseHM(window.endTime)
+  const overnightWin = !window.allDay && isOvernight(window)
 
   return (
     <Box
@@ -147,8 +147,8 @@ function WindowCard({
       >
         <Box
           component="input"
-          value={w.name ?? ''}
-          placeholder={totalWindows === 1 ? 'Sleep Window' : deriveWindowPlaceholder(w, idx)}
+          value={window.name ?? ''}
+          placeholder={totalWindows === 1 ? 'Sleep Window' : deriveWindowPlaceholder(window, idx)}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => onUpdate(idx, { name: e.target.value || undefined })}
           sx={{
             fontWeight: 700,
@@ -172,7 +172,7 @@ function WindowCard({
           <IconButton
             size="small"
             onClick={() => onRemove(idx)}
-            aria-label={`Remove ${w.name || deriveWindowPlaceholder(w, idx)}`}
+            aria-label={`Remove ${window.name || deriveWindowPlaceholder(window, idx)}`}
             sx={{ ml: 0.5, p: 0.25 }}
           >
             <DeleteOutlineIcon sx={{ fontSize: 16 }} />
@@ -185,7 +185,7 @@ function WindowCard({
         {/* All-day toggle — slide switch */}
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
           <Switch
-            checked={w.allDay}
+            checked={window.allDay}
             onChange={e => onUpdate(idx, { allDay: e.target.checked })}
             size="small"
             aria-label="Toggle all day"
@@ -201,7 +201,7 @@ function WindowCard({
         </Stack>
 
         {/* Compact time pickers — only shown when not all-day */}
-        {!w.allDay && (
+        {!window.allDay && (
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontSize: 11 }}>
               Sleep
@@ -258,7 +258,7 @@ function WindowCard({
         {/* Day buttons — slightly larger with active glow */}
         <Stack direction="row" spacing={0.75} alignItems="center">
           {DAYS.map(({ value, label }) => {
-            const active = w.daysOfWeek.includes(value)
+            const active = window.daysOfWeek.includes(value)
             return (
               <Box
                 key={value}
@@ -395,7 +395,7 @@ export default function WindowPicker({
       {windows.map((w, idx) => (
         <WindowCard
           key={windowStableKey(w, idx)}
-          w={w}
+          window={w}
           idx={idx}
           totalWindows={windows.length}
           onUpdate={updateWindow}

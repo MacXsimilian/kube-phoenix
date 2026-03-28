@@ -9,6 +9,7 @@ import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
 import Button from '@mui/material/Button'
 import { createPolicyOverride } from '@/lib/api'
+import { formatError } from '@/lib/formatters'
 import type { PolicyOverride } from '@/lib/types'
 
 export function validateDateRange(
@@ -65,20 +66,19 @@ export default function CreateOverrideForm({
 
   const createMut = useMutation({
     mutationFn: () => {
-      const windowed = form.type === 'stay_awake' || form.type === 'force_sleep'
       return createPolicyOverride(policyId, {
         overrideType: form.type as PolicyOverride['overrideType'],
         reason: form.reason,
-        startsAt: windowed ? new Date(form.startsAt).toISOString() : null,
-        endsAt: windowed ? new Date(form.endsAt).toISOString() : null,
-        targetCronTime: !windowed ? new Date(form.targetCronTime).toISOString() : null,
+        startsAt: isWindowed ? new Date(form.startsAt).toISOString() : null,
+        endsAt: isWindowed ? new Date(form.endsAt).toISOString() : null,
+        targetCronTime: !isWindowed ? new Date(form.targetCronTime).toISOString() : null,
       })
     },
     onSuccess: () => {
       onNotify('Override created', 'success')
       onSave()
     },
-    onError: (err: unknown) => onNotify(err instanceof Error ? err.message : 'Create failed', 'error'),
+    onError: (err: unknown) => onNotify(formatError(err), 'error'),
   })
 
   const saveDisabled = createMut.isPending || hasDateError

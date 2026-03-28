@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import Card from '@mui/material/Card'
@@ -24,7 +24,7 @@ import { ACTIVITY_FEED_STALE_MS, ACTIVITY_FEED_REFETCH_MS } from '@/lib/constant
 import StatusChip from '@/components/shared/StatusChip'
 import LogViewer from '@/components/history/LogViewer'
 import { useIsDark } from '@/lib/useIsDark'
-import { modeColors } from '@/lib/statusColors'
+import { getModeStyle } from '@/lib/statusColors'
 
 const livePulseAnimation = {
   animation: 'livePulse 1.8s ease-in-out infinite',
@@ -35,7 +35,6 @@ export default function ActivityFeed() {
   const router = useRouter()
   const colors = useColors()
   const isDark = useIsDark()
-  const MODE_COLORS = useMemo(() => modeColors(isDark), [isDark])
   const [selected, setSelected] = useState<PolicyExecution | null>(null)
   const { data, isLoading, isError } = useQuery({
     queryKey: ['policy-executions', 'feed'],
@@ -123,8 +122,8 @@ export default function ActivityFeed() {
                     sx={{
                       height: 18,
                       fontSize: 10,
-                      bgcolor: (MODE_COLORS[exec.mode] ?? MODE_COLORS.plan).bg,
-                      color: (MODE_COLORS[exec.mode] ?? MODE_COLORS.plan).color,
+                      bgcolor: getModeStyle(isDark, exec.mode).bg,
+                      color: getModeStyle(isDark, exec.mode).color,
                     }}
                   />
                 </Box>

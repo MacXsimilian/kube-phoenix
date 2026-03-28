@@ -25,6 +25,20 @@ import (
 // ErrPolicyTransitioning is returned when a policy is already mid-transition.
 var ErrPolicyTransitioning = errors.New("policy is already transitioning")
 
+// ErrPolicyExecutionInflight is returned when an execution goroutine is
+// already running for the policy.
+var ErrPolicyExecutionInflight = errors.New("policy execution already in flight")
+
+// ErrNoInflightExecution is returned when trying to cancel a policy that
+// has no running execution.
+var ErrNoInflightExecution = errors.New("no in-flight execution for policy")
+
+// IsAlreadyRunning reports whether the error indicates a policy execution
+// is already in progress (either transitioning or inflight).
+func IsAlreadyRunning(err error) bool {
+	return errors.Is(err, ErrPolicyTransitioning) || errors.Is(err, ErrPolicyExecutionInflight)
+}
+
 // schedulerStore abstracts the store methods the scheduler depends on,
 // enabling test doubles.
 type schedulerStore interface {
@@ -85,7 +99,9 @@ type PolicyScheduler struct {
 	parentCtx            context.Context
 	policies             map[uint]cachedPolicy
 	lastReconcileAttempt map[uint]time.Time
-	inflight             sync.WaitGroup // tracks running execution goroutines
+	inflightPolicies     map[uint]struct{}            // policies with a running execution
+	inflightCancels      map[uint]context.CancelFunc // cancel funcs for running executions
+	inflight             sync.WaitGroup              // tracks running execution goroutines
 }
 
 // NewPolicyScheduler creates a PolicyScheduler. Pass nil k8sClient in tests.
@@ -96,6 +112,8 @@ func NewPolicyScheduler(st *store.Store, k8sClient *k8s.Client, cfg SchedulerCon
 		Broker:               NewBroker(),
 		policies:             map[uint]cachedPolicy{},
 		lastReconcileAttempt: map[uint]time.Time{},
+		inflightPolicies:     map[uint]struct{}{},
+		inflightCancels:      map[uint]context.CancelFunc{},
 		cfg:                  cfg,
 	}
 }
@@ -192,26 +210,38 @@ func (ps *PolicyScheduler) NextTransitions(policyIDs []uint) map[uint]*time.Time
 
 // RunSleepNow triggers an immediate sleep execution for a policy.
 func (ps *PolicyScheduler) RunSleepNow(policyID uint, trigger string) (uint, error) {
-	p, err := ps.store.GetPolicy(policyID)
-	if err != nil {
-		return 0, fmt.Errorf("policy %d not found: %w", policyID, err)
-	}
-	if !p.Enabled {
-		slog.Warn("manual trigger on disabled policy", "policyID", policyID, "direction", directionSleep, "trigger", trigger)
-	}
-	return ps.run(context.Background(), *p, directionSleep, trigger)
+	return ps.runNow(policyID, directionSleep, trigger)
 }
 
 // RunWakeNow triggers an immediate wake execution for a policy.
 func (ps *PolicyScheduler) RunWakeNow(policyID uint, trigger string) (uint, error) {
+	return ps.runNow(policyID, directionWake, trigger)
+}
+
+// runNow fetches a policy by ID, warns if disabled, and delegates to run.
+func (ps *PolicyScheduler) runNow(policyID uint, direction, trigger string) (uint, error) {
 	p, err := ps.store.GetPolicy(policyID)
 	if err != nil {
 		return 0, fmt.Errorf("policy %d not found: %w", policyID, err)
 	}
 	if !p.Enabled {
-		slog.Warn("manual trigger on disabled policy", "policyID", policyID, "direction", directionWake, "trigger", trigger)
+		slog.Warn("manual trigger on disabled policy", "policyID", policyID, "direction", direction, "trigger", trigger)
 	}
-	return ps.run(context.Background(), *p, directionWake, trigger)
+	return ps.run(context.Background(), *p, direction, trigger)
+}
+
+// CancelExecution cancels a running execution for the given policy.
+// Returns ErrNoInflightExecution if nothing is running.
+func (ps *PolicyScheduler) CancelExecution(policyID uint) error {
+	ps.mu.Lock()
+	cancel, ok := ps.inflightCancels[policyID]
+	ps.mu.Unlock()
+	if !ok {
+		return ErrNoInflightExecution
+	}
+	slog.Info("policy scheduler: execution cancelled by user", "policyID", policyID)
+	cancel()
+	return nil
 }
 
 // RecoverPolicies compares each enabled policy's CurrentState against the
@@ -456,8 +486,13 @@ func (ps *PolicyScheduler) reconcileAwakePolicy(p store.Policy, now time.Time) {
 		"policyID", p.ID, "openSnapshots", count)
 
 	if _, err := ps.run(context.Background(), p, directionWake, "reconcile"); err != nil {
-		slog.Error("policy scheduler: corrective wake failed",
-			"policyID", p.ID, "err", err)
+		if IsAlreadyRunning(err) {
+			slog.Debug("policy scheduler: corrective wake skipped, already running",
+				"policyID", p.ID)
+		} else {
+			slog.Error("policy scheduler: corrective wake failed",
+				"policyID", p.ID, "err", err)
+		}
 	}
 }
 
@@ -505,7 +540,7 @@ func (ps *PolicyScheduler) executeTransition(p store.Policy, intended PolicyStat
 		direction = directionWake
 	}
 
-	if skip := HasSkipOverride(overrides, direction, ctx.now); skip != nil {
+	if skip := FindSkipOverride(overrides, direction, ctx.now); skip != nil {
 		slog.Info("policy scheduler: transition skipped by override",
 			"policyID", p.ID, "overrideID", skip.ID, "direction", direction)
 		if err := ps.store.DeletePolicyOverride(skip.ID); err != nil {
@@ -516,8 +551,13 @@ func (ps *PolicyScheduler) executeTransition(p store.Policy, intended PolicyStat
 	}
 
 	if _, err := ps.run(context.Background(), p, direction, "scheduled"); err != nil {
-		slog.Error("policy scheduler: scheduled execution failed",
-			"policyID", p.ID, "direction", direction, "err", err)
+		if IsAlreadyRunning(err) {
+			slog.Debug("policy scheduler: execution skipped, already running",
+				"policyID", p.ID, "direction", direction)
+		} else {
+			slog.Error("policy scheduler: scheduled execution failed",
+				"policyID", p.ID, "direction", direction, "err", err)
+		}
 	}
 }
 
@@ -577,9 +617,11 @@ func (ps *PolicyScheduler) claimTransition(policyID uint) error {
 		}
 		return fmt.Errorf("policy %d: set transitioning: %w", policyID, err)
 	}
+	now := time.Now()
 	ps.mu.Lock()
 	if cp, ok := ps.policies[policyID]; ok {
 		cp.policy.CurrentState = store.PolicyStateTransitioning
+		cp.policy.StateSince = &now
 		ps.policies[policyID] = cp
 	}
 	ps.mu.Unlock()
@@ -587,7 +629,18 @@ func (ps *PolicyScheduler) claimTransition(policyID uint) error {
 }
 
 func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, trigger string) (uint, error) {
+	ps.mu.Lock()
+	if _, running := ps.inflightPolicies[p.ID]; running {
+		ps.mu.Unlock()
+		return 0, fmt.Errorf("policy %d: %w", p.ID, ErrPolicyExecutionInflight)
+	}
+	ps.inflightPolicies[p.ID] = struct{}{}
+	ps.mu.Unlock()
+
 	if err := ps.claimTransition(p.ID); err != nil {
+		ps.mu.Lock()
+		delete(ps.inflightPolicies, p.ID)
+		ps.mu.Unlock()
 		return 0, err
 	}
 
@@ -605,11 +658,14 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 		if rbErr := ps.store.UpdatePolicyState(p.ID, store.PolicyStateUnknown, nil); rbErr != nil {
 			slog.Error("policy scheduler: rollback state update failed", "policyID", p.ID, "err", rbErr)
 		}
+		rbNow := time.Now()
 		ps.mu.Lock()
 		if cp, ok := ps.policies[p.ID]; ok {
 			cp.policy.CurrentState = store.PolicyStateUnknown
+			cp.policy.StateSince = &rbNow
 			ps.policies[p.ID] = cp
 		}
+		delete(ps.inflightPolicies, p.ID)
 		ps.mu.Unlock()
 		return 0, fmt.Errorf("create policy execution: %w", err)
 	}
@@ -621,6 +677,12 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 	go func() {
 		defer ps.inflight.Done()
 		defer func() {
+			ps.mu.Lock()
+			delete(ps.inflightPolicies, p.ID)
+			delete(ps.inflightCancels, p.ID)
+			ps.mu.Unlock()
+		}()
+		defer func() {
 			if r := recover(); r != nil {
 				slog.Error("policy scheduler: panic in execution goroutine (recovered)",
 					"policyID", p.ID, "execID", exec.ID, "panic", r)
@@ -630,44 +692,59 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 				ps.updatePolicyState(p.ID, direction, store.ExecStatusFailed)
 			}
 		}()
-		timeout := time.Duration(p.TimeoutMinutes) * time.Minute
-		if timeout <= 0 {
-			timeout = defaultExecutionTimeout
-		}
-		runCtx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel()
-
-		logCh := make(chan scaler.LogLine, execLogChannelBuffer)
-
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			ps.drainLogChannel(execID, logCh)
-		}()
-
-		counts, runErr := ps.executeScaler(runCtx, p, direction, execID, logCh)
-
-		close(logCh)
-		wg.Wait()
-		ps.Broker.Close(execID)
-
-		status := store.ExecStatusSuccess
-		if runErr != nil {
-			status = store.ExecStatusFailed
-			slog.Error("policy scheduler: execution failed", "execID", execID, "err", runErr)
-		}
-
-		countMap := ps.finalizeExecution(execID, status, counts)
-		recordExecutionMetrics(p.Mode, direction, status, time.Since(exec.StartedAt).Seconds(), counts)
-		ps.updatePolicyState(p.ID, direction, status)
-
-		slog.Info("policy scheduler: execution finished",
-			"policyID", p.ID, "execID", execID, "direction", direction,
-			"status", status, "scaled", countMap["scaled"], "errors", countMap["errors"])
+		ps.executeAndFinalize(ctx, p, direction, execID, exec.StartedAt)
 	}()
 
 	return execID, nil
+}
+
+// executeAndFinalize runs the scaler with a timeout context, drains logs,
+// determines the final status, and persists the result.
+func (ps *PolicyScheduler) executeAndFinalize(ctx context.Context, p store.Policy, direction string, execID uint, startedAt time.Time) {
+	timeout := time.Duration(p.TimeoutMinutes) * time.Minute
+	if timeout <= 0 {
+		timeout = defaultExecutionTimeout
+	}
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ps.mu.Lock()
+	ps.inflightCancels[p.ID] = cancel
+	ps.mu.Unlock()
+
+	logCh := make(chan scaler.LogLine, execLogChannelBuffer)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ps.drainLogChannel(execID, logCh)
+	}()
+
+	counts, runErr := ps.executeScaler(runCtx, p, direction, execID, logCh)
+
+	close(logCh)
+	wg.Wait()
+	ps.Broker.Close(execID)
+
+	status := store.ExecStatusSuccess
+	if runErr != nil {
+		if runCtx.Err() != nil {
+			status = store.ExecStatusInterrupted
+			slog.Info("policy scheduler: execution interrupted", "execID", execID, "err", runErr)
+		} else {
+			status = store.ExecStatusFailed
+			slog.Error("policy scheduler: execution failed", "execID", execID, "err", runErr)
+		}
+	}
+
+	countMap := ps.finalizeExecution(execID, status, counts)
+	recordExecutionMetrics(p.Mode, direction, status, time.Since(startedAt).Seconds(), counts)
+	ps.updatePolicyState(p.ID, direction, status)
+
+	slog.Info("policy scheduler: execution finished",
+		"policyID", p.ID, "execID", execID, "direction", direction,
+		"status", status, "scaled", countMap["scaled"], "errors", countMap["errors"])
 }
 
 // drainLogChannel reads log lines from the scaler, publishes them to WebSocket
@@ -766,9 +843,11 @@ func (ps *PolicyScheduler) updatePolicyState(policyID uint, direction, status st
 			"policyID", policyID, "newState", newState, "err", err)
 	}
 
+	now := time.Now()
 	ps.mu.Lock()
 	if cp, ok := ps.policies[policyID]; ok {
 		cp.policy.CurrentState = newState
+		cp.policy.StateSince = &now
 		ps.policies[policyID] = cp
 	}
 	ps.mu.Unlock()

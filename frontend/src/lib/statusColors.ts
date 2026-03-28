@@ -72,6 +72,12 @@ export function modeColors(isDark: boolean): Record<ExecutionMode, { bg: string;
   return isDark ? MODE_DARK : MODE_LIGHT
 }
 
+/** Look up mode colors with a safe fallback to 'plan'. */
+export function getModeStyle(isDark: boolean, mode: string): { bg: string; color: string } {
+  const colors = isDark ? MODE_DARK : MODE_LIGHT
+  return (colors as Record<string, { bg: string; color: string }>)[mode] ?? colors.plan
+}
+
 export const SMALL_CHIP_SX = { height: 18, fontSize: 10 } as const
 
 // ── Header gradient bars (per policy state) ──────────────────────────────────
@@ -131,6 +137,13 @@ export function typeLabelFallback(isDark: boolean): { label: string; color: stri
   return isDark ? TYPE_FALLBACK_DARK : TYPE_FALLBACK_LIGHT
 }
 
+/** Look up override/exception type label with a safe fallback. */
+export function getTypeLabel(isDark: boolean, type: string): { label: string; color: string; bg: string } {
+  const labels = isDark ? TYPE_LABELS_DARK : TYPE_LABELS_LIGHT
+  const fallback = isDark ? TYPE_FALLBACK_DARK : TYPE_FALLBACK_LIGHT
+  return (labels as Record<string, { label: string; color: string; bg: string }>)[type] ?? fallback
+}
+
 // ── Log level colors ─────────────────────────────────────────────────────────
 
 export const LOG_LEVEL_COLORS_DARK: Record<LogLine['level'], string> = {
@@ -149,37 +162,3 @@ export const LOG_LEVEL_COLORS_LIGHT: Record<LogLine['level'], string> = {
   warn: '#92400E',
 }
 
-// ── Audit action labels ─────────────────────────────────────────────────────
-
-type AuditAction =
-  | 'policy.create' | 'policy.update' | 'policy.delete' | 'policy.sleep' | 'policy.wake'
-  | 'policy.override.create' | 'policy.override.delete'
-  | 'exception.create' | 'exception.update' | 'exception.delete'
-  | 'guardrail.update' | 'admin.reset_db'
-  | 'user.create' | 'user.update' | 'user.delete'
-  | 'auth.login' | 'auth.logout' | 'auth.password_change'
-
-const ACTION_LABELS: Record<AuditAction, string> = {
-  'policy.create': 'Policy Create', 'policy.update': 'Policy Update', 'policy.delete': 'Policy Delete',
-  'policy.sleep': 'Policy Sleep', 'policy.wake': 'Policy Wake',
-  'policy.override.create': 'Override Create', 'policy.override.delete': 'Override Delete',
-  'exception.create': 'Exception Create', 'exception.update': 'Exception Update', 'exception.delete': 'Exception Delete',
-  'guardrail.update': 'Guardrail Update',
-  'admin.reset_db': 'Reset Database',
-  'user.create': 'User Create', 'user.update': 'User Update', 'user.delete': 'User Delete',
-  'auth.login': 'Login', 'auth.logout': 'Logout', 'auth.password_change': 'Password Change',
-}
-
-export function formatActionLabel(action: string): string {
-  return (ACTION_LABELS as Record<string, string>)[action] ?? action.replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-}
-
-export function actionColor(action: string): 'error' | 'warning' | 'info' | 'success' | 'default' {
-  if (action === 'admin.reset_db') return 'error'
-  if (action.endsWith('.delete')) return 'error'
-  if (action.endsWith('.create')) return 'success'
-  if (action === 'auth.login') return 'success'
-  if (action === 'auth.logout') return 'default'
-  if (action.endsWith('.sleep') || action.endsWith('.wake') || action === 'auth.password_change') return 'warning'
-  return 'info'
-}

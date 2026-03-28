@@ -16,13 +16,13 @@ const (
 type Broker struct {
 	mu     sync.RWMutex
 	subs   map[uint][]chan store.PolicyLogLine
-	closed map[uint]map[chan store.PolicyLogLine]bool // tracks channels already closed
+	closedChannels map[uint]map[chan store.PolicyLogLine]bool // tracks channels already closed
 }
 
 func NewBroker() *Broker {
 	return &Broker{
 		subs:   map[uint][]chan store.PolicyLogLine{},
-		closed: map[uint]map[chan store.PolicyLogLine]bool{},
+		closedChannels: map[uint]map[chan store.PolicyLogLine]bool{},
 	}
 }
 
@@ -83,18 +83,18 @@ func (b *Broker) Close(execID uint) {
 		}
 	}
 	delete(b.subs, execID)
-	delete(b.closed, execID)
+	delete(b.closedChannels, execID)
 }
 
 // markClosed records that a channel has been closed. Must be called under mu.
 func (b *Broker) markClosed(execID uint, ch chan store.PolicyLogLine) {
-	if b.closed[execID] == nil {
-		b.closed[execID] = map[chan store.PolicyLogLine]bool{}
+	if b.closedChannels[execID] == nil {
+		b.closedChannels[execID] = map[chan store.PolicyLogLine]bool{}
 	}
-	b.closed[execID][ch] = true
+	b.closedChannels[execID][ch] = true
 }
 
 // isClosed checks if a channel was already closed. Must be called under mu.
 func (b *Broker) isClosed(execID uint, ch chan store.PolicyLogLine) bool {
-	return b.closed[execID] != nil && b.closed[execID][ch]
+	return b.closedChannels[execID] != nil && b.closedChannels[execID][ch]
 }

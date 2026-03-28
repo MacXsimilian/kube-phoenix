@@ -14,7 +14,6 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/policy"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
-	"gorm.io/gorm"
 )
 
 // reNamespace matches valid Kubernetes namespace names (RFC 1123 DNS label).
@@ -80,21 +79,27 @@ func (h *Handler) listPolicies(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getPolicy(w http.ResponseWriter, r *http.Request) {
-	id, err := parseID(r, "id")
-	if err != nil {
-		jsonError(w, ErrInvalidID, http.StatusBadRequest)
-		return
-	}
-	p, err := h.store.GetPolicy(id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, ErrNotFound, http.StatusNotFound)
-		} else {
-			jsonInternalError(w, err, "get policy failed")
-		}
+	p, ok := h.requirePolicy(w, r)
+	if !ok {
 		return
 	}
 	jsonOK(w, h.policyResp(*p))
+}
+
+// requirePolicy parses the policy ID from the URL, fetches the policy, and
+// writes error responses on failure. Returns the policy and true on success.
+func (h *Handler) requirePolicy(w http.ResponseWriter, r *http.Request) (*store.Policy, bool) {
+	id, err := parseID(r, "id")
+	if err != nil {
+		jsonError(w, ErrInvalidID, http.StatusBadRequest)
+		return nil, false
+	}
+	p, err := h.store.GetPolicy(id)
+	if err != nil {
+		handleStoreError(w, err, ErrNotFound, "get policy failed")
+		return nil, false
+	}
+	return p, true
 }
 
 // createPolicyInput is the request body for creating a policy.
@@ -109,42 +114,12 @@ func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
 	}
-	p := input.Policy
-	if p.Name == "" {
-		jsonError(w, "name is required", http.StatusBadRequest)
-		return
-	}
 
-	if len(input.SleepWindows) == 0 {
-		jsonError(w, "sleepWindows is required", http.StatusBadRequest)
-		return
-	}
-	if err := policy.ValidateWindows(input.SleepWindows); err != nil {
-		jsonError(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	windowsJSON, err := json.Marshal(input.SleepWindows)
-	if err != nil {
-		jsonInternalError(w, err, "failed to marshal sleep windows")
-		return
-	}
-	p.SleepWindows = string(windowsJSON)
-
-	if msg := validatePolicyFields(p); msg != "" {
+	p, msg := validateAndPreparePolicy(input)
+	if msg != "" {
 		jsonError(w, msg, http.StatusBadRequest)
 		return
 	}
-	if p.Timezone == "" {
-		p.Timezone = "UTC"
-	}
-	if p.Mode == "" {
-		p.Mode = "plan"
-	}
-	// Compute the initial state from sleep windows instead of defaulting to "unknown".
-	now := time.Now()
-	initialState := scheduler.IntendedState(input.SleepWindows, p.Timezone, nil, now)
-	p.CurrentState = string(initialState)
-	p.StateSince = &now
 
 	if p.Mode == store.PolicyModeApply {
 		overlap, err := h.store.HasApplyPolicyOverlap(0, p.NamespaceFilter, p.LabelSelector)
@@ -168,6 +143,44 @@ func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
 	h.audit(r, "policy.create", "policy", &p.ID, nil, policyAuditSnapshot(p))
 	h.reloadScheduler(p.ID)
 	jsonCreated(w, h.policyResp(p))
+}
+
+// validateAndPreparePolicy validates the input, serialises sleep windows, and
+// applies defaults (timezone, mode, initial state). Returns the prepared policy
+// and an error message (empty on success).
+func validateAndPreparePolicy(input createPolicyInput) (store.Policy, string) {
+	p := input.Policy
+	if p.Name == "" {
+		return p, "name is required"
+	}
+	if len(input.SleepWindows) == 0 {
+		return p, "sleepWindows is required"
+	}
+	if err := policy.ValidateWindows(input.SleepWindows); err != nil {
+		return p, err.Error()
+	}
+	windowsJSON, err := json.Marshal(input.SleepWindows)
+	if err != nil {
+		return p, "failed to marshal sleep windows"
+	}
+	p.SleepWindows = string(windowsJSON)
+
+	if msg := validatePolicyFields(p); msg != "" {
+		return p, msg
+	}
+	if p.Timezone == "" {
+		p.Timezone = "UTC"
+	}
+	if p.Mode == "" {
+		p.Mode = "plan"
+	}
+
+	now := time.Now()
+	initialState := scheduler.IntendedState(input.SleepWindows, p.Timezone, nil, now)
+	p.CurrentState = string(initialState)
+	p.StateSince = &now
+
+	return p, ""
 }
 
 // policyFieldMap maps JSON field names to database column names.
@@ -255,43 +268,18 @@ func (h *Handler) checkPolicyOverlap(id uint, old *store.Policy, updates map[str
 }
 
 func (h *Handler) updatePolicy(w http.ResponseWriter, r *http.Request) {
-	id, err := parseID(r, "id")
-	if err != nil {
-		jsonError(w, ErrInvalidID, http.StatusBadRequest)
-		return
-	}
-	old, err := h.store.GetPolicy(id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, ErrNotFound, http.StatusNotFound)
-		} else {
-			jsonInternalError(w, err, "get policy failed")
-		}
+	old, ok := h.requirePolicy(w, r)
+	if !ok {
 		return
 	}
 
-	var body map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
-		return
-	}
-
-	updates, msg := buildPolicyUpdateMap(body)
+	updates, msg := decodePolicyUpdates(r, old)
 	if msg != "" {
 		jsonError(w, msg, http.StatusBadRequest)
 		return
 	}
 
-	// Validate that the policy still has windows after update.
-	finalWindows := old.SleepWindows
-	if v, ok := updates["sleep_windows"]; ok {
-		finalWindows = fmt.Sprintf("%v", v)
-	}
-	if finalWindows == "" || finalWindows == "[]" {
-		jsonError(w, "policy must have at least one sleep window", http.StatusBadRequest)
-		return
-	}
-
+	id := old.ID
 	if msg, err := h.checkPolicyOverlap(id, old, updates); err != nil {
 		jsonInternalError(w, err, "conflict check failed")
 		return
@@ -313,28 +301,40 @@ func (h *Handler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, h.policyResp(*p))
 }
 
+// decodePolicyUpdates reads the request body, builds the update map, and
+// validates that the resulting policy still has at least one sleep window.
+// Returns the update map and an error message (empty on success).
+func decodePolicyUpdates(r *http.Request, old *store.Policy) (map[string]interface{}, string) {
+	var body map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return nil, ErrInvalidBody
+	}
+
+	updates, msg := buildPolicyUpdateMap(body)
+	if msg != "" {
+		return nil, msg
+	}
+
+	finalWindows := old.SleepWindows
+	if v, ok := updates["sleep_windows"]; ok {
+		finalWindows = fmt.Sprintf("%v", v)
+	}
+	if finalWindows == "" || finalWindows == "[]" {
+		return nil, "policy must have at least one sleep window"
+	}
+
+	return updates, ""
+}
+
 func (h *Handler) deletePolicy(w http.ResponseWriter, r *http.Request) {
-	id, err := parseID(r, "id")
-	if err != nil {
-		jsonError(w, ErrInvalidID, http.StatusBadRequest)
+	old, ok := h.requirePolicy(w, r)
+	if !ok {
 		return
 	}
-	old, err := h.store.GetPolicy(id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, ErrNotFound, http.StatusNotFound)
-		} else {
-			jsonInternalError(w, err, "get policy failed")
-		}
-		return
-	}
+	id := old.ID
 	if err := h.store.DeletePolicy(id); err != nil {
 		metrics.PolicyOperationsTotal.WithLabelValues("delete", "error").Inc()
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, ErrNotFound, http.StatusNotFound)
-		} else {
-			jsonInternalError(w, err, "delete policy failed")
-		}
+		handleStoreError(w, err, ErrNotFound, "delete policy failed")
 		return
 	}
 	metrics.PolicyOperationsTotal.WithLabelValues("delete", "success").Inc()
@@ -345,59 +345,51 @@ func (h *Handler) deletePolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) triggerPolicySleep(w http.ResponseWriter, r *http.Request) {
-	id, err := parseID(r, "id")
-	if err != nil {
-		jsonError(w, ErrInvalidID, http.StatusBadRequest)
-		return
-	}
-	if _, err := h.store.GetPolicy(id); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, ErrNotFound, http.StatusNotFound)
-		} else {
-			jsonInternalError(w, err, "get policy failed")
-		}
-		return
-	}
-	execID, err := h.policyScheduler.RunSleepNow(id, "manual_sleep")
-	if err != nil {
-		if errors.Is(err, scheduler.ErrPolicyTransitioning) {
-			jsonError(w, "policy is already executing — wait for current run to finish", http.StatusConflict)
-			return
-		}
-		jsonInternalError(w, err, "trigger policy sleep failed")
-		return
-	}
-	slog.Info("policy manual sleep triggered", "policyID", id, "execID", execID)
-	h.audit(r, "policy.sleep", "policy", &id, nil, map[string]interface{}{"executionId": execID})
-	jsonOK(w, map[string]uint{"executionId": execID})
+	h.triggerPolicyAction(w, r, "sleep", h.policyScheduler.RunSleepNow, "manual_sleep", "policy.sleep")
 }
 
 func (h *Handler) triggerPolicyWake(w http.ResponseWriter, r *http.Request) {
+	h.triggerPolicyAction(w, r, "wake", h.policyScheduler.RunWakeNow, "manual_wake", "policy.wake")
+}
+
+// triggerPolicyAction is the shared implementation for manual sleep/wake triggers.
+func (h *Handler) triggerPolicyAction(w http.ResponseWriter, r *http.Request, direction string, runFn func(uint, string) (uint, error), trigger, auditAction string) {
+	p, ok := h.requirePolicy(w, r)
+	if !ok {
+		return
+	}
+	id := p.ID
+	execID, err := runFn(id, trigger)
+	if err != nil {
+		if scheduler.IsAlreadyRunning(err) {
+			jsonError(w, "policy is already executing — wait for current run to finish", http.StatusConflict)
+			return
+		}
+		jsonInternalError(w, err, "trigger policy "+direction+" failed")
+		return
+	}
+	slog.Info("policy manual "+direction+" triggered", "policyID", id, "execID", execID)
+	h.audit(r, auditAction, "policy", &id, nil, map[string]interface{}{"executionId": execID})
+	jsonOK(w, map[string]uint{"executionId": execID})
+}
+
+func (h *Handler) cancelPolicyExecution(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
 		jsonError(w, ErrInvalidID, http.StatusBadRequest)
 		return
 	}
-	if _, err := h.store.GetPolicy(id); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, ErrNotFound, http.StatusNotFound)
-		} else {
-			jsonInternalError(w, err, "get policy failed")
-		}
-		return
-	}
-	execID, err := h.policyScheduler.RunWakeNow(id, "manual_wake")
-	if err != nil {
-		if errors.Is(err, scheduler.ErrPolicyTransitioning) {
-			jsonError(w, "policy is already executing — wait for current run to finish", http.StatusConflict)
+	if err := h.policyScheduler.CancelExecution(id); err != nil {
+		if errors.Is(err, scheduler.ErrNoInflightExecution) {
+			jsonError(w, "no running execution for this policy", http.StatusConflict)
 			return
 		}
-		jsonInternalError(w, err, "trigger policy wake failed")
+		jsonInternalError(w, err, "cancel execution failed")
 		return
 	}
-	slog.Info("policy manual wake triggered", "policyID", id, "execID", execID)
-	h.audit(r, "policy.wake", "policy", &id, nil, map[string]interface{}{"executionId": execID})
-	jsonOK(w, map[string]uint{"executionId": execID})
+	slog.Info("policy execution cancelled", "policyID", id)
+	h.audit(r, "policy.cancel", "policy", &id, nil, nil)
+	jsonOK(w, map[string]string{"status": "cancelled"})
 }
 
 // ─── Validation ───────────────────────────────────────────────────────────────
@@ -420,27 +412,52 @@ func validatePolicyTimezone(tz string) string {
 	return ""
 }
 
-func validatePolicyFields(p store.Policy) string {
-	if len(p.Name) > maxNameLen {
+// validatePolicyName returns an error message if the name is too long.
+func validatePolicyName(name string) string {
+	if len(name) > maxNameLen {
 		return "name must be 255 characters or fewer"
 	}
-	if len(p.Description) > maxDescriptionLen {
+	return ""
+}
+
+// validatePolicyDescription returns an error message if the description is too long.
+func validatePolicyDescription(desc string) string {
+	if len(desc) > maxDescriptionLen {
 		return "description must be 1024 characters or fewer"
 	}
-	if len(p.LabelSelector) > maxLabelSelectorLen {
+	return ""
+}
+
+// validatePolicyLabelSelector returns an error message if the label selector is too long.
+func validatePolicyLabelSelector(sel string) string {
+	if len(sel) > maxLabelSelectorLen {
 		return "labelSelector must be 4096 characters or fewer"
 	}
-	if p.TimeoutMinutes < 0 || p.TimeoutMinutes > 1440 {
+	return ""
+}
+
+// validatePolicyTimeout returns an error message if the timeout is out of range.
+func validatePolicyTimeout(minutes int) string {
+	if minutes < 0 || minutes > 1440 {
 		return "timeoutMinutes must be between 0 and 1440"
 	}
-	if msg := validatePolicyMode(p.Mode); msg != "" {
-		return msg
+	return ""
+}
+
+func validatePolicyFields(p store.Policy) string {
+	validators := []string{
+		validatePolicyName(p.Name),
+		validatePolicyDescription(p.Description),
+		validatePolicyLabelSelector(p.LabelSelector),
+		validatePolicyTimeout(p.TimeoutMinutes),
+		validatePolicyMode(p.Mode),
+		validatePolicyTimezone(p.Timezone),
+		validateNamespaceFilter(p.NamespaceFilter),
 	}
-	if msg := validatePolicyTimezone(p.Timezone); msg != "" {
-		return msg
-	}
-	if msg := validateNamespaceFilter(p.NamespaceFilter); msg != "" {
-		return msg
+	for _, msg := range validators {
+		if msg != "" {
+			return msg
+		}
 	}
 	return ""
 }
@@ -483,13 +500,15 @@ func policyAuditSnapshot(p store.Policy) map[string]interface{} {
 
 func validatePolicyUpdates(updates map[string]interface{}) string {
 	if v, ok := updates["name"]; ok {
-		if len(fmt.Sprintf("%v", v)) > maxNameLen {
-			return "name must be 255 characters or fewer"
+		if msg := validatePolicyName(fmt.Sprintf("%v", v)); msg != "" {
+			return msg
 		}
 	}
 	if v, ok := updates["timeout_minutes"]; ok {
-		if f, ok := v.(float64); ok && (int(f) < 0 || int(f) > 1440) {
-			return "timeoutMinutes must be between 0 and 1440"
+		if f, ok := v.(float64); ok {
+			if msg := validatePolicyTimeout(int(f)); msg != "" {
+				return msg
+			}
 		}
 	}
 	if v, ok := updates["mode"]; ok {
@@ -508,13 +527,13 @@ func validatePolicyUpdates(updates map[string]interface{}) string {
 		}
 	}
 	if v, ok := updates["description"]; ok {
-		if len(fmt.Sprintf("%v", v)) > maxDescriptionLen {
-			return "description must be 1024 characters or fewer"
+		if msg := validatePolicyDescription(fmt.Sprintf("%v", v)); msg != "" {
+			return msg
 		}
 	}
 	if v, ok := updates["label_selector"]; ok {
-		if len(fmt.Sprintf("%v", v)) > maxLabelSelectorLen {
-			return "labelSelector must be 4096 characters or fewer"
+		if msg := validatePolicyLabelSelector(fmt.Sprintf("%v", v)); msg != "" {
+			return msg
 		}
 	}
 	return ""

@@ -95,6 +95,7 @@ Prometheus metrics from a single HTTP listener on port 8080.
 - `GET /api/cluster/stream` -- SSE stream pushing overview updates on cluster changes.
 - `GET /ws/policy-executions/{id}/logs` -- WebSocket for live execution log streaming.
 - `POST /api/policies/{id}/sleep`, `/wake` -- manual execution triggers.
+- `POST /api/policies/{id}/cancel` -- cancel a running execution.
 
 ### PolicyScheduler
 
@@ -109,7 +110,7 @@ executions when intended state diverges from actual state.
 - Recover on startup by reconciling every enabled policy against current cluster
   state (handles server restarts mid-sleep).
 - Manage an in-memory policy cache for fast tick evaluation.
-- Guard against concurrent runs via an atomic conditional DB update that claims the `transitioning` state (only one caller wins the race).
+- Guard against concurrent runs via an atomic conditional DB update that claims the `transitioning` state (only one caller wins the race). Per-policy in-flight tracking (`inflightPolicies`/`inflightCancels` maps) prevents duplicate goroutines and supports mid-execution cancellation.
 - Skip automatic wake transitions when `AutoWake` is disabled — the scheduler will only put policies to sleep, not wake them.
 - When `ReconcileWhileAwake` is enabled (default), detect drift from failed or partial wake executions by counting open snapshots that still need restoring. If drift is found, run a corrective wake (trigger `"reconcile"`) that bypasses the `AutoWake` gate and `skip_wake` overrides. Retries back off at a minimum interval of 5 minutes per policy to avoid flooding history. When disabled, skip reconciliation entirely for policies already awake — reduces DB load between sleep windows.
 
@@ -117,6 +118,8 @@ executions when intended state diverges from actual state.
 - `NewPolicyScheduler(st, k8sClient, cfg SchedulerConfig)` -- construct scheduler with configurable settings.
 - `Start(ctx)` / `Stop()` -- lifecycle management. `Stop()` waits for all in-flight execution goroutines to complete before returning.
 - `RunSleepNow(ctx, policyID, trigger)` / `RunWakeNow(...)` -- manual triggers.
+- `CancelExecution(policyID)` -- cancel an in-flight execution.
+- `IsAlreadyRunning(err) bool` -- helper that checks for both `ErrPolicyTransitioning` and `ErrPolicyExecutionInflight`.
 - `RecoverPolicies(ctx)` -- startup reconciliation.
 - `TickExceptions(ctx)` -- exception lifecycle.
 - `UpdateSettings(cfg SchedulerConfig) error` -- apply new eval interval, auto-wake, and reconcile-while-awake settings at runtime.
@@ -153,6 +156,7 @@ operations, persisting workload snapshots for reliable restoration.
   in response to pending pods.
 - Respect guardrails: skip protected namespaces, labeled nodes, tainted nodes,
   and nodes hosting critical-namespace pods.
+- Deduplicate Deployment/StatefulSet dispatch via `workloadOps()` helper, which returns the appropriate get-replicas, scale, and remove-annotation functions for a given kind.
 - Emit structured log lines to a channel for real-time streaming via the Broker.
 - Support plan mode (dry-run): log what would happen without mutating anything.
 
@@ -218,10 +222,14 @@ more WebSocket clients.
 - Cookie-based session auth with CSRF double-submit protection; optional OIDC SSO.
 
 **Key interfaces:**
-- `api.ts` -- centralized fetch wrapper with cookie/CSRF handling.
+- `api.ts` -- centralized `apiFetch` wrapper with cookie/CSRF handling.
 - `auth.tsx` -- React context-based auth state management.
 - `useSnackbar.tsx` -- shared hook returning `{ notify, SnackbarAlert }` for standardized snackbar notifications across all pages.
 - `useIsDark.ts` -- one-liner hook for dark/light mode detection, used by all components needing mode-aware colors.
+- `usePolicyTriggers.ts` -- sleep/wake/cancel trigger hook with `onSuccessOverride` callback.
+- `useTriStateSort.ts` -- generic tri-state column sort hook (asc/desc/none).
+- `statusColors.ts` -- mode-aware style maps for states, execution statuses, modes, override types; includes `getModeStyle` and `getTypeLabel` helpers.
+- `formatters.ts` -- shared formatting utilities (`formatError`, `fmtDt`, `fmtDuration`, `timeAgo`, etc.).
 - TanStack Query with SSE-driven cache updates for the overview page.
 
 ---
@@ -279,7 +287,7 @@ erDiagram
         bigint policy_id FK
         varchar direction "sleep/wake"
         varchar trigger "enum"
-        varchar status "enum"
+        varchar status "enum: running|success|failed|interrupted|skipped"
         varchar mode "plan/apply"
         int count_scaled
         int count_drained
@@ -371,8 +379,8 @@ scheduled exception activation.
 5. Log lines are emitted to the log channel. **Broker** fans them out to
    WebSocket subscribers. Lines are also persisted to `policy_log_lines`.
 6. On completion, `Broker.Close()` signals all WS clients. Execution record is
-   updated with final counts and `status=success` (or `failed`).
-   `current_state` is set to `sleeping`.
+   updated with final counts and `status=success` (or `failed`, or `interrupted`
+   if cancelled via `CancelExecution`). `current_state` is set to `sleeping`.
 
 ### 2. Wake Execution
 
@@ -436,7 +444,7 @@ kube-phoenix/
 │   ├── cmd/server/main.go           # Entry point: bootstrap, crash recovery, graceful shutdown
 │   ├── internal/
 │   │   ├── api/                     # HTTP handlers and Chi router construction
-│   │   │   ├── router.go            # Route registration, middleware stack
+│   │   │   ├── router.go            # NewRouter + registerAuthRoutes/registerPolicyRoutes/registerClusterRoutes/registerAdminRoutes, middleware stack
 │   │   │   ├── auth.go              # Login, logout, OIDC callbacks
 │   │   │   ├── oidc.go              # OIDC discovery and SSO endpoints
 │   │   │   ├── policies.go          # Policy CRUD, sleep/wake triggers
@@ -455,23 +463,23 @@ kube-phoenix/
 │   │   │   ├── admin.go             # DB reset (streaming NDJSON)
 │   │   │   ├── errmsg.go            # Error constants, field length limits, valid enum sets
 │   │   │   ├── ws.go                # WebSocket helpers
-│   │   │   └── helpers.go           # JSON response utilities
+│   │   │   └── helpers.go           # JSON response utilities, handleStoreError, requirePolicy
 │   │   ├── scheduler/
-│   │   │   ├── policy_scheduler.go  # 30s ticker, recovery, exception tick, drift detection
+│   │   │   ├── policy_scheduler.go  # 30s ticker, recovery, exception tick, drift detection, inflightPolicies/inflightCancels, executeAndFinalize
 │   │   │   ├── policy_scheduler_test.go # Scheduler unit tests (mock store + runner)
 │   │   │   ├── policy_engine.go     # IntendedState evaluation, override precedence
 │   │   │   ├── policy_engine_test.go # Engine unit tests
 │   │   │   └── broker.go            # WebSocket log pub/sub
 │   │   ├── scaler/
-│   │   │   ├── scaler.go            # Low-level Kubernetes scale helpers and workload entry abstraction
-│   │   │   ├── policy_scaler.go     # DB-backed sleep/wake with WorkloadSnapshot logic + annotation fallback
+│   │   │   ├── scaler.go            # Low-level Kubernetes scale helpers, workload entry abstraction, collectFilteredEntries
+│   │   │   ├── policy_scaler.go     # DB-backed sleep/wake with WorkloadSnapshot logic, workloadOps dispatch, annotation fallback
 │   │   │   ├── annotation_fallback_test.go # Tests for annotation-based recovery path
 │   │   │   └── scale_down.go        # Node drain/delete helpers (classifyNodes, drainNodes, drainAndDeleteNode)
 │   │   ├── policy/
 │   │   │   ├── evaluator.go         # Pure sleep window evaluation (Evaluate, NextTransition)
 │   │   │   └── windows.go           # SleepWindow type definition and validation
 │   │   ├── k8s/
-│   │   │   ├── client.go            # Typed Kubernetes API wrapper
+│   │   │   ├── client.go            # Typed Kubernetes API wrapper (PodLogOptions, annotateResource/removeAnnotation helpers)
 │   │   │   └── cache.go             # ClusterCache: SharedInformer-driven event cache
 │   │   ├── store/
 │   │   │   ├── models.go            # GORM model structs
@@ -480,9 +488,9 @@ kube-phoenix/
 │   │   │   ├── queries.go           # Guardrails queries, SeedDefaults, DropAllTables
 │   │   │   ├── store_helpers.go     # Shared GORM helpers (selectiveUpdate)
 │   │   │   ├── sessions.go          # Session CRUD, sliding window, cleanup
-│   │   │   ├── users.go             # User CRUD, OIDC provisioning, password hashing, timezone updates
+│   │   │   ├── users.go             # User CRUD, OIDC provisioning (OIDCUserInfo struct), password hashing, timezone updates
 │   │   │   ├── audit.go             # Audit log CRUD, retention cleanup
-│   │   │   └── status.go            # String constants for policy/execution/exception states
+│   │   │   └── status.go            # String constants for policy/execution/exception states (includes `interrupted`)
 │   │   ├── auth/
 │   │   │   ├── oidc.go              # OIDC provider discovery, token exchange, claim mapping
 │   │   │   ├── permissions.go       # RBAC permission checks by role
@@ -505,14 +513,14 @@ kube-phoenix/
 │   ├── src/
 │   │   ├── app/                     # Next.js pages (overview, cluster, policies, ...)
 │   │   ├── components/              # React components by domain
-│   │   │   ├── audit/               # AuditRow, DiffLineRow, JsonDiffView, auditDiff helpers
-│   │   │   ├── cluster/             # Tables, drawers, DetailDrawer, extracted subcomponents (MiniBar, LabelChip, etc.)
-│   │   │   ├── common/              # ChipInput, LabeledSwitch
+│   │   │   ├── audit/               # AuditRow, DiffLineRow, JsonDiffView, auditDiff helpers, auditFormatters
+│   │   │   ├── cluster/             # Tables, drawers, DetailDrawer, extracted subcomponents (MiniBar, LabelChip, etc.), statusColors
+│   │   │   ├── common/              # ChipInput, LabeledSwitch, ConfirmDialog, CenteredSpinner
 │   │   │   ├── guardrails/          # GuardrailsForm, ProtectedChipInput
 │   │   │   ├── history/             # ExecutionTable, LogViewer, ExecutionSummary, parseSummary, useExecutionLogs
 │   │   │   ├── policies/            # PolicyCard, timelines, WindowPicker, PolicyHeroBand, CreateOverrideForm, TimelineLegend, timelineSegments
 │   │   │   └── settings/            # AccountSettings, AppearanceSettings, DatabaseSettings, OIDCStatusCard, ActiveSessionsCard (live data), ClusterConnectionCard, AboutBar
-│   │   ├── lib/                     # API client, auth, types, query client, utilities, shared hooks (useSnackbar, useIsDark, layoutConstants)
+│   │   ├── lib/                     # API client (apiFetch), auth, types, query client, formatters, statusColors, SortHeader, shared hooks (useSnackbar, useIsDark, useTriStateSort, usePolicyTriggers, layoutConstants)
 │   │   └── theme/                   # MUI theme (dark + light mode)
 │   ├── next.config.mjs              # Static export, trailing slash
 │   └── package.json

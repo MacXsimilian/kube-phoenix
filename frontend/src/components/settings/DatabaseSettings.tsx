@@ -20,6 +20,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import { useTheme } from '@mui/material/styles'
 import { resetDatabaseStream, type ResetEvent } from '@/lib/api'
+import { formatError } from '@/lib/formatters'
 
 const CONFIRM_PHRASE = 'RESET DATABASE'
 
@@ -145,7 +146,7 @@ export default function DatabaseSettings() {
         if (event.type === 'error') break
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error'
+      const msg = formatError(err)
       setProgressEvents((prev) => [...prev, { type: 'error', message: msg }])
     } finally {
       setProgressDone(true)

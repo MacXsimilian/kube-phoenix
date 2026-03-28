@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
-import CircularProgress from '@mui/material/CircularProgress'
+import CenteredSpinner from '@/components/common/CenteredSpinner'
 import Divider from '@mui/material/Divider'
 import Drawer from '@mui/material/Drawer'
 import IconButton from '@mui/material/IconButton'
@@ -18,7 +18,7 @@ import Typography from '@mui/material/Typography'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
-import { sinceMs } from '@/lib/formatters'
+import { sinceMs, formatError } from '@/lib/formatters'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { NodePod } from '@/lib/types'
 import PodDetailContent from './PodDetailContent'
@@ -188,12 +188,10 @@ export default function DetailDrawer({
             <Box sx={{ flex: 1, overflow: 'auto' }}>
               {isErrorPods ? (
                 <Alert severity="error" sx={{ m: 2 }}>
-                  Failed to load pods: {errorPods instanceof Error ? errorPods.message : 'Unknown error'}
+                  Failed to load pods: {formatError(errorPods)}
                 </Alert>
               ) : isLoadingPods ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-                  <CircularProgress size={28} />
-                </Box>
+                <CenteredSpinner size={28} />
               ) : filtered.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ py: 5, textAlign: 'center' }}>
                   {search ? 'No pods match your search.' : emptyMessage}

@@ -44,6 +44,7 @@ type Handler struct {
 	auditWriter     *AuditWriter
 	oidcProvider    *auth.OIDCProvider
 	oidcCfg         *auth.OIDCConfig
+	cookieSecure    bool
 }
 
 func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, policySched *scheduler.PolicyScheduler, cache *k8s.ClusterCache) *chi.Mux {
@@ -81,6 +82,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 		auditWriter:     aw,
 		oidcProvider:    oidcProv,
 		oidcCfg:         oidcCfg,
+		cookieSecure:    os.Getenv("COOKIE_SECURE") != "false",
 	}
 
 	r := chi.NewRouter()
@@ -116,11 +118,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 	// Version endpoint — no auth, lightweight build/uptime info
 	r.Get("/api/version", h.getVersion)
 
-	// ── Unauthenticated auth routes ──────────────────────────────────────
-	r.Post("/api/auth/login", h.login)
-	r.Get("/api/auth/oidc/config", h.oidcConfig)
-	r.Get("/api/auth/oidc/login", h.oidcLogin)
-	r.Get("/api/auth/oidc/callback", h.oidcCallback)
+	h.registerAuthRoutes(r)
 
 	// ── Authenticated routes ─────────────────────────────────────────────
 	r.Group(func(r chi.Router) {
@@ -128,7 +126,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 		r.Use(authmw.CSRFProtect)
 		r.Use(h.auditDeniedMiddleware)
 
-		// Auth endpoints
+		// Auth endpoints (session-scoped)
 		r.Post("/api/auth/logout", h.logout)
 		r.Get("/api/auth/me", h.me)
 		r.Get("/api/auth/sessions", h.listSessions)
@@ -143,75 +141,9 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 		r.Mount("/api/docs/", swguiv5.NewHandler("kube-phoenix API", "/api/docs/openapi.yaml", "/api/docs/"))
 
 		r.Route("/api", func(r chi.Router) {
-			// ── Read-only routes (all authenticated users) ───────────
-			r.Get("/guardrails", h.getGuardrails)
-			r.Get("/overview", h.getOverview)
-			r.Get("/cluster/stream", h.streamCluster)
-			r.Get("/cluster/workloads", h.getWorkloads)
-			r.Get("/cluster/info", h.getClusterInfo)
-			r.Get("/cluster/nodes", h.getNodes)
-			r.Get("/cluster/nodes/{name}/pods", h.getNodePods)
-			r.Get("/cluster/pods/{namespace}/{name}", h.getPodDetail)
-			r.Get("/cluster/pods/{namespace}/{name}/logs", h.getPodLogs)
-			r.Get("/cluster/workloads/{namespace}/{kind}/{name}/pods", h.getWorkloadPods)
-
-			// ── Audit logs ───────────────────────────────────────────
-			r.Group(func(r chi.Router) {
-				r.Use(authmw.RequirePermission(auth.PermAuditView))
-				r.Get("/audit-logs", h.listAuditLogs)
-			})
-
-			// ── Policy read routes (all authenticated users) ──────────
-			r.Get("/policies", h.listPolicies)
-			r.Get("/policies/{id}", h.getPolicy)
-			r.Get("/policies/{id}/snapshots", h.getPolicySnapshots)
-			r.Get("/policies/{id}/overrides", h.listPolicyOverrides)
-			r.Get("/policy-executions", h.listPolicyExecutions)
-			r.Get("/policy-executions/{id}", h.getPolicyExecution)
-			r.Get("/policy-executions/{id}/logs", h.getPolicyExecutionLogs)
-			r.Get("/policy-executions/{id}/snapshots", h.getPolicyExecutionSnapshots)
-			r.Get("/exceptions", h.listExceptions)
-			r.Get("/exceptions/{id}", h.getException)
-
-			r.Group(func(r chi.Router) {
-				r.Use(authmw.RequirePermission(auth.PermGuardrailEdit))
-				r.Put("/guardrails", h.updateGuardrails)
-			})
-
-			// ── Policy mutations (admin + operator) ───────────────────
-			r.Group(func(r chi.Router) {
-				r.Use(authmw.RequirePermission(auth.PermScheduleEdit))
-				r.Post("/policies", h.createPolicy)
-				r.Put("/policies/{id}", h.updatePolicy)
-				r.Delete("/policies/{id}", h.deletePolicy)
-				r.Post("/policies/{id}/overrides", h.createPolicyOverride)
-				r.Delete("/policies/{id}/overrides/{overrideId}", h.deletePolicyOverride)
-				r.Post("/exceptions", h.createException)
-				r.Put("/exceptions/{id}", h.updateException)
-				r.Delete("/exceptions/{id}", h.deleteException)
-			})
-
-			// ── Manual trigger (admin + operator) ────────────────────
-			r.Group(func(r chi.Router) {
-				r.Use(authmw.RequirePermission(auth.PermScheduleTrigger))
-				r.Post("/policies/{id}/sleep", h.triggerPolicySleep)
-				r.Post("/policies/{id}/wake", h.triggerPolicyWake)
-			})
-
-			// ── User management (admin only) ─────────────────────────
-			r.Group(func(r chi.Router) {
-				r.Use(authmw.RequirePermission(auth.PermUserManage))
-				r.Get("/users", h.listUsers)
-				r.Post("/users", h.createUser)
-				r.Put("/users/{id}", h.updateUser)
-				r.Delete("/users/{id}", h.deleteUser)
-			})
-
-			// ── Admin danger zone ────────────────────────────────────
-			r.Group(func(r chi.Router) {
-				r.Use(authmw.RequirePermission(auth.PermAdminResetDB))
-				r.Post("/danger/reset-db", h.resetDB)
-			})
+			h.registerClusterRoutes(r)
+			h.registerPolicyRoutes(r)
+			h.registerAdminRoutes(r)
 		})
 
 		// WebSocket — live log streaming (cookies sent automatically on upgrade)
@@ -224,49 +156,88 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 	return r
 }
 
-// ─── Audit log endpoint (thin handler, store does the work) ──────────────────
+// registerAuthRoutes mounts unauthenticated auth and OIDC endpoints.
+func (h *Handler) registerAuthRoutes(r chi.Router) {
+	r.Post("/api/auth/login", h.login)
+	r.Get("/api/auth/oidc/config", h.oidcConfig)
+	r.Get("/api/auth/oidc/login", h.oidcLogin)
+	r.Get("/api/auth/oidc/callback", h.oidcCallback)
+}
 
-func (h *Handler) listAuditLogs(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
-	filter := store.AuditLogFilter{
-		Username: query.Get("user"),
-		Action:   query.Get("action"),
-	}
-	if v := query.Get("page"); v != "" {
-		p, err := strconv.Atoi(v)
-		if err != nil {
-			jsonError(w, "invalid page parameter", http.StatusBadRequest)
-			return
-		}
-		if p < 0 {
-			p = 0
-		}
-		filter.Page = p
-	}
-	filter.PageSize = parsePageSize(query, 50, 1000)
-	if v := query.Get("from"); v != "" {
-		t, err := time.Parse(time.RFC3339, v)
-		if err != nil {
-			jsonError(w, "invalid 'from' timestamp — expected RFC3339 format", http.StatusBadRequest)
-			return
-		}
-		filter.From = &t
-	}
-	if v := query.Get("to"); v != "" {
-		t, err := time.Parse(time.RFC3339, v)
-		if err != nil {
-			jsonError(w, "invalid 'to' timestamp — expected RFC3339 format", http.StatusBadRequest)
-			return
-		}
-		filter.To = &t
-	}
+// registerClusterRoutes mounts read-only cluster, guardrail, and audit endpoints.
+func (h *Handler) registerClusterRoutes(r chi.Router) {
+	r.Get("/guardrails", h.getGuardrails)
+	r.Get("/overview", h.getOverview)
+	r.Get("/cluster/stream", h.streamCluster)
+	r.Get("/cluster/workloads", h.getWorkloads)
+	r.Get("/cluster/info", h.getClusterInfo)
+	r.Get("/cluster/nodes", h.getNodes)
+	r.Get("/cluster/nodes/{name}/pods", h.getNodePods)
+	r.Get("/cluster/pods/{namespace}/{name}", h.getPodDetail)
+	r.Get("/cluster/pods/{namespace}/{name}/logs", h.getPodLogs)
+	r.Get("/cluster/workloads/{namespace}/{kind}/{name}/pods", h.getWorkloadPods)
 
-	page, err := h.store.ListAuditLogs(filter)
-	if err != nil {
-		jsonInternalError(w, err, "list audit logs failed")
-		return
-	}
-	jsonOK(w, page)
+	r.Group(func(r chi.Router) {
+		r.Use(authmw.RequirePermission(auth.PermAuditView))
+		r.Get("/audit-logs", h.listAuditLogs)
+	})
+
+	r.Group(func(r chi.Router) {
+		r.Use(authmw.RequirePermission(auth.PermGuardrailEdit))
+		r.Put("/guardrails", h.updateGuardrails)
+	})
+}
+
+// registerPolicyRoutes mounts policy read, mutation, and trigger endpoints.
+func (h *Handler) registerPolicyRoutes(r chi.Router) {
+	// Read-only (all authenticated users)
+	r.Get("/policies", h.listPolicies)
+	r.Get("/policies/{id}", h.getPolicy)
+	r.Get("/policies/{id}/snapshots", h.getPolicySnapshots)
+	r.Get("/policies/{id}/overrides", h.listPolicyOverrides)
+	r.Get("/policy-executions", h.listPolicyExecutions)
+	r.Get("/policy-executions/{id}", h.getPolicyExecution)
+	r.Get("/policy-executions/{id}/logs", h.getPolicyExecutionLogs)
+	r.Get("/policy-executions/{id}/snapshots", h.getPolicyExecutionSnapshots)
+	r.Get("/exceptions", h.listExceptions)
+	r.Get("/exceptions/{id}", h.getException)
+
+	// Mutations (admin + operator)
+	r.Group(func(r chi.Router) {
+		r.Use(authmw.RequirePermission(auth.PermScheduleEdit))
+		r.Post("/policies", h.createPolicy)
+		r.Put("/policies/{id}", h.updatePolicy)
+		r.Delete("/policies/{id}", h.deletePolicy)
+		r.Post("/policies/{id}/overrides", h.createPolicyOverride)
+		r.Delete("/policies/{id}/overrides/{overrideId}", h.deletePolicyOverride)
+		r.Post("/exceptions", h.createException)
+		r.Put("/exceptions/{id}", h.updateException)
+		r.Delete("/exceptions/{id}", h.deleteException)
+	})
+
+	// Manual trigger (admin + operator)
+	r.Group(func(r chi.Router) {
+		r.Use(authmw.RequirePermission(auth.PermScheduleTrigger))
+		r.Post("/policies/{id}/sleep", h.triggerPolicySleep)
+		r.Post("/policies/{id}/wake", h.triggerPolicyWake)
+		r.Post("/policies/{id}/cancel", h.cancelPolicyExecution)
+	})
+}
+
+// registerAdminRoutes mounts user management and danger-zone endpoints.
+func (h *Handler) registerAdminRoutes(r chi.Router) {
+	r.Group(func(r chi.Router) {
+		r.Use(authmw.RequirePermission(auth.PermUserManage))
+		r.Get("/users", h.listUsers)
+		r.Post("/users", h.createUser)
+		r.Put("/users/{id}", h.updateUser)
+		r.Delete("/users/{id}", h.deleteUser)
+	})
+
+	r.Group(func(r chi.Router) {
+		r.Use(authmw.RequirePermission(auth.PermAdminResetDB))
+		r.Post("/danger/reset-db", h.resetDB)
+	})
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

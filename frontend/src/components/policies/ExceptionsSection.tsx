@@ -16,7 +16,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import StatusChip from '@/components/shared/StatusChip'
 import { fmtDt } from '@/lib/formatters'
 import { useIsDark } from '@/lib/useIsDark'
-import { typeLabels, typeLabelFallback } from '@/lib/statusColors'
+import { getTypeLabel } from '@/lib/statusColors'
 import type { ScheduledException } from '@/lib/types'
 
 export default function ExceptionsSection({
@@ -31,8 +31,6 @@ export default function ExceptionsSection({
   onEditException: (ex: ScheduledException) => void
 }) {
   const isDark = useIsDark()
-  const TYPE_LABELS = typeLabels(isDark)
-  const TYPE_LABEL_FALLBACK = typeLabelFallback(isDark)
 
   return (
     <Box sx={{ mb: 3 }}>
@@ -63,7 +61,7 @@ export default function ExceptionsSection({
           </TableHead>
           <TableBody>
             {exceptions.map(ex => {
-              const typeLabel = TYPE_LABELS[ex.exceptionType] ?? TYPE_LABEL_FALLBACK
+              const typeLabel = getTypeLabel(isDark, ex.exceptionType)
               return (
               <TableRow key={ex.id}>
                 <TableCell>

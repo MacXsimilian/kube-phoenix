@@ -27,9 +27,10 @@ The scheduler automatically recovers stuck `transitioning` policies. If a policy
 
 If you need to resolve it immediately:
 
-1. Check **History > Policies** for the latest execution. If it shows `interrupted`, the pod was killed mid-run.
-2. On next startup, kube-phoenix automatically marks any `running` executions as `interrupted`.
-3. Trigger a manual **Wake Now** or **Sleep Now** from the policy card to set a known state.
+1. If the execution is still running, cancel it via **Cancel** on the policy card or `POST /api/policies/{id}/cancel`.
+2. Check **History > Policies** for the latest execution. If it shows `interrupted`, the pod was killed mid-run.
+3. On next startup, kube-phoenix automatically marks any `running` executions as `interrupted`.
+4. Trigger a manual **Wake Now** or **Sleep Now** from the policy card to set a known state.
 
 ## Policy shows `unknown` state after startup
 

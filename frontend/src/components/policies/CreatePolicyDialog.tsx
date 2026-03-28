@@ -13,6 +13,7 @@ import Switch from '@mui/material/Switch'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
+import { formatError } from '@/lib/formatters'
 import CircularProgress from '@mui/material/CircularProgress'
 import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
@@ -126,7 +127,7 @@ export default function CreatePolicyDialog({
       onClose()
     },
     onError: (err: unknown) => {
-      setError(err instanceof Error ? err.message : 'Save failed')
+      setError(formatError(err))
     },
   })
 

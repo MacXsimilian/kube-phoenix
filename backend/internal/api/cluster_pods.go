@@ -325,12 +325,6 @@ func (h *Handler) resolveNodeInstanceType(ctx context.Context, nodeName string) 
 	return nodeLabel(*node, "node.kubernetes.io/instance-type", "beta.kubernetes.io/instance-type")
 }
 
-func nonNilMap(m map[string]string) map[string]string {
-	if m == nil {
-		return map[string]string{}
-	}
-	return m
-}
 
 // ── Pod logs (streamed from K8s API — no DB) ─────────────────────────────────
 
@@ -346,9 +340,9 @@ func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	container, tailLines, previous, follow := parsePodLogParams(r)
+	logOpts := parsePodLogParams(r)
 
-	stream, err := h.k8s.GetPodLogs(r.Context(), namespace, name, container, tailLines, previous, follow)
+	stream, err := h.k8s.GetPodLogs(r.Context(), namespace, name, logOpts)
 	if err != nil {
 		jsonInternalError(w, err, "get pod logs failed")
 		return
@@ -358,15 +352,20 @@ func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
-	if !follow {
+	if !logOpts.Follow {
 		if _, err := io.Copy(w, stream); err != nil {
 			slog.Warn("getPodLogs: stream copy error", "err", err)
 		}
 		return
 	}
 
-	// Streaming mode: use ResponseController.Flush which works through
-	// any middleware ResponseWriter wrappers (Go 1.20+).
+	streamPodLogs(w, stream)
+}
+
+// streamPodLogs reads from the log stream and flushes each chunk to the client
+// in real time. It returns when the stream is exhausted or a write/flush error
+// occurs.
+func streamPodLogs(w http.ResponseWriter, stream io.Reader) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	rc := http.NewResponseController(w)
@@ -390,24 +389,26 @@ func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 // parsePodLogParams extracts and sanitises pod log query parameters.
-func parsePodLogParams(r *http.Request) (container string, tailLines int64, previous, follow bool) {
+func parsePodLogParams(r *http.Request) k8s.PodLogOptions {
 	query := r.URL.Query()
-	container = query.Get("container")
-	previous = query.Get("previous") == "true"
-	follow = query.Get("follow") == "true"
+	opts := k8s.PodLogOptions{
+		Container: query.Get("container"),
+		TailLines: 500,
+		Previous:  query.Get("previous") == "true",
+		Follow:    query.Get("follow") == "true",
+	}
 
-	tailLines = 500
 	if v := query.Get("tailLines"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 && n <= 10000 {
-			tailLines = n
+			opts.TailLines = n
 		}
 	}
 
 	// Cannot stream previous (terminated) container logs.
-	if previous {
-		follow = false
+	if opts.Previous {
+		opts.Follow = false
 	}
-	return
+	return opts
 }
 
 // ── Workload pods ─────────────────────────────────────────────────────────────

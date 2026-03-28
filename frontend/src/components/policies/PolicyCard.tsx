@@ -9,11 +9,7 @@ import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
-import Dialog from '@mui/material/Dialog'
-import DialogTitle from '@mui/material/DialogTitle'
-import DialogContent from '@mui/material/DialogContent'
-import DialogActions from '@mui/material/DialogActions'
-import Button from '@mui/material/Button'
+
 import CircularProgress from '@mui/material/CircularProgress'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
@@ -22,12 +18,14 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import { useIsDark } from '@/lib/useIsDark'
 import { deletePolicy } from '@/lib/api'
+import { formatError } from '@/lib/formatters'
 import type { Policy, SnackMessage } from '@/lib/types'
 import { windowsToText, hasSleepWindows } from '@/lib/windowUtils'
-import { stateColors, modeColors, SMALL_CHIP_SX, CARD_HEADER_GRADIENTS, LED_COLORS } from '@/lib/statusColors'
+import { stateColors, getModeStyle, SMALL_CHIP_SX, CARD_HEADER_GRADIENTS, LED_COLORS } from '@/lib/statusColors'
 import { timeUntil } from '@/lib/formatters'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
 import { useColors } from '@/lib/colors'
+import ConfirmDialog from '@/components/common/ConfirmDialog'
 import MiniTimeline from './MiniTimeline'
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -77,48 +75,6 @@ function nextTransitionLabel(policy: Policy): string {
   return relative
 }
 
-// ── Delete confirmation sub-component ────────────────────────────────────────
-
-function DeletePolicyDialog({
-  open,
-  policyName,
-  isPending,
-  onClose,
-  onConfirm,
-}: {
-  open: boolean
-  policyName: string
-  isPending: boolean
-  onClose: () => void
-  onConfirm: () => void
-}) {
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      slotProps={{ paper: { sx: { bgcolor: 'background.paper', minWidth: 320 } } }}
-    >
-      <DialogTitle fontWeight={700}>Delete Policy?</DialogTitle>
-      <DialogContent>
-        <Typography variant="body2" color="text.secondary">
-          Delete <strong>{policyName}</strong>? All associated executions and snapshots will be retained.
-        </Typography>
-      </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose} sx={{ color: 'text.secondary' }}>Cancel</Button>
-        <Button
-          variant="contained"
-          color="error"
-          disabled={isPending}
-          onClick={() => { onClose(); onConfirm() }}
-        >
-          Delete
-        </Button>
-      </DialogActions>
-    </Dialog>
-  )
-}
-
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function PolicyCard({
@@ -139,7 +95,6 @@ export default function PolicyCard({
   const isDark = useIsDark()
   const [deleteDialog, setDeleteDialog] = useState(false)
   const STATE_COLORS = stateColors(isDark)
-  const MODE_COLORS = modeColors(isDark)
   const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
   const led = LED_COLORS[policy.currentState] ?? LED_COLORS.unknown
   const { sleepMut, wakeMut, isBusy } = usePolicyTriggers(policy.id, onNotify)
@@ -154,7 +109,7 @@ export default function PolicyCard({
       onNotify?.(`"${policy.name}" deleted`, 'success')
     },
     onError: (err: unknown) => {
-      onNotify?.(err instanceof Error ? err.message : 'Delete failed', 'error')
+      onNotify?.(formatError(err), 'error')
     },
   })
 
@@ -225,8 +180,8 @@ export default function PolicyCard({
                   size="small"
                   sx={{
                     ...SMALL_CHIP_SX,
-                    bgcolor: (MODE_COLORS[policy.mode] ?? MODE_COLORS.plan).bg,
-                    color: (MODE_COLORS[policy.mode] ?? MODE_COLORS.plan).color,
+                    bgcolor: getModeStyle(isDark, policy.mode).bg,
+                    color: getModeStyle(isDark, policy.mode).color,
                   }}
                 />
                 {isDisabled && (
@@ -360,12 +315,13 @@ export default function PolicyCard({
         </Box>
       </Paper>
 
-      <DeletePolicyDialog
+      <ConfirmDialog
         open={deleteDialog}
-        policyName={policy.name}
-        isPending={deleteMut.isPending}
-        onClose={() => setDeleteDialog(false)}
+        title="Delete Policy?"
+        message={`Delete "${policy.name}"? All associated executions and snapshots will be retained.`}
+        confirmLabel="Delete"
         onConfirm={() => deleteMut.mutate()}
+        onClose={() => setDeleteDialog(false)}
       />
     </>
   )

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getPodLogs, streamPodLogs } from '@/lib/api'
+import { formatError } from '@/lib/formatters'
 
 const INITIAL_TAIL = 500
 const LOAD_MORE_INCREMENT = 2000
@@ -93,7 +94,7 @@ export function usePodLogStream({ namespace, podName, container }: PodLogStreamO
       const raw = await getPodLogs(namespace, podName, container || undefined, 5000, true)
       setPrevLines(raw.split('\n').filter((l) => l.length > 0))
     } catch (err) {
-      setPrevError(err instanceof Error ? err.message : 'Failed to load previous logs')
+      setPrevError(formatError(err))
     } finally {
       setPrevLoading(false)
     }

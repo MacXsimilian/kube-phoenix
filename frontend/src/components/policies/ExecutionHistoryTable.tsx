@@ -18,7 +18,7 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import { useIsDark } from '@/lib/useIsDark'
 import StatusChip from '@/components/shared/StatusChip'
 import { fmtDtShort, fmtDuration } from '@/lib/formatters'
-import { modeColors, SMALL_CHIP_SX } from '@/lib/statusColors'
+import { getModeStyle, SMALL_CHIP_SX } from '@/lib/statusColors'
 import type { PolicyExecution, PolicyExecutionPage } from '@/lib/types'
 
 const STATUS_OPTIONS = ['all', 'running', 'success', 'failed'] as const
@@ -31,7 +31,6 @@ export default function ExecutionHistoryTable({
   onRowClick: (exec: PolicyExecution) => void
 }) {
   const isDark = useIsDark()
-  const MODE_COLORS = modeColors(isDark)
   const [statusFilter, setStatusFilter] = useState<string>('all')
 
   const filtered = useMemo(() => {
@@ -88,7 +87,7 @@ export default function ExecutionHistoryTable({
                 ex.countProtected > 0 && `${ex.countProtected} protected`,
                 ex.countErrors > 0 && `${ex.countErrors} errors`,
               ].filter(Boolean).join(', ') || '0'
-              const modeStyle = MODE_COLORS[ex.mode]
+              const modeStyle = getModeStyle(isDark, ex.mode)
               return (
                 <TableRow key={ex.id} hover sx={{ cursor: 'pointer' }} onClick={() => onRowClick(ex)}>
                   <TableCell>#{ex.id}</TableCell>
