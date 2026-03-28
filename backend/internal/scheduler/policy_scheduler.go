@@ -359,7 +359,7 @@ func (ps *PolicyScheduler) maybeEndException(ex store.ScheduledException, now ti
 	}
 }
 
-// runExceptionAction dispatches the initial action for an exception:
+// RunExceptionAction dispatches the initial action for an exception:
 // stay_awake → wake, force_sleep → sleep.
 func RunExceptionAction(ps *PolicyScheduler, policyID uint, exType string, trigger string) (uint, error) {
 	if exType == store.ExceptionTypeForceSleep {

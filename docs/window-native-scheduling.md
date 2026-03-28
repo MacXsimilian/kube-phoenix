@@ -279,7 +279,7 @@ When a transition is triggered:
 
 ### Startup Recovery
 
-`RecoverPolicies()` runs once at startup. For each enabled policy, it evaluates the intended state and compares against the stored `CurrentState`. Any mismatch triggers a recovery execution to bring the cluster into the correct state.
+`RecoverPolicies()` is called automatically inside `Start()`, running synchronously before the tick loop launches to avoid race conditions. For each enabled policy, it evaluates the intended state and compares against the stored `CurrentState`. Any mismatch triggers a recovery execution to bring the cluster into the correct state.
 
 ### Exception Ticker
 

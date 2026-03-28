@@ -109,15 +109,17 @@ executions when intended state diverges from actual state.
 - Recover on startup by reconciling every enabled policy against current cluster
   state (handles server restarts mid-sleep).
 - Manage an in-memory policy cache for fast tick evaluation.
-- Guard against concurrent runs via an atomic conditional DB update that claims the `transitioning` state (only one caller wins the race).
+- Guard against concurrent runs via an atomic conditional DB update that claims the `transitioning` state (only one caller wins the race). The claim also updates `state_since` atomically to support accurate stuck-transition detection.
 - Skip automatic wake transitions when `AutoWake` is disabled — the scheduler will only put policies to sleep, not wake them.
+- Back off for 5 minutes after a failed scheduled transition to avoid tight retry loops when the K8s API is down.
+- Execution goroutines derive their context from the scheduler's parent context, so `Stop()` can signal them to abort rather than hanging until the per-execution timeout expires.
 - When `ReconcileWhileAwake` is enabled (default), detect drift from failed or partial wake executions by counting open snapshots that still need restoring. If drift is found, run a corrective wake (trigger `"reconcile"`) that bypasses the `AutoWake` gate and `skip_wake` overrides. Retries back off at a minimum interval of 5 minutes per policy to avoid flooding history. When disabled, skip reconciliation entirely for policies already awake — reduces DB load between sleep windows.
 
 **Key interfaces:**
 - `NewPolicyScheduler(st, k8sClient, cfg SchedulerConfig)` -- construct scheduler with configurable settings.
 - `Start(ctx)` / `Stop()` -- lifecycle management. `Stop()` waits for all in-flight execution goroutines to complete before returning.
 - `RunSleepNow(ctx, policyID, trigger)` / `RunWakeNow(...)` -- manual triggers.
-- `RecoverPolicies(ctx)` -- startup reconciliation.
+- `RecoverPolicies(ctx)` -- startup reconciliation (called automatically inside `Start()`).
 - `TickExceptions(ctx)` -- exception lifecycle.
 - `UpdateSettings(cfg SchedulerConfig) error` -- apply new eval interval, auto-wake, and reconcile-while-awake settings at runtime.
 
