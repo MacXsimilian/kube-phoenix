@@ -92,7 +92,7 @@ Prometheus metrics from a single HTTP listener on port 8080.
 
 **Key interfaces:**
 - `GET /api/overview` -- pre-aggregated dashboard summary (cache-backed, no DB I/O).
-- `GET /api/cluster/stream` -- SSE stream pushing overview updates every ~10s.
+- `GET /api/cluster/stream` -- SSE stream pushing overview updates on cluster changes.
 - `GET /ws/policy-executions/{id}/logs` -- WebSocket for live execution log streaming.
 - `POST /api/policies/{id}/sleep`, `/wake` -- manual execution triggers.
 
@@ -163,11 +163,15 @@ operations, persisting workload snapshots for reliable restoration.
 Kubernetes API calls on every HTTP request.
 
 **Key responsibilities:**
-- Background goroutine fetches Nodes, Pods, Deployments, and StatefulSets in
-  parallel every 10 seconds.
-- Results stored in `CachedSnapshot` behind a `sync.RWMutex`.
+- SharedInformers maintain persistent WATCH connections to the API server for
+  Nodes, Pods, Deployments, and StatefulSets. After an initial LIST, only
+  deltas are received.
+- Event-driven snapshot rebuilds with a 2-second trailing-edge debounce
+  collapse rapid changes into a single rebuild.
+- Results stored in `CachedSnapshot` behind a `sync.RWMutex` using deep copies
+  to prevent mutation of the informer store.
 - Partial failures do not evict previously-good data for unaffected resource types.
-- Pub/sub notification to SSE subscribers on each refresh.
+- Pub/sub notification to SSE subscribers on each rebuild.
 
 **Key interfaces:**
 - `Snapshot() CachedSnapshot` -- current cluster state.
@@ -454,7 +458,7 @@ kube-phoenix/
 │   │   │   └── windows.go           # SleepWindow type, validation, evaluator
 │   │   ├── k8s/
 │   │   │   ├── client.go            # Typed Kubernetes API wrapper
-│   │   │   └── cache.go             # ClusterCache: 10s parallel background refresh
+│   │   │   └── cache.go             # ClusterCache: SharedInformer-driven event cache
 │   │   ├── store/
 │   │   │   ├── models.go            # GORM model structs
 │   │   │   ├── store.go             # DB connection, AutoMigrate, connection pool

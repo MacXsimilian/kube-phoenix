@@ -36,7 +36,7 @@ func (h *Handler) getOverview(w http.ResponseWriter, r *http.Request) {
 }
 
 // streamCluster streams OverviewResponse updates as Server-Sent Events.
-// Each cache refresh (every ~10 s) pushes a new event to all connected clients.
+// Each cache rebuild pushes a new event to all connected clients.
 func (h *Handler) streamCluster(w http.ResponseWriter, r *http.Request) {
 	if h.cache == nil {
 		jsonError(w, "cluster cache unavailable", http.StatusServiceUnavailable)

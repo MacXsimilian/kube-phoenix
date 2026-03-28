@@ -705,7 +705,7 @@ The history page composes `ExecutionTable` and `LogViewer`. It supports deep-lin
 `src/components/history/ExecutionTable.tsx`
 
 - Paginated table using `TablePagination` (10/20/50 rows per page)
-- Refetches every 10s to catch newly completed executions
+- Refetches periodically to catch newly completed executions
 - **Filter dropdowns** for Status (running/success/failed/interrupted/skipped) and Direction (sleep/wake)
 - Columns: Started (`fmtDtShort` with year), Policy name (from preloaded relation), Direction (sleep/wake icon), Mode chip (using `MODE_COLORS`), Status via `StatusChip`, Duration (`fmtDuration`), Summary (icons for scaled/drained/deleted/errors)
 - Header styling extracted to `HEADER_SX` constant; chip sizing uses shared `SMALL_CHIP_SX`
@@ -1102,7 +1102,7 @@ sx={{ bgcolor: stateStyle.bg, color: stateStyle.color }}
 5. On connection loss, waits 3-5 seconds and reconnects in a loop
 6. Sets a `disconnected` flag after 2 consecutive failures, displayed as a warning chip
 
-The SSE stream pushes updates roughly every 10 seconds (the backend `ClusterCache` refresh interval). The REST polling fallback (`refetchInterval: 30_000`) only fires if the TanStack Query cache becomes stale, which normally does not happen while the SSE stream is healthy.
+The SSE stream pushes updates within ~2 seconds of any cluster change (the backend `ClusterCache` debounce interval). If nothing changes, no events are sent. The REST polling fallback (`refetchInterval: 30_000`) only fires if the TanStack Query cache becomes stale, which normally does not happen while the SSE stream is healthy.
 
 ### WebSocket: Execution Logs
 
