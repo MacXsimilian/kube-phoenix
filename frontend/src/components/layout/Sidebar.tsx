@@ -10,6 +10,7 @@ import ListItemButton from '@mui/material/ListItemButton'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemText from '@mui/material/ListItemText'
 import Box from '@mui/material/Box'
+import ButtonBase from '@mui/material/ButtonBase'
 import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
 import AboutModal from './AboutModal'
@@ -66,24 +67,24 @@ export default function Sidebar({ width, mobileOpen, onMobileClose }: Props) {
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Logo — click to open About */}
-      <Box
+      <ButtonBase
         onClick={() => setAboutOpen(true)}
+        aria-label="About kube-phoenix"
         sx={{
           p: 2.5,
           display: 'flex',
           alignItems: 'center',
           gap: 1,
-          cursor: 'pointer',
           borderRadius: 2,
           mx: 0.5,
           '&:hover': { bgcolor: 'action.hover' },
         }}
       >
-        <Typography sx={{ fontSize: 22, lineHeight: 1, userSelect: 'none' }}>🐦‍🔥</Typography>
+        <Typography role="img" aria-label="kube-phoenix logo" sx={{ fontSize: 22, lineHeight: 1, userSelect: 'none' }}>🐦‍🔥</Typography>
         <Typography variant="subtitle1" fontWeight={700} letterSpacing={-0.5}>
           kube-phoenix
         </Typography>
-      </Box>
+      </ButtonBase>
       <Divider />
 
       {/* Nav items */}

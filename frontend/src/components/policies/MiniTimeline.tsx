@@ -37,17 +37,20 @@ export default function MiniTimeline({
   const gradIdSleep = `spark-sleep-${uid}`
 
   // Real-time current hour — ticks every 30s
-  const [currentHour, setCurrentHour] = useState(() => nowInTimezone(timezone).fractionalHour)
-  const [todayDow, setTodayDow] = useState(() => nowInTimezone(timezone).dayOfWeek)
+  const [timeState, setTimeState] = useState(() => {
+    const now = nowInTimezone(timezone)
+    return { currentHour: now.fractionalHour, todayDow: now.dayOfWeek }
+  })
 
   useEffect(() => {
     const id = setInterval(() => {
       const now = nowInTimezone(timezone)
-      setCurrentHour(now.fractionalHour)
-      setTodayDow(now.dayOfWeek)
+      setTimeState({ currentHour: now.fractionalHour, todayDow: now.dayOfWeek })
     }, UPDATE_INTERVAL_MS)
     return () => clearInterval(id)
   }, [timezone])
+
+  const { currentHour, todayDow } = timeState
 
   // Build sleeping ranges for today (memoized to avoid recalc on unrelated re-renders)
   const sleepRanges = useMemo(() => {

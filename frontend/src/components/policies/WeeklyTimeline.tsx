@@ -3,9 +3,10 @@
 import React from 'react'
 import Box from '@mui/material/Box'
 import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
-import { timeToHours, isOvernight, nowInTimezone, DOW_MAP, computeTimeRangeBlocks } from '@/lib/windowUtils'
+import { nowInTimezone, DOW_MAP } from '@/lib/windowUtils'
 import { TIMELINE_COLORS } from '@/lib/colors'
 import LegendItem from './LegendItem'
+import { computeWindowSegments, computeOverrideSegments, computeExceptionSegments } from './timelineSegments'
 
 const ROW_H = 24
 const LABEL_W = 36
@@ -23,70 +24,11 @@ function rowY(row: number): number {
   return 18 + row * ROW_H
 }
 
-interface Block {
-  row: number
-  x1: number
-  x2: number
-  color: string
-  opacity: number
-}
-
-function windowBlocks(windows: SleepWindow[]): Block[] {
-  const blocks: Block[] = []
-  for (const sleepWindow of windows) {
-    for (const dow of sleepWindow.daysOfWeek) {
-      const row = DOW_MAP.indexOf(dow)
-      if (row === -1) continue
-
-      if (sleepWindow.allDay) {
-        blocks.push({ row, x1: hourToX(0), x2: hourToX(24), color: TIMELINE_COLORS.sleep, opacity: 0.45 })
-      } else {
-        const startH = timeToHours(sleepWindow.startTime)
-        const endH = timeToHours(sleepWindow.endTime)
-        const overnight = isOvernight(sleepWindow)
-        if (overnight) {
-          blocks.push({ row, x1: hourToX(startH), x2: hourToX(24), color: TIMELINE_COLORS.sleep, opacity: 0.45 })
-          const nextRow = (row + 1) % 7
-          blocks.push({ row: nextRow, x1: hourToX(0), x2: hourToX(endH), color: TIMELINE_COLORS.sleep, opacity: 0.45 })
-        } else {
-          blocks.push({ row, x1: hourToX(startH), x2: hourToX(endH), color: TIMELINE_COLORS.sleep, opacity: 0.45 })
-        }
-      }
-    }
-  }
-  return blocks
-}
-
-function timeRangeToBlocks(startISO: string, endISO: string, color: string, opacity: number, tz?: string): Block[] {
-  return computeTimeRangeBlocks(startISO, endISO, tz).map(tb => ({
-    row: tb.row,
-    x1: hourToX(tb.startHour),
-    x2: hourToX(tb.endHour),
-    color,
-    opacity,
-  }))
-}
-
-function overrideBlocks(overrides: PolicyOverride[], tz?: string): Block[] {
-  if (!overrides) return []
-  const blocks: Block[] = []
-  for (const ov of overrides) {
-    if (!ov.startsAt || !ov.endsAt) continue
-    const color = ov.overrideType === 'force_sleep' ? TIMELINE_COLORS.exception : TIMELINE_COLORS.override
-    blocks.push(...timeRangeToBlocks(ov.startsAt, ov.endsAt, color, 0.35, tz))
-  }
-  return blocks
-}
-
-function exceptionBlocks(exceptions: ScheduledException[], tz?: string): Block[] {
-  if (!exceptions) return []
-  const blocks: Block[] = []
-  for (const ex of exceptions) {
-    if (ex.status === 'cancelled' || ex.status === 'completed') continue
-    const color = ex.exceptionType === 'force_sleep' ? TIMELINE_COLORS.exception : TIMELINE_COLORS.awake
-    blocks.push(...timeRangeToBlocks(ex.startsAt, ex.endsAt, color, 0.3, tz))
-  }
-  return blocks
+const VARIANT_OPACITY: Record<string, number> = {
+  sleep: 0.45,
+  override: 0.35,
+  exception: 0.35,
+  awake: 0.3,
 }
 
 export default function WeeklyTimeline({
@@ -106,10 +48,10 @@ export default function WeeklyTimeline({
   const todayRow = DOW_MAP.indexOf(dayOfWeek)
   const nowX = hourToX(nowH)
 
-  const allBlocks = [
-    ...windowBlocks(windows),
-    ...overrideBlocks(overrides ?? [], timezone),
-    ...exceptionBlocks(exceptions ?? [], timezone),
+  const allSegs = [
+    ...computeWindowSegments(windows),
+    ...computeOverrideSegments(overrides ?? [], timezone),
+    ...computeExceptionSegments(exceptions ?? [], timezone),
   ]
 
   return (
@@ -185,16 +127,16 @@ export default function WeeklyTimeline({
         ))}
 
         {/* Blocks */}
-        {allBlocks.map((b, i) => (
+        {allSegs.map((seg, i) => (
           <rect
             key={i}
-            x={b.x1}
-            y={rowY(b.row) + 1}
-            width={Math.max(b.x2 - b.x1, 1)}
+            x={hourToX(seg.startHour)}
+            y={rowY(seg.row) + 1}
+            width={Math.max(hourToX(seg.endHour) - hourToX(seg.startHour), 1)}
             height={ROW_H - 4}
             rx={2}
-            fill={b.color}
-            opacity={b.opacity}
+            fill={seg.color}
+            opacity={VARIANT_OPACITY[seg.variant] ?? 0.35}
           />
         ))}
 

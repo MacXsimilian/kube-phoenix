@@ -23,6 +23,12 @@ import { useColors } from '@/lib/colors'
 import { ACTIVITY_FEED_STALE_MS, ACTIVITY_FEED_REFETCH_MS } from '@/lib/constants'
 import StatusChip from '@/components/shared/StatusChip'
 import LogViewer from '@/components/history/LogViewer'
+import { MODE_COLORS } from '@/lib/statusColors'
+
+const livePulseAnimation = {
+  animation: 'livePulse 1.8s ease-in-out infinite',
+  '@keyframes livePulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.2 } },
+} as const
 
 export default function ActivityFeed() {
   const router = useRouter()
@@ -114,8 +120,8 @@ export default function ActivityFeed() {
                     sx={{
                       height: 18,
                       fontSize: 10,
-                      bgcolor: exec.mode === 'apply' ? 'rgba(245,158,11,0.15)' : 'rgba(59,130,246,0.15)',
-                      color: exec.mode === 'apply' ? 'warning.main' : 'info.main',
+                      bgcolor: (MODE_COLORS[exec.mode] ?? MODE_COLORS.plan).bg,
+                      color: (MODE_COLORS[exec.mode] ?? MODE_COLORS.plan).color,
                     }}
                   />
                 </Box>
@@ -126,8 +132,7 @@ export default function ActivityFeed() {
                     </Typography>
                     <Box sx={{
                       width: 7, height: 7, borderRadius: '50%', bgcolor: colors.cyan, flexShrink: 0,
-                      animation: 'livePulse 1.8s ease-in-out infinite',
-                      '@keyframes livePulse': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.2 } },
+                      ...livePulseAnimation,
                     }} />
                   </Box>
                 ) : (

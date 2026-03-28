@@ -95,13 +95,12 @@ export default function OverridesSection({
               </TableRow>
             </TableHead>
             <TableBody>
-              {overrides.map(ov => (
+              {overrides.map(ov => {
+                const typeLabel = TYPE_LABELS[ov.overrideType] ?? TYPE_LABEL_FALLBACK
+                return (
                 <TableRow key={ov.id}>
                   <TableCell>
-                    {(() => {
-                      const typeLabel = TYPE_LABELS[ov.overrideType] ?? TYPE_LABEL_FALLBACK
-                      return <Chip label={typeLabel.label} size="small" sx={{ fontSize: 10, color: typeLabel.color, bgcolor: typeLabel.bg }} />
-                    })()}
+                    <Chip label={typeLabel.label} size="small" sx={{ fontSize: 10, color: typeLabel.color, bgcolor: typeLabel.bg }} />
                   </TableCell>
                   <TableCell>
                     {ov.startsAt ? `${fmtDt(ov.startsAt)} \u2192 ${fmtDt(ov.endsAt)}` : fmtDt(ov.targetCronTime)}
@@ -121,7 +120,8 @@ export default function OverridesSection({
                     )}
                   </TableCell>
                 </TableRow>
-              ))}
+                )
+              })}
             </TableBody>
           </Table>
         )}

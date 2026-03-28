@@ -33,6 +33,11 @@ import MiniTimeline from './MiniTimeline'
 
 const DISABLED_OPACITY = 0.45
 
+const LED_PULSE_KEYFRAMES = {
+  '0%, 100%': { boxShadow: '0 0 4px rgba(252,211,77,0.4)' },
+  '50%': { boxShadow: '0 0 14px rgba(252,211,77,0.75), 0 0 28px rgba(252,211,77,0.25)' },
+} as const
+
 const ACTION_BTN_SX = {
   width: 32,
   height: 32,
@@ -54,6 +59,48 @@ function nextTransitionLabel(policy: Policy): string {
   if (policy.currentState === 'sleeping') return `Wake ${relative}`
   if (policy.currentState === 'awake') return `Sleep ${relative}`
   return relative
+}
+
+// ── Delete confirmation sub-component ────────────────────────────────────────
+
+function DeletePolicyDialog({
+  open,
+  policyName,
+  isPending,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean
+  policyName: string
+  isPending: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      slotProps={{ paper: { sx: { bgcolor: 'background.paper', minWidth: 320 } } }}
+    >
+      <DialogTitle fontWeight={700}>Delete Policy?</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary">
+          Delete <strong>{policyName}</strong>? All associated executions and snapshots will be retained.
+        </Typography>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={onClose} sx={{ color: 'text.secondary' }}>Cancel</Button>
+        <Button
+          variant="contained"
+          color="error"
+          disabled={isPending}
+          onClick={() => { onClose(); onConfirm() }}
+        >
+          Delete
+        </Button>
+      </DialogActions>
+    </Dialog>
+  )
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -137,10 +184,7 @@ export default function PolicyCard({
                     boxShadow: led.glow !== 'none' ? `0 0 8px ${led.glow}` : undefined,
                     ...(policy.currentState === 'transitioning' && {
                       animation: 'led-pulse 1.5s ease-in-out infinite',
-                      '@keyframes led-pulse': {
-                        '0%, 100%': { boxShadow: '0 0 4px rgba(252,211,77,0.4)' },
-                        '50%': { boxShadow: '0 0 14px rgba(252,211,77,0.75), 0 0 28px rgba(252,211,77,0.25)' },
-                      },
+                      '@keyframes led-pulse': LED_PULSE_KEYFRAMES,
                     }),
                   }}
                 />
@@ -168,7 +212,7 @@ export default function PolicyCard({
                   <Chip
                     label={`${policy.namespaceFilter.split(',').length} ns`}
                     size="small"
-                    sx={{ ...SMALL_CHIP_SX, color: colors.muted, bgcolor: 'rgba(255,255,255,0.06)' }}
+                    sx={{ ...SMALL_CHIP_SX, color: colors.muted, bgcolor: 'divider' }}
                   />
                 )}
               </Box>
@@ -194,7 +238,8 @@ export default function PolicyCard({
                 justifyContent: 'center',
                 gap: 0.75,
                 pl: 2,
-                borderLeft: '1px solid rgba(255,255,255,0.06)',
+                borderLeft: '1px solid',
+                borderLeftColor: 'divider',
               }}
             >
               <Box>
@@ -291,29 +336,13 @@ export default function PolicyCard({
         </Box>
       </Paper>
 
-      <Dialog
+      <DeletePolicyDialog
         open={deleteDialog}
+        policyName={policy.name}
+        isPending={deleteMut.isPending}
         onClose={() => setDeleteDialog(false)}
-        slotProps={{ paper: { sx: { bgcolor: 'background.paper', minWidth: 320 } } }}
-      >
-        <DialogTitle fontWeight={700}>Delete Policy?</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary">
-            Delete <strong>{policy.name}</strong>? All associated executions and snapshots will be retained.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setDeleteDialog(false)} sx={{ color: 'text.secondary' }}>Cancel</Button>
-          <Button
-            variant="contained"
-            color="error"
-            disabled={deleteMut.isPending}
-            onClick={() => { setDeleteDialog(false); deleteMut.mutate() }}
-          >
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onConfirm={() => deleteMut.mutate()}
+      />
     </>
   )
 }

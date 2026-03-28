@@ -3,7 +3,7 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 
-interface Props {
+interface LabeledSwitchProps {
   label: string
   description: string
   checked: boolean
@@ -11,7 +11,7 @@ interface Props {
   onChange: (v: boolean) => void
 }
 
-export default function LabeledSwitch({ label, description, checked, disabled, onChange }: Props) {
+export default function LabeledSwitch({ label, description, checked, disabled, onChange }: LabeledSwitchProps) {
   return (
     <FormControlLabel
       control={<Switch checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />}

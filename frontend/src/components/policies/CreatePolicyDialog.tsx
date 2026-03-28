@@ -29,7 +29,11 @@ const DEFAULT_WINDOWS: SleepWindow[] = [
   { daysOfWeek: [1, 2, 3, 4, 5], startTime: '19:00', endTime: '07:00', allDay: false },
 ]
 
-const DEFAULTS: PolicyInput & { editingWindows: SleepWindow[] } = {
+interface PolicyFormState extends PolicyInput {
+  editingWindows: SleepWindow[]
+}
+
+const DEFAULTS: PolicyFormState = {
   name: '',
   description: '',
   sleepWindows: DEFAULT_WINDOWS,
@@ -85,7 +89,7 @@ export default function CreatePolicyDialog({
     }
   }, [open, existing])
 
-  function set<K extends keyof typeof DEFAULTS>(key: K, val: (typeof DEFAULTS)[K]) {
+  function setField<K extends keyof PolicyFormState>(key: K, val: PolicyFormState[K]) {
     setForm(f => ({ ...f, [key]: val }))
   }
 
@@ -147,24 +151,24 @@ export default function CreatePolicyDialog({
         <TextField
           label="Name"
           value={form.name}
-          onChange={e => set('name', e.target.value)}
+          onChange={e => setField('name', e.target.value)}
           onBlur={() => setTouched(t => ({ ...t, name: true }))}
           fullWidth
           size="small"
           required
           error={touched.name && !form.name.trim()}
           helperText={touched.name && !form.name.trim() ? 'Name is required' : undefined}
-          inputProps={{ maxLength: 255 }}
+          slotProps={{ htmlInput: { maxLength: 255 } }}
         />
         <TextField
           label="Description"
           value={form.description ?? ''}
-          onChange={e => set('description', e.target.value)}
+          onChange={e => setField('description', e.target.value)}
           fullWidth
           size="small"
           multiline
           rows={2}
-          inputProps={{ maxLength: 1024 }}
+          slotProps={{ htmlInput: { maxLength: 1024 } }}
         />
 
         <Divider><Typography variant="caption" color="text.disabled">Schedule</Typography></Divider>
@@ -172,7 +176,7 @@ export default function CreatePolicyDialog({
         <TextField
           label="Timezone"
           value={form.timezone ?? 'UTC'}
-          onChange={e => set('timezone', e.target.value)}
+          onChange={e => setField('timezone', e.target.value)}
           select
           fullWidth
           size="small"
@@ -184,7 +188,7 @@ export default function CreatePolicyDialog({
 
         <WindowPicker
           windows={form.editingWindows}
-          onChange={w => set('editingWindows', w)}
+          onChange={w => setField('editingWindows', w)}
         />
 
         {/* Live preview — Dashboard Mini-Card */}
@@ -245,7 +249,7 @@ export default function CreatePolicyDialog({
         <TextField
           label="Namespace Filter"
           value={form.namespaceFilter ?? ''}
-          onChange={e => set('namespaceFilter', e.target.value)}
+          onChange={e => setField('namespaceFilter', e.target.value)}
           fullWidth
           size="small"
           placeholder="e.g. staging,dev  (empty = all)"
@@ -254,7 +258,7 @@ export default function CreatePolicyDialog({
         <TextField
           label="Label Selector"
           value={form.labelSelector ?? ''}
-          onChange={e => set('labelSelector', e.target.value)}
+          onChange={e => setField('labelSelector', e.target.value)}
           fullWidth
           size="small"
           placeholder="e.g. app=api,tier!=db"
@@ -267,7 +271,7 @@ export default function CreatePolicyDialog({
           <TextField
             label="Mode"
             value={form.mode ?? 'plan'}
-            onChange={e => set('mode', e.target.value as 'plan' | 'apply')}
+            onChange={e => setField('mode', e.target.value as 'plan' | 'apply')}
             select
             size="small"
             sx={{ minWidth: 140 }}
@@ -279,17 +283,17 @@ export default function CreatePolicyDialog({
             label="Timeout (minutes)"
             type="number"
             value={form.timeoutMinutes ?? 30}
-            onChange={e => set('timeoutMinutes', Number(e.target.value))}
+            onChange={e => setField('timeoutMinutes', Number(e.target.value))}
             size="small"
             sx={{ minWidth: 160 }}
-            inputProps={{ min: 1, max: 1440 }}
+            slotProps={{ htmlInput: { min: 1, max: 1440 } }}
             helperText="Execution timeout in minutes (1-1440)"
           />
           <FormControlLabel
             control={
               <Switch
                 checked={form.enabled ?? true}
-                onChange={e => set('enabled', e.target.checked)}
+                onChange={e => setField('enabled', e.target.checked)}
                 size="small"
               />
             }
