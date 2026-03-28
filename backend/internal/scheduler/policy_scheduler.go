@@ -31,6 +31,7 @@ type schedulerStore interface {
 	GetPolicy(id uint) (*store.Policy, error)
 	ListPolicies() ([]store.Policy, error)
 	ListActiveOverrides(policyID uint, now time.Time) ([]store.PolicyOverride, error)
+	ListActiveOverridesForPolicies(policyIDs []uint, now time.Time) (map[uint][]store.PolicyOverride, error)
 	CountOpenSnapshotsForRestore(policyID uint) (int64, error)
 	UpdatePolicyState(id uint, state string, nextTransition *time.Time) error
 	SetPolicyTransitioning(id uint) error
@@ -61,6 +62,7 @@ type evalContext struct {
 	now                 time.Time
 	autoWake            bool
 	reconcileWhileAwake bool
+	overridesByPolicy   map[uint][]store.PolicyOverride // batch-fetched per tick
 }
 
 // cachedPolicy holds a parsed in-memory representation of a policy.
@@ -339,9 +341,21 @@ func (ps *PolicyScheduler) tickLoop(ctx context.Context, interval time.Duration)
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			ps.evaluateAll()
+			ps.safeEvaluateAll()
 		}
 	}
+}
+
+// safeEvaluateAll wraps evaluateAll with panic recovery so a single bad
+// policy evaluation cannot kill the scheduler goroutine permanently.
+func (ps *PolicyScheduler) safeEvaluateAll() {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("policy scheduler: panic in evaluateAll (recovered)", "panic", r)
+			metrics.SchedulerPanicsTotal.Inc()
+		}
+	}()
+	ps.evaluateAll()
 }
 
 func (ps *PolicyScheduler) evaluateAll() {
@@ -349,8 +363,12 @@ func (ps *PolicyScheduler) evaluateAll() {
 
 	ps.mu.Lock()
 	snapshot := make([]cachedPolicy, 0, len(ps.policies))
+	policyIDs := make([]uint, 0, len(ps.policies))
 	for _, cp := range ps.policies {
 		snapshot = append(snapshot, cp)
+		if cp.policy.Enabled {
+			policyIDs = append(policyIDs, cp.policy.ID)
+		}
 	}
 	ctx := evalContext{
 		now:                 start,
@@ -358,6 +376,14 @@ func (ps *PolicyScheduler) evaluateAll() {
 		reconcileWhileAwake: ps.cfg.ReconcileWhileAwake,
 	}
 	ps.mu.Unlock()
+
+	// Batch-fetch overrides for all enabled policies in one query.
+	overrideMap, err := ps.store.ListActiveOverridesForPolicies(policyIDs, start)
+	if err != nil {
+		slog.Warn("failed to batch-fetch active overrides", "err", err)
+		overrideMap = map[uint][]store.PolicyOverride{}
+	}
+	ctx.overridesByPolicy = overrideMap
 
 	for _, cp := range snapshot {
 		ps.evaluatePolicy(cp, ctx)
@@ -372,11 +398,7 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, ctx evalContext) {
 	if !p.Enabled {
 		return
 	}
-	overrides, err := ps.store.ListActiveOverrides(p.ID, ctx.now)
-	if err != nil {
-		slog.Warn("failed to list active overrides", "policyID", p.ID, "err", err)
-		overrides = nil
-	}
+	overrides := ctx.overridesByPolicy[p.ID]
 	intended := IntendedState(cp.windows, p.Timezone, overrides, ctx.now)
 
 	if intended == PolicyStateUnknown {
@@ -598,6 +620,16 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 	ps.inflight.Add(1)
 	go func() {
 		defer ps.inflight.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("policy scheduler: panic in execution goroutine (recovered)",
+					"policyID", p.ID, "execID", exec.ID, "panic", r)
+				metrics.SchedulerPanicsTotal.Inc()
+				// Best-effort: mark execution failed and reset policy state.
+				_ = ps.store.FinishPolicyExecution(exec.ID, store.ExecStatusFailed, nil)
+				ps.updatePolicyState(p.ID, direction, store.ExecStatusFailed)
+			}
+		}()
 		timeout := time.Duration(p.TimeoutMinutes) * time.Minute
 		if timeout <= 0 {
 			timeout = defaultExecutionTimeout

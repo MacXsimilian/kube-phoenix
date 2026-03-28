@@ -82,6 +82,9 @@ func (m *mockStore) ListOpenExceptions() ([]store.ScheduledException, error) {
 	return nil, nil
 }
 func (m *mockStore) UpdateScheduledExceptionStatus(_ uint, _, _ string) error { return nil }
+func (m *mockStore) ListActiveOverridesForPolicies(_ []uint, _ time.Time) (map[uint][]store.PolicyOverride, error) {
+	return map[uint][]store.PolicyOverride{}, nil
+}
 
 type mockRunner struct{}
 

@@ -197,9 +197,18 @@ func runTicker(ctx context.Context, interval time.Duration, name string, fn func
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			fn()
+			safeTick(name, fn)
 		}
 	}
+}
+
+func safeTick(name string, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic in background ticker (recovered)", "ticker", name, "panic", r)
+		}
+	}()
+	fn()
 }
 
 func parseIntEnv(key string, fallback int) int {
