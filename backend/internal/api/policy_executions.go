@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
-	"gorm.io/gorm"
 )
 
 const maxWSConnections = 100
@@ -67,11 +65,7 @@ func (h *Handler) getPolicyExecution(w http.ResponseWriter, r *http.Request) {
 	}
 	exec, err := h.store.GetPolicyExecution(id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, ErrNotFound, http.StatusNotFound)
-		} else {
-			jsonInternalError(w, err, "get policy execution failed")
-		}
+		handleStoreError(w, err, ErrNotFound, "get policy execution failed")
 		return
 	}
 	jsonOK(w, exec)

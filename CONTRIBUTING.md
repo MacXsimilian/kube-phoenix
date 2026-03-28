@@ -75,7 +75,7 @@ kube-phoenix/
   backend/
     cmd/server/main.go            # Entry point
     internal/
-      api/                        # HTTP handlers + Chi router (cluster split by resource type)
+      api/                        # HTTP handlers + Chi router (cluster handlers split by resource type)
       auth/                       # OIDC provider, RBAC permissions, rate limiting
       docs/                       # Embedded openapi.yaml (copied at build time)
       k8s/                        # Kubernetes client + ClusterCache
@@ -91,7 +91,7 @@ kube-phoenix/
     app/                          # Next.js pages
     components/                   # UI components by domain (audit, cluster, common, guardrails,
                                   #   history, policies, settings, shared)
-    lib/                          # API client, auth context, types, shared hooks, utilities
+    lib/                          # API client (apiFetch), auth context, types, shared hooks, utilities
     theme/                        # MUI theme (dark + light)
   helm/kube-phoenix/              # Helm chart
   examples/                       # Example Helm value overlays

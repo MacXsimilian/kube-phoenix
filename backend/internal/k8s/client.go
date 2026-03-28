@@ -229,43 +229,89 @@ func (c *Client) ScaleDeployment(ctx context.Context, namespace, name string, re
 	return err
 }
 
-func (c *Client) AnnotateDeployment(ctx context.Context, namespace, name, key, value string) error {
+// annotateResource sets an annotation on any resource via get/update funcs.
+func annotateResource(
+	namespace, name, key, value, resource string,
+	getAnnotations func() (map[string]string, error),
+	setAndUpdate func(map[string]string) error,
+) error {
 	start := time.Now()
 	err := retryOnConflict(func() error {
-		d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+		annotations, err := getAnnotations()
 		if err != nil {
-			return fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
+			return fmt.Errorf("get %s %s/%s: %w", resource, namespace, name, err)
 		}
-		if d.Annotations == nil {
-			d.Annotations = map[string]string{}
+		if annotations == nil {
+			annotations = map[string]string{}
 		}
-		d.Annotations[key] = value
-		_, err = c.cs.AppsV1().Deployments(namespace).Update(ctx, d, metav1.UpdateOptions{})
-		if err != nil {
-			return fmt.Errorf("annotate deployment %s/%s: %w", namespace, name, err)
+		annotations[key] = value
+		if err := setAndUpdate(annotations); err != nil {
+			return fmt.Errorf("annotate %s %s/%s: %w", resource, namespace, name, err)
 		}
 		return nil
 	})
-	recordK8sOp("annotate", "deployment", start, err)
+	recordK8sOp("annotate", resource, start, err)
 	return err
 }
 
-func (c *Client) RemoveDeploymentAnnotation(ctx context.Context, namespace, name, key string) error {
+// removeAnnotation removes an annotation from any resource via get/update funcs.
+func removeAnnotation(
+	namespace, name, key, resource string,
+	getAnnotations func() (map[string]string, error),
+	setAndUpdate func(map[string]string) error,
+) error {
 	start := time.Now()
 	err := retryOnConflict(func() error {
-		d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+		annotations, err := getAnnotations()
 		if err != nil {
-			return fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
+			return fmt.Errorf("get %s %s/%s: %w", resource, namespace, name, err)
 		}
-		delete(d.Annotations, key)
-		_, err = c.cs.AppsV1().Deployments(namespace).Update(ctx, d, metav1.UpdateOptions{})
-		if err != nil {
-			return fmt.Errorf("remove annotation deployment %s/%s: %w", namespace, name, err)
+		delete(annotations, key)
+		if err := setAndUpdate(annotations); err != nil {
+			return fmt.Errorf("remove annotation %s %s/%s: %w", resource, namespace, name, err)
 		}
 		return nil
 	})
-	recordK8sOp("annotate", "deployment", start, err)
+	recordK8sOp("annotate", resource, start, err)
 	return err
+}
+
+func (c *Client) AnnotateDeployment(ctx context.Context, namespace, name, key, value string) error {
+	var d *appsv1.Deployment
+	return annotateResource(namespace, name, key, value, "deployment",
+		func() (map[string]string, error) {
+			var err error
+			d, err = c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return d.Annotations, nil
+		},
+		func(a map[string]string) error {
+			d.Annotations = a
+			_, err := c.cs.AppsV1().Deployments(namespace).Update(ctx, d, metav1.UpdateOptions{})
+			return err
+		},
+	)
+}
+
+func (c *Client) RemoveDeploymentAnnotation(ctx context.Context, namespace, name, key string) error {
+	var d *appsv1.Deployment
+	return removeAnnotation(namespace, name, key, "deployment",
+		func() (map[string]string, error) {
+			var err error
+			d, err = c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return d.Annotations, nil
+		},
+		func(a map[string]string) error {
+			d.Annotations = a
+			_, err := c.cs.AppsV1().Deployments(namespace).Update(ctx, d, metav1.UpdateOptions{})
+			return err
+		},
+	)
 }
 
 // ─── StatefulSets ─────────────────────────────────────────────────────────────
@@ -310,42 +356,41 @@ func (c *Client) ScaleStatefulSet(ctx context.Context, namespace, name string, r
 }
 
 func (c *Client) AnnotateStatefulSet(ctx context.Context, namespace, name, key, value string) error {
-	start := time.Now()
-	err := retryOnConflict(func() error {
-		ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			return fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
-		}
-		if ss.Annotations == nil {
-			ss.Annotations = map[string]string{}
-		}
-		ss.Annotations[key] = value
-		_, err = c.cs.AppsV1().StatefulSets(namespace).Update(ctx, ss, metav1.UpdateOptions{})
-		if err != nil {
-			return fmt.Errorf("annotate statefulset %s/%s: %w", namespace, name, err)
-		}
-		return nil
-	})
-	recordK8sOp("annotate", "statefulset", start, err)
-	return err
+	var ss *appsv1.StatefulSet
+	return annotateResource(namespace, name, key, value, "statefulset",
+		func() (map[string]string, error) {
+			var err error
+			ss, err = c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return ss.Annotations, nil
+		},
+		func(a map[string]string) error {
+			ss.Annotations = a
+			_, err := c.cs.AppsV1().StatefulSets(namespace).Update(ctx, ss, metav1.UpdateOptions{})
+			return err
+		},
+	)
 }
 
 func (c *Client) RemoveStatefulSetAnnotation(ctx context.Context, namespace, name, key string) error {
-	start := time.Now()
-	err := retryOnConflict(func() error {
-		ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			return fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
-		}
-		delete(ss.Annotations, key)
-		_, err = c.cs.AppsV1().StatefulSets(namespace).Update(ctx, ss, metav1.UpdateOptions{})
-		if err != nil {
-			return fmt.Errorf("remove annotation statefulset %s/%s: %w", namespace, name, err)
-		}
-		return nil
-	})
-	recordK8sOp("annotate", "statefulset", start, err)
-	return err
+	var ss *appsv1.StatefulSet
+	return removeAnnotation(namespace, name, key, "statefulset",
+		func() (map[string]string, error) {
+			var err error
+			ss, err = c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+			if err != nil {
+				return nil, err
+			}
+			return ss.Annotations, nil
+		},
+		func(a map[string]string) error {
+			ss.Annotations = a
+			_, err := c.cs.AppsV1().StatefulSets(namespace).Update(ctx, ss, metav1.UpdateOptions{})
+			return err
+		},
+	)
 }
 
 // ─── Nodes ────────────────────────────────────────────────────────────────────
@@ -686,23 +731,31 @@ func (c *Client) GetPodMetrics(ctx context.Context, namespace, name string) (map
 	return result, nil
 }
 
+// PodLogOptions configures which logs to retrieve from a pod.
+type PodLogOptions struct {
+	Container string
+	TailLines int64
+	Previous  bool
+	Follow    bool
+}
+
 // GetPodLogs returns the raw log output for a container in a pod.
-// When follow is true the stream stays open and tails new output (like kubectl logs -f).
+// When Follow is true the stream stays open and tails new output (like kubectl logs -f).
 // The caller is responsible for closing the returned io.ReadCloser.
-func (c *Client) GetPodLogs(ctx context.Context, namespace, name, container string, tailLines int64, previous, follow bool) (io.ReadCloser, error) {
+func (c *Client) GetPodLogs(ctx context.Context, namespace, name string, logOpts PodLogOptions) (io.ReadCloser, error) {
 	start := time.Now()
 	opts := &corev1.PodLogOptions{
-		Container: container,
-		Previous:  previous,
-		Follow:    follow,
+		Container: logOpts.Container,
+		Previous:  logOpts.Previous,
+		Follow:    logOpts.Follow,
 	}
-	if tailLines > 0 {
-		opts.TailLines = &tailLines
+	if logOpts.TailLines > 0 {
+		opts.TailLines = &logOpts.TailLines
 	}
 	stream, err := c.cs.CoreV1().Pods(namespace).GetLogs(name, opts).Stream(ctx)
 	recordK8sOp("get", "podlogs", start, err)
 	if err != nil {
-		return nil, fmt.Errorf("get logs %s/%s (container=%s): %w", namespace, name, container, err)
+		return nil, fmt.Errorf("get logs %s/%s (container=%s): %w", namespace, name, logOpts.Container, err)
 	}
 	return stream, nil
 }

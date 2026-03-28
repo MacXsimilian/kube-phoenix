@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'next/navigation'
 import Paper from '@mui/material/Paper'
@@ -10,28 +10,31 @@ import TableCell from '@mui/material/TableCell'
 import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
-import TableSortLabel from '@mui/material/TableSortLabel'
 import TablePagination from '@mui/material/TablePagination'
 import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
 import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
 import Alert from '@mui/material/Alert'
-import CircularProgress from '@mui/material/CircularProgress'
+import CenteredSpinner from '@/components/common/CenteredSpinner'
 import Typography from '@mui/material/Typography'
 import IconButton from '@mui/material/IconButton'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import Tooltip from '@mui/material/Tooltip'
 import { getWorkloads } from '@/lib/api'
 import type { Workload } from '@/lib/types'
-import { sinceMs } from '@/lib/formatters'
+import { sinceMs, formatError } from '@/lib/formatters'
 import { useIsDark } from '@/lib/useIsDark'
 import { statusColors } from '@/components/cluster/statusColors'
 import { useColors } from '@/lib/colors'
 import { WORKLOADS_REFETCH_MS } from '@/lib/constants'
+import { useTriStateSort } from '@/lib/useTriStateSort'
+import SortHeader from '@/lib/SortHeader'
 import WorkloadDetailDrawer from './WorkloadDetailDrawer'
 
 const validStatuses = ['running', 'sleeping', 'partial']
+
+type WorkloadSortCol = 'namespace' | 'name' | 'kind' | 'replicas' | 'status'
 
 export default function WorkloadsTable() {
   const searchParams = useSearchParams()
@@ -50,24 +53,13 @@ export default function WorkloadsTable() {
     const statusFromUrl = searchParams.get('status') ?? 'all'
     setStatusFilter(validStatuses.includes(statusFromUrl) ? statusFromUrl : 'all')
   }, [searchParams])
-  const [sortCol, setSortCol] = useState<'namespace' | 'name' | 'kind' | 'replicas' | 'status' | null>(null)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const { sortCol, sortDir, handleSort } = useTriStateSort<WorkloadSortCol>()
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(20)
   const [selectedWorkload, setSelectedWorkload] = useState<Workload | null>(null)
   const isDark = useIsDark()
   const colors = useColors()
   const STATUS_COLORS = statusColors(isDark)
-
-  const handleSort = useCallback((col: typeof sortCol) => {
-    if (sortCol === col) {
-      if (sortDir === 'asc') setSortDir('desc')
-      else { setSortCol(null); setSortDir('asc') }
-    } else {
-      setSortCol(col)
-      setSortDir('asc')
-    }
-  }, [sortCol, sortDir])
 
   const namespaces = useMemo(
     () => ['all', ...Array.from(new Set(workloads.map((w) => w.namespace))).sort()],
@@ -171,36 +163,20 @@ export default function WorkloadsTable() {
 
       {isError ? (
         <Alert severity="error">
-          Failed to load workloads: {error instanceof Error ? error.message : 'Unknown error'}
+          Failed to load workloads: {formatError(error)}
         </Alert>
       ) : isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress />
-        </Box>
+        <CenteredSpinner />
       ) : (
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
               <TableRow>
                 {(['namespace', 'name', 'kind'] as const).map((col) => (
-                  <TableCell key={col} sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>
-                    <TableSortLabel active={sortCol === col} direction={sortCol === col ? sortDir : 'asc'} onClick={() => handleSort(col)}>
-                      {col.toUpperCase()}
-                    </TableSortLabel>
-                  </TableCell>
+                  <SortHeader key={col} col={col} label={col.toUpperCase()} active={sortCol} dir={sortDir} onSort={handleSort} />
                 ))}
-                <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>
-                  <Tooltip title="Current replicas / Saved replicas (pre-sleep)" arrow>
-                    <TableSortLabel active={sortCol === 'replicas'} direction={sortCol === 'replicas' ? sortDir : 'asc'} onClick={() => handleSort('replicas')}>
-                      REPLICAS
-                    </TableSortLabel>
-                  </Tooltip>
-                </TableCell>
-                <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12 }}>
-                  <TableSortLabel active={sortCol === 'status'} direction={sortCol === 'status' ? sortDir : 'asc'} onClick={() => handleSort('status')}>
-                    STATUS
-                  </TableSortLabel>
-                </TableCell>
+                <SortHeader col="replicas" label="REPLICAS" active={sortCol} dir={sortDir} onSort={handleSort} />
+                <SortHeader col="status" label="STATUS" active={sortCol} dir={sortDir} onSort={handleSort} />
               </TableRow>
             </TableHead>
             <TableBody>

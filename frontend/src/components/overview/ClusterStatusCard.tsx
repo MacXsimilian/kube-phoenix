@@ -1,6 +1,6 @@
 'use client'
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Typography from '@mui/material/Typography'
@@ -14,7 +14,7 @@ import Brightness4Icon from '@mui/icons-material/Brightness4'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import Skeleton from '@mui/material/Skeleton'
 import Alert from '@mui/material/Alert'
-import { getOverview, triggerPolicySleep, triggerPolicyWake, getPolicies } from '@/lib/api'
+import { getOverview, getPolicies } from '@/lib/api'
 import { timeUntil } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
@@ -22,6 +22,7 @@ import { canTriggerSchedules } from '@/lib/rbac'
 import { useColors } from '@/lib/colors'
 import { useClusterStream } from '@/lib/useClusterStream'
 import { useSnackbar } from '@/lib/useSnackbar'
+import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
 
 const statusPulseAnimation = {
   animation: 'statusPulse 2s ease-in-out infinite',
@@ -59,35 +60,14 @@ export default function ClusterStatusCard() {
   // Find first enabled policy for quick sleep/wake triggers
   const firstPolicy = policies.find(p => p.enabled)
 
-  const sleepMut = useMutation({
-    mutationFn: () => {
-      if (!firstPolicy) throw new Error('No enabled policy found')
-      return triggerPolicySleep(firstPolicy.id)
-    },
-    onSuccess: ({ executionId }) => {
-      queryClient.invalidateQueries({ queryKey: ['policies'] })
+  const { sleepMut, wakeMut, isBusy } = usePolicyTriggers(
+    firstPolicy?.id ?? 0,
+    notify,
+    ({ executionId }) => {
       queryClient.invalidateQueries({ queryKey: ['overview'] })
       router.push(`/policies/detail/?id=${firstPolicy!.id}&exec=${executionId}`)
     },
-    onError: (err: unknown) => {
-      notify(err instanceof Error ? err.message : 'Sleep trigger failed', 'error')
-    },
-  })
-
-  const wakeMut = useMutation({
-    mutationFn: () => {
-      if (!firstPolicy) throw new Error('No enabled policy found')
-      return triggerPolicyWake(firstPolicy.id)
-    },
-    onSuccess: ({ executionId }) => {
-      queryClient.invalidateQueries({ queryKey: ['policies'] })
-      queryClient.invalidateQueries({ queryKey: ['overview'] })
-      router.push(`/policies/detail/?id=${firstPolicy!.id}&exec=${executionId}`)
-    },
-    onError: (err: unknown) => {
-      notify(err instanceof Error ? err.message : 'Wake trigger failed', 'error')
-    },
-  })
+  )
 
   const sleeping = overview?.sleepingCount ?? 0
   const running = overview?.runningCount ?? 0
@@ -219,7 +199,7 @@ export default function ClusterStatusCard() {
                       variant="outlined"
                       startIcon={<BedtimeIcon fontSize="small" />}
                       onClick={() => sleepMut.mutate()}
-                      disabled={!hasTrigger || !firstPolicy || sleepMut.isPending}
+                      disabled={!hasTrigger || !firstPolicy || isBusy}
                       sx={{ borderColor: 'divider', color: 'text.secondary' }}
                     >
                       Sleep Now
@@ -232,7 +212,7 @@ export default function ClusterStatusCard() {
                       variant="outlined"
                       startIcon={<WbSunnyIcon fontSize="small" />}
                       onClick={() => wakeMut.mutate()}
-                      disabled={!hasTrigger || !firstPolicy || wakeMut.isPending}
+                      disabled={!hasTrigger || !firstPolicy || isBusy}
                       sx={{ borderColor: 'divider', color: 'text.secondary' }}
                     >
                       Wake Now

@@ -2,16 +2,22 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/auth"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+)
+
+// Sentinel errors for credential verification.
+var (
+	errLoginFailed    = errors.New("invalid username or password")
+	errAccountDisabled = errors.New("account disabled")
 )
 
 // ─── Login ───────────────────────────────────────────────────────────────────
@@ -30,45 +36,70 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Rate limiting.
+	if h.loginRateLimited(w, r, body.Username) {
+		return
+	}
+
+	user, err := h.verifyCredentials(r, body.Username, body.Password)
+	if err != nil {
+		switch {
+		case errors.Is(err, errAccountDisabled):
+			jsonError(w, err.Error(), http.StatusForbidden)
+		default:
+			jsonError(w, "invalid username or password", http.StatusUnauthorized)
+		}
+		return
+	}
+
+	h.completeLogin(w, r, user)
+}
+
+// loginRateLimited checks per-IP and per-user rate limits. Returns true if the
+// request was rejected, in which case the HTTP response has already been written.
+func (h *Handler) loginRateLimited(w http.ResponseWriter, r *http.Request, username string) bool {
 	ip := clientIP(r)
 	if !h.ipLimiter.Allow(ip) {
 		metrics.RateLimitHitsTotal.WithLabelValues("per_ip").Inc()
 		w.Header().Set("Retry-After", "900")
 		jsonError(w, "too many login attempts, try again later", http.StatusTooManyRequests)
-		return
+		return true
 	}
-	if !h.userLimiter.Allow(body.Username) {
+	if !h.userLimiter.Allow(username) {
 		metrics.RateLimitHitsTotal.WithLabelValues("per_username").Inc()
 		w.Header().Set("Retry-After", "900")
 		jsonError(w, "too many login attempts for this user, try again later", http.StatusTooManyRequests)
-		return
+		return true
 	}
+	return false
+}
 
-	user, err := h.store.GetUserByUsername(body.Username)
+// verifyCredentials looks up the user and checks the password. On failure it
+// writes the HTTP error response and returns a non-nil error sentinel.
+func (h *Handler) verifyCredentials(r *http.Request, username, password string) (*store.User, error) {
+	user, err := h.store.GetUserByUsername(username)
 	if err != nil {
 		metrics.AuthAttemptsTotal.WithLabelValues("failure", "local").Inc()
-		h.audit(r, "auth.login_failed", "user", nil, nil, map[string]string{"username": body.Username, "reason": "unknown_user"})
-		jsonError(w, "invalid username or password", http.StatusUnauthorized)
-		return
+		h.audit(r, "auth.login_failed", "user", nil, nil, map[string]string{"username": username, "reason": "unknown_user"})
+		return nil, err
 	}
-	if !store.CheckPassword(user.PasswordHash, body.Password) {
+	if !store.CheckPassword(user.PasswordHash, password) {
 		metrics.AuthAttemptsTotal.WithLabelValues("failure", "local").Inc()
-		h.audit(r, "auth.login_failed", "user", &user.ID, nil, map[string]string{"username": body.Username, "reason": "bad_password"})
-		jsonError(w, "invalid username or password", http.StatusUnauthorized)
-		return
+		h.audit(r, "auth.login_failed", "user", &user.ID, nil, map[string]string{"username": username, "reason": "bad_password"})
+		return nil, errLoginFailed
 	}
-
 	if !user.Enabled {
 		metrics.AuthAttemptsTotal.WithLabelValues("failure", "local").Inc()
-		h.audit(r, "auth.login_failed", "user", &user.ID, nil, map[string]string{"username": body.Username, "reason": "account_disabled"})
-		jsonError(w, "account disabled", http.StatusForbidden)
-		return
+		h.audit(r, "auth.login_failed", "user", &user.ID, nil, map[string]string{"username": username, "reason": "account_disabled"})
+		return nil, errAccountDisabled
 	}
+	return user, nil
+}
 
-	// Success — reset rate limiters, create session.
-	h.ipLimiter.Reset(ip)
-	h.userLimiter.Reset(body.Username)
+// completeLogin resets rate limiters, creates the session, and writes the
+// success response.
+func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request, user *store.User) {
+	h.ipLimiter.Reset(clientIP(r))
+	h.userLimiter.Reset(user.Username)
 	metrics.AuthAttemptsTotal.WithLabelValues("success", "local").Inc()
 
 	if err := h.createSessionCookies(w, r, user); err != nil {
@@ -140,9 +171,8 @@ func oidcBaseURL(redirectURL string) string {
 // ─── Me ──────────────────────────────────────────────────────────────────────
 
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
-	user := authmw.UserFromContext(r.Context())
+	user := requireUser(w, r)
 	if user == nil {
-		jsonError(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -160,9 +190,8 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 // ─── Change password ─────────────────────────────────────────────────────────
 
 func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
-	user := authmw.UserFromContext(r.Context())
+	user := requireUser(w, r)
 	if user == nil {
-		jsonError(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 	if user.Source != "local" {
@@ -202,9 +231,8 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 // ─── Update user settings ───────────────────────────────────────────────────
 
 func (h *Handler) updateUserSettings(w http.ResponseWriter, r *http.Request) {
-	user := authmw.UserFromContext(r.Context())
+	user := requireUser(w, r)
 	if user == nil {
-		jsonError(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -247,9 +275,8 @@ type sessionResponse struct {
 }
 
 func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
-	user := authmw.UserFromContext(r.Context())
+	user := requireUser(w, r)
 	if user == nil {
-		jsonError(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -299,13 +326,12 @@ func (h *Handler) createSessionCookies(w http.ResponseWriter, r *http.Request, u
 	}
 	metrics.ActiveSessions.Inc()
 
-	secure := os.Getenv("COOKIE_SECURE") != "false" // secure by default
 	http.SetCookie(w, &http.Cookie{
 		Name:     "__kp_session",
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   h.cookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	})
 
@@ -313,7 +339,7 @@ func (h *Handler) createSessionCookies(w http.ResponseWriter, r *http.Request, u
 	if err != nil {
 		return err
 	}
-	authmw.SetCSRFCookie(w, csrfToken, secure)
+	authmw.SetCSRFCookie(w, csrfToken, h.cookieSecure)
 
 	return nil
 }

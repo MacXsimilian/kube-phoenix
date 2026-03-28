@@ -21,7 +21,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import TerminalIcon from '@mui/icons-material/Terminal'
 import { useIsDark } from '@/lib/useIsDark'
 import { getPodDetail } from '@/lib/api'
-import { fmtCpu, fmtMem, podAge } from '@/lib/formatters'
+import { fmtCpu, fmtMem, podAge, formatError } from '@/lib/formatters'
 import { useColors } from '@/lib/colors'
 import { POD_DETAIL_REFETCH_MS } from '@/lib/constants'
 import PodLogViewer from './PodLogViewer'
@@ -231,7 +231,7 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
   if (isError || !pod) {
     return (
       <Alert severity="error" sx={{ m: 2 }}>
-        Failed to load pod: {error instanceof Error ? error.message : 'Unknown error'}
+        Failed to load pod: {formatError(error)}
       </Alert>
     )
   }

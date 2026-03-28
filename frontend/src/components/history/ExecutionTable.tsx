@@ -29,7 +29,7 @@ import { getPolicyExecutions } from '@/lib/api'
 import { fmtDtShort, fmtDuration } from '@/lib/formatters'
 import { useIsDark } from '@/lib/useIsDark'
 import { EXECUTIONS_REFETCH_MS } from '@/lib/constants'
-import { modeColors, SMALL_CHIP_SX } from '@/lib/statusColors'
+import { getModeStyle, SMALL_CHIP_SX } from '@/lib/statusColors'
 import StatusChip from '@/components/shared/StatusChip'
 import type { PolicyExecution } from '@/lib/types'
 
@@ -83,7 +83,7 @@ export default function PolicyExecutionTable({
   onSelect: (e: PolicyExecution) => void
   initialExecId?: number
 }) {
-  const MODE_COLORS = modeColors(useIsDark())
+  const isDark = useIsDark()
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(20)
   const [autoOpened, setAutoOpened] = useState(false)
@@ -184,7 +184,7 @@ export default function PolicyExecutionTable({
                   </TableRow>
                 ) : (
                   data.items.map((exec) => {
-                    const modeStyle = MODE_COLORS[exec.mode]
+                    const modeStyle = getModeStyle(isDark, exec.mode)
                     return (
                       <TableRow
                         key={exec.id}

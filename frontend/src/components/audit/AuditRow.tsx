@@ -10,7 +10,7 @@ import IconButton from '@mui/material/IconButton'
 import Box from '@mui/material/Box'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
-import { formatActionLabel, actionColor } from '@/lib/statusColors'
+import { formatActionLabel, actionColor } from '@/components/audit/auditFormatters'
 import type { AuditLogEntry } from '@/lib/types'
 import JsonDiffView from './JsonDiffView'
 

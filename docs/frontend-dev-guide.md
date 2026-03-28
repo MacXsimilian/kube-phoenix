@@ -118,9 +118,12 @@ frontend/
         DiffLineRow.tsx         # Single classified diff line with prefix symbol and colour
         JsonDiffView.tsx        # Side-by-side JSON diff panel (added/removed/changed/unchanged)
         auditDiff.ts            # Diff computation helpers (flattenToLeaves, classifyLine, computeDiff) + CSV export
+        auditFormatters.ts      # ACTION_LABELS map, formatActionLabel(), actionColor() (moved from statusColors.ts)
       common/
         ChipInput.tsx           # Tag-style input: type + Enter to add chips, Backspace to remove
         LabeledSwitch.tsx       # Shared labeled toggle: Switch + bold title + caption description
+        ConfirmDialog.tsx       # Shared confirmation dialog (title, message, confirm/cancel buttons)
+        CenteredSpinner.tsx     # Centered CircularProgress spinner for loading states
       shared/
         StatusChip.tsx          # Reusable status chip with color mapping
       guardrails/
@@ -154,6 +157,8 @@ frontend/
       useDrawerResize.ts        # Mouse/touch drag resize hook for side drawers (returns named object)
       useIsDark.ts              # Hook: returns boolean for dark mode (wraps useTheme)
       usePolicyTriggers.ts      # Shared sleep/wake mutation hook (invalidation + navigation)
+      useTriStateSort.ts        # Hook: tri-state column sort (asc -> desc -> none)
+      SortHeader.tsx            # Reusable sort-header cell for MUI tables (uses useTriStateSort)
       useSnackbar.tsx           # Hook: returns { notify, SnackbarAlert } for standardized snackbar rendering
     theme/
       theme.ts                  # MUI theme factory (createAppTheme) for dark and light modes
@@ -324,10 +329,10 @@ The sidebar filters navigation items based on permissions, hiding "Users" and "A
 
 ### Core Request Function
 
-All API calls go through the `req<T>()` function in `lib/api.ts`:
+All API calls go through the `apiFetch<T>()` function in `lib/api.ts`:
 
 ```typescript
-async function req<T>(path: string, options?: RequestInit): Promise<T>
+async function apiFetch<T>(path: string, options?: RequestInit): Promise<T>
 ```
 
 **Behavior:**
@@ -529,7 +534,7 @@ The drawer content switches in-place using local `selectedPod` state. A back but
 
 - **Data:** `useQuery(['workloads'], getWorkloads, { refetchInterval: 30_000 })`
 - **Filters:** Search (text), Namespace (dropdown built from data), Status (dropdown)
-- **Sorting:** Column headers toggle asc/desc/none via `TableSortLabel`
+- **Sorting:** Column headers use `SortHeader` + `useTriStateSort` hook (asc -> desc -> none)
 - **Status from URL:** Reads `?status=` from search params to pre-filter (used when clicking chips on the overview dashboard)
 - **Row click:** Opens `WorkloadDetailDrawer`
 
@@ -759,7 +764,7 @@ Handles both create and edit modes. Key datetime handling:
 
 #### ExceptionsSection / OverridesSection
 
-Both use the shared `typeLabels(isDark)` function from `lib/statusColors.ts` to color-code exception/override types with mode-aware colors. The function returns pre-computed maps for dark and light modes with labels for `stay_awake`, `force_sleep`, `skip_sleep`, and `skip_wake`.
+Both use `getTypeLabel(isDark, type)` from `lib/statusColors.ts` to color-code exception/override types with mode-aware colors. This accessor wraps `typeLabels(isDark)` with a fallback for unknown type strings, returning `{ label, color, bg }` for `stay_awake`, `force_sleep`, `skip_sleep`, and `skip_wake`.
 
 **Exception status lifecycle:** `pending` (created, start time is in the future) -> `active` (start time has passed, the backend activates the exception) -> `completed` (end time has passed) or `cancelled` (manually cancelled). The backend manages these transitions; the frontend only displays them.
 
@@ -776,6 +781,7 @@ Displays a paginated, filterable table of audit log entries. Gated by the `audit
 | File | Purpose |
 |:-----|:--------|
 | `auditDiff.ts` | Pure helpers: `flattenToLeaves`, `classifyLine`, `computeDiff`, `isEmptySnapshot`, `downloadCSV`. Shared by `JsonDiffView` and the page. |
+| `auditFormatters.ts` | `ACTION_LABELS` map, `formatActionLabel()`, and `actionColor()`. Moved from `lib/statusColors.ts` to co-locate with audit components. |
 | `AuditRow.tsx` | Expandable table row with diff toggle. Renders the action label, username, timestamp, and expand chevron. |
 | `DiffLineRow.tsx` | Single classified diff line with prefix symbol (`+`, `-`, `~`, ` `) and colour coding. |
 | `JsonDiffView.tsx` | Renders the full diff panel: iterates classified lines via `DiffLineRow`, shows change count summary. |
@@ -887,6 +893,7 @@ The form also includes a "Scheduler Behaviour" card with four controls: an `Eval
 | `fmtDt(iso)` | `string \| null -> string` | ISO to locale string, or em-dash for null | PolicyDetailPage, ExceptionsSection, OverridesSection, ExceptionsPage |
 | `fmtDtShort(iso)` | `string \| null -> string` | ISO to short date with year: `"Mar 24, 2026, 2:15 PM"` | ExecutionTable, ExecutionHistoryTable |
 | `fmtDuration(start, end)` | `(string, string \| null) -> string` | Duration between two ISO timestamps: `"5s"`, `"2m 30s"`, or `"Running…"` | ExecutionTable, ExecutionHistoryTable |
+| `formatError(e)` | `unknown -> string` | Extract human-readable message from a caught error | Mutations across all pages |
 | `timeAgo(iso)` | `string -> string` | ISO to past relative: `"just now"`, `"5m ago"`, `"2h ago"`, `"3d ago"` | ActivityFeed |
 
 ### lib/windowUtils.ts
@@ -939,9 +946,8 @@ Most color exports are mode-aware functions that accept an `isDark: boolean` par
 | `subtleBorder(isDark)` | `(boolean) → string` | Subtle separator color for full-width bands |
 | `typeLabels(isDark)` | `(boolean) → Record<string, { label, color, bg }>` | Override/exception types (stay_awake, force_sleep, skip_sleep, skip_wake) |
 | `typeLabelFallback(isDark)` | `(boolean) → { label, color, bg }` | Default for unknown type strings |
-| `ACTION_LABELS` | `Record<string, string>` | Human-readable labels for audit log actions (e.g. `policy.update` → "Policy Update") |
-| `formatActionLabel(action)` | `(string) → string` | Returns the label for an action key, with auto-formatting fallback for unknown actions |
-| `actionColor(action)` | `(string) → MUI color` | Derives semantic chip color from action verb suffix (`.create` → success, `.delete` → error, `.update` → info) |
+| `getModeStyle(isDark, mode)` | `(boolean, string) → { bg, color }` | Safe accessor for `modeColors` with fallback for unknown mode strings |
+| `getTypeLabel(isDark, type)` | `(boolean, string) → { label, color, bg }` | Safe accessor for `typeLabels` with fallback for unknown type strings |
 | `LOG_LEVEL_COLORS_DARK` | `Record<LogLine['level'], string>` | Log line text colors (dark mode) |
 | `LOG_LEVEL_COLORS_LIGHT` | `Record<LogLine['level'], string>` | Log line text colors (light mode) |
 
@@ -995,6 +1001,22 @@ Exports shared responsive layout constants used by the policy detail page's full
 
 - `BLEED_MARGIN_X` -- negative margins to bleed bands edge-to-edge (`{ xs: -2, sm: -2.5, md: -3 }`)
 - `BLEED_PADDING_X` -- matching padding to re-align content (`{ xs: 2, sm: 2.5, md: 3 }`)
+
+### lib/useTriStateSort.ts
+
+A hook for tri-state column sorting: clicking the active column cycles `asc` -> `desc` -> none (unsorted). Clicking a different column activates it ascending. Returns `{ sortCol, sortDir, handleSort }`. Used by `WorkloadsTable` and `NodesTable` alongside the `SortHeader` component.
+
+### lib/SortHeader.tsx
+
+A reusable table header cell that renders a `TableSortLabel` wired to the `useTriStateSort` hook. Accepts `col`, `label`, `active`, `dir`, and `onSort` props. Eliminates duplicated sort-header markup across sortable tables.
+
+### common/ConfirmDialog.tsx
+
+A shared confirmation dialog component accepting `open`, `title`, `message`, `confirmLabel`, `confirmColor`, `onConfirm`, and `onClose` props. Replaces ad-hoc inline confirmation dialogs in `PolicyCard`, `OverridesSection`, `GuardrailsForm`, `DetailDrawer`, and the exceptions page.
+
+### common/CenteredSpinner.tsx
+
+A centered `CircularProgress` spinner for loading states. Accepts an optional `size` prop (default 40). Used as the loading placeholder across pages and drawers.
 
 ### lib/useDebouncedValue.ts
 
@@ -1173,12 +1195,12 @@ Components that do not use SSE or WebSocket rely on TanStack Query's `refetchInt
 1. Add the function to `src/lib/api.ts` following the existing pattern:
    ```typescript
    export const getMyData = (): Promise<MyType> =>
-     req<MyType>('/api/my-endpoint')
+     apiFetch<MyType>('/api/my-endpoint')
    ```
    For mutations, specify `method` and `body`:
    ```typescript
    export const createMyData = (data: MyInput): Promise<MyType> =>
-     req<MyType>('/api/my-endpoint', { method: 'POST', body: JSON.stringify(data) })
+     apiFetch<MyType>('/api/my-endpoint', { method: 'POST', body: JSON.stringify(data) })
    ```
 2. Add TypeScript types to `src/lib/types.ts`
 3. Use the function in a component via `useQuery` or `useMutation`:

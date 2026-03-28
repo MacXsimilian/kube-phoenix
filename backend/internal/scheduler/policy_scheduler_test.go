@@ -120,6 +120,8 @@ func newTestScheduler(st schedulerStore) *PolicyScheduler {
 		policies:             map[uint]cachedPolicy{},
 		lastReconcileAttempt: map[uint]time.Time{},
 		lastFailedTransition: map[uint]time.Time{},
+		inflightPolicies:     map[uint]struct{}{},
+		inflightCancels:      map[uint]context.CancelFunc{},
 		cfg: SchedulerConfig{
 			TickInterval: 30 * time.Second,
 		},

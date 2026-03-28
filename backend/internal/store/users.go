@@ -8,6 +8,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// OIDCUserInfo bundles the claims passed to GetOrCreateOIDCUser,
+// avoiding a long positional-string parameter list.
+type OIDCUserInfo struct {
+	Sub        string
+	Username   string
+	Email      string
+	Role       string
+	GivenName  string
+	FamilyName string
+}
+
 // ─── User CRUD ───────────────────────────────────────────────────────────────
 
 func (s *Store) CreateUser(u *User) error {
@@ -66,46 +77,49 @@ func (s *Store) UpdateUserTimezone(id uint, timezone string) error {
 }
 
 func (s *Store) ChangePassword(id uint, newPassword string) error {
-	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	hash, err := HashPassword(newPassword)
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
 	}
-	return s.db.Model(&User{}).Where("id = ?", id).Update("password_hash", string(hash)).Error
+	return s.db.Model(&User{}).Where("id = ?", id).Update("password_hash", hash).Error
 }
 
 // GetOrCreateOIDCUser upserts a user by OIDC subject. If no match by sub,
 // creates a new OIDC user. Updates role, email, and name on every login.
-func (s *Store) GetOrCreateOIDCUser(sub, username, email, role, givenName, familyName string) (*User, error) {
+func (s *Store) GetOrCreateOIDCUser(info OIDCUserInfo) (*User, error) {
 	var user User
 
 	// Try by oidc_subject first.
-	err := s.db.Where("oidc_subject = ?", sub).First(&user).Error
+	err := s.db.Where("oidc_subject = ?", info.Sub).First(&user).Error
 	if err == nil {
 		// Existing OIDC user — update role, email, and name.
 		if err := s.db.Model(&user).Updates(map[string]interface{}{
-			"role":        role,
-			"email":       email,
-			"given_name":  givenName,
-			"family_name": familyName,
+			"role":        info.Role,
+			"email":       info.Email,
+			"given_name":  info.GivenName,
+			"family_name": info.FamilyName,
 		}).Error; err != nil {
 			return nil, fmt.Errorf("update oidc user: %w", err)
 		}
-		user.Role = role
-		user.Email = email
-		user.GivenName = givenName
-		user.FamilyName = familyName
+		user.Role = info.Role
+		user.Email = info.Email
+		user.GivenName = info.GivenName
+		user.FamilyName = info.FamilyName
 		return &user, nil
+	}
+	if err != gorm.ErrRecordNotFound {
+		return nil, fmt.Errorf("lookup oidc user: %w", err)
 	}
 
 	// Create new OIDC user.
 	user = User{
-		Username:    username,
-		Email:       email,
-		GivenName:   givenName,
-		FamilyName:  familyName,
-		Role:        role,
+		Username:    info.Username,
+		Email:       info.Email,
+		GivenName:   info.GivenName,
+		FamilyName:  info.FamilyName,
+		Role:        info.Role,
 		Source:      "oidc",
-		OIDCSubject: &sub,
+		OIDCSubject: &info.Sub,
 		Enabled:     true,
 	}
 	if err := s.db.Create(&user).Error; err != nil {

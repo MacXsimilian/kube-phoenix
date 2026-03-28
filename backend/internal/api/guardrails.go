@@ -77,58 +77,34 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, guardrails)
 }
 
+// guardrailStringCheck defines a validation rule for a string-typed guardrail field.
+type guardrailStringCheck struct {
+	key      string
+	validate func(string) string
+}
+
+// guardrailStringChecks lists all string-typed guardrail fields and their validators.
+var guardrailStringChecks = []guardrailStringCheck{
+	{"skipNodeLabels", validateSkipNodeLabels},
+	{"skipNodeTaints", validateSkipNodeTaints},
+	{"systemNamespaces", validateSystemNamespaces},
+	{"scalingPriorityNamespaces", validateScalingPriorityNamespaces},
+	{"schedulerEvalInterval", validateSchedulerEvalInterval},
+}
+
 // validateGuardrailFields validates guardrail update fields. Returns an error message or "".
 func validateGuardrailFields(body map[string]interface{}) string {
-	if v, ok := body["skipNodeLabels"]; ok {
+	for _, check := range guardrailStringChecks {
+		v, ok := body[check.key]
+		if !ok {
+			continue
+		}
 		s, ok := v.(string)
 		if !ok {
-			return "skipNodeLabels must be a string"
+			return check.key + " must be a string"
 		}
-		if msg := validateCSVEntries(s, "=", 1,
-			func(entry string) string { return fmt.Sprintf("invalid node label %q: must be key=value", entry) }); msg != "" {
+		if msg := check.validate(s); msg != "" {
 			return msg
-		}
-	}
-	if v, ok := body["skipNodeTaints"]; ok {
-		s, ok := v.(string)
-		if !ok {
-			return "skipNodeTaints must be a string"
-		}
-		for _, entry := range strings.Split(s, ",") {
-			entry = strings.TrimSpace(entry)
-			if entry == "" {
-				continue
-			}
-			parts := strings.SplitN(entry, ":", 2)
-			if len(parts) != 2 || !strings.Contains(parts[0], "=") {
-				return fmt.Sprintf("invalid node taint %q: must be key=value:effect", entry)
-			}
-		}
-	}
-	if v, ok := body["systemNamespaces"]; ok {
-		s, ok := v.(string)
-		if !ok {
-			return "systemNamespaces must be a string"
-		}
-		if strings.TrimSpace(s) == "" {
-			return "systemNamespaces cannot be empty"
-		}
-	}
-	if v, ok := body["scalingPriorityNamespaces"]; ok {
-		s, ok := v.(string)
-		if !ok {
-			return "scalingPriorityNamespaces must be a string"
-		}
-		seen := map[string]bool{}
-		for _, entry := range strings.Split(s, ",") {
-			entry = strings.TrimSpace(entry)
-			if entry == "" {
-				continue
-			}
-			if seen[entry] {
-				return fmt.Sprintf("duplicate namespace %q in scalingPriorityNamespaces", entry)
-			}
-			seen[entry] = true
 		}
 	}
 	if v, ok := body["scalingConcurrency"]; ok {
@@ -137,15 +113,54 @@ func validateGuardrailFields(body map[string]interface{}) string {
 			return "scalingConcurrency must be a whole number between 1 and 50"
 		}
 	}
-	if v, ok := body["schedulerEvalInterval"]; ok {
-		s, ok := v.(string)
-		if !ok {
-			return "schedulerEvalInterval must be a string"
+	return ""
+}
+
+func validateSkipNodeLabels(s string) string {
+	return validateCSVEntries(s, "=", 1,
+		func(entry string) string { return fmt.Sprintf("invalid node label %q: must be key=value", entry) })
+}
+
+func validateSkipNodeTaints(s string) string {
+	for _, entry := range strings.Split(s, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
 		}
-		d, err := time.ParseDuration(strings.TrimSpace(s))
-		if err != nil || d <= 0 {
-			return "schedulerEvalInterval must be a valid positive duration (e.g. 30s, 1m)"
+		parts := strings.SplitN(entry, ":", 2)
+		if len(parts) != 2 || !strings.Contains(parts[0], "=") {
+			return fmt.Sprintf("invalid node taint %q: must be key=value:effect", entry)
 		}
+	}
+	return ""
+}
+
+func validateSystemNamespaces(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "systemNamespaces cannot be empty"
+	}
+	return ""
+}
+
+func validateScalingPriorityNamespaces(s string) string {
+	seen := map[string]bool{}
+	for _, entry := range strings.Split(s, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if seen[entry] {
+			return fmt.Sprintf("duplicate namespace %q in scalingPriorityNamespaces", entry)
+		}
+		seen[entry] = true
+	}
+	return ""
+}
+
+func validateSchedulerEvalInterval(s string) string {
+	d, err := time.ParseDuration(strings.TrimSpace(s))
+	if err != nil || d <= 0 {
+		return "schedulerEvalInterval must be a valid positive duration (e.g. 30s, 1m)"
 	}
 	return ""
 }

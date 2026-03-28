@@ -131,7 +131,7 @@ func buildNodeResponse(nodes []corev1.Node, allPods []corev1.Pod, g *store.Guard
 			MemRequested:     memRequested[node.Name],
 			CreatedAt:        node.CreationTimestamp.UTC().Format(time.RFC3339),
 			Cordoned:         node.Spec.Unschedulable,
-			Labels:           nonNilLabels(node.Labels),
+			Labels:           nonNilMap(node.Labels),
 			Taints:           convertTaints(node.Spec.Taints),
 		})
 	}
@@ -152,13 +152,6 @@ func nodeLabel(node corev1.Node, keys ...string) string {
 	return ""
 }
 
-// nonNilLabels returns the labels map, or an empty map if nil (ensures JSON "{}").
-func nonNilLabels(labels map[string]string) map[string]string {
-	if labels == nil {
-		return map[string]string{}
-	}
-	return labels
-}
 
 // convertTaints maps Kubernetes taints to their API response representation.
 func convertTaints(taints []corev1.Taint) []NodeTaintResponse {

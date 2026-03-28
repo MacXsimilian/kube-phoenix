@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -10,7 +9,6 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
-	"gorm.io/gorm"
 )
 
 func (h *Handler) listPolicyOverrides(w http.ResponseWriter, r *http.Request) {
@@ -34,11 +32,7 @@ func (h *Handler) createPolicyOverride(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.store.GetPolicy(policyID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, "policy not found", http.StatusNotFound)
-		} else {
-			jsonInternalError(w, err, "get policy failed")
-		}
+		handleStoreError(w, err, "policy not found", "get policy failed")
 		return
 	}
 
@@ -100,11 +94,7 @@ func (h *Handler) deletePolicyOverride(w http.ResponseWriter, r *http.Request) {
 	// Verify the override belongs to this policy
 	existing, err := h.store.GetPolicyOverride(overrideID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, ErrNotFound, http.StatusNotFound)
-		} else {
-			jsonInternalError(w, err, "get override failed")
-		}
+		handleStoreError(w, err, ErrNotFound, "get override failed")
 		return
 	}
 	if existing.PolicyID != policyID {

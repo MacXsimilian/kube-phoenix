@@ -342,6 +342,7 @@ sequenceDiagram
 | `DELETE` | `/api/policies/:id` | Delete a policy |
 | `POST` | `/api/policies/:id/sleep` | Trigger immediate sleep |
 | `POST` | `/api/policies/:id/wake` | Trigger immediate wake |
+| `POST` | `/api/policies/:id/cancel` | Cancel a running execution |
 
 ### Create Policy Request
 

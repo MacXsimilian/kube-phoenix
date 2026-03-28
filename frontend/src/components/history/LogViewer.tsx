@@ -24,7 +24,7 @@ import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import { useIsDark } from '@/lib/useIsDark'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { PolicyExecution, LogLine } from '@/lib/types'
-import { LOG_LEVEL_COLORS_DARK, LOG_LEVEL_COLORS_LIGHT, modeColors } from '@/lib/statusColors'
+import { LOG_LEVEL_COLORS_DARK, LOG_LEVEL_COLORS_LIGHT, getModeStyle } from '@/lib/statusColors'
 import { useSnackbar } from '@/lib/useSnackbar'
 import ExecutionSummary from './ExecutionSummary'
 import { useExecutionLogs } from './useExecutionLogs'
@@ -62,7 +62,7 @@ export default function LogViewer({
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
-  const MODE_COLORS = modeColors(useIsDark())
+  const isDark = useIsDark()
   const { notify, SnackbarAlert } = useSnackbar()
   const { width: drawerWidth, onMouseDown: handleResizeMouseDown, onTouchStart: handleResizeTouchStart } = useDrawerResize(640)
   const [currentErrorIdx, setCurrentErrorIdx] = useState(-1)
@@ -161,8 +161,8 @@ export default function LogViewer({
                     size="small"
                     sx={{
                       height: 18, fontSize: 10,
-                      bgcolor: (MODE_COLORS[execution.mode] ?? MODE_COLORS.plan).bg,
-                      color: (MODE_COLORS[execution.mode] ?? MODE_COLORS.plan).color,
+                      bgcolor: getModeStyle(isDark, execution.mode).bg,
+                      color: getModeStyle(isDark, execution.mode).color,
                     }}
                   />
                   {execution.direction === 'wake' ? (

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -186,4 +187,49 @@ func clientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// ─── Audit log endpoint (thin handler, store does the work) ──────────────────
+
+func (h *Handler) listAuditLogs(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	filter := store.AuditLogFilter{
+		Username: query.Get("user"),
+		Action:   query.Get("action"),
+	}
+	if v := query.Get("page"); v != "" {
+		p, err := strconv.Atoi(v)
+		if err != nil {
+			jsonError(w, "invalid page parameter", http.StatusBadRequest)
+			return
+		}
+		if p < 0 {
+			p = 0
+		}
+		filter.Page = p
+	}
+	filter.PageSize = parsePageSize(query, 50, 1000)
+	if v := query.Get("from"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			jsonError(w, "invalid 'from' timestamp — expected RFC3339 format", http.StatusBadRequest)
+			return
+		}
+		filter.From = &t
+	}
+	if v := query.Get("to"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			jsonError(w, "invalid 'to' timestamp — expected RFC3339 format", http.StatusBadRequest)
+			return
+		}
+		filter.To = &t
+	}
+
+	page, err := h.store.ListAuditLogs(filter)
+	if err != nil {
+		jsonInternalError(w, err, "list audit logs failed")
+		return
+	}
+	jsonOK(w, page)
 }

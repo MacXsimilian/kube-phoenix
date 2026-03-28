@@ -85,11 +85,11 @@ func IntendedState(in StateInput) PolicyState {
 	return PolicyStateAwake
 }
 
-// HasSkipOverride returns true if there is a skip_sleep or skip_wake override
-// that is still valid. In the window-native model, skip overrides use a
-// ValidUntil-style check: the override is consumed if the direction matches
-// and the override hasn't expired.
-func HasSkipOverride(overrides []store.PolicyOverride, direction string, now time.Time) *store.PolicyOverride {
+// FindSkipOverride returns the first matching skip_sleep or skip_wake override
+// that is still valid, or nil if none match. In the window-native model, skip
+// overrides use a ValidUntil-style check: the override is consumed if the
+// direction matches and the override hasn't expired.
+func FindSkipOverride(overrides []store.PolicyOverride, direction string, now time.Time) *store.PolicyOverride {
 	wantType := "skip_sleep"
 	if direction == directionWake {
 		wantType = "skip_wake"

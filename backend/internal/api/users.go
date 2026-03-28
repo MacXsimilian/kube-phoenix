@@ -95,11 +95,7 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 
 	target, err := h.store.GetUserByID(id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, "user not found", http.StatusNotFound)
-		} else {
-			jsonInternalError(w, err, "get user failed")
-		}
+		handleStoreError(w, err, "user not found", "get user failed")
 		return
 	}
 
@@ -188,16 +184,17 @@ func (h *Handler) deleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	target, _ := h.store.GetUserByID(id)
+	target, err := h.store.GetUserByID(id)
+	if err != nil {
+		slog.Warn("could not fetch user for audit before deletion", "userID", id, "err", err)
+	}
 	if err := h.store.DeleteUser(id); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, "user not found", http.StatusNotFound)
-		} else {
-			jsonInternalError(w, err, "delete user failed")
-		}
+		handleStoreError(w, err, "user not found", "delete user failed")
 		return
 	}
-	h.audit(r, "user.delete", "user", &id, target, nil)
+	if target != nil {
+		h.audit(r, "user.delete", "user", &id, target, nil)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

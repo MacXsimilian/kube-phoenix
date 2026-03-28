@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { formatError } from '@/lib/formatters'
 import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
-import CircularProgress from '@mui/material/CircularProgress'
+import CenteredSpinner from '@/components/common/CenteredSpinner'
 import Alert from '@mui/material/Alert'
 import Table from '@mui/material/Table'
 import TableContainer from '@mui/material/TableContainer'
@@ -17,11 +18,7 @@ import TableCell from '@mui/material/TableCell'
 import IconButton from '@mui/material/IconButton'
 import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
-import Dialog from '@mui/material/Dialog'
-import DialogTitle from '@mui/material/DialogTitle'
-import DialogContent from '@mui/material/DialogContent'
-import DialogContentText from '@mui/material/DialogContentText'
-import DialogActions from '@mui/material/DialogActions'
+import ConfirmDialog from '@/components/common/ConfirmDialog'
 import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import Tooltip from '@mui/material/Tooltip'
@@ -33,7 +30,7 @@ import { useAuth } from '@/lib/auth'
 import { canEditSchedules } from '@/lib/rbac'
 import { fmtDt } from '@/lib/formatters'
 import { useIsDark } from '@/lib/useIsDark'
-import { executionStatusColors, executionStatusFallback, typeLabels, typeLabelFallback } from '@/lib/statusColors'
+import { executionStatusColors, executionStatusFallback, getTypeLabel } from '@/lib/statusColors'
 import { EXCEPTIONS_REFETCH_MS } from '@/lib/constants'
 import { useSnackbar } from '@/lib/useSnackbar'
 
@@ -64,7 +61,7 @@ export default function ExceptionsPage() {
       notify('Exception cancelled', 'success')
     },
     onError: (err: unknown) => {
-      notify(err instanceof Error ? err.message : 'Cancel failed', 'error')
+      notify(formatError(err), 'error')
     },
   })
 
@@ -81,8 +78,6 @@ export default function ExceptionsPage() {
 
   const STATUS_COLORS = executionStatusColors(isDark)
   const STATUS_FALLBACK = executionStatusFallback(isDark)
-  const TYPE_LABELS = typeLabels(isDark)
-  const TYPE_LABEL_FALLBACK = typeLabelFallback(isDark)
 
   const canEdit = canEditSchedules(user?.permissions)
 
@@ -118,11 +113,7 @@ export default function ExceptionsPage() {
 
       {isError && <Alert severity="error" sx={{ mb: 2 }}>Failed to load exceptions</Alert>}
 
-      {isLoading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress />
-        </Box>
-      )}
+      {isLoading && <CenteredSpinner />}
 
       {exceptions && exceptions.length === 0 && (
         <Box
@@ -158,7 +149,7 @@ export default function ExceptionsPage() {
           <TableBody>
             {exceptions.map(ex => {
               const statusColor = STATUS_COLORS[ex.status] ?? STATUS_FALLBACK
-              const typeLabel = TYPE_LABELS[ex.exceptionType] ?? TYPE_LABEL_FALLBACK
+              const typeLabel = getTypeLabel(isDark, ex.exceptionType)
               return (
                 <TableRow key={ex.id} hover>
                   <TableCell>
@@ -217,22 +208,16 @@ export default function ExceptionsPage() {
         onNotify={notify}
       />
 
-      <Dialog open={!!pendingDelete} onClose={() => setPendingDelete(null)}>
-        <DialogTitle>Cancel exception?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {pendingDelete?.ticketRef
-              ? `This will cancel exception ${pendingDelete.ticketRef}. This action cannot be undone.`
-              : 'This will cancel the exception. This action cannot be undone.'}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPendingDelete(null)}>Keep</Button>
-          <Button color="error" variant="contained" onClick={handleDeleteConfirmed}>
-            Cancel exception
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title="Cancel exception?"
+        message={pendingDelete?.ticketRef
+          ? `This will cancel exception ${pendingDelete.ticketRef}. This action cannot be undone.`
+          : 'This will cancel the exception. This action cannot be undone.'}
+        confirmLabel="Cancel exception"
+        onConfirm={handleDeleteConfirmed}
+        onClose={() => setPendingDelete(null)}
+      />
 
       {SnackbarAlert}
     </Box>

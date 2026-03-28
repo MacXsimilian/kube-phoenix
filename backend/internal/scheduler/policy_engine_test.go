@@ -175,7 +175,7 @@ func TestIntendedState_ForceSleepExceptionDuringAwakeWindow(t *testing.T) {
 	}
 }
 
-func TestHasSkipOverride(t *testing.T) {
+func TestFindSkipOverride(t *testing.T) {
 	now := time.Date(2024, 3, 13, 14, 0, 0, 0, time.UTC)
 	validUntil := now.Add(1 * time.Hour)
 	expired := now.Add(-1 * time.Hour)
@@ -226,9 +226,9 @@ func TestHasSkipOverride(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := HasSkipOverride(tt.overrides, tt.direction, now)
+			got := FindSkipOverride(tt.overrides, tt.direction, now)
 			if (got != nil) != tt.wantFound {
-				t.Errorf("HasSkipOverride() found=%v, want found=%v", got != nil, tt.wantFound)
+				t.Errorf("FindSkipOverride() found=%v, want found=%v", got != nil, tt.wantFound)
 			}
 		})
 	}

@@ -20,7 +20,7 @@ async function handleAuthErrors(res: Response): Promise<void> {
   }
 }
 
-async function req<T>(path: string, options?: RequestInit): Promise<T> {
+async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const method = options?.method?.toUpperCase() ?? 'GET'
   const incoming = options?.headers
   const hdrs: Record<string, string> = incoming instanceof Headers
@@ -59,15 +59,15 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
 // ── Cluster info & version ────────────────────────────────────────────────────
 
 export const getClusterInfo = (): Promise<ClusterInfo> =>
-  req<ClusterInfo>('/api/cluster/info')
+  apiFetch<ClusterInfo>('/api/cluster/info')
 
 export const getVersionInfo = (): Promise<VersionInfo> =>
-  req<VersionInfo>('/api/version')
+  apiFetch<VersionInfo>('/api/version')
 
 // ── User settings ────────────────────────────────────────────────────────────
 
 export const updateUserSettings = (settings: { defaultTimezone: string }): Promise<User> =>
-  req<User>('/api/auth/settings', { method: 'PUT', body: JSON.stringify(settings) })
+  apiFetch<User>('/api/auth/settings', { method: 'PUT', body: JSON.stringify(settings) })
 
 export interface SessionInfo {
   id: number
@@ -79,15 +79,15 @@ export interface SessionInfo {
 }
 
 export const getSessions = (): Promise<SessionInfo[]> =>
-  req<SessionInfo[]>('/api/auth/sessions')
+  apiFetch<SessionInfo[]>('/api/auth/sessions')
 
 // ── Guardrails ────────────────────────────────────────────────────────────────
 
 export const getGuardrails = (): Promise<Guardrails> =>
-  req<Guardrails>('/api/guardrails')
+  apiFetch<Guardrails>('/api/guardrails')
 
 export const updateGuardrails = (data: Omit<Partial<Guardrails>, 'id' | 'updatedAt'>): Promise<Guardrails> =>
-  req<Guardrails>('/api/guardrails', {
+  apiFetch<Guardrails>('/api/guardrails', {
     method: 'PUT',
     body: JSON.stringify(data),
   })
@@ -95,24 +95,24 @@ export const updateGuardrails = (data: Omit<Partial<Guardrails>, 'id' | 'updated
 // ── Overview ──────────────────────────────────────────────────────────────────
 
 export const getOverview = (): Promise<Overview> =>
-  req<Overview>('/api/overview')
+  apiFetch<Overview>('/api/overview')
 
 // ── Cluster ───────────────────────────────────────────────────────────────────
 
 export const getWorkloads = (): Promise<Workload[]> =>
-  req<Workload[]>('/api/cluster/workloads')
+  apiFetch<Workload[]>('/api/cluster/workloads')
 
 export const getNodes = (): Promise<Node[]> =>
-  req<Node[]>('/api/cluster/nodes')
+  apiFetch<Node[]>('/api/cluster/nodes')
 
 export const getNodePods = (nodeName: string): Promise<NodePod[]> =>
-  req<NodePod[]>(`/api/cluster/nodes/${encodeURIComponent(nodeName)}/pods`)
+  apiFetch<NodePod[]>(`/api/cluster/nodes/${encodeURIComponent(nodeName)}/pods`)
 
 export const getPodDetail = (namespace: string, podName: string): Promise<PodDetail> =>
-  req<PodDetail>(`/api/cluster/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}`)
+  apiFetch<PodDetail>(`/api/cluster/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(podName)}`)
 
 export const getWorkloadPods = (namespace: string, kind: string, name: string): Promise<NodePod[]> =>
-  req<NodePod[]>(`/api/cluster/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(kind)}/${encodeURIComponent(name)}/pods`)
+  apiFetch<NodePod[]>(`/api/cluster/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(kind)}/${encodeURIComponent(name)}/pods`)
 
 export async function getPodLogs(
   namespace: string,
@@ -226,16 +226,16 @@ export async function* resetDatabaseStream(): AsyncGenerator<ResetEvent> {
 // ── Users ─────────────────────────────────────────────────────────────────────
 
 export const getUsers = (): Promise<User[]> =>
-  req<User[]>('/api/users')
+  apiFetch<User[]>('/api/users')
 
 export const createUserAPI = (data: { username: string; email?: string; password: string; role: string }): Promise<User> =>
-  req<User>('/api/users', { method: 'POST', body: JSON.stringify(data) })
+  apiFetch<User>('/api/users', { method: 'POST', body: JSON.stringify(data) })
 
 export const updateUserAPI = (id: number, data: Partial<Pick<User, 'role' | 'enabled'>>): Promise<User> =>
-  req<User>(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+  apiFetch<User>(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 
 export const deleteUserAPI = (id: number): Promise<void> =>
-  req<void>(`/api/users/${id}`, { method: 'DELETE' })
+  apiFetch<void>(`/api/users/${id}`, { method: 'DELETE' })
 
 // ── OIDC ──────────────────────────────────────────────────────────────────────
 
@@ -251,7 +251,7 @@ interface OIDCConfigResponse {
 }
 
 export const getOIDCConfig = (): Promise<OIDCConfigResponse> =>
-  req<OIDCConfigResponse>('/api/auth/oidc/config')
+  apiFetch<OIDCConfigResponse>('/api/auth/oidc/config')
 
 // ── Audit logs ────────────────────────────────────────────────────────────────
 
@@ -270,31 +270,31 @@ export const getAuditLogs = (params?: {
   if (params?.to) q.set('to', params.to)
   if (params?.page !== undefined) q.set('page', String(params.page))
   if (params?.pageSize) q.set('pageSize', String(params.pageSize))
-  return req<AuditLogPage>(`/api/audit-logs?${q}`)
+  return apiFetch<AuditLogPage>(`/api/audit-logs?${q}`)
 }
 
 // ── Policies ──────────────────────────────────────────────────────────────────
 
 export const getPolicies = (): Promise<Policy[]> =>
-  req<Policy[]>('/api/policies')
+  apiFetch<Policy[]>('/api/policies')
 
 export const getPolicy = (id: number): Promise<Policy> =>
-  req<Policy>(`/api/policies/${id}`)
+  apiFetch<Policy>(`/api/policies/${id}`)
 
 export const createPolicy = (data: PolicyInput): Promise<Policy> =>
-  req<Policy>('/api/policies', { method: 'POST', body: JSON.stringify(data) })
+  apiFetch<Policy>('/api/policies', { method: 'POST', body: JSON.stringify(data) })
 
 export const updatePolicy = (id: number, data: Partial<PolicyInput>): Promise<Policy> =>
-  req<Policy>(`/api/policies/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+  apiFetch<Policy>(`/api/policies/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 
 export const deletePolicy = (id: number): Promise<void> =>
-  req<void>(`/api/policies/${id}`, { method: 'DELETE' })
+  apiFetch<void>(`/api/policies/${id}`, { method: 'DELETE' })
 
 export const triggerPolicySleep = (id: number): Promise<{ executionId: number }> =>
-  req<{ executionId: number }>(`/api/policies/${id}/sleep`, { method: 'POST' })
+  apiFetch<{ executionId: number }>(`/api/policies/${id}/sleep`, { method: 'POST' })
 
 export const triggerPolicyWake = (id: number): Promise<{ executionId: number }> =>
-  req<{ executionId: number }>(`/api/policies/${id}/wake`, { method: 'POST' })
+  apiFetch<{ executionId: number }>(`/api/policies/${id}/wake`, { method: 'POST' })
 
 // ── Policy executions ─────────────────────────────────────────────────────────
 
@@ -311,28 +311,28 @@ export const getPolicyExecutions = (params?: {
   if (params?.direction) q.set('direction', params.direction)
   if (params?.page !== undefined) q.set('page', String(params.page))
   if (params?.pageSize) q.set('page_size', String(params.pageSize))
-  return req<PolicyExecutionPage>(`/api/policy-executions?${q}`)
+  return apiFetch<PolicyExecutionPage>(`/api/policy-executions?${q}`)
 }
 
 export const getPolicyExecutionLogs = (id: number): Promise<LogLine[]> =>
-  req<LogLine[]>(`/api/policy-executions/${id}/logs`)
+  apiFetch<LogLine[]>(`/api/policy-executions/${id}/logs`)
 
 // ── Policy overrides ──────────────────────────────────────────────────────────
 
 export const getPolicyOverrides = (policyId: number): Promise<PolicyOverride[]> =>
-  req<PolicyOverride[]>(`/api/policies/${policyId}/overrides`)
+  apiFetch<PolicyOverride[]>(`/api/policies/${policyId}/overrides`)
 
 export const createPolicyOverride = (
   policyId: number,
   data: Omit<PolicyOverride, 'id' | 'policyId' | 'createdBy' | 'createdAt'>
 ): Promise<PolicyOverride> =>
-  req<PolicyOverride>(`/api/policies/${policyId}/overrides`, {
+  apiFetch<PolicyOverride>(`/api/policies/${policyId}/overrides`, {
     method: 'POST',
     body: JSON.stringify(data),
   })
 
 export const deletePolicyOverride = (policyId: number, overrideId: number): Promise<void> =>
-  req<void>(`/api/policies/${policyId}/overrides/${overrideId}`, { method: 'DELETE' })
+  apiFetch<void>(`/api/policies/${policyId}/overrides/${overrideId}`, { method: 'DELETE' })
 
 // ── Scheduled exceptions ──────────────────────────────────────────────────────
 
@@ -343,17 +343,17 @@ export const getExceptions = (params?: {
   const q = new URLSearchParams()
   if (params?.policyId) q.set('policy_id', String(params.policyId))
   if (params?.status) q.set('status', params.status)
-  return req<ScheduledException[]>(`/api/exceptions?${q}`)
+  return apiFetch<ScheduledException[]>(`/api/exceptions?${q}`)
 }
 
 export const createException = (data: ScheduledExceptionInput): Promise<ScheduledException> =>
-  req<ScheduledException>('/api/exceptions', { method: 'POST', body: JSON.stringify(data) })
+  apiFetch<ScheduledException>('/api/exceptions', { method: 'POST', body: JSON.stringify(data) })
 
 export const updateException = (id: number, data: Partial<ScheduledExceptionInput>): Promise<ScheduledException> =>
-  req<ScheduledException>(`/api/exceptions/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+  apiFetch<ScheduledException>(`/api/exceptions/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 
 export const deleteException = (id: number): Promise<void> =>
-  req<void>(`/api/exceptions/${id}`, { method: 'DELETE' })
+  apiFetch<void>(`/api/exceptions/${id}`, { method: 'DELETE' })
 
 // ── WebSocket URL helper ──────────────────────────────────────────────────────
 

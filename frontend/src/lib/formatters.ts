@@ -91,6 +91,11 @@ export function fmtDuration(startedAt: string, finishedAt: string | null): strin
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
 }
 
+/** Extract a human-readable message from an unknown caught error */
+export function formatError(e: unknown): string {
+  return e instanceof Error ? e.message : 'Unknown error'
+}
+
 /** Format an ISO timestamp as a relative past time: "just now", "5m ago", "2h ago", "3d ago" */
 export function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()

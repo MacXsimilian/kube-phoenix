@@ -124,28 +124,31 @@ export function computeWeeklyStats(windows: SleepWindow[]): { sleepHours: number
 }
 
 /**
- * Returns the current day-of-week (0=Sun) and fractional hour,
- * optionally converted to the given IANA timezone.
+ * Project a Date into an IANA timezone by reconstructing it from
+ * Intl.DateTimeFormat parts. Returns a local Date whose field values
+ * (getDay, getHours, …) reflect the target timezone.
  */
-export function nowInTimezone(tz?: string): { dayOfWeek: number; fractionalHour: number } {
-  const now = new Date()
-  if (!tz) {
-    return {
-      dayOfWeek: now.getDay(),
-      fractionalHour: now.getHours() + now.getMinutes() / 60,
-    }
-  }
+function dateInTimezone(date: Date, tz: string): Date {
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
     hour12: false,
   })
-  const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value]))
-  const inTz = new Date(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second)
+  const parts = Object.fromEntries(fmt.formatToParts(date).map(p => [p.type, p.value]))
+  return new Date(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second)
+}
+
+/**
+ * Returns the current day-of-week (0=Sun) and fractional hour,
+ * optionally converted to the given IANA timezone.
+ */
+export function nowInTimezone(tz?: string): { dayOfWeek: number; fractionalHour: number } {
+  const now = new Date()
+  const d = tz ? dateInTimezone(now, tz) : now
   return {
-    dayOfWeek: inTz.getDay(),
-    fractionalHour: inTz.getHours() + inTz.getMinutes() / 60,
+    dayOfWeek: d.getDay(),
+    fractionalHour: d.getHours() + d.getMinutes() / 60,
   }
 }
 
@@ -160,14 +163,7 @@ export const DOW_MAP = MONDAY_FIRST_DOW_MAP
 function toTimezone(iso: string, tz?: string): Date {
   const d = new Date(iso)
   if (!tz) return d
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false,
-  })
-  const parts = Object.fromEntries(fmt.formatToParts(d).map(p => [p.type, p.value]))
-  return new Date(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second)
+  return dateInTimezone(d, tz)
 }
 
 /** A day-row + fractional-hour range, independent of visual layout. */

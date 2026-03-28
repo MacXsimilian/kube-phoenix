@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/stringutil"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -49,23 +50,23 @@ func classifyNodes(pods []corev1.Pod, skipNsNode map[string]bool) (criticalNodes
 // drainNodes handles node draining and deletion during scale-down. Nodes are
 // drained concurrently, bounded by ScalingConcurrency.
 func (r *Runner) drainNodes(ctx context.Context, mode string, guardrails *store.Guardrails, logCh chan<- LogLine, counts *Counts) {
-	r.info(logCh, "Fetching nodes...")
+	emit(logCh, "info", "Fetching nodes...")
 	nodes, err := r.k8s.ListNodes(ctx)
 	if err != nil {
-		r.errLog(logCh, "Failed to list nodes: "+err.Error())
+		emit(logCh, "error", "Failed to list nodes: "+err.Error())
 		counts.Errors++
 		return
 	}
 
-	r.info(logCh, "Identifying nodes with critical workloads...")
+	emit(logCh, "info", "Identifying nodes with critical workloads...")
 	allPods, err := r.k8s.ListAllPods(ctx)
 	if err != nil {
-		r.errLog(logCh, "Failed to list pods: "+err.Error())
+		emit(logCh, "error", "Failed to list pods: "+err.Error())
 		counts.Errors++
 		return
 	}
 
-	skipNsNode := splitCSV(guardrails.SkipNsNode)
+	skipNsNode := stringutil.SplitCSVSet(guardrails.SkipNsNode)
 	criticalNodes, podCountPerNode := classifyNodes(allPods, skipNsNode)
 
 	// Collect drainable nodes, skipping protected ones.
@@ -73,12 +74,12 @@ func (r *Runner) drainNodes(ctx context.Context, mode string, guardrails *store.
 	for _, node := range nodes {
 		name := node.Name
 		if isLabelProtected(node.Labels, guardrails.SkipNodeLabels) || isTaintProtected(node.Spec.Taints, guardrails.SkipNodeTaints) {
-			r.info(logCh, fmt.Sprintf("Protected node %s (label/taint match)", name))
+			emit(logCh, "info", fmt.Sprintf("Protected node %s (label/taint match)", name))
 			counts.Protected++
 			continue
 		}
 		if criticalNodes[name] {
-			r.info(logCh, fmt.Sprintf("Protected node %s (running critical workload)", name))
+			emit(logCh, "info", fmt.Sprintf("Protected node %s (running critical workload)", name))
 			counts.Protected++
 			continue
 		}
@@ -91,7 +92,7 @@ func (r *Runner) drainNodes(ctx context.Context, mode string, guardrails *store.
 		return
 	}
 
-	r.info(logCh, fmt.Sprintf("Draining %d nodes (concurrency=%d)...", len(targets), guardrails.ScalingConcurrency))
+	emit(logCh, "info", fmt.Sprintf("Draining %d nodes (concurrency=%d)...", len(targets), guardrails.ScalingConcurrency))
 	r.drainConcurrent(ctx, mode, targets, guardrails.ScalingConcurrency, logCh, counts)
 }
 
@@ -134,22 +135,22 @@ func (r *Runner) drainConcurrent(ctx context.Context, mode string, targets []dra
 // for thread-safe aggregation by the caller.
 func (r *Runner) drainAndDeleteNode(ctx context.Context, mode string, t drainTarget, logCh chan<- LogLine) (drained, deleted, errored bool) {
 	if !isApply(mode) {
-		r.plan(logCh, fmt.Sprintf("Would drain node %s (pods=%d timeout=%s)", t.name, t.podCount, t.drainTimeout))
-		r.plan(logCh, fmt.Sprintf("Would delete node object %s", t.name))
+		emit(logCh, "plan", fmt.Sprintf("Would drain node %s (pods=%d timeout=%s)", t.name, t.podCount, t.drainTimeout))
+		emit(logCh, "plan", fmt.Sprintf("Would delete node object %s", t.name))
 		return true, true, false
 	}
 
-	r.info(logCh, fmt.Sprintf("Draining node %s (pods=%d timeout=%s)...", t.name, t.podCount, t.drainTimeout))
+	emit(logCh, "info", fmt.Sprintf("Draining node %s (pods=%d timeout=%s)...", t.name, t.podCount, t.drainTimeout))
 	if err := r.k8s.DrainNode(ctx, t.name, t.drainTimeout); err != nil {
-		r.errLog(logCh, fmt.Sprintf("Drain failed for %s: %s", t.name, err))
+		emit(logCh, "error", fmt.Sprintf("Drain failed for %s: %s", t.name, err))
 		return false, false, true
 	}
-	r.ok(logCh, fmt.Sprintf("Drained node %s", t.name))
+	emit(logCh, "ok", fmt.Sprintf("Drained node %s", t.name))
 
 	if err := r.k8s.DeleteNode(ctx, t.name); err != nil {
-		r.errLog(logCh, fmt.Sprintf("Failed to delete node %s: %s", t.name, err))
+		emit(logCh, "error", fmt.Sprintf("Failed to delete node %s: %s", t.name, err))
 		return true, false, true
 	}
-	r.ok(logCh, fmt.Sprintf("Deleted node object %s", t.name))
+	emit(logCh, "ok", fmt.Sprintf("Deleted node object %s", t.name))
 	return true, true, false
 }

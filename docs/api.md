@@ -88,6 +88,7 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 | :----- | :--- | :---------- |
 | `POST` | `/api/policies/{id}/sleep` | Manually trigger a sleep run |
 | `POST` | `/api/policies/{id}/wake` | Manually trigger a wake run |
+| `POST` | `/api/policies/{id}/cancel` | Cancel a running execution (returns 409 if no execution is in flight) |
 
 ### Policy Executions -- viewer and above
 
@@ -128,6 +129,7 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 - `auth.denied` — `{"method": "GET", "path": "/api/users"}` (permission denied)
 - `user.settings` — `{"defaultTimezone": "Europe/Berlin"}` (before/after)
 - `policy.sleep` / `policy.wake` — `{"executionId": 42}`
+- `policy.cancel` — logged when a running execution is cancelled
 
 ### Users -- admin only
 
@@ -171,5 +173,6 @@ Common HTTP status codes:
 | `401` | Not authenticated |
 | `403` | Insufficient permissions for the requested operation |
 | `404` | Resource not found |
+| `409` | Conflict (e.g. policy is already executing, or no execution to cancel) |
 | `429` | Rate limit exceeded (login endpoints) |
 | `500` | Internal server error |

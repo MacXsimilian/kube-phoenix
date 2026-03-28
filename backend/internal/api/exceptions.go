@@ -13,7 +13,6 @@ import (
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
-	"gorm.io/gorm"
 )
 
 func (h *Handler) listExceptions(w http.ResponseWriter, r *http.Request) {
@@ -57,11 +56,7 @@ func (h *Handler) getException(w http.ResponseWriter, r *http.Request) {
 	}
 	ex, err := h.store.GetScheduledException(id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, ErrNotFound, http.StatusNotFound)
-		} else {
-			jsonInternalError(w, err, "get exception failed")
-		}
+		handleStoreError(w, err, ErrNotFound, "get exception failed")
 		return
 	}
 	shape, err := exceptionWithTargets(ex)
@@ -84,11 +79,7 @@ func (h *Handler) createException(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.PolicyID != nil {
 		if _, err := h.store.GetPolicy(*body.PolicyID); err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				jsonError(w, "policy not found", http.StatusBadRequest)
-			} else {
-				jsonInternalError(w, err, "get policy failed")
-			}
+			handleStoreError(w, err, "policy not found", "get policy failed")
 			return
 		}
 	}
@@ -136,11 +127,7 @@ func (h *Handler) updateException(w http.ResponseWriter, r *http.Request) {
 
 	ex, err := h.store.GetScheduledException(id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, ErrNotFound, http.StatusNotFound)
-		} else {
-			jsonInternalError(w, err, "get exception failed")
-		}
+		handleStoreError(w, err, ErrNotFound, "get exception failed")
 		return
 	}
 	if ex.Status != store.ExceptionStatusPending {
@@ -177,11 +164,7 @@ func (h *Handler) deleteException(w http.ResponseWriter, r *http.Request) {
 	}
 	ex, err := h.store.GetScheduledException(id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonError(w, ErrNotFound, http.StatusNotFound)
-		} else {
-			jsonInternalError(w, err, "get exception failed")
-		}
+		handleStoreError(w, err, ErrNotFound, "get exception failed")
 		return
 	}
 
@@ -369,5 +352,11 @@ func exceptionWithTargets(ex *store.ScheduledException) (exceptionResponseShape,
 
 func parseIDFromString(s string) (uint, error) {
 	id, err := strconv.ParseUint(s, 10, 64)
-	return uint(id), err
+	if err != nil {
+		return 0, err
+	}
+	if id == 0 {
+		return 0, strconv.ErrRange
+	}
+	return uint(id), nil
 }

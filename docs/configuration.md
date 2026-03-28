@@ -92,7 +92,7 @@ When neither `ADMIN_USER` nor `ADMIN_PASSWORD` is set, the application runs with
 | View audit logs | Yes | Yes | Yes |
 | Create, edit, delete policies | Yes | Yes | No |
 | Edit guardrails | Yes | Yes | No |
-| Trigger Sleep Now / Wake Now | Yes | Yes | No |
+| Trigger Sleep Now / Wake Now / Cancel | Yes | Yes | No |
 | Manage overrides and exceptions | Yes | Yes | No |
 | Manage users | Yes | No | No |
 | Reset database | Yes | No | No |
@@ -121,7 +121,7 @@ A **Policy** declares when workloads should sleep and wake. Unlike legacy per-sc
 | :---- | :------ |
 | `awake` | Workloads are running normally |
 | `sleeping` | Workloads are scaled to zero |
-| `transitioning` | A sleep or wake execution is in progress |
+| `transitioning` | A sleep or wake execution is in progress (can be cancelled via `POST /api/policies/{id}/cancel`) |
 | `unknown` | State not yet determined (new policy or indeterminate recovery) |
 
 ### Overrides
