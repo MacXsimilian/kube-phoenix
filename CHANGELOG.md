@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.0...v0.5.1) (2026-03-28)
+
+
+### Features
+
+* **settings:** redesign settings page with cluster info, timezone preferences, and version display ([#266](https://github.com/MacXsimilian/kube-phoenix/issues/266)) ([13b7a21](https://github.com/MacXsimilian/kube-phoenix/commit/13b7a21e40e1ee17e7fcc9f3b322377ece6b8567))
+
 ## [0.5.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.4.2...v0.5.0) (2026-03-28)
 
 
