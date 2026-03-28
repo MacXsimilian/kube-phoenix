@@ -35,13 +35,13 @@ If you need to resolve it immediately:
 
 **Problem:** A policy's `currentState` is `unknown` after a pod restart.
 
-**Cause:** Recovery could not determine the intended state because no cron expression is configured or there are no past fire times to evaluate.
+**Cause:** Recovery could not determine the intended state because no sleep windows are configured.
 
 **Solution:**
 
-1. Ensure the policy has at least one cron expression (`sleepCron` or `wakeCron`).
+1. Ensure the policy has at least one sleep window configured.
 2. If the policy is newly created with no past ticks, trigger a manual **Sleep Now** or **Wake Now** to set an initial state.
-3. Once a cron expression is configured and a tick has fired, recovery will work automatically on subsequent restarts.
+3. Once sleep windows are configured and a tick has fired, recovery will work automatically on subsequent restarts.
 
 ## Execution stuck in `running` or marked `interrupted`
 

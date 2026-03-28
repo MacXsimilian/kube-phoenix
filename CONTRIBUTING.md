@@ -89,8 +89,9 @@ kube-phoenix/
       stringutil/                 # Generic string helpers (CSV parsing, etc.)
   frontend/src/
     app/                          # Next.js pages
-    components/                   # Reusable UI components
-    lib/                          # API client, auth context, TypeScript types
+    components/                   # UI components by domain (audit, cluster, common, guardrails,
+                                  #   history, policies, settings, shared)
+    lib/                          # API client, auth context, types, shared hooks, utilities
     theme/                        # MUI theme (dark + light)
   helm/kube-phoenix/              # Helm chart
   examples/                       # Example Helm value overlays

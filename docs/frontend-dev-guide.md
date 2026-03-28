@@ -82,8 +82,14 @@ frontend/
         WorkloadDetailDrawer.tsx # Resizable drawer: workload -> pods -> pod detail
         NodeDetailDrawer.tsx    # Resizable drawer: node -> pods -> pod detail
         PodDetailContent.tsx    # Pod metadata, containers, conditions, events
-        PodLogViewer.tsx        # Live streaming pod logs with search/download
+        PodLogViewer.tsx        # Live streaming pod logs (delegates to usePodLogStream + LogSearchBar)
         PodRow.tsx              # Shared table row for pod listings
+        CollapsibleSection.tsx  # Accordion section with title, count badge, and expand/collapse toggle
+        LabelChip.tsx           # Styled key=value chip for Kubernetes labels
+        TaintChip.tsx           # Styled chip for Kubernetes taints with effect color coding
+        MiniBar.tsx             # Compact resource utilization bar (CPU/memory) with label
+        LogSearchBar.tsx        # Search input with match count and prev/next navigation
+        usePodLogStream.ts      # Hook: chunked HTTP streaming, line buffering, tail/follow lifecycle
         statusColors.ts         # Mode-aware workload/node/pod status color maps
       policies/
         PolicyCard.tsx          # Card for each policy in the list view
@@ -97,19 +103,34 @@ frontend/
         WindowPicker.tsx        # Sleep window editor with day buttons + time selectors
         LegendItem.tsx          # Shared timeline legend dot + label
         ExecutionHistoryTable.tsx # Execution table embedded in policy detail
+        PolicyHeroBand.tsx      # Full-width hero band with gradient bg, state icon, action buttons
+        PolicyMetadataRow.tsx   # Metadata row (timezone, namespace filter, label selector)
+        timelineSegments.ts     # Shared segment computation for WeeklyTimeline + LedGlowTimeline
       history/
         ExecutionTable.tsx      # Paginated execution list (global history page)
-        LogViewer.tsx           # WebSocket-driven execution log drawer with summary
+        LogViewer.tsx           # WebSocket-driven execution log drawer (delegates to useExecutionLogs + ExecutionSummary)
+        ExecutionSummary.tsx    # Accordion summary: parsed workloads grouped by namespace, node entries
+        parseSummary.ts         # Regex-based log line parser → structured workload/node/error data
+        useExecutionLogs.ts     # Hook: WebSocket streaming for running execs, REST fetch for completed
+      audit/
+        AuditRow.tsx            # Expandable table row with diff toggle
+        DiffLineRow.tsx         # Single classified diff line with prefix symbol and colour
+        JsonDiffView.tsx        # Side-by-side JSON diff panel (added/removed/changed/unchanged)
+        auditDiff.ts            # Diff computation helpers (flattenToLeaves, classifyLine, computeDiff) + CSV export
       common/
+        ChipInput.tsx           # Tag-style input: type + Enter to add chips, Backspace to remove
         LabeledSwitch.tsx       # Shared labeled toggle: Switch + bold title + caption description
+        EmptyStateBox.tsx       # Centered empty state placeholder with icon and message
       shared/
         StatusChip.tsx          # Reusable status chip with color mapping
       guardrails/
-        GuardrailsForm.tsx      # Chip-based namespace/label/taint editor
+        GuardrailsForm.tsx      # Chip-based namespace/label/taint editor (uses ChipInput + ProtectedChipInput)
+        ProtectedChipInput.tsx  # ChipInput variant with removal confirmation dialog
       settings/
         AccountSettings.tsx     # Password change (local users only)
         DatabaseSettings.tsx    # Multi-step DB reset with confirmation phrase
         AppearanceSettings.tsx  # Light/dark/system theme selector
+        OIDCStatusCard.tsx      # OIDC provider connection status display
       ErrorBoundary.tsx         # React error boundary
     lib/
       api.ts                    # Centralized fetch wrapper + all API functions
@@ -119,12 +140,19 @@ frontend/
       statusColors.ts           # Color maps for states, executions, modes, types, log levels
       constants.ts              # Polling intervals, drawer constraints, log limits, timezones
       formatters.ts             # CPU/memory/time formatting utilities
+      logParsing.ts             # Log line regex parsing (shared by parseSummary.ts)
       windowUtils.ts            # Sleep window evaluation, timezone handling, timeline math
+      timelineUtils.ts          # Day labels and time-range-to-segment conversion for timelines
       rbac.ts                   # Permission checking helpers
       themeMode.tsx             # ThemeModeProvider context (light/dark/system + localStorage)
       queryClient.ts            # TanStack QueryClient singleton with default options
+      useClusterStream.ts       # SSE hook: cluster/stream subscription with reconnect + TanStack cache injection
+      useDebouncedValue.ts      # Generic debounce hook for search inputs
+      useDrawerResize.ts        # Mouse/touch drag resize hook for side drawers (returns named object)
+      useNotification.ts        # Snackbar notification hook (message + severity state)
+      usePermissionGuard.ts     # Redirect-to-overview guard for permission-gated pages
       usePolicyTriggers.ts      # Shared sleep/wake mutation hook (invalidation + navigation)
-      useDrawerResize.ts        # Mouse/touch drag resize hook for side drawers
+      useTableSearch.ts         # Generic table search/filter hook with debounced text matching
     theme/
       theme.ts                  # MUI theme factory (createAppTheme) for dark and light modes
   next.config.mjs               # Static export config
@@ -516,6 +544,19 @@ The drawer content switches in-place using local `selectedPod` state. A back but
 - **Resource bars:** `ResourceBar` sub-component renders a colored `LinearProgress` bar with percentage, colored based on utilization thresholds (green < 65%, amber 65-84%, red >= 85%) via `pctColor()`
 - **Row click:** Opens `NodeDetailDrawer`
 
+#### Extracted Cluster Subcomponents
+
+Several components were extracted from `NodeDetailDrawer` and `PodLogViewer` for reuse and clarity:
+
+| Component | File | Purpose |
+|:----------|:-----|:--------|
+| `CollapsibleSection` | `cluster/CollapsibleSection.tsx` | Accordion section with title, count badge, and expand/collapse toggle. Used for labels, taints, and conditions sections in `NodeDetailDrawer`. |
+| `LabelChip` | `cluster/LabelChip.tsx` | Styled `key=value` chip for Kubernetes labels with optional highlight. |
+| `TaintChip` | `cluster/TaintChip.tsx` | Styled chip for Kubernetes taints with effect-based colour coding. |
+| `MiniBar` | `cluster/MiniBar.tsx` | Compact resource utilization bar (CPU/memory) with label and percentage. Used by `NodeDetailDrawer` and `PodDetailContent`. |
+| `LogSearchBar` | `cluster/LogSearchBar.tsx` | Search input with match count display and prev/next navigation buttons. Used by `PodLogViewer`. |
+| `usePodLogStream` | `cluster/usePodLogStream.ts` | Hook that manages chunked HTTP streaming for pod logs: initial tail fetch, follow mode, line buffering, and abort cleanup. Used by `PodLogViewer`. |
+
 #### useDrawerResize Hook
 
 `src/lib/useDrawerResize.ts`
@@ -524,10 +565,10 @@ Both detail drawers use this hook for drag-to-resize:
 
 ```typescript
 function useDrawerResize(initial: number, min?: number):
-  [number, (e: React.MouseEvent) => void, (e: React.TouchEvent) => void]
+  { width: number; onMouseDown: (e: React.MouseEvent) => void; onTouchStart: (e: React.TouchEvent) => void }
 ```
 
-Returns `[drawerWidth, handleResizeMouseDown, handleResizeTouchStart]`.
+Returns a named object `{ width, onMouseDown, onTouchStart }`.
 
 The hook works by:
 1. Capturing the starting X position and width on mousedown/touchstart
@@ -572,11 +613,17 @@ All functions take an `isDark` boolean and return objects with `{ bgcolor, color
 
 The detail page (`src/app/policies/detail/page.tsx`) uses a full-width horizontal band layout. Each band bleeds edge-to-edge within the content area using negative margins (`BLEED_MARGIN_X`) to negate `AppShell`'s padding, then re-applies padding (`BLEED_PADDING_X`) to keep content aligned. The sidebar is never overlaid -- on mobile, the sidebar is already a hamburger menu so bands take full viewport width.
 
+The hero band and metadata row are extracted into dedicated components:
+
+- **`PolicyHeroBand`** (`components/policies/PolicyHeroBand.tsx`): State-colored gradient background, back button, 64px state icon, policy name + description, large state label, mode/enabled chips, action buttons (Sleep Now, Wake Now, Edit, Exception).
+- **`PolicyMetadataRow`** (`components/policies/PolicyMetadataRow.tsx`): Renders timezone, namespace filter, and label selector in a compact row.
+
 Bands (top to bottom):
-1. **Hero band** -- state-colored gradient background (`HERO_HEADER_GRADIENTS`), back button, 64px state icon, policy name + description, large state label, mode/enabled chips, action buttons (Sleep Now, Wake Now, Edit, Exception)
-2. **Timeline band** -- `LedGlowTimeline` filling the left, weekly stats (Sleep/Week, Awake/Week, Next Transition with countdown) on the right
-3. **Overrides + Exceptions band** -- subtle alternating background, side-by-side `OverridesSection` and `ExceptionsSection` (wraps on mobile)
-4. **Execution History band** -- `ExecutionHistoryTable` at full width with status filter dropdown. Clicking a row opens the log viewer drawer inline (same behaviour as the History page), using `selectedExec` state and the `LogViewer` component.
+1. **Hero band** -- `PolicyHeroBand`
+2. **Metadata row** -- `PolicyMetadataRow`
+3. **Timeline band** -- `LedGlowTimeline` filling the left, weekly stats (Sleep/Week, Awake/Week, Next Transition with countdown) on the right
+4. **Overrides + Exceptions band** -- subtle alternating background, side-by-side `OverridesSection` and `ExceptionsSection` (wraps on mobile)
+5. **Execution History band** -- `ExecutionHistoryTable` at full width with status filter dropdown. Clicking a row opens the log viewer drawer inline (same behaviour as the History page), using `selectedExec` state and the `LogViewer` component.
 
 #### WindowPicker
 
@@ -597,7 +644,7 @@ The parent (`CreatePolicyDialog`) receives window changes via `onChange` and pas
 
 #### Timeline Components
 
-All three timeline components use raw SVG for rendering. They share timeline math from `lib/windowUtils.ts`.
+All three timeline components use raw SVG for rendering. They share timeline math from `lib/windowUtils.ts`. `WeeklyTimeline` and `LedGlowTimeline` also share segment computation logic via `timelineSegments.ts`, which exports `computeWindowSegments`, `computeOverrideSegments`, and `computeExceptionSegments`. This eliminates duplicated window-to-segment conversion code between the two timeline variants.
 
 **WeeklyTimeline** (`WeeklyTimeline.tsx`):
 - 7 rows (Mon-Sun), 24h per row
@@ -636,6 +683,13 @@ The `DOW_MAP` constant maps array index to JS day-of-week: `[1,2,3,4,5,6,0]` (Mo
 
 `computeTimeRangeBlocks(startISO, endISO, tz?)` splits an absolute time range into per-day `TimeBlock` objects, each with `{ row, startHour, endHour }`. This is used by overrides and exceptions to render their blocks on the timeline grid.
 
+**`timelineSegments.ts`** (`components/policies/timelineSegments.ts`): Shared by `WeeklyTimeline` and `LedGlowTimeline`. Exports:
+
+- `TimelineSegment` -- `{ row, startHour, endHour, color, variant }` interface
+- `computeWindowSegments(windows)` -- converts `SleepWindow[]` to per-row timeline segments
+- `computeOverrideSegments(overrides, tz)` -- converts active overrides to timeline segments
+- `computeExceptionSegments(exceptions, tz)` -- converts active exceptions to timeline segments
+
 #### Overrides and Exceptions on the Timeline
 
 Both `WeeklyTimeline` and `LedGlowTimeline` accept optional `overrides` and `exceptions` props. They convert these absolute time ranges into timeline blocks using `computeTimeRangeBlocks()`, then render them on top of the sleep window blocks. Cancelled and completed exceptions are filtered out before rendering.
@@ -661,20 +715,22 @@ The history page composes `ExecutionTable` and `LogViewer`. It supports deep-lin
 
 `src/components/history/LogViewer.tsx`
 
-The execution log viewer is a resizable right-side drawer with:
+The execution log viewer is a resizable right-side drawer. Data fetching and WebSocket management are delegated to the `useExecutionLogs` hook; log summary parsing is delegated to `parseSummary.ts` and rendered by `ExecutionSummary`.
+
+**Submodules:**
+
+| File | Purpose |
+|:-----|:--------|
+| `useExecutionLogs.ts` | Hook that manages the data source: opens a WebSocket for running executions, falls back to REST `getPolicyExecutionLogs()` for completed ones. Handles reconnection (3s delay) and merges live lines with replayed lines. |
+| `parseSummary.ts` | Regex-based parser that extracts structured data from log lines: workload entries (scaled, restored, would-scale), node entries (drained, deleted, would-drain), and error lines. Groups workloads by namespace. |
+| `ExecutionSummary.tsx` | Renders the parsed summary as an accordion: workloads grouped by namespace with target replicas, node entries, and an error count chip. |
+
+**Drawer layout:**
 
 1. **Header:** Direction icon, execution ID, running spinner, mode chip, count chips (scaled, drained, errors)
-2. **Summary accordion** (`PolicyExecutionSummary`): Parses all log lines using regex patterns to extract structured data:
-   - Workload entries: "Scaled Deployment ns/name -> 0", "Restored ...", "Would scale ..."
-   - Node entries: "Drained node ...", "Deleted node ...", "Would drain ..."
-   - Groups workloads by namespace
-   - Shows error count chip
+2. **Summary accordion** (`ExecutionSummary`): Rendered from `parseSummary()` output
 3. **Log lines area:** Each line rendered with timestamp (30% opacity) and message colored by log level
 4. **Error navigation:** "Jump to error" button cycles through error-level lines, scrolling to each
-
-**Data source depends on execution status:**
-- `status === 'running'`: Opens a WebSocket to `wsPolicyLogsUrl(execution.id)`. Lines arrive as JSON `LogLine` objects via `ws.onmessage`. Auto-reconnects after 3s on error.
-- `status !== 'running'`: Fetches all lines via `getPolicyExecutionLogs(id)` as a standard REST query.
 
 **Log level colors** are defined in `lib/statusColors.ts`:
 
@@ -720,9 +776,18 @@ const TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> 
 
 **Page:** `src/app/audit/page.tsx`
 
-Displays a paginated, filterable table of audit log entries. Gated by the `audit.view` permission — users without it are redirected to `/overview/`.
+Displays a paginated, filterable table of audit log entries. Gated by the `audit.view` permission via the `usePermissionGuard` hook. The page is decomposed into four extracted modules under `src/components/audit/`.
 
-**Filters:** `User` (debounced text, exact-match) and `Action` (dropdown built from `ACTION_LABELS`). Both reset pagination to page 0 on change.
+**Submodules:**
+
+| File | Purpose |
+|:-----|:--------|
+| `auditDiff.ts` | Pure helpers: `flattenToLeaves`, `classifyLine`, `computeDiff`, `isEmptySnapshot`, `downloadCSV`. Shared by `JsonDiffView` and the page. |
+| `AuditRow.tsx` | Expandable table row with diff toggle. Renders the action label, username, timestamp, and expand chevron. |
+| `DiffLineRow.tsx` | Single classified diff line with prefix symbol (`+`, `-`, `~`, ` `) and colour coding. |
+| `JsonDiffView.tsx` | Renders the full diff panel: iterates classified lines via `DiffLineRow`, shows change count summary. |
+
+**Filters:** `User` (debounced via `useDebouncedValue`, exact-match) and `Action` (dropdown built from `ACTION_LABELS`). Both reset pagination to page 0 on change.
 
 **Expandable diff rows:** Entries that carry `before` or `after` data show an expand chevron. Clicking it opens a `JsonDiffView` panel inside a `Collapse`.
 
@@ -739,19 +804,15 @@ The diff panel compares the `before` and `after` JSON snapshots from the audit e
 
 A summary line above the panel shows the count of changed fields.
 
-**Key helpers (all defined in `audit/page.tsx`):**
+**Key helpers (defined in `components/audit/auditDiff.ts`):**
 
 | Symbol | Purpose |
 |:-------|:--------|
-| `NULL_SNAPSHOT` | Constant `'null'` — the string value stored in the DB when before/after is absent |
-| `isEmptySnapshot(json?)` | Returns `true` when `json` is falsy or equals `NULL_SNAPSHOT` |
+| `isEmptySnapshot(json?)` | Returns `true` when `json` is falsy or equals the null snapshot sentinel |
 | `flattenToLeaves(value, prefix?)` | Recursively flattens an object to dot-notation key → JSON-value pairs (e.g. `{ "settings.timezone": '"UTC"' }`) |
-| `parseSnapshot(json)` | Parses a JSON string and flattens it; returns `null` on parse error |
 | `classifyLine(key, before?, after?)` | Classifies a single key as `added`, `removed`, `changed`, or `unchanged` |
 | `computeDiff(beforeJson?, afterJson?)` | Orchestrates snapshot parsing and line classification; returns `null` when both snapshots are empty |
-| `formatChangeSummary(count)` | Formats the "N fields changed" summary label |
-| `DIFF_STYLE` | `Record<DiffType, { bg, border, text, prefix }>` — single source of truth for all diff styling per type |
-| `DiffLineRow` | Renders a single classified diff line with the appropriate colours and prefix symbol |
+| `downloadCSV(logs)` | Exports the current audit log view as a CSV file |
 
 ---
 
@@ -759,7 +820,7 @@ A summary line above the panel shows the count of changed fields.
 
 **Page:** `src/app/settings/page.tsx`
 
-Composes multiple settings cards: `AppearanceSettings`, `AccountSettings`, OIDC config display, and `DatabaseSettings`.
+Composes multiple settings cards: `AppearanceSettings`, `AccountSettings`, `OIDCStatusCard`, and `DatabaseSettings`.
 
 #### AccountSettings
 
@@ -785,14 +846,16 @@ A multi-step destructive action flow:
 
 `src/components/guardrails/GuardrailsForm.tsx`
 
-The guardrails editor uses a custom `ChipInput` component for tag-like editing:
+The guardrails editor delegates tag-like editing to two extracted components:
+
+**`ChipInput`** (`components/common/ChipInput.tsx`): A reusable tag input component:
 
 - Type a value and press Enter to add a chip
 - Press Backspace on an empty input to remove the last chip
 - `onBlur` also commits the current input value
 - Values are stored as `string[]` locally and serialized to CSV for the API
 
-The `ProtectedChipInput` variant (for system namespaces) adds a confirmation dialog when removing a chip, warning that removing a system-protected namespace could affect critical infrastructure.
+**`ProtectedChipInput`** (`components/guardrails/ProtectedChipInput.tsx`): A `ChipInput` variant for system namespaces that adds a confirmation dialog when removing a chip, warning that removing a system-protected namespace could affect critical infrastructure.
 
 Data is loaded from the API as CSV strings and split with `fromCsv()`. On save, arrays are joined back with `csv()`.
 
@@ -910,6 +973,34 @@ A custom hook that encapsulates sleep/wake trigger mutations for a policy. Retur
 
 See [useDrawerResize Hook](#usedrawerresize-hook) in the Cluster Views section.
 
+### lib/useNotification.ts
+
+A hook that manages snackbar notification state. Returns `{ message, severity, notify, clear }`. Components call `notify(text, severity)` to show a snackbar and `clear()` to dismiss it. Replaces inline `useState` pairs for snackbar management across multiple pages.
+
+### lib/useDebouncedValue.ts
+
+A generic debounce hook: `useDebouncedValue<T>(value, delayMs)` returns the debounced value. Used by the audit page to debounce user search input.
+
+### lib/useClusterStream.ts
+
+The SSE subscription hook for the cluster stream. Connects to `GET /api/cluster/stream`, parses SSE events, and pushes `Overview` objects into the TanStack Query cache via `queryClient.setQueryData()`. Implements automatic reconnection with exponential backoff and sets a disconnected flag after 2 consecutive failures.
+
+### lib/usePermissionGuard.ts
+
+A redirect guard hook for permission-gated pages. `usePermissionGuard(user, hasPermission)` returns `true` when the guard is still checking. When the user is loaded and lacks the required permission, it redirects to `/overview/`. Used by the Audit and Users pages.
+
+### lib/useTableSearch.ts
+
+A generic table search/filter hook. `useTableSearch<T>(items, filterFn)` returns `{ search, setSearch, filtered }` where `filtered` is the subset of items matching the debounced search term.
+
+### lib/logParsing.ts
+
+Shared log line parsing utilities. Exports `parseSummary(lines)` which extracts structured workload and node data from execution log lines using regex patterns. Produces workload entries with `targetReplicas` (the replica count to restore).
+
+### lib/timelineUtils.ts
+
+Timeline rendering utilities. Exports `DAYS` (day label array) and `timeRangeToSegments()` which converts time ranges to renderable segments. Used by timeline components for shared day-label rendering and segment computation.
+
 ---
 
 ## 7. State Management
@@ -1015,14 +1106,15 @@ The SSE stream pushes updates roughly every 10 seconds (the backend `ClusterCach
 
 ### WebSocket: Execution Logs
 
-**Component:** `LogViewer`
+**Component:** `LogViewer` via the `useExecutionLogs` hook
 
 **Flow:**
-1. When `execution.status === 'running'`, the component opens `new WebSocket(wsPolicyLogsUrl(execution.id))`
-2. `ws.onmessage` parses each message as a JSON `LogLine` and appends to `liveLines` state
+1. When `execution.status === 'running'`, `useExecutionLogs` opens `new WebSocket(wsPolicyLogsUrl(execution.id))`
+2. `ws.onmessage` parses each message as a JSON `LogLine` and appends to the lines array
 3. On `ws.onerror`, sets error state and attempts reconnection after 3 seconds (`WS_RECONNECT_DELAY_MS`)
 4. Reconnection only happens if the execution is still running (`isRunningRef.current`)
 5. On component unmount or execution change, the WebSocket is closed via cleanup function
+6. For completed executions, the hook falls back to `getPolicyExecutionLogs()` via REST
 
 The WebSocket URL is constructed by replacing `http` with `ws` in the API base URL. The backend replays all existing log lines on connection, then streams new ones as they arrive from the policy scaler.
 
@@ -1044,7 +1136,7 @@ Components that do not use SSE or WebSocket rely on TanStack Query's `refetchInt
 
 ### Auto-Scroll in PodLogViewer
 
-`PodLogViewer` manages auto-scroll via:
+`PodLogViewer` delegates streaming to the `usePodLogStream` hook and search UI to `LogSearchBar`. It manages auto-scroll via:
 
 1. `autoScroll` state (default `true`)
 2. `useEffect` that scrolls to bottom when `lines` change and `autoScroll` is true: `logRef.current.scrollTop = logRef.current.scrollHeight`

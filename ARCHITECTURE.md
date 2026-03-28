@@ -434,10 +434,16 @@ kube-phoenix/
 │   │   │   ├── ws.go                # WebSocket helpers
 │   │   │   └── helpers.go           # JSON response utilities
 │   │   ├── scheduler/
-│   │   │   ├── policy_scheduler.go  # 30s ticker, recovery, exception tick
+│   │   │   ├── policy_scheduler.go  # 30s ticker, recovery, exception tick, drift detection
+│   │   │   ├── policy_scheduler_test.go # Scheduler unit tests (mock store + runner)
 │   │   │   ├── policy_engine.go     # IntendedState evaluation, override precedence
-│   │   │   ├── policy_scaler.go     # Sleep/wake execution with snapshot persistence
+│   │   │   ├── policy_engine_test.go # Engine unit tests
 │   │   │   └── broker.go            # WebSocket log pub/sub
+│   │   ├── scaler/
+│   │   │   ├── scaler.go            # Low-level Kubernetes scale/drain operations
+│   │   │   ├── policy_scaler.go     # DB-backed sleep/wake with WorkloadSnapshot logic
+│   │   │   ├── scale_down.go        # Workload annotation + scale-to-zero helpers
+│   │   │   └── scale_up.go          # Workload restore + annotation cleanup helpers
 │   │   ├── policy/
 │   │   │   └── windows.go           # SleepWindow type, validation, evaluator
 │   │   ├── k8s/
@@ -470,6 +476,13 @@ kube-phoenix/
 │   ├── src/
 │   │   ├── app/                     # Next.js pages (overview, cluster, policies, ...)
 │   │   ├── components/              # React components by domain
+│   │   │   ├── audit/               # AuditRow, DiffLineRow, JsonDiffView, auditDiff helpers
+│   │   │   ├── cluster/             # Tables, drawers, extracted subcomponents (MiniBar, LabelChip, etc.)
+│   │   │   ├── common/              # ChipInput, LabeledSwitch, EmptyStateBox
+│   │   │   ├── guardrails/          # GuardrailsForm, ProtectedChipInput
+│   │   │   ├── history/             # ExecutionTable, LogViewer, ExecutionSummary, parseSummary, useExecutionLogs
+│   │   │   ├── policies/            # PolicyCard, timelines, WindowPicker, PolicyHeroBand, timelineSegments
+│   │   │   └── settings/            # AccountSettings, AppearanceSettings, DatabaseSettings, OIDCStatusCard
 │   │   ├── lib/                     # API client, auth, types, query client, utilities, shared hooks
 │   │   └── theme/                   # MUI theme (dark + light mode)
 │   ├── next.config.mjs              # Static export, trailing slash

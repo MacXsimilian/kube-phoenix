@@ -1,5 +1,8 @@
 // Package scheduler runs the policy evaluation ticker that periodically
-// triggers sleep and wake executions.
+// triggers sleep and wake executions. The evaluation pipeline is decomposed
+// into evaluatePolicy → reconcilePolicy / resetStuckTransition / executeTransition,
+// with drift detection via reconcileAwakePolicy. Store and runner dependencies
+// are held as interfaces (schedulerStore, policyRunner) for testability.
 package scheduler
 
 import (
