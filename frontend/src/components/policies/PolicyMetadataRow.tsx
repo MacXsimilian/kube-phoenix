@@ -1,14 +1,12 @@
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { subtleBorder } from '@/lib/statusColors'
 import type { Policy } from '@/lib/types'
-
-const BLEED_MARGIN_X = { xs: -2, sm: -2.5, md: -3 }
-const BLEED_PADDING_X = { xs: 2, sm: 2.5, md: 3 }
+import { BLEED_MARGIN_X, BLEED_PADDING_X } from '@/lib/layoutConstants'
 
 export default function PolicyMetadataRow({ policy }: { policy: Policy }) {
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   return (
     <Box
       sx={{

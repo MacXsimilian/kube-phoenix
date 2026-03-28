@@ -8,7 +8,6 @@ import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
-import Snackbar from '@mui/material/Snackbar'
 import Table from '@mui/material/Table'
 import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
@@ -28,25 +27,26 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import Tooltip from '@mui/material/Tooltip'
 import CloseIcon from '@mui/icons-material/Close'
 import { getExceptions, deleteException } from '@/lib/api'
-import type { ScheduledException, SnackMessage } from '@/lib/types'
+import type { ScheduledException } from '@/lib/types'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules } from '@/lib/rbac'
 import { fmtDt } from '@/lib/formatters'
-import { useTheme } from '@mui/material/styles'
+import { useIsDark } from '@/lib/useIsDark'
 import { executionStatusColors, executionStatusFallback, typeLabels, typeLabelFallback } from '@/lib/statusColors'
-import { SNACKBAR_AUTO_HIDE_MS, EXCEPTIONS_REFETCH_MS } from '@/lib/constants'
+import { EXCEPTIONS_REFETCH_MS } from '@/lib/constants'
+import { useSnackbar } from '@/lib/useSnackbar'
 
 const STATUS_TABS = ['all', 'pending', 'active', 'completed', 'cancelled']
 
 export default function ExceptionsPage() {
   const { user } = useAuth()
-  const isDark = useTheme().palette.mode === 'dark'
+  const isDark = useIsDark()
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ScheduledException | undefined>()
   const [tab, setTab] = useState(0)
-  const [snack, setSnack] = useState<SnackMessage | null>(null)
+  const { notify, SnackbarAlert } = useSnackbar()
   const [pendingDelete, setPendingDelete] = useState<ScheduledException | null>(null)
 
   const statusFilter = tab === 0 ? undefined : STATUS_TABS[tab]
@@ -61,10 +61,10 @@ export default function ExceptionsPage() {
     mutationFn: (id: number) => deleteException(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exceptions'] })
-      setSnack({ msg: 'Exception cancelled', severity: 'success' })
+      notify('Exception cancelled', 'success')
     },
     onError: (err: unknown) => {
-      setSnack({ msg: err instanceof Error ? err.message : 'Cancel failed', severity: 'error' })
+      notify(err instanceof Error ? err.message : 'Cancel failed', 'error')
     },
   })
 
@@ -78,6 +78,11 @@ export default function ExceptionsPage() {
     }
     setPendingDelete(null)
   }
+
+  const STATUS_COLORS = executionStatusColors(isDark)
+  const STATUS_FALLBACK = executionStatusFallback(isDark)
+  const TYPE_LABELS = typeLabels(isDark)
+  const TYPE_LABEL_FALLBACK = typeLabelFallback(isDark)
 
   const canEdit = canEditSchedules(user?.permissions)
 
@@ -152,8 +157,8 @@ export default function ExceptionsPage() {
           </TableHead>
           <TableBody>
             {exceptions.map(ex => {
-              const statusColor = executionStatusColors(isDark)[ex.status] ?? executionStatusFallback(isDark)
-              const typeLabel = typeLabels(isDark)[ex.exceptionType] ?? typeLabelFallback(isDark)
+              const statusColor = STATUS_COLORS[ex.status] ?? STATUS_FALLBACK
+              const typeLabel = TYPE_LABELS[ex.exceptionType] ?? TYPE_LABEL_FALLBACK
               return (
                 <TableRow key={ex.id} hover>
                   <TableCell>
@@ -209,7 +214,7 @@ export default function ExceptionsPage() {
         open={dialogOpen}
         onClose={() => { setDialogOpen(false); setEditing(undefined) }}
         existing={editing}
-        onNotify={(msg, severity) => setSnack({ msg, severity })}
+        onNotify={notify}
       />
 
       <Dialog open={!!pendingDelete} onClose={() => setPendingDelete(null)}>
@@ -229,18 +234,7 @@ export default function ExceptionsPage() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar
-        open={!!snack}
-        autoHideDuration={SNACKBAR_AUTO_HIDE_MS}
-        onClose={() => setSnack(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        {snack ? (
-          <Alert severity={snack.severity} onClose={() => setSnack(null)} sx={{ width: '100%' }}>
-            {snack.msg}
-          </Alert>
-        ) : undefined}
-      </Snackbar>
+      {SnackbarAlert}
     </Box>
   )
 }

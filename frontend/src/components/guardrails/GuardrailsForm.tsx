@@ -12,7 +12,6 @@ import TextField from '@mui/material/TextField'
 import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
-import Snackbar from '@mui/material/Snackbar'
 import Switch from '@mui/material/Switch'
 import { ChipInput } from '@/components/common/ChipInput'
 import ProtectedChipInput, { AMBER_40, AMBER_03 } from '@/components/guardrails/ProtectedChipInput'
@@ -20,7 +19,7 @@ import SaveIcon from '@mui/icons-material/Save'
 import { getGuardrails, updateGuardrails } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { canEditGuardrails } from '@/lib/rbac'
-import { SNACKBAR_AUTO_HIDE_MS } from '@/lib/constants'
+import { useSnackbar } from '@/lib/useSnackbar'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -50,7 +49,7 @@ export default function GuardrailsForm() {
   const [autoWake, setAutoWake] = useState(true)
   const [reconcileWhileAwake, setReconcileWhileAwake] = useState(true)
   const [scalingConcurrency, setScalingConcurrency] = useState(DEFAULT_SCALING_CONCURRENCY)
-  const [snackOpen, setSnackOpen] = useState(false)
+  const { notify, SnackbarAlert } = useSnackbar()
   const [saveError, setSaveError] = useState<string | null>(null)
   const initialised = useRef(false)
 
@@ -91,7 +90,7 @@ export default function GuardrailsForm() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['guardrails'] })
       setSaveError(null)
-      setSnackOpen(true)
+      notify('Guardrails saved successfully.', 'success')
     },
     onError: (err: unknown) => {
       setSaveError(err instanceof Error ? err.message : 'Failed to save guardrails')
@@ -304,16 +303,7 @@ export default function GuardrailsForm() {
         )}
       </Box>
 
-      <Snackbar
-        open={snackOpen}
-        autoHideDuration={SNACKBAR_AUTO_HIDE_MS}
-        onClose={() => setSnackOpen(false)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert severity="success" onClose={() => setSnackOpen(false)} sx={{ width: '100%' }}>
-          Guardrails saved successfully.
-        </Alert>
-      </Snackbar>
+      {SnackbarAlert}
     </>
   )
 }
