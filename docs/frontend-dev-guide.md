@@ -859,7 +859,7 @@ The guardrails editor delegates tag-like editing to two extracted components:
 
 Data is loaded from the API as CSV strings and split with `fromCsv()`. On save, arrays are joined back with `csv()`.
 
-The form also includes a "Scheduler Behaviour" card with three controls: an `Eval Interval` text field (Go duration string, validated with a regex before save, description shown inline beside the field rather than below it) and two `LabeledSwitch` toggles for `Auto Wake` and `Reconcile While Awake`. These map to the three scheduler settings in the `Guardrails` model (`SchedulerEvalInterval`, `SchedulerAutoWake`, `SchedulerReconcileWhileAwake`).
+The form also includes a "Scheduler Behaviour" card with four controls: an `Eval Interval` text field (Go duration string, validated with a regex before save, description shown inline beside the field rather than below it), a `Scaling Concurrency` number input (range 1–50, default 10) that controls the maximum number of workloads scaled in parallel during sleep and wake runs, and two `LabeledSwitch` toggles for `Auto Wake` and `Reconcile While Awake`. These map to the four scheduler settings in the `Guardrails` model (`SchedulerEvalInterval`, `ScalingConcurrency`, `SchedulerAutoWake`, `SchedulerReconcileWhileAwake`).
 
 **`LabeledSwitch`** (`components/common/LabeledSwitch.tsx`): A shared component that renders a `FormControlLabel` wrapping a `Switch` with a two-line label (bold title + secondary caption). Used by `GuardrailsForm` and `ExceptionDialog`.
 

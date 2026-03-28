@@ -155,11 +155,13 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `workloadEntry` -- uniform representation of a Deployment or StatefulSet with function pointers for `Annotate`, `Scale`, `RemoveAnnotation`.
 
 **Key functions (PolicyRunner):**
-- `RunPolicySleep(ctx, policy, execID, logCh)` -- for each matched workload: create `WorkloadSnapshot`, annotate `previous-replicas`, scale to 0. Then drain and delete unprotected nodes.
-- `RunPolicyWake(ctx, policy, execID, logCh)` -- load open snapshots, restore each workload to `ReplicasBefore`, close snapshots. Nodes are not managed (Karpenter handles provisioning).
+- `RunPolicySleep(ctx, policy, execID, logCh)` -- scales matched workloads concurrently using `runConcurrent`, bounded by `guardrails.ScalingConcurrency`. For each workload: create `WorkloadSnapshot`, annotate `previous-replicas`, scale to 0. Then drain and delete unprotected nodes.
+- `RunPolicyWake(ctx, policy, execID, logCh)` -- loads open snapshots and restores them concurrently using `runConcurrent`, bounded by `guardrails.ScalingConcurrency`. Restores each workload to `ReplicasBefore`, closes snapshots. Nodes are not managed (Karpenter handles provisioning).
 - `sleepWorkload(params, kind, ns, name, replicas, annotate, scale)` -- processes a single workload during sleep; handles already-zero, snapshot creation, rollback on scale failure.
-- `lookupWorkload(ctx, kind, ns, name)` -- performs a direct Get to check if a workload still exists in the cluster.
-- `restoreWorkload(ctx, kind, ns, name, target)` -- scales up and removes the annotation.
+- `wakeWorkload(params, snap)` -- processes a single snapshot during wake; handles already-zero, lookup errors, external scaling detection, and restore.
+- `runConcurrent[T](items, concurrency, fn, counts)` -- generic worker pool bounded by a semaphore, with mutex-protected counts and panic recovery with stack trace logging.
+- `lookupWorkload(ctx, kind, ns, name)` -- performs a direct Get to check if a workload still exists in the cluster. Returns an error, using `apierrors.IsNotFound` to distinguish 404 from transient errors.
+- `restoreWorkload(ctx, kind, ns, name, target)` -- scales up and removes the annotation. Returns an error for unknown workload kinds.
 
 **Key functions (Runner):**
 - `collectFilteredEntries(deployments, statefulsets, skipNS, nsFilter, counts, countSkipped)` -- filters workloads by namespace and converts to `workloadEntry` slice.
@@ -185,10 +187,12 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 **Key functions (Client):**
 - `ListDeployments(ctx, namespace)` / `ListDeploymentsBySelector(ctx, namespace, labelSelector)` -- list with optional label filter.
-- `ScaleDeployment(ctx, ns, name, replicas)` -- get scale subresource, set replicas, update.
-- `AnnotateDeployment(ctx, ns, name, key, value)` / `RemoveDeploymentAnnotation(ctx, ns, name, key)` -- read-modify-write on the deployment object.
-- Equivalent methods for StatefulSets: `ListStatefulSets`, `ListStatefulSetsBySelector`, `ScaleStatefulSet`, `AnnotateStatefulSet`, `RemoveStatefulSetAnnotation`.
-- `ListNodes(ctx)` / `GetNode(ctx, name)` / `CordonNode(ctx, name)` / `DrainNode(ctx, name, timeout)` / `DeleteNode(ctx, name)`.
+- `ScaleDeployment(ctx, ns, name, replicas)` -- get scale subresource, set replicas, update. Uses `scaleWithRetry` for retry-on-conflict with exponential backoff (500ms, 1.5s, 3s).
+- `AnnotateDeployment(ctx, ns, name, key, value)` / `RemoveDeploymentAnnotation(ctx, ns, name, key)` -- read-modify-write on the deployment object. Uses `retryOnConflict` for conflict resilience.
+- Equivalent methods for StatefulSets: `ListStatefulSets`, `ListStatefulSetsBySelector`, `ScaleStatefulSet`, `AnnotateStatefulSet`, `RemoveStatefulSetAnnotation`. Scale and annotation operations use the same retry-on-conflict logic.
+- `ListNodes(ctx)` / `GetNode(ctx, name)` / `CordonNode(ctx, name)` / `DrainNode(ctx, name, timeout)` / `DeleteNode(ctx, name)`. `CordonNode` uses `retryOnConflict`.
+- `retryOnConflict(fn)` -- internal helper that retries a function on 409 Conflict with exponential backoff (500ms, 1.5s, 3s; three attempts).
+- `scaleWithRetry(ctx, ns, name, replicas, getScale, updateScale)` -- thin wrapper calling `retryOnConflict` for scale subresource operations.
 - `DrainNode` -- cordons, evicts all non-DaemonSet pods (falling back to force-delete), then polls until drained or timeout.
 - `ListPods(ctx, ns)` / `ListAllPods(ctx)` / `ListPodsOnNode(ctx, nodeName)` / `GetPod(ctx, ns, name)`.
 - `GetPodLogs(ctx, ns, name, container, tailLines, previous, follow)` -- returns `io.ReadCloser` for streaming.

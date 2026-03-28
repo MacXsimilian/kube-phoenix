@@ -87,6 +87,22 @@ components:
           type: string
           example: "payments,checkout,api-gateway"
           description: Ordered list of namespaces to scale first during sleep and wake. Comma-separated.
+        schedulerEvalInterval:
+          type: string
+          example: "30s"
+          description: How often policies are evaluated. Accepts Go duration strings. Default 30s.
+        schedulerAutoWake:
+          type: boolean
+          description: When false, wake transitions must be triggered manually. Default true.
+        schedulerReconcileWhileAwake:
+          type: boolean
+          description: When true, detects and corrects drift from failed wake executions. Default true.
+        scalingConcurrency:
+          type: integer
+          minimum: 1
+          maximum: 50
+          example: 10
+          description: Maximum number of workloads scaled in parallel during sleep and wake. Default 10.
         updatedAt:
           type: string
           format: date-time
@@ -106,6 +122,16 @@ components:
           type: string
         scalingPriorityNamespaces:
           type: string
+        schedulerEvalInterval:
+          type: string
+        schedulerAutoWake:
+          type: boolean
+        schedulerReconcileWhileAwake:
+          type: boolean
+        scalingConcurrency:
+          type: integer
+          minimum: 1
+          maximum: 50
 
     OverviewResponse:
       description: Pre-aggregated cluster summary for the dashboard.
