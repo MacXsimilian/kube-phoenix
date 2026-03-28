@@ -54,6 +54,17 @@ func (s *Store) CleanExpiredSessions() (int64, error) {
 	return result.RowsAffected, result.Error
 }
 
+// ListUserSessions returns all active (non-expired) sessions for a user.
+// The token column is excluded from the result for security.
+func (s *Store) ListUserSessions(userID uint) ([]Session, error) {
+	var sessions []Session
+	err := s.db.Select("id, user_id, ip_address, user_agent, expires_at, max_expires_at, created_at").
+		Where("user_id = ? AND expires_at > ? AND max_expires_at > ?", userID, time.Now(), time.Now()).
+		Order("created_at DESC").
+		Find(&sessions).Error
+	return sessions, err
+}
+
 // CountActiveSessions returns the number of non-expired sessions.
 func (s *Store) CountActiveSessions() (int64, error) {
 	var count int64

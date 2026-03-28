@@ -224,6 +224,47 @@ func (h *Handler) updateUserSettings(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, userResponse(user))
 }
 
+// ─── List sessions ──────────────────────────────────────────────────────────
+
+type sessionResponse struct {
+	ID        uint   `json:"id"`
+	IPAddress string `json:"ipAddress"`
+	UserAgent string `json:"userAgent"`
+	CreatedAt string `json:"createdAt"`
+	ExpiresAt string `json:"expiresAt"`
+	IsCurrent bool   `json:"isCurrent"`
+}
+
+func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
+	user := authmw.UserFromContext(r.Context())
+	if user == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sessions, err := h.store.ListUserSessions(user.ID)
+	if err != nil {
+		jsonInternalError(w, err, "list sessions failed")
+		return
+	}
+
+	currentSessionID := authmw.SessionIDFromContext(r.Context())
+
+	resp := make([]sessionResponse, len(sessions))
+	for i, s := range sessions {
+		resp[i] = sessionResponse{
+			ID:        s.ID,
+			IPAddress: s.IPAddress,
+			UserAgent: s.UserAgent,
+			CreatedAt: s.CreatedAt.Format(time.RFC3339),
+			ExpiresAt: s.ExpiresAt.Format(time.RFC3339),
+			IsCurrent: s.ID == currentSessionID,
+		}
+	}
+
+	jsonOK(w, resp)
+}
+
 // ─── Session helpers ─────────────────────────────────────────────────────────
 
 func (h *Handler) createSessionCookies(w http.ResponseWriter, r *http.Request, user *store.User) error {

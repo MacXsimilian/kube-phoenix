@@ -69,6 +69,18 @@ export const getVersionInfo = (): Promise<VersionInfo> =>
 export const updateUserSettings = (settings: { defaultTimezone: string }): Promise<User> =>
   req<User>('/api/auth/settings', { method: 'PUT', body: JSON.stringify(settings) })
 
+export interface SessionInfo {
+  id: number
+  ipAddress: string
+  userAgent: string
+  createdAt: string
+  expiresAt: string
+  isCurrent: boolean
+}
+
+export const getSessions = (): Promise<SessionInfo[]> =>
+  req<SessionInfo[]>('/api/auth/sessions')
+
 // ── Guardrails ────────────────────────────────────────────────────────────────
 
 export const getGuardrails = (): Promise<Guardrails> =>

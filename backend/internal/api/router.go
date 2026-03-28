@@ -130,6 +130,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 		// Auth endpoints
 		r.Post("/api/auth/logout", h.logout)
 		r.Get("/api/auth/me", h.me)
+		r.Get("/api/auth/sessions", h.listSessions)
 		r.Put("/api/auth/password", h.changePassword)
 		r.Put("/api/auth/settings", h.updateUserSettings)
 
