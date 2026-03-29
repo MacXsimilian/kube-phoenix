@@ -54,6 +54,12 @@ func (aw *AuditWriter) Start(ctx context.Context) {
 	}
 }
 
+// WriteSync persists an audit entry synchronously, bypassing the channel.
+// Used for security-critical actions that must never be dropped.
+func (aw *AuditWriter) WriteSync(entry *store.AuditLog) error {
+	return aw.store.CreateAuditLog(entry)
+}
+
 func (aw *AuditWriter) safeWrite(entry *store.AuditLog) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -78,8 +84,23 @@ func marshalOrNull(v interface{}) string {
 	return string(b)
 }
 
-// audit enqueues an audit log entry. Non-blocking on first attempt; blocks up
-// to 500ms before dropping if the buffer is full.
+// criticalAuditActions lists action prefixes that are written synchronously to
+// guarantee delivery. These cover authentication, user management, and admin
+// operations where a dropped audit entry is unacceptable.
+var criticalAuditActions = []string{"auth.", "user.", "admin."}
+
+func isCriticalAuditAction(action string) bool {
+	for _, prefix := range criticalAuditActions {
+		if strings.HasPrefix(action, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// audit enqueues an audit log entry. Security-critical actions (auth, user
+// management, admin) are written synchronously; all others are buffered with a
+// 500ms grace period before dropping.
 func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID *uint, before, after any) {
 	user := authmw.UserFromContext(r.Context())
 	username := systemUser
@@ -101,15 +122,20 @@ func (h *Handler) audit(r *http.Request, action, resourceType string, resourceID
 		Timestamp:    time.Now(),
 	}
 
-	select {
-	case h.auditWriter.ch <- entry:
-	default:
-		// Buffer full — block briefly before dropping to improve delivery guarantees.
+	if isCriticalAuditAction(action) {
+		if err := h.auditWriter.WriteSync(entry); err != nil {
+			slog.Error("audit: synchronous write failed for critical action", "action", action, "user", username, "err", err)
+		}
+	} else {
 		select {
 		case h.auditWriter.ch <- entry:
-		case <-time.After(500 * time.Millisecond):
-			metrics.AuditDropsTotal.Inc()
-			slog.Error("audit-writer: buffer full after 500ms, entry dropped", "action", action, "user", username)
+		default:
+			select {
+			case h.auditWriter.ch <- entry:
+			case <-time.After(500 * time.Millisecond):
+				metrics.AuditDropsTotal.Inc()
+				slog.Error("audit-writer: buffer full after 500ms, entry dropped", "action", action, "user", username)
+			}
 		}
 	}
 

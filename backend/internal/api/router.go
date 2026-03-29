@@ -51,7 +51,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 	idleTimeout := parseDuration("SESSION_IDLE_TIMEOUT", 8*time.Hour)
 	maxLifetime := parseDuration("SESSION_MAX_LIFETIME", 24*time.Hour)
 
-	aw := NewAuditWriter(st, 1024)
+	aw := NewAuditWriter(st, 4096)
 	go aw.Start(ctx)
 
 	// Initialize OIDC provider if configured.
@@ -165,6 +165,10 @@ func (h *Handler) registerAuthRoutes(r chi.Router) {
 }
 
 // registerClusterRoutes mounts read-only cluster, guardrail, and audit endpoints.
+//
+// SECURITY: All routes in this function are accessible to any authenticated
+// user (viewer, operator, admin). Mutation endpoints (POST/PUT/DELETE) MUST be
+// wrapped in a RequirePermission group — never add a mutation at the top level.
 func (h *Handler) registerClusterRoutes(r chi.Router) {
 	r.Get("/guardrails", h.getGuardrails)
 	r.Get("/overview", h.getOverview)
@@ -189,6 +193,9 @@ func (h *Handler) registerClusterRoutes(r chi.Router) {
 }
 
 // registerPolicyRoutes mounts policy read, mutation, and trigger endpoints.
+//
+// SECURITY: Top-level routes here are accessible to any authenticated user.
+// All state-changing endpoints MUST be wrapped in a RequirePermission group.
 func (h *Handler) registerPolicyRoutes(r chi.Router) {
 	// Read-only (all authenticated users)
 	r.Get("/policies", h.listPolicies)
@@ -225,6 +232,8 @@ func (h *Handler) registerPolicyRoutes(r chi.Router) {
 }
 
 // registerAdminRoutes mounts user management and danger-zone endpoints.
+//
+// SECURITY: Every route here MUST be wrapped in a RequirePermission group.
 func (h *Handler) registerAdminRoutes(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(authmw.RequirePermission(auth.PermUserManage))

@@ -48,6 +48,7 @@ func (s *Store) SeedDefaults() error {
 			SchedulerAutoWake:            true,
 			SchedulerReconcileWhileAwake: true,
 			ScalingConcurrency:           10,
+			ProtectCriticalPodNodes:      true,
 		}
 		if err := s.db.Create(&g).Error; err != nil {
 			return err

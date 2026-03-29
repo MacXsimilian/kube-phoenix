@@ -17,6 +17,14 @@ const (
 )
 
 // hasActiveWindowedOverride checks if any override of the given type is active at now.
+//
+// Known limitation: overrides are evaluated once at the start of a policy tick.
+// If an override expires while an execution is already in progress, the running
+// execution will complete under the original intention. Re-checking mid-execution
+// was considered but rejected: executions are short-lived (typically <5 min),
+// and aborting a half-finished scale operation would leave workloads in an
+// inconsistent state. The trade-off favours consistency over strict time
+// boundary adherence.
 func hasActiveWindowedOverride(overrides []store.PolicyOverride, overrideType string, now time.Time) bool {
 	for _, o := range overrides {
 		if o.OverrideType != overrideType || o.StartsAt == nil || o.EndsAt == nil {

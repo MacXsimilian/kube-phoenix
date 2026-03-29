@@ -448,8 +448,8 @@ const (
 	// reconcileBackoff is the minimum interval between corrective-wake
 	// attempts for the same policy. Prevents flooding history when failures
 	// persist.
-	reconcileBackoff       = 5 * time.Minute
-	stuckTransitionTimeout = 10 * time.Minute
+	reconcileBackoff            = 5 * time.Minute
+	stuckTransitionTimeoutFloor = 15 * time.Minute
 )
 
 func (ps *PolicyScheduler) tickLoop(ctx context.Context, interval time.Duration) {
@@ -633,10 +633,26 @@ func (ps *PolicyScheduler) clearFailedTransition(policyID uint) {
 	ps.mu.Unlock()
 }
 
+// stuckTimeout returns the stuck-transition timeout for a policy, derived from
+// the policy's own execution timeout plus a safety margin. This prevents
+// legitimate long drains from being falsely reset.
+func stuckTimeout(p store.Policy) time.Duration {
+	t := time.Duration(p.TimeoutMinutes) * time.Minute
+	if t <= 0 {
+		t = defaultExecutionTimeout
+	}
+	// Add 5 minutes of grace on top of the execution timeout.
+	t += 5 * time.Minute
+	if t < stuckTransitionTimeoutFloor {
+		t = stuckTransitionTimeoutFloor
+	}
+	return t
+}
+
 // resetStuckTransition resets policies stuck in "transitioning" for longer
-// than stuckTransitionTimeout back to "unknown" so the next tick re-evaluates.
+// than their execution timeout back to "unknown" so the next tick re-evaluates.
 func (ps *PolicyScheduler) resetStuckTransition(p store.Policy, now time.Time) {
-	if p.StateSince == nil || now.Sub(*p.StateSince) <= stuckTransitionTimeout {
+	if p.StateSince == nil || now.Sub(*p.StateSince) <= stuckTimeout(p) {
 		return
 	}
 	slog.Warn("policy scheduler: policy stuck in transitioning, resetting to unknown",

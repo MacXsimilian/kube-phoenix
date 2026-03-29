@@ -147,9 +147,9 @@ sleeping or awake at a given point in time.
 operations, persisting workload snapshots for reliable restoration.
 
 **Key responsibilities:**
-- **Sleep:** For each matched workload, save the current replica count as a
-  `WorkloadSnapshot`, annotate the resource with `previous-replicas`, and scale
-  to zero. Then cordon, drain, and delete unprotected nodes.
+- **Sleep:** For each matched workload, annotate the resource with
+  `previous-replicas` (recovery fallback), scale to zero, then persist a
+  `WorkloadSnapshot` to the database. This ordering prevents orphaned snapshots. Then cordon, drain, and delete unprotected nodes.
 - **Wake:** Load snapshots from the most recent sleep execution, restore each
   workload to its saved replica count, and remove the annotation. After
   processing DB snapshots, an annotation fallback sweep scans for workloads
@@ -157,7 +157,8 @@ operations, persisting workload snapshots for reliable restoration.
   from DB data loss). Nodes are not managed -- Karpenter provisions new nodes
   in response to pending pods.
 - Respect guardrails: skip protected namespaces, labeled nodes, tainted nodes,
-  and nodes hosting critical-namespace pods.
+  nodes hosting critical-namespace pods, and (when `ProtectCriticalPodNodes` is
+  enabled) nodes running `system-node-critical` or `system-cluster-critical` pods.
 - Deduplicate Deployment/StatefulSet dispatch via `workloadOps()` helper, which returns the appropriate get-replicas, scale, and remove-annotation functions for a given kind.
 - Emit structured log lines to a channel for real-time streaming via the Broker.
 - Support plan mode (dry-run): log what would happen without mutating anything.
@@ -259,6 +260,8 @@ erDiagram
         varchar eval_interval "30s"
         boolean auto_wake "true"
         boolean reconcile_awake "true"
+        int scaling_concurrency "10"
+        boolean protect_critical_pod_nodes "true"
     }
 
     users {
@@ -372,9 +375,10 @@ scheduled exception activation.
 4. **PolicyScaler.RunSleep** begins:
    a. Load guardrails (skip namespaces, protected labels/taints).
    b. Match workloads by `namespace_filter` and `label_selector`.
-   c. Scale matched workloads concurrently: for each workload, save snapshot, annotate
-      `previous-replicas`, scale to 0. Each scale operation retries on 409
-      Conflict with exponential backoff.
+   c. Scale matched workloads concurrently: for each workload, annotate
+      `previous-replicas` (fallback), scale to 0, then persist snapshot to DB.
+      This ordering prevents orphaned snapshots. Each scale operation retries
+      on 409 Conflict with exponential backoff.
    d. For each unprotected node: cordon, drain (dynamic timeout: `podCount*15+60`s),
       delete.
 5. Log lines are emitted to the log channel. **Broker** fans them out to
@@ -411,7 +415,7 @@ Every configurable interval (default 30s):
         if backoff elapsed and open snapshots needing restore > 0:
           spawn goroutine -> run(policy, "wake", "reconcile")  // bypasses autoWake + skip_wake
       continue
-    if current_state == "transitioning": check for stuck (>10 min), reset to unknown
+    if current_state == "transitioning": check for stuck (>policy timeout + 5 min), reset to unknown
     if intended == "awake" and autoWake is false: skip
     if skip_wake/skip_sleep override active: consume and skip
     spawn goroutine -> run(policy, intended_direction, "scheduled")
@@ -503,7 +507,7 @@ kube-phoenix/
 │   │   ├── metrics/
 │   │   │   └── metrics.go           # Prometheus metrics (promauto registration)
 │   │   ├── nodeutil/
-│   │   │   └── protection.go        # Shared node protection helpers (label/taint matching)
+│   │   │   └── protection.go        # Shared node protection helpers (label/taint matching, critical pod detection)
 │   │   ├── stringutil/
 │   │   │   └── stringutil.go        # Generic string helpers (CSV parsing, etc.)
 │   │   └── docs/

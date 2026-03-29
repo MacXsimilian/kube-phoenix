@@ -81,7 +81,7 @@ kube-phoenix/
       k8s/                        # Kubernetes client + ClusterCache
       metrics/                    # Prometheus metrics (promauto registration)
       middleware/                  # Session auth, CSRF, rate-limit middleware
-      nodeutil/                   # Shared node protection helpers (label/taint matching)
+      nodeutil/                   # Shared node protection helpers (label/taint matching, critical pod detection)
       policy/                     # Sleep window compiler
       scaler/                     # PolicyScaler (DB-backed sleep/wake)
       scheduler/                  # PolicyScheduler, PolicyEngine, WS log broker

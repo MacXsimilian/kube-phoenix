@@ -82,6 +82,15 @@ func (h *Handler) createException(w http.ResponseWriter, r *http.Request) {
 			handleStoreError(w, err, "policy not found", "get policy failed")
 			return
 		}
+		overlap, err := h.store.HasOverlappingException(*body.PolicyID, body.ExceptionType, body.StartsAt, body.EndsAt, 0)
+		if err != nil {
+			jsonInternalError(w, err, "overlap check failed")
+			return
+		}
+		if overlap {
+			jsonError(w, "time window overlaps with an existing exception of the opposite type on this policy", http.StatusConflict)
+			return
+		}
 	}
 
 	ex, err := newExceptionFromInput(body, r)
@@ -133,6 +142,31 @@ func (h *Handler) updateException(w http.ResponseWriter, r *http.Request) {
 	if ex.Status != store.ExceptionStatusPending {
 		jsonError(w, "only pending exceptions can be edited", http.StatusConflict)
 		return
+	}
+
+	// Check for overlapping exceptions when time window or type changes.
+	if ex.PolicyID != nil {
+		exType := ex.ExceptionType
+		if v, ok := updates["exception_type"].(string); ok {
+			exType = v
+		}
+		startsAt := ex.StartsAt
+		if v, ok := updates["starts_at"].(time.Time); ok {
+			startsAt = v
+		}
+		endsAt := ex.EndsAt
+		if v, ok := updates["ends_at"].(time.Time); ok {
+			endsAt = v
+		}
+		overlap, err := h.store.HasOverlappingException(*ex.PolicyID, exType, startsAt, endsAt, id)
+		if err != nil {
+			jsonInternalError(w, err, "overlap check failed")
+			return
+		}
+		if overlap {
+			jsonError(w, "time window overlaps with an existing exception of the opposite type on this policy", http.StatusConflict)
+			return
+		}
 	}
 
 	updated, err := h.store.UpdateScheduledException(id, updates)
@@ -289,6 +323,11 @@ func validateExceptionUpdates(updates map[string]interface{}) error {
 			return err
 		}
 	}
+	if v, ok := updates["namespace_filter"].(string); ok {
+		if msg := validateNamespaceFilter(v); msg != "" {
+			return errors.New(msg)
+		}
+	}
 	return nil
 }
 
@@ -316,6 +355,9 @@ func validateExceptionInput(b exceptionInput) error {
 	}
 	if err := validateFieldLen(b.TicketRef, maxTicketRefLen, "ticketRef"); err != nil {
 		return err
+	}
+	if msg := validateNamespaceFilter(b.NamespaceFilter); msg != "" {
+		return errors.New(msg)
 	}
 	return nil
 }

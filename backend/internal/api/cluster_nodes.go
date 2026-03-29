@@ -109,6 +109,9 @@ func buildNodeResponse(nodes []corev1.Node, allPods []corev1.Pod, g *store.Guard
 		if skipNsNode[pod.Namespace] {
 			criticalNodes[pod.Spec.NodeName] = true
 		}
+		if g.ProtectCriticalPodNodes && nodeutil.IsCriticalPod(pod.Spec.PriorityClassName) {
+			criticalNodes[pod.Spec.NodeName] = true
+		}
 	}
 
 	var result []NodeResponse

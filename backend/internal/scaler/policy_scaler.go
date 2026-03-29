@@ -133,21 +133,24 @@ func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, e workloadEntry) (sc
 		return true, false, false
 	}
 
-	if err := r.store.CreateWorkloadSnapshot(snap); err != nil {
-		emit(p.logCh, "error", fmt.Sprintf("Failed to save snapshot for %s: %s", wl, err))
-		return false, false, true
-	}
+	// Write annotation first (fallback for recovery), then scale, then persist
+	// the snapshot. This ordering prevents orphaned snapshots: if the scale
+	// fails, no DB row exists to confuse a future wake. The annotation is
+	// harmless on its own — restoreOrphanedFromAnnotations only fires when no
+	// matching snapshot exists.
 	if err := e.Annotate(p.ctx, e.Namespace, e.Name, annotationKey, fmt.Sprintf("%d", e.Replicas)); err != nil {
 		emit(p.logCh, "warn", fmt.Sprintf("Could not write annotation for %s: %s", wl, err))
 	}
 	if err := e.Scale(p.ctx, e.Namespace, e.Name, 0); err != nil {
 		emit(p.logCh, "error", fmt.Sprintf("Failed to scale %s: %s", wl, err))
-		if delErr := r.store.DeleteWorkloadSnapshot(snap.ID); delErr != nil {
-			slog.Error("orphaned snapshot: failed to delete after scale failure",
-				"snapshotID", snap.ID, "workload", wl, "err", delErr)
-			emit(p.logCh, "warn", fmt.Sprintf("Could not remove snapshot for %s: %s", wl, delErr))
-		}
 		return false, false, true
+	}
+	if err := r.store.CreateWorkloadSnapshot(snap); err != nil {
+		// Workload is already scaled to 0 but snapshot failed — the annotation
+		// fallback will handle restoration on next wake.
+		slog.Error("snapshot write failed after successful scale",
+			"workload", wl, "err", err)
+		emit(p.logCh, "warn", fmt.Sprintf("Snapshot write failed for %s (annotation fallback will handle restore): %s", wl, err))
 	}
 	emit(p.logCh, "ok", fmt.Sprintf("Slept %s (was %d replicas)", wl, e.Replicas))
 	return true, false, false

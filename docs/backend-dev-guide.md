@@ -65,7 +65,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 **Key types:**
 - `Handler` -- central struct holding `*store.Store`, `*k8s.Client`, `*scheduler.PolicyScheduler`, `*k8s.ClusterCache`, rate limiters, session timeouts, `*AuditWriter`, OIDC config, and `cookieSecure` (derived from `COOKIE_SECURE` env var, defaults to true). Every handler method is a method on `Handler`.
-- `AuditWriter` -- async buffered writer that drains a 1024-entry channel and persists `store.AuditLog` records in the background.
+- `AuditWriter` -- async buffered writer that drains a 4096-entry channel and persists `store.AuditLog` records in the background. Security-critical actions (`auth.*`, `user.*`, `admin.*`) bypass the channel and write synchronously via `WriteSync` to guarantee delivery.
 - `policyResponse` -- wraps `store.Policy` with computed `NextTransitionAt` and deserialized `SleepWindows`.
 - `WorkloadResponse` -- typed JSON response shape for cluster workloads (in `cluster.go`).
 - `NodeResponse`, `NodeTaintResponse` -- typed JSON response shapes for cluster nodes (in `cluster_nodes.go`).
@@ -132,7 +132,8 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `reconcilePolicy(p, ctx)` -- called when a policy is already in its intended state. When `reconcileWhileAwake` is enabled and the policy is awake, delegates to `reconcileAwakePolicy`.
 - `reconcileAwakePolicy(p, now)` -- detects drift from failed wakes by counting open snapshots that need restoring (`CountOpenSnapshotsForRestore`). If drift is found and the per-policy backoff (5 minutes) has elapsed, runs a corrective wake with trigger `"reconcile"`. Bypasses the `autoWake` gate and `skip_wake` overrides.
 - `executeTransition(p, intended, overrides, ctx)` -- handles scheduled sleep/wake transitions, respecting the `autoWake` gate, skip overrides, and the failed-transition backoff (5 minutes between retries after a failure).
-- `resetStuckTransition(p, now)` -- resets policies stuck in `transitioning` for longer than `stuckTransitionTimeout` (10 minutes) back to `unknown`.
+- `stuckTimeout(p)` -- computes the stuck-transition timeout for a policy from its `TimeoutMinutes` plus a 5-minute grace period, floored at 15 minutes. Prevents legitimate long drains from being falsely reset.
+- `resetStuckTransition(p, now)` -- resets policies stuck in `transitioning` for longer than `stuckTimeout(p)` back to `unknown`.
 - `UpdateSettings(cfg SchedulerConfig) error` -- apply new eval interval, auto-wake, and reconcile-while-awake at runtime; restarts the ticker goroutine only if the interval changed.
 
 **Policy Engine (`policy_engine.go`):**
@@ -163,9 +164,9 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `workloadEntry` -- uniform representation of a Deployment or StatefulSet with function pointers for `Annotate`, `Scale`, `RemoveAnnotation`.
 
 **Key functions (PolicyRunner):**
-- `RunPolicySleep(ctx, policy, execID, logCh)` -- scales matched workloads concurrently using `runConcurrent`, bounded by `guardrails.ScalingConcurrency`. For each workload: create `WorkloadSnapshot`, annotate `previous-replicas`, scale to 0. Then drain and delete unprotected nodes. Returns an error when all workloads fail (`Errors > 0 && Scaled == 0`), causing the execution to be marked `failed`.
+- `RunPolicySleep(ctx, policy, execID, logCh)` -- scales matched workloads concurrently using `runConcurrent`, bounded by `guardrails.ScalingConcurrency`. For each workload: annotate `previous-replicas`, scale to 0, then persist `WorkloadSnapshot` to DB (this ordering prevents orphaned snapshots). Then drain and delete unprotected nodes. Returns an error when all workloads fail (`Errors > 0 && Scaled == 0`), causing the execution to be marked `failed`.
 - `RunPolicyWake(ctx, policy, execID, logCh)` -- loads open snapshots and restores them concurrently using `runConcurrent`, bounded by `guardrails.ScalingConcurrency`. Restores each workload to `ReplicasBefore`, closes snapshots. Nodes are not managed (Karpenter handles provisioning). Returns an error when all workloads fail (`Errors > 0 && Scaled == 0`).
-- `sleepWorkload(params, kind, ns, name, replicas, annotate, scale)` -- processes a single workload during sleep; handles already-zero, snapshot creation, rollback on scale failure.
+- `sleepWorkload(params, entry)` -- processes a single workload during sleep; handles already-zero detection. Uses annotate→scale→snapshot ordering to prevent orphaned snapshots: the annotation is written first as a recovery fallback, then the workload is scaled to zero, and only then is the snapshot persisted to DB. If the scale fails, no snapshot exists to orphan; if the snapshot write fails, the annotation fallback handles restoration.
 - `wakeWorkload(params, snap)` -- processes a single snapshot during wake; handles already-zero, lookup errors, external scaling detection, and restore. If a workload was externally scaled back to the exact target count, the snapshot is closed without a redundant API call (delegated to `handleExternallyScaled`).
 - `runConcurrent[T](items, concurrency, fn, counts)` -- generic worker pool bounded by a semaphore, with mutex-protected counts and panic recovery with stack trace logging.
 - `workloadOps(kind)` -- returns the k8s operations (get-replicas, scale, remove-annotation) for the given workload kind. Eliminates the duplicated Deployment/StatefulSet switch blocks in `lookupWorkload` and `restoreWorkload`.
@@ -254,7 +255,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `store.go` | `New(dsn)` -- opens PostgreSQL connection, configures pool (10 open, 5 idle, 5m lifetime, 2m idle timeout), runs `AutoMigrate`, adds CHECK constraints via `addEnumCheckConstraints`, migrates legacy cron columns. `Ping()`, `DB()`. |
 | `models.go` | All GORM model struct definitions with tags. |
 | `status.go` | String constants: `PolicyState*`, `PolicyMode*`, `ExecStatus*`, `ExceptionStatus*`, `ExceptionType*`. |
-| `policies.go` | `ListPolicies`, `ListEnabledPolicies` (SQL-filtered, used by scheduler), `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning` (atomic conditional update, sets both `current_state` and `state_since`, returns `ErrTransitionAlreadyClaimed` on race), `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`, `ResetStuckTransitioningPolicies`. Retention: `CleanOldExecutions` (deletes finished executions older than threshold, preserving those with open snapshots; cascades to log lines and snapshots via FK), `CleanExpiredOverrides` (deletes time-bounded overrides past `ends_at` and old skip overrides). Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines` (capped at 5000 rows). Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `CountOpenSnapshotsForRestore`, `GetSnapshotsForExecution`, `GetSnapshotsForPolicy` (capped at 5000 rows), `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`, `ListActiveOverridesForPolicies` (batch fetch for all policies in one query, used by scheduler tick). Exceptions: `Create/Get/List/Update ScheduledException`, `CancelScheduledException` (atomic status + cancelled_at + cancel_reason, guarded by `WHERE status IN ('pending','active')`), `ListOpenExceptions`, `ListActiveExceptionsForPolicies` (batch fetch of active exceptions by policy IDs and time range, used by scheduler tick), `ListActiveExceptionsForPolicy` (single-policy variant, used by startup recovery), `UpdateScheduledExceptionStatus` (atomic conditional transition: requires `expectedStatus` to match current row state, prevents concurrent double-transitions). |
+| `policies.go` | `ListPolicies`, `ListEnabledPolicies` (SQL-filtered, used by scheduler), `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning` (atomic conditional update, sets both `current_state` and `state_since`, returns `ErrTransitionAlreadyClaimed` on race), `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`, `ResetStuckTransitioningPolicies`. Retention: `CleanOldExecutions` (deletes finished executions older than threshold, preserving those with open snapshots; cascades to log lines and snapshots via FK), `CleanExpiredOverrides` (deletes time-bounded overrides past `ends_at` and old skip overrides). Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines` (capped at 5000 rows). Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `CountOpenSnapshotsForRestore`, `GetSnapshotsForExecution`, `GetSnapshotsForPolicy` (capped at 5000 rows), `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Overrides: `Create/Get/List/Delete PolicyOverride`, `ListActiveOverrides`, `ListActiveOverridesForPolicies` (batch fetch for all policies in one query, used by scheduler tick). Exceptions: `Create/Get/List/Update ScheduledException`, `HasOverlappingException` (checks for time-overlapping exceptions of opposite type on the same policy, used during create and update validation), `CancelScheduledException` (atomic status + cancelled_at + cancel_reason, guarded by `WHERE status IN ('pending','active')`), `ListOpenExceptions`, `ListActiveExceptionsForPolicies` (batch fetch of active exceptions by policy IDs and time range, used by scheduler tick), `ListActiveExceptionsForPolicy` (single-policy variant, used by startup recovery), `UpdateScheduledExceptionStatus` (atomic conditional transition: requires `expectedStatus` to match current row state, prevents concurrent double-transitions). |
 | `queries.go` | `GetGuardrails`, `UpdateGuardrails`, `SeedDefaults`, `DropAllTables`, `MigrateSchema`. |
 | `store_helpers.go` | `selectiveUpdate` -- shared GORM helper that applies only allowed fields from an update map. Used by `UpdateUser`. |
 | `users.go` | `OIDCUserInfo` struct (bundles OIDC claims for `GetOrCreateOIDCUser`), `CreateUser`, `GetUserByID`, `GetUserByUsername` (scoped to `source=local`), `ListUsers`, `UpdateUser`, `DeleteUser` (relies on FK CASCADE for session cleanup), `UpdateLastLogin`, `ChangePassword`, `UpdateUserTimezone`, `GetOrCreateOIDCUser(OIDCUserInfo)`, `HashPassword`, `CheckPassword`, `DeleteUserSessions`. |
@@ -369,10 +370,11 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 **Purpose:** Shared node protection logic used by both `api/cluster_nodes.go` (for computing node protection status in API responses) and `scaler/scaler.go` (for deciding which nodes to drain).
 
 **Key functions:**
-- `MatchLabel(labels map[string]string, skipNodeLabels string) bool` -- returns true if any of the node's labels match a `key=value` pair in the CSV skip list.
-- `MatchTaint(taints []corev1.Taint, skipNodeTaints string) bool` -- returns true if any of the node's taints match a `key=value:effect` entry in the CSV skip list.
+- `MatchLabel(labels map[string]string, skipNodeLabels string) string` -- returns the matched `key=value` entry if any node label matches, or `""` if none match.
+- `MatchTaint(taints []corev1.Taint, skipNodeTaints string) string` -- returns the matched `key=value:effect` entry if any node taint matches, or `""` if none match.
+- `IsCriticalPod(priorityClassName string) bool` -- returns true if the pod uses `system-node-critical` or `system-cluster-critical` PriorityClassName. Used by both `scaler/nodes.go` and `api/cluster_nodes.go` to protect nodes running Kubernetes-critical pods.
 
-**Dependencies:** `k8s.io/api/core/v1`, `stringutil`.
+**Dependencies:** `k8s.io/api/core/v1`.
 
 ---
 
@@ -404,9 +406,12 @@ type Guardrails struct {
     SkipNsNode       string    // CSV: namespaces whose pods protect the node from draining
     SkipNodeLabels   string    // CSV key=value pairs: nodes with these labels are protected
     SkipNodeTaints               string    // CSV key=value:effect: nodes with these taints are protected
+    ScalingPriorityNamespaces     string    // CSV, ordered: scale these namespaces first
     SchedulerEvalInterval        string    // parsed by ParseSchedulerEvalInterval(); default "30s"
     SchedulerAutoWake            bool      // default true
     SchedulerReconcileWhileAwake bool      // default true
+    ScalingConcurrency           int       // default 10; max concurrent workload scale operations
+    ProtectCriticalPodNodes      bool      // default true; protect nodes running system-node-critical / system-cluster-critical pods
     UpdatedAt                   time.Time
 }
 ```
@@ -479,8 +484,8 @@ type AuditLog struct {
 }
 ```
 
-- Written asynchronously via `AuditWriter` (buffered channel, capacity 1024).
-- If the buffer is full, the writer blocks up to 500ms before dropping and incrementing `kube_phoenix_audit_drops_total`.
+- Written asynchronously via `AuditWriter` (buffered channel, capacity 4096). Security-critical actions (`auth.*`, `user.*`, `admin.*`) bypass the buffer and write synchronously to guarantee delivery.
+- If the buffer is full for non-critical actions, the writer blocks up to 500ms before dropping and incrementing `kube_phoenix_audit_drops_total`.
 - Retention is configurable via `AUDIT_RETENTION_DAYS` (default 90). A daily maintenance ticker deletes audit logs, finished policy executions (cascading to log lines and snapshots), and expired overrides older than the threshold. Executions with open (un-restored) snapshots are preserved regardless of age.
 
 #### Policy
@@ -529,7 +534,7 @@ type PolicyExecution struct {
 ```
 
 - `MarkInterruptedPolicyExecutions()` runs at startup to mark any `running` executions as `interrupted` (server crashed mid-execution).
-- `ResetStuckTransitioningPolicies()` runs at startup to move any policy stuck in `transitioning` back to `unknown`, so the scheduler can re-evaluate immediately instead of waiting for the 10-minute stuck-transition timeout.
+- `ResetStuckTransitioningPolicies()` runs at startup to move any policy stuck in `transitioning` back to `unknown`, so the scheduler can re-evaluate immediately instead of waiting for the per-policy stuck-transition timeout.
 - Count fields are populated by `FinishPolicyExecution` from the `Counts` struct returned by the scaler.
 
 #### PolicyLogLine
@@ -655,7 +660,7 @@ stateDiagram-v2
     transitioning --> unknown: execution failed
 ```
 
-The `transitioning` state is the concurrency guard. While a policy is `transitioning`, the evaluation ticker skips it, and manual triggers return 409 Conflict. A staleness timeout (10 minutes) automatically resets stuck `transitioning` policies to `unknown` so the scheduler can re-evaluate them.
+The `transitioning` state is the concurrency guard. While a policy is `transitioning`, the evaluation ticker skips it, and manual triggers return 409 Conflict. A per-policy staleness timeout (derived from `TimeoutMinutes` + 5 min grace, minimum 15 min) automatically resets stuck `transitioning` policies to `unknown` so the scheduler can re-evaluate them.
 
 #### PolicyExecution.Status
 
@@ -858,8 +863,8 @@ When `evaluatePolicy` detects a mismatch (intended != current, and current != tr
    - Create `WorkloadSnapshot` in DB.
    - If replicas == 0 -> snapshot with `WasAlreadyZero=true`, skip scale.
    - If plan mode -> log "Would sleep..." and continue.
-   - If apply mode -> save snapshot, annotate `previous-replicas`, scale to 0.
-   - On scale failure -> delete the snapshot (rollback).
+   - If apply mode -> annotate `previous-replicas` (fallback), scale to 0, then persist snapshot to DB.
+   - On scale failure -> no snapshot exists to orphan (safe by ordering).
 7. Call `drainNodes` to handle node draining.
 
 #### Wake: `PolicyRunner.RunPolicyWake`
@@ -880,11 +885,12 @@ During sleep, after workloads are scaled to 0:
 1. List all nodes.
 2. List all pods to identify:
    - Nodes hosting pods in `SkipNsNode` namespaces (critical nodes).
+   - When `ProtectCriticalPodNodes` is enabled (default), nodes hosting pods with `system-node-critical` or `system-cluster-critical` PriorityClassName.
    - Non-DaemonSet pod count per node.
 3. For each node:
    - If protected by label match (`SkipNodeLabels`) -> skip.
    - If protected by taint match (`SkipNodeTaints`) -> skip.
-   - If hosting critical-namespace pods -> skip.
+   - If hosting critical-namespace or critical-priority pods -> skip.
    - Otherwise:
      - Compute drain timeout: `podCount * 15 + 60` seconds.
      - **Cordon:** Set `node.Spec.Unschedulable = true`.
@@ -920,7 +926,7 @@ Two-layer guard prevents double execution:
 3. The evaluation ticker also skips policies in `transitioning` state.
 4. After the execution completes, the state is set to the final value (`sleeping`, `awake`, or `unknown`) in both the DB and in-memory cache, and the policy is removed from `inflightPolicies` and `inflightCancels`.
 5. If `CreatePolicyExecution` fails after entering `transitioning`, the state is rolled back to `unknown`.
-6. A 10-minute staleness timeout resets stuck `transitioning` policies automatically.
+6. A per-policy staleness timeout (derived from the policy's `TimeoutMinutes` + 5 min grace, minimum 15 min) resets stuck `transitioning` policies automatically.
 
 ---
 
@@ -951,7 +957,7 @@ Two-layer guard prevents double execution:
    - Instance type and zone from standard K8s labels (with beta fallbacks).
    - Pod count: non-DaemonSet pods only.
    - CPU/memory: allocatable from node status, requested summed from pod specs.
-   - Protection status: computed by `nodeProtectionStatus` (in `cluster_nodes.go`) using `nodeutil.MatchLabel`, `nodeutil.MatchTaint`, and `SkipNsNode` (critical namespace pods).
+   - Protection status: computed by `nodeProtectionStatus` (in `cluster_nodes.go`) using `nodeutil.MatchLabel`, `nodeutil.MatchTaint`, `SkipNsNode` (critical namespace pods), and `nodeutil.IsCriticalPod` (when `ProtectCriticalPodNodes` is enabled).
    - Cordon status from `node.Spec.Unschedulable`.
    - Full label map from `node.Labels` (nil-safe via `nonNilMap`).
    - Taints converted from `node.Spec.Taints` via `convertTaints` (key, value, effect).
@@ -1090,7 +1096,7 @@ Chi middleware adds request-level logging (via `chiMiddleware.Logger`).
 
 ### Audit Log System
 
-**Architecture:** Asynchronous, buffered channel (capacity 1024).
+**Architecture:** Asynchronous, buffered channel (capacity 4096). Security-critical actions (`auth.*`, `user.*`, `admin.*`) are written synchronously via `WriteSync()` to guarantee delivery.
 
 **Flow:**
 1. Handler calls `h.audit(r, action, resourceType, resourceID, before, after)`.

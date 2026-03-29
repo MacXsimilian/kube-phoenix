@@ -263,7 +263,7 @@ Skip overrides (`skip_sleep`, `skip_wake`) are checked *after* the intended stat
 For each enabled policy, `evaluatePolicy()` loads active overrides from the database, computes `IntendedState()`, and routes to one of three sub-functions:
 
 - **`reconcilePolicy`** — current state matches intended. When `reconcileWhileAwake` is enabled and the policy is awake, delegates to `reconcileAwakePolicy` which detects drift (open snapshots needing restore) and runs a corrective wake if needed.
-- **`resetStuckTransition`** — `CurrentState == "transitioning"` for longer than 10 minutes. Resets to `unknown`.
+- **`resetStuckTransition`** — `CurrentState == "transitioning"` for longer than the policy's execution timeout plus a 5-minute grace period (minimum 15 minutes). Resets to `unknown`.
 - **`executeTransition`** — state mismatch. Checks for skip overrides (consumes if present), respects the `autoWake` gate, and triggers a sleep or wake execution.
 
 ### Execution Lifecycle

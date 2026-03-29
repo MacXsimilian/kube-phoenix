@@ -50,6 +50,7 @@ const routes = {
     schedulerEvalInterval: '30s',
     schedulerAutoWake: true,
     schedulerReconcileWhileAwake: true,
+    protectCriticalPodNodes: true,
     updatedAt: '2026-03-28T00:00:00Z',
   },
 }

@@ -37,8 +37,13 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
 	}
+	body.Username = strings.TrimSpace(body.Username)
 	if body.Username == "" || body.Password == "" {
 		jsonError(w, "username and password are required", http.StatusBadRequest)
+		return
+	}
+	if len(body.Username) < 3 || len(body.Username) > 64 {
+		jsonError(w, "username must be 3-64 characters", http.StatusBadRequest)
 		return
 	}
 	if len(body.Password) < 8 {
