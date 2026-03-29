@@ -26,6 +26,7 @@
 
 | Document | Description |
 | :------- | :---------- |
+| [Local Development Guide](local-development.md) | Set up a full local environment with minikube, PostgreSQL, and sample workloads |
 | [Architecture](../ARCHITECTURE.md) | System design, data flows, and internals |
 | [Backend Developer Guide](backend-dev-guide.md) | Deep-dive into Go packages, data model, execution engine, and cluster pipeline |
 | [Frontend Developer Guide](frontend-dev-guide.md) | Deep-dive into React components, API layer, state management, and real-time flows |

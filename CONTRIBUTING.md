@@ -31,6 +31,12 @@ and navigate the review process.
 
 ### Quick Start
 
+For the full setup guide -- including deploying into a local Kubernetes cluster with
+minikube and testing scaling end-to-end -- see the
+[Local Development Guide](docs/local-development.md).
+
+The shortest path to a running UI (no cluster, no scaling):
+
 ```bash
 # 1. Clone and enter the repository
 git clone https://github.com/MacXsimilian/kube-phoenix.git
@@ -40,23 +46,26 @@ cd kube-phoenix
 make dev
 
 # 3. Start the backend (separate terminal) -- http://localhost:8080
-make dev-backend
+ADMIN_USER=admin ADMIN_PASSWORD=adminadmin \
+  CORS_ALLOWED_ORIGIN=http://localhost:3000 make dev-backend
 
-# 4. Start the frontend dev server (separate terminal) -- http://localhost:3000
+# 4. Create frontend env file (one-time)
+echo 'NEXT_PUBLIC_API_URL=http://localhost:8080' > frontend/.env.local
+
+# 5. Start the frontend dev server (separate terminal) -- http://localhost:3000
 make dev-frontend
 ```
 
+Open `http://localhost:3000` and log in with `admin` / `adminadmin`.
+
 The backend auto-migrates the database schema and seeds default data on startup. No
-manual migration step is needed. Authentication is disabled when `ADMIN_USER` /
-`ADMIN_PASSWORD` are unset.
+manual migration step is needed.
 
-### CORS Configuration
-
-If the frontend and backend run on different ports and you see CORS errors:
-
-```bash
-CORS_ALLOWED_ORIGIN=http://localhost:3000 make dev-backend
-```
+> **Note:** Authentication is always enforced. `ADMIN_USER` and `ADMIN_PASSWORD` must be
+> set to seed an admin account -- without them the backend starts but no one can log in.
+> `CORS_ALLOWED_ORIGIN` is required when the frontend and backend run on different ports.
+> `NEXT_PUBLIC_API_URL` tells the frontend where to find the backend (baked in at
+> startup -- restart the frontend after changing it).
 
 ### Running Tests and Linters
 
