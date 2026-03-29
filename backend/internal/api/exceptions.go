@@ -202,9 +202,9 @@ func (h *Handler) deleteException(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ex.Status == store.ExceptionStatusActive && ex.SleepOnEnd && ex.PolicyID != nil && h.policyScheduler != nil {
+	if ex.Status == store.ExceptionStatusActive && ex.SleepOnEnd != nil && *ex.SleepOnEnd && ex.PolicyID != nil && h.policyScheduler != nil {
 		slog.Info("exception cancelled while active — triggering revert", "exceptionID", id, "type", ex.ExceptionType)
-		if _, err := scheduler.RevertExceptionAction(h.policyScheduler, *ex.PolicyID, ex.ExceptionType, "exception_end"); err != nil {
+		if _, err := scheduler.RevertExceptionAction(h.policyScheduler, *ex.PolicyID, *ex, "exception_end"); err != nil {
 			slog.Error("exception cancel: revert failed", "exceptionID", id, "type", ex.ExceptionType, "err", err)
 		}
 	}
@@ -247,7 +247,7 @@ func newExceptionFromInput(body exceptionInput, r *http.Request) (*store.Schedul
 		EndsAt:          body.EndsAt,
 		TicketRef:       body.TicketRef,
 		Reason:          body.Reason,
-		SleepOnEnd:      body.SleepOnEnd == nil || *body.SleepOnEnd, // default true
+		SleepOnEnd:      boolPtrDefault(body.SleepOnEnd, true),
 		NamespaceFilter: body.NamespaceFilter,
 		LabelSelector:   body.LabelSelector,
 		Status:          store.ExceptionStatusPending,
@@ -390,6 +390,13 @@ func exceptionWithTargets(ex *store.ScheduledException) (exceptionResponseShape,
 		ScheduledException: *ex,
 		Targets:            targets,
 	}, nil
+}
+
+func boolPtrDefault(p *bool, def bool) *bool {
+	if p != nil {
+		return p
+	}
+	return &def
 }
 
 func parseIDFromString(s string) (uint, error) {

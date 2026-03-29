@@ -179,21 +179,6 @@ type WorkloadSnapshot struct {
 	CapturedAt time.Time `gorm:"index" json:"capturedAt"`
 }
 
-// PolicyOverride suppresses or inverts the normal window-based schedule for a policy.
-type PolicyOverride struct {
-	ID           uint       `gorm:"primaryKey" json:"id"`
-	PolicyID     uint       `gorm:"index:idx_override_policy_type" json:"policyId"`
-	Policy       Policy     `gorm:"foreignKey:PolicyID;constraint:OnDelete:CASCADE" json:"-"`
-	OverrideType string     `gorm:"index:idx_override_policy_type;size:30" json:"overrideType"` // stay_awake|force_sleep|skip_sleep|skip_wake
-	StartsAt     *time.Time `gorm:"index:idx_override_time" json:"startsAt"`                    // nil for skip_sleep/skip_wake
-	EndsAt       *time.Time `gorm:"index:idx_override_time" json:"endsAt"`                      // nil for skip_sleep/skip_wake
-	// TargetCronTime is the specific cron tick being skipped (skip_sleep/skip_wake only).
-	TargetCronTime *time.Time `json:"targetCronTime"`
-	Reason         string     `gorm:"size:1024" json:"reason"`
-	CreatedBy      string     `gorm:"size:255" json:"createdBy"`
-	CreatedAt      time.Time  `json:"createdAt"`
-}
-
 // ScheduledException is a future one-time window that overrides normal sleep/wake
 // behaviour for specific workloads. It supports the "ticket" use case: create now,
 // executes automatically later.
@@ -206,7 +191,7 @@ type ScheduledException struct {
 	EndsAt        time.Time `gorm:"index:idx_se_status_ends" json:"endsAt"`
 	TicketRef     string    `gorm:"size:255" json:"ticketRef"` // JIRA-123, GH-456, etc.
 	Reason        string    `gorm:"size:1024" json:"reason"`
-	SleepOnEnd    bool      `gorm:"default:true" json:"sleepOnEnd"` // return to policy state at EndsAt
+	SleepOnEnd    *bool     `gorm:"default:true" json:"sleepOnEnd"` // return to policy state at EndsAt
 
 	// Freestanding target (used when PolicyID is nil or for workload-level targeting)
 	NamespaceFilter string `gorm:"size:4096" json:"namespaceFilter"`
@@ -227,6 +212,12 @@ type ScheduledException struct {
 	CreatedBy string    `gorm:"size:255" json:"createdBy"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// HasTargetingFilters reports whether the exception narrows scope beyond
+// the parent policy via namespace filter or label selector.
+func (e *ScheduledException) HasTargetingFilters() bool {
+	return e.NamespaceFilter != "" || e.LabelSelector != ""
 }
 
 // GetWorkloadTargets deserialises the JSON-stored workload targets.

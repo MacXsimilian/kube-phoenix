@@ -95,10 +95,9 @@ func (s *Store) DeletePolicy(id uint) error {
 		}
 		// Delete related records that reference this policy.
 		// PolicyLogLines cascade from PolicyExecution, so we only need to
-		// delete executions, snapshots, overrides, and exceptions.
+		// delete executions, snapshots, and exceptions.
 		for _, model := range []interface{}{
 			&WorkloadSnapshot{},
-			&PolicyOverride{},
 			&ScheduledException{},
 		} {
 			if err := tx.Where("policy_id = ?", id).Delete(model).Error; err != nil {
@@ -256,18 +255,6 @@ func (s *Store) CleanOldExecutions(olderThan time.Duration) (int64, error) {
 	return result.RowsAffected, result.Error
 }
 
-// CleanExpiredOverrides deletes time-bounded overrides whose window has passed
-// and skip overrides older than the given duration.
-func (s *Store) CleanExpiredOverrides(olderThan time.Duration) (int64, error) {
-	cutoff := time.Now().Add(-olderThan)
-	result := s.db.
-		Where("(override_type IN ('stay_awake','force_sleep') AND ends_at < ?) OR "+
-			"(override_type IN ('skip_sleep','skip_wake') AND created_at < ?)",
-			cutoff, cutoff,
-		).
-		Delete(&PolicyOverride{})
-	return result.RowsAffected, result.Error
-}
 
 // ─── Policy Log Lines ─────────────────────────────────────────────────────────
 
@@ -357,64 +344,6 @@ func (s *Store) MarkSnapshotExternallyScaled(id uint) error {
 // DeleteWorkloadSnapshot removes a snapshot (used when a scale failed after snapshot was created).
 func (s *Store) DeleteWorkloadSnapshot(id uint) error {
 	return s.db.Delete(&WorkloadSnapshot{}, id).Error
-}
-
-// ─── Policy Overrides ─────────────────────────────────────────────────────────
-
-func (s *Store) CreatePolicyOverride(o *PolicyOverride) error {
-	return s.db.Create(o).Error
-}
-
-func (s *Store) GetPolicyOverride(id uint) (*PolicyOverride, error) {
-	var o PolicyOverride
-	return &o, s.db.First(&o, id).Error
-}
-
-func (s *Store) ListPolicyOverrides(policyID uint) ([]PolicyOverride, error) {
-	var overrides []PolicyOverride
-	return overrides, s.db.Where("policy_id = ?", policyID).Order("created_at desc").Find(&overrides).Error
-}
-
-// ListActiveOverrides returns overrides currently in effect for a policy.
-func (s *Store) ListActiveOverrides(policyID uint, now time.Time) ([]PolicyOverride, error) {
-	var overrides []PolicyOverride
-	err := s.db.Where(
-		"policy_id = ? AND ((override_type IN ('stay_awake','force_sleep') AND starts_at <= ? AND ends_at >= ?) OR override_type IN ('skip_sleep','skip_wake'))",
-		policyID, now, now,
-	).Find(&overrides).Error
-	return overrides, err
-}
-
-// ListActiveOverridesForPolicies returns overrides currently in effect for
-// multiple policies in a single query. Results are grouped by policy ID.
-func (s *Store) ListActiveOverridesForPolicies(policyIDs []uint, now time.Time) (map[uint][]PolicyOverride, error) {
-	if len(policyIDs) == 0 {
-		return map[uint][]PolicyOverride{}, nil
-	}
-	var overrides []PolicyOverride
-	err := s.db.Where(
-		"policy_id IN (?) AND ((override_type IN ('stay_awake','force_sleep') AND starts_at <= ? AND ends_at >= ?) OR override_type IN ('skip_sleep','skip_wake'))",
-		policyIDs, now, now,
-	).Find(&overrides).Error
-	if err != nil {
-		return nil, err
-	}
-	result := make(map[uint][]PolicyOverride, len(policyIDs))
-	for i := range overrides {
-		result[overrides[i].PolicyID] = append(result[overrides[i].PolicyID], overrides[i])
-	}
-	return result, nil
-}
-
-func (s *Store) DeletePolicyOverride(id uint) error {
-	result := s.db.Delete(&PolicyOverride{}, id)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
 }
 
 // ─── Scheduled Exceptions ────────────────────────────────────────────────────

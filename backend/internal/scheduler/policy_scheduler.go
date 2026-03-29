@@ -45,12 +45,9 @@ type schedulerStore interface {
 	GetPolicy(id uint) (*store.Policy, error)
 	ListPolicies() ([]store.Policy, error)
 	ListEnabledPolicies() ([]store.Policy, error)
-	ListActiveOverrides(policyID uint, now time.Time) ([]store.PolicyOverride, error)
-	ListActiveOverridesForPolicies(policyIDs []uint, now time.Time) (map[uint][]store.PolicyOverride, error)
 	CountOpenSnapshotsForRestore(policyID uint) (int64, error)
 	UpdatePolicyState(id uint, state string, nextTransition *time.Time) error
 	SetPolicyTransitioning(id uint) error
-	DeletePolicyOverride(id uint) error
 	CreatePolicyExecution(exec *store.PolicyExecution) error
 	FinishPolicyExecution(id uint, status string, counts map[string]int) error
 	AppendPolicyLogLines(lines []store.PolicyLogLine) error
@@ -79,7 +76,6 @@ type evalContext struct {
 	now                  time.Time
 	autoWake             bool
 	reconcileWhileAwake  bool
-	overridesByPolicy    map[uint][]store.PolicyOverride      // batch-fetched per tick
 	exceptionsByPolicy   map[uint][]store.ScheduledException  // batch-fetched per tick
 }
 
@@ -289,11 +285,6 @@ func (ps *PolicyScheduler) RecoverPolicies(ctx context.Context) error {
 	now := time.Now()
 	for _, p := range policies {
 		windows := parsePolicyWindows(p)
-		overrides, err := ps.store.ListActiveOverrides(p.ID, now)
-		if err != nil {
-			slog.Warn("failed to list active overrides", "policyID", p.ID, "err", err)
-			overrides = nil
-		}
 		exceptions, err := ps.store.ListActiveExceptionsForPolicy(p.ID, now)
 		if err != nil {
 			slog.Warn("failed to list active exceptions", "policyID", p.ID, "err", err)
@@ -301,7 +292,7 @@ func (ps *PolicyScheduler) RecoverPolicies(ctx context.Context) error {
 		}
 		intended := IntendedState(StateInput{
 			Windows: windows, Timezone: p.Timezone,
-			Overrides: overrides, Exceptions: exceptions, Now: now,
+			Exceptions: exceptions, Now: now,
 		})
 		if intended == PolicyStateUnknown {
 			continue
@@ -362,7 +353,7 @@ func (ps *PolicyScheduler) maybeStartException(ex store.ScheduledException, now 
 	}
 	slog.Info("exception started", "exceptionID", ex.ID, "type", ex.ExceptionType, "ticketRef", ex.TicketRef)
 
-	execID, err := RunExceptionAction(ps, *ex.PolicyID, ex.ExceptionType, "exception_start")
+	execID, err := RunExceptionAction(ps, *ex.PolicyID, ex, "exception_start")
 	if err != nil {
 		slog.Warn("exception: start execution failed, reverting to pending",
 			"exceptionID", ex.ID, "type", ex.ExceptionType, "err", err)
@@ -386,8 +377,8 @@ func (ps *PolicyScheduler) maybeEndException(ex store.ScheduledException, now ti
 		return
 	}
 	slog.Info("exception ended", "exceptionID", ex.ID, "type", ex.ExceptionType, "ticketRef", ex.TicketRef)
-	if ex.SleepOnEnd && ex.PolicyID != nil {
-		if _, err := RevertExceptionAction(ps, *ex.PolicyID, ex.ExceptionType, "exception_end"); err != nil {
+	if ex.SleepOnEnd != nil && *ex.SleepOnEnd && ex.PolicyID != nil {
+		if _, err := RevertExceptionAction(ps, *ex.PolicyID, ex, "exception_end"); err != nil {
 			slog.Error("exception: revert-on-end failed",
 				"exceptionID", ex.ID, "type", ex.ExceptionType, "err", err)
 		}
@@ -395,45 +386,68 @@ func (ps *PolicyScheduler) maybeEndException(ex store.ScheduledException, now ti
 }
 
 // RunExceptionAction dispatches the initial action for an exception:
-// stay_awake → wake, force_sleep → sleep.
-func RunExceptionAction(ps *PolicyScheduler, policyID uint, exType string, trigger string) (uint, error) {
-	if exType == store.ExceptionTypeForceSleep {
-		return ps.RunSleepNow(policyID, trigger, "")
+// stay_awake → wake, force_sleep → sleep. When the exception carries its own
+// namespace or label filters, those override the policy's defaults for this
+// execution so only the targeted workloads are affected.
+func RunExceptionAction(ps *PolicyScheduler, policyID uint, ex store.ScheduledException, trigger string) (uint, error) {
+	if ex.ExceptionType == store.ExceptionTypeForceSleep {
+		return ps.runExceptionScoped(policyID, ex, directionSleep, trigger)
 	}
-	return ps.RunWakeNow(policyID, trigger, "")
+	return ps.runExceptionScoped(policyID, ex, directionWake, trigger)
 }
 
 // RevertExceptionAction determines the correct post-exception action by
 // consulting the current schedule (IntendedState) rather than blindly
 // inverting the exception type. This ensures that a force_sleep exception
 // ending during a normal sleep window does not incorrectly wake workloads.
-func RevertExceptionAction(ps *PolicyScheduler, policyID uint, exType string, trigger string) (uint, error) {
+// When the exception has targeting filters, only the filtered workloads are
+// reverted.
+func RevertExceptionAction(ps *PolicyScheduler, policyID uint, ex store.ScheduledException, trigger string) (uint, error) {
 	p, err := ps.store.GetPolicy(policyID)
 	if err != nil {
 		return 0, fmt.Errorf("revert exception: policy %d not found: %w", policyID, err)
 	}
 	now := time.Now()
 	windows := parsePolicyWindows(*p)
-	overrides, err := ps.store.ListActiveOverrides(policyID, now)
-	if err != nil {
-		slog.Warn("exception revert: failed to fetch overrides, proceeding without",
-			"policyID", policyID, "err", err)
-	}
 	// Do NOT include exceptions — this is called as the exception ends,
-	// so we want the schedule-only + override view.
+	// so we want the schedule-only view.
 	intended := IntendedState(StateInput{
 		Windows: windows, Timezone: p.Timezone,
-		Overrides: overrides, Now: now,
+		Now: now,
 	})
+
+	direction := ""
 	switch intended {
 	case PolicyStateSleeping:
-		return ps.RunSleepNow(policyID, trigger, "")
+		direction = directionSleep
 	case PolicyStateAwake:
-		return ps.RunWakeNow(policyID, trigger, "")
+		direction = directionWake
 	default:
 		slog.Info("exception revert: schedule says unknown, skipping", "policyID", policyID)
 		return 0, nil
 	}
+	return ps.runExceptionScoped(policyID, ex, direction, trigger)
+}
+
+// runExceptionScoped fetches the policy and, if the exception carries namespace
+// or label filters, overrides the policy's defaults before executing. The
+// policy struct is passed by value so the stored copy is never mutated.
+func (ps *PolicyScheduler) runExceptionScoped(policyID uint, ex store.ScheduledException, direction, trigger string) (uint, error) {
+	p, err := ps.store.GetPolicy(policyID)
+	if err != nil {
+		return 0, fmt.Errorf("policy %d not found: %w", policyID, err)
+	}
+	if !p.Enabled {
+		slog.Warn("exception trigger on disabled policy", "policyID", policyID, "direction", direction, "trigger", trigger)
+	}
+	// Override the policy's scope with the exception's narrower targeting.
+	if ex.NamespaceFilter != "" {
+		p.NamespaceFilter = ex.NamespaceFilter
+	}
+	if ex.LabelSelector != "" {
+		p.LabelSelector = ex.LabelSelector
+	}
+	return ps.run(ps.execContext(), *p, direction, trigger)
 }
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
@@ -460,8 +474,12 @@ func (ps *PolicyScheduler) tickLoop(ctx context.Context, interval time.Duration)
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			ps.safeEvaluateAll()
+			// Tick exceptions first so that pending→active transitions happen
+			// before evaluateAll reads active exceptions. Otherwise the first
+			// tick after an exception becomes due will not see it, allowing a
+			// conflicting sleep/wake to fire before the exception takes effect.
 			ps.TickExceptions(ctx)
+			ps.safeEvaluateAll()
 		}
 	}
 }
@@ -497,14 +515,6 @@ func (ps *PolicyScheduler) evaluateAll() {
 	}
 	ps.mu.Unlock()
 
-	// Batch-fetch overrides for all enabled policies in one query.
-	overrideMap, err := ps.store.ListActiveOverridesForPolicies(policyIDs, start)
-	if err != nil {
-		slog.Warn("failed to batch-fetch active overrides", "err", err)
-		overrideMap = map[uint][]store.PolicyOverride{}
-	}
-	ctx.overridesByPolicy = overrideMap
-
 	// Batch-fetch active exceptions for all enabled policies in one query.
 	exceptionMap, err := ps.store.ListActiveExceptionsForPolicies(policyIDs, start)
 	if err != nil {
@@ -526,11 +536,10 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, ctx evalContext) {
 	if !p.Enabled {
 		return
 	}
-	overrides := ctx.overridesByPolicy[p.ID]
 	exceptions := ctx.exceptionsByPolicy[p.ID]
 	intended := IntendedState(StateInput{
 		Windows: cp.windows, Timezone: p.Timezone,
-		Overrides: overrides, Exceptions: exceptions, Now: ctx.now,
+		Exceptions: exceptions, Now: ctx.now,
 	})
 
 	if intended == PolicyStateUnknown {
@@ -547,7 +556,7 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, ctx evalContext) {
 		return
 	}
 
-	ps.executeTransition(p, intended, overrides, ctx)
+	ps.executeTransition(p, intended, ctx)
 }
 
 // reconcilePolicy checks whether a policy that is already in its intended
@@ -560,14 +569,17 @@ func (ps *PolicyScheduler) reconcilePolicy(p store.Policy, ctx evalContext) {
 	if p.CurrentState != store.PolicyStateAwake {
 		return
 	}
-	ps.reconcileAwakePolicy(p, ctx.now)
+	ps.reconcileAwakePolicy(p, ctx.exceptionsByPolicy[p.ID], ctx.now)
 }
 
 // reconcileAwakePolicy detects drift from a failed or partial wake and runs a
 // corrective wake to restore workloads that are still scaled to zero. It
-// bypasses the autoWake gate and skip_wake overrides because this is a fix,
-// not a scheduled transition.
-func (ps *PolicyScheduler) reconcileAwakePolicy(p store.Policy, now time.Time) {
+// bypasses the autoWake gate because this is a fix, not a scheduled transition.
+//
+// When the policy is awake due to a scoped exception, the corrective wake is
+// limited to the exception's namespace/label filters so it doesn't wake
+// workloads outside the exception's scope.
+func (ps *PolicyScheduler) reconcileAwakePolicy(p store.Policy, exceptions []store.ScheduledException, now time.Time) {
 	if !ps.reconcileBackoffElapsed(p.ID, now) {
 		return
 	}
@@ -584,10 +596,25 @@ func (ps *PolicyScheduler) reconcileAwakePolicy(p store.Policy, now time.Time) {
 
 	ps.recordReconcileAttempt(p.ID, now)
 
+	// If the policy is awake because of a scoped exception, only reconcile
+	// workloads within the exception's targeting filters.
+	scopedPolicy := p
+	for _, ex := range exceptions {
+		if ex.HasTargetingFilters() {
+			if ex.NamespaceFilter != "" {
+				scopedPolicy.NamespaceFilter = ex.NamespaceFilter
+			}
+			if ex.LabelSelector != "" {
+				scopedPolicy.LabelSelector = ex.LabelSelector
+			}
+			break
+		}
+	}
+
 	slog.Info("policy scheduler: drift detected, running corrective wake",
 		"policyID", p.ID, "openSnapshots", count)
 
-	if _, err := ps.run(ps.execContext(), p, directionWake, "reconcile"); err != nil {
+	if _, err := ps.run(ps.execContext(), scopedPolicy, directionWake, "reconcile"); err != nil {
 		if IsAlreadyRunning(err) {
 			slog.Debug("policy scheduler: corrective wake skipped, already running",
 				"policyID", p.ID)
@@ -670,8 +697,8 @@ func (ps *PolicyScheduler) resetStuckTransition(p store.Policy, now time.Time) {
 }
 
 // executeTransition handles the normal sleep/wake transition path. It respects
-// the autoWake gate, skip overrides, and backs off after failed transitions.
-func (ps *PolicyScheduler) executeTransition(p store.Policy, intended PolicyState, overrides []store.PolicyOverride, ctx evalContext) {
+// the autoWake gate and backs off after failed transitions.
+func (ps *PolicyScheduler) executeTransition(p store.Policy, intended PolicyState, ctx evalContext) {
 	direction := directionSleep
 	if intended == PolicyStateAwake {
 		if !ctx.autoWake {
@@ -682,16 +709,6 @@ func (ps *PolicyScheduler) executeTransition(p store.Policy, intended PolicyStat
 
 	// Back off after a failed transition to avoid hammering a broken K8s API.
 	if !ps.failedTransitionBackoffElapsed(p.ID, ctx.now) {
-		return
-	}
-
-	if skip := FindSkipOverride(overrides, direction, ctx.now); skip != nil {
-		slog.Info("policy scheduler: transition skipped by override",
-			"policyID", p.ID, "overrideID", skip.ID, "direction", direction)
-		if err := ps.store.DeletePolicyOverride(skip.ID); err != nil {
-			slog.Error("policy scheduler: failed to delete skip override",
-				"policyID", p.ID, "overrideID", skip.ID, "err", err)
-		}
 		return
 	}
 
