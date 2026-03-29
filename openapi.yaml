@@ -1008,7 +1008,7 @@ components:
           readOnly: true
         policyId:
           type: ["integer", "null"]
-          description: The policy this exception applies to. Null = applies globally.
+          description: The policy this exception applies to. Required for creation — freestanding exceptions are not supported.
         exceptionType:
           type: string
           enum: [stay_awake, force_sleep]
@@ -1026,7 +1026,7 @@ components:
         sleepOnEnd:
           type: boolean
           default: true
-          description: When the window ends, immediately sleep the targeted workloads.
+          description: When the window ends, revert to the inverse state (stay_awake → sleep, force_sleep → wake).
         namespaceFilter:
           type: string
           description: Comma-separated namespace filter. Empty = policy default.
@@ -1068,7 +1068,8 @@ components:
       type: object
       properties:
         policyId:
-          type: ["integer", "null"]
+          type: integer
+          description: The policy this exception applies to. Required — freestanding exceptions are not supported.
         exceptionType:
           type: string
           enum: [stay_awake, force_sleep]
@@ -1094,6 +1095,7 @@ components:
           items:
             $ref: "#/components/schemas/WorkloadTarget"
       required:
+        - policyId
         - exceptionType
         - startsAt
         - endsAt

@@ -14,6 +14,13 @@ func (s *Store) ListPolicies() ([]Policy, error) {
 	return policies, s.db.Order("id asc").Find(&policies).Error
 }
 
+// ListEnabledPolicies returns only enabled policies, avoiding fetching
+// disabled policies that will be filtered out in-memory anyway.
+func (s *Store) ListEnabledPolicies() ([]Policy, error) {
+	var policies []Policy
+	return policies, s.db.Where("enabled = true").Order("id asc").Find(&policies).Error
+}
+
 func (s *Store) GetPolicy(id uint) (*Policy, error) {
 	var p Policy
 	return &p, s.db.First(&p, id).Error
@@ -60,11 +67,12 @@ var ErrTransitionAlreadyClaimed = fmt.Errorf("transition already claimed by anot
 // SetPolicyTransitioning atomically claims the transition. Returns
 // ErrTransitionAlreadyClaimed when another caller won the race.
 func (s *Store) SetPolicyTransitioning(id uint) error {
+	now := time.Now()
 	res := s.db.Model(&Policy{}).
 		Where("id = ? AND current_state != ?", id, PolicyStateTransitioning).
 		Updates(map[string]interface{}{
 			"current_state": PolicyStateTransitioning,
-			"state_since":   time.Now(),
+			"state_since":   now,
 		})
 	if res.Error != nil {
 		return res.Error
@@ -435,6 +443,42 @@ func (s *Store) ListScheduledExceptions(f ScheduledExceptionFilter) ([]Scheduled
 	}
 	var items []ScheduledException
 	return items, query.Order("starts_at asc").Limit(500).Find(&items).Error
+}
+
+// ListActiveExceptionsForPolicies returns active exceptions for multiple policies
+// in a single query, grouped by policy ID. Used by the scheduler's evaluateAll
+// to avoid N+1 queries.
+func (s *Store) ListActiveExceptionsForPolicies(policyIDs []uint, now time.Time) (map[uint][]ScheduledException, error) {
+	if len(policyIDs) == 0 {
+		return map[uint][]ScheduledException{}, nil
+	}
+	var exceptions []ScheduledException
+	err := s.db.Where(
+		"policy_id IN (?) AND status = ? AND starts_at <= ? AND ends_at >= ?",
+		policyIDs, ExceptionStatusActive, now, now,
+	).Find(&exceptions).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[uint][]ScheduledException, len(policyIDs))
+	for i := range exceptions {
+		if exceptions[i].PolicyID != nil {
+			pid := *exceptions[i].PolicyID
+			result[pid] = append(result[pid], exceptions[i])
+		}
+	}
+	return result, nil
+}
+
+// ListActiveExceptionsForPolicy returns active exceptions for a single policy.
+// Used by RecoverPolicies at startup.
+func (s *Store) ListActiveExceptionsForPolicy(policyID uint, now time.Time) ([]ScheduledException, error) {
+	var exceptions []ScheduledException
+	err := s.db.Where(
+		"policy_id = ? AND status = ? AND starts_at <= ? AND ends_at >= ?",
+		policyID, ExceptionStatusActive, now, now,
+	).Find(&exceptions).Error
+	return exceptions, err
 }
 
 // ListOpenExceptions returns all pending or active exceptions for scheduler evaluation.

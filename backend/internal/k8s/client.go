@@ -79,6 +79,13 @@ func New() (*Client, error) {
 			return nil, fmt.Errorf("k8s config: %w", err)
 		}
 	}
+	// Raise client-side rate limits from the client-go defaults (5 QPS / 10 Burst)
+	// which are far too low for a controller that scales hundreds of workloads
+	// concurrently. These match Karpenter's defaults; the K8s API server has its
+	// own server-side throttling (APF, default 600 inflight) as a safety net.
+	cfg.QPS = 100
+	cfg.Burst = 200
+
 	cs, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("k8s client: %w", err)

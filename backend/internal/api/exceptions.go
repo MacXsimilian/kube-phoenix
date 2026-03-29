@@ -11,6 +11,7 @@ import (
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
@@ -168,9 +169,9 @@ func (h *Handler) deleteException(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if ex.Status == store.ExceptionStatusActive && ex.SleepOnEnd && ex.PolicyID != nil && h.policyScheduler != nil {
-		slog.Info("exception cancelled while active — triggering sleep-on-end", "exceptionID", id)
-		if _, runErr := h.policyScheduler.RunSleepNow(*ex.PolicyID, "exception_end"); runErr != nil {
-			slog.Error("exception cancel: sleep-on-end failed", "exceptionID", id, "err", runErr)
+		slog.Info("exception cancelled while active — triggering revert", "exceptionID", id, "type", ex.ExceptionType)
+		if _, err := scheduler.RevertExceptionAction(h.policyScheduler, *ex.PolicyID, ex.ExceptionType, "exception_end"); err != nil {
+			slog.Error("exception cancel: revert failed", "exceptionID", id, "type", ex.ExceptionType, "err", err)
 		}
 	}
 
@@ -292,6 +293,9 @@ func validateExceptionUpdates(updates map[string]interface{}) error {
 }
 
 func validateExceptionInput(b exceptionInput) error {
+	if b.PolicyID == nil {
+		return errors.New("policyId is required (freestanding exceptions are not yet supported)")
+	}
 	if err := validateExceptionType(b.ExceptionType); err != nil {
 		return err
 	}

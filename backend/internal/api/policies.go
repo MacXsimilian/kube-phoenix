@@ -176,7 +176,9 @@ func validateAndPreparePolicy(input createPolicyInput) (store.Policy, string) {
 	}
 
 	now := time.Now()
-	initialState := scheduler.IntendedState(input.SleepWindows, p.Timezone, nil, now)
+	initialState := scheduler.IntendedState(scheduler.StateInput{
+		Windows: input.SleepWindows, Timezone: p.Timezone, Now: now,
+	})
 	p.CurrentState = string(initialState)
 	p.StateSince = &now
 

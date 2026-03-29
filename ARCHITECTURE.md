@@ -110,8 +110,10 @@ executions when intended state diverges from actual state.
 - Recover on startup by reconciling every enabled policy against current cluster
   state (handles server restarts mid-sleep).
 - Manage an in-memory policy cache for fast tick evaluation.
-- Guard against concurrent runs via an atomic conditional DB update that claims the `transitioning` state (only one caller wins the race). Per-policy in-flight tracking (`inflightPolicies`/`inflightCancels` maps) prevents duplicate goroutines and supports mid-execution cancellation.
+- Guard against concurrent runs via an atomic conditional DB update that claims the `transitioning` state (only one caller wins the race). The claim also updates `state_since` atomically to support accurate stuck-transition detection. Per-policy in-flight tracking (`inflightPolicies`/`inflightCancels` maps) prevents duplicate goroutines and supports mid-execution cancellation.
 - Skip automatic wake transitions when `AutoWake` is disabled — the scheduler will only put policies to sleep, not wake them.
+- Back off for 5 minutes after a failed scheduled transition to avoid tight retry loops when the K8s API is down.
+- Execution goroutines derive their context from the scheduler's parent context, so `Stop()` can signal them to abort rather than hanging until the per-execution timeout expires.
 - When `ReconcileWhileAwake` is enabled (default), detect drift from failed or partial wake executions by counting open snapshots that still need restoring. If drift is found, run a corrective wake (trigger `"reconcile"`) that bypasses the `AutoWake` gate and `skip_wake` overrides. Retries back off at a minimum interval of 5 minutes per policy to avoid flooding history. When disabled, skip reconciliation entirely for policies already awake — reduces DB load between sleep windows.
 
 **Key interfaces:**
@@ -120,7 +122,7 @@ executions when intended state diverges from actual state.
 - `RunSleepNow(ctx, policyID, trigger)` / `RunWakeNow(...)` -- manual triggers.
 - `CancelExecution(policyID)` -- cancel an in-flight execution.
 - `IsAlreadyRunning(err) bool` -- helper that checks for both `ErrPolicyTransitioning` and `ErrPolicyExecutionInflight`.
-- `RecoverPolicies(ctx)` -- startup reconciliation.
+- `RecoverPolicies(ctx)` -- startup reconciliation (called automatically inside `Start()`).
 - `TickExceptions(ctx)` -- exception lifecycle.
 - `UpdateSettings(cfg SchedulerConfig) error` -- apply new eval interval, auto-wake, and reconcile-while-awake settings at runtime.
 
@@ -131,11 +133,11 @@ sleeping or awake at a given point in time.
 
 **Key responsibilities:**
 - Evaluate sleep windows against the current time in the policy's timezone.
-- Apply override precedence: `force_sleep` > `stay_awake` > window evaluation.
+- Apply override and exception precedence: `force_sleep` override > `stay_awake` override > `force_sleep` exception > `stay_awake` exception > window evaluation.
 - Compute the next state transition time for dashboard display.
 
 **Key interfaces:**
-- `IntendedState(policy, overrides, now) string` -- returns `"sleeping"` or `"awake"`.
+- `IntendedState(StateInput) PolicyState` -- accepts a `StateInput` struct containing windows, timezone, overrides, exceptions, and time. Returns `"sleeping"`, `"awake"`, or `"unknown"`.
 - `Evaluate(windows, timezone, now) string` -- window-only evaluation.
 - `NextTransition(windows, timezone, now) *time.Time` -- next sleep/wake edge.
 
@@ -362,7 +364,8 @@ erDiagram
 Triggered by the 30-second ticker (scheduled), a manual API call, or a
 scheduled exception activation.
 
-1. **PolicyScheduler** evaluates `IntendedState(now)` for each enabled policy.
+1. **PolicyScheduler** evaluates `IntendedState(StateInput)` for each enabled policy,
+   considering overrides, active exceptions, and sleep windows.
    If intended state is `sleeping` but `current_state` is `awake`, a sleep
    execution is created.
 2. `current_state` is set to `transitioning` (prevents concurrent runs).
@@ -404,7 +407,7 @@ Triggered by the ticker, a manual call, or a scheduled exception ending.
 ```
 Every configurable interval (default 30s):
   for each enabled policy:
-    intended = PolicyEngine.IntendedState(policy, overrides, now)
+    intended = PolicyEngine.IntendedState(StateInput{windows, tz, overrides, exceptions, now})
     if current_state == intended:
       if reconcileWhileAwake and intended == "awake":
         if backoff elapsed and open snapshots needing restore > 0:
@@ -416,10 +419,12 @@ Every configurable interval (default 30s):
     spawn goroutine -> run(policy, intended_direction, "scheduled")
 ```
 
-Override precedence within `IntendedState`:
-- Active `force_sleep` override: always return `sleeping`.
-- Active `stay_awake` override: always return `awake`.
-- No active override: evaluate sleep windows against current time in policy timezone.
+Precedence within `IntendedState` (highest to lowest):
+1. Active `force_sleep` override → `sleeping`
+2. Active `stay_awake` override → `awake`
+3. Active `force_sleep` exception → `sleeping`
+4. Active `stay_awake` exception → `awake`
+5. Sleep window evaluation against current time in policy timezone
 
 ### 4. Real-Time Log Streaming (WebSocket)
 
@@ -474,7 +479,7 @@ kube-phoenix/
 │   │   │   ├── scaler.go            # Low-level Kubernetes scale helpers, workload entry abstraction, collectFilteredEntries
 │   │   │   ├── policy_scaler.go     # DB-backed sleep/wake with WorkloadSnapshot logic, workloadOps dispatch, annotation fallback
 │   │   │   ├── annotation_fallback_test.go # Tests for annotation-based recovery path
-│   │   │   └── scale_down.go        # Node drain/delete helpers (classifyNodes, drainNodes, drainAndDeleteNode)
+│   │   │   └── nodes.go             # Concurrent node drain/delete (classifyNodes, drainNodes, drainConcurrent)
 │   │   ├── policy/
 │   │   │   ├── evaluator.go         # Pure sleep window evaluation (Evaluate, NextTransition)
 │   │   │   └── windows.go           # SleepWindow type definition and validation

@@ -207,7 +207,7 @@ func (r *PolicyRunner) RunPolicySleep(
 		return r.sleepWorkload(sleepParams, e)
 	}, counts)
 
-	// ── Drain & Delete Nodes (same as scale_down) ──────────────────────────
+	// ── Drain & Delete Nodes ────────────────────────────────────────────────
 	r.base.drainNodes(ctx, policy.Mode, guardrails, logCh, counts)
 
 	if ctx.Err() != nil {
@@ -217,6 +217,9 @@ func (r *PolicyRunner) RunPolicySleep(
 
 	emit(logCh, "info", fmt.Sprintf("Sleep complete — scaled %d workloads, %d skipped, %d errors",
 		counts.Scaled, counts.Skipped, counts.Errors))
+	if counts.Errors > 0 && counts.Scaled == 0 {
+		return counts, fmt.Errorf("sleep failed: all %d workloads errored", counts.Errors)
+	}
 	return counts, nil
 }
 
@@ -330,19 +333,14 @@ func (r *PolicyRunner) wakeWorkload(p wakeWorkloadParams, snap store.WorkloadSna
 		return false, true, false
 	}
 
+	target := snap.ReplicasBefore
+
 	if currentReplicas != 0 {
-		emit(p.logCh, "warn", fmt.Sprintf(
-			"Workload %s was externally scaled to %d while sleeping — restoring to %d anyway",
-			wl, currentReplicas, snap.ReplicasBefore,
-		))
-		if isApply(p.policy.Mode) {
-			if err := r.store.MarkSnapshotExternallyScaled(snap.ID); err != nil {
-				slog.Warn("failed to mark snapshot as externally scaled", "snapshotID", snap.ID, "err", err)
-			}
+		if done, scaled, skip, err := r.handleExternallyScaled(p, snap, wl, target, currentReplicas); done {
+			return scaled, skip, err
 		}
 	}
 
-	target := snap.ReplicasBefore
 	if !isApply(p.policy.Mode) {
 		emit(p.logCh, "plan", fmt.Sprintf("Would restore %s → %d replicas", wl, target))
 		return true, false, false
@@ -359,10 +357,43 @@ func (r *PolicyRunner) wakeWorkload(p wakeWorkloadParams, snap store.WorkloadSna
 	return true, false, false
 }
 
+// handleExternallyScaled handles a workload that was scaled by an external
+// actor while sleeping. If the workload is already at the target count, the
+// snapshot is closed without a redundant API call. Returns done=true when the
+// caller should return immediately with the provided values.
+func (r *PolicyRunner) handleExternallyScaled(
+	p wakeWorkloadParams, snap store.WorkloadSnapshot,
+	wl string, target, currentReplicas int32,
+) (done bool, scaled bool, skipped bool, errored bool) {
+	if isApply(p.policy.Mode) {
+		if err := r.store.MarkSnapshotExternallyScaled(snap.ID); err != nil {
+			slog.Warn("failed to mark snapshot as externally scaled", "snapshotID", snap.ID, "err", err)
+		}
+	}
+	if currentReplicas == target {
+		emit(p.logCh, "info", fmt.Sprintf(
+			"Workload %s already at %d replicas (externally scaled) — closing snapshot",
+			wl, currentReplicas,
+		))
+		if isApply(p.policy.Mode) {
+			if err := r.store.CloseSnapshot(snap.ID, p.execID, target); err != nil {
+				slog.Warn("failed to close snapshot", "snapshotID", snap.ID, "err", err)
+			}
+		}
+		return true, true, false, false
+	}
+	emit(p.logCh, "warn", fmt.Sprintf(
+		"Workload %s was externally scaled to %d while sleeping — restoring to %d",
+		wl, currentReplicas, target,
+	))
+	return false, false, false, false
+}
+
 // RunPolicyWake restores workloads from DB snapshots.
 //
-// Decision (per design): always restore to ReplicasBefore, even if the workload
-// was manually scaled while sleeping. Log a warning when this happens.
+// If a workload was externally scaled back to its original count, the snapshot
+// is closed without issuing a redundant scale call. If it was scaled to a
+// different count, we restore to ReplicasBefore and log a warning.
 func (r *PolicyRunner) RunPolicyWake(
 	ctx context.Context,
 	policy store.Policy,
@@ -409,6 +440,9 @@ func (r *PolicyRunner) RunPolicyWake(
 
 	emit(logCh, "info", fmt.Sprintf("Wake complete — restored %d workloads, %d skipped, %d errors",
 		counts.Scaled, counts.Skipped, counts.Errors))
+	if counts.Errors > 0 && counts.Scaled == 0 {
+		return counts, fmt.Errorf("wake failed: all %d workloads errored", counts.Errors)
+	}
 	return counts, nil
 }
 

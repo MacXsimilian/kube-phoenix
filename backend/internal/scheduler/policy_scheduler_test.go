@@ -44,6 +44,15 @@ func (m *mockStore) GetPolicy(id uint) (*store.Policy, error) {
 	return &store.Policy{ID: id, Enabled: true}, nil
 }
 func (m *mockStore) ListPolicies() ([]store.Policy, error) { return m.policies, nil }
+func (m *mockStore) ListEnabledPolicies() ([]store.Policy, error) {
+	var enabled []store.Policy
+	for _, p := range m.policies {
+		if p.Enabled {
+			enabled = append(enabled, p)
+		}
+	}
+	return enabled, nil
+}
 func (m *mockStore) ListActiveOverrides(_ uint, _ time.Time) ([]store.PolicyOverride, error) {
 	return m.overrides, nil
 }
@@ -85,6 +94,12 @@ func (m *mockStore) UpdateScheduledExceptionStatus(_ uint, _, _ string) error { 
 func (m *mockStore) ListActiveOverridesForPolicies(_ []uint, _ time.Time) (map[uint][]store.PolicyOverride, error) {
 	return map[uint][]store.PolicyOverride{}, nil
 }
+func (m *mockStore) ListActiveExceptionsForPolicies(_ []uint, _ time.Time) (map[uint][]store.ScheduledException, error) {
+	return map[uint][]store.ScheduledException{}, nil
+}
+func (m *mockStore) ListActiveExceptionsForPolicy(_ uint, _ time.Time) ([]store.ScheduledException, error) {
+	return nil, nil
+}
 
 type mockRunner struct{}
 
@@ -104,6 +119,7 @@ func newTestScheduler(st schedulerStore) *PolicyScheduler {
 		Broker:               NewBroker(),
 		policies:             map[uint]cachedPolicy{},
 		lastReconcileAttempt: map[uint]time.Time{},
+		lastFailedTransition: map[uint]time.Time{},
 		inflightPolicies:     map[uint]struct{}{},
 		inflightCancels:      map[uint]context.CancelFunc{},
 		cfg: SchedulerConfig{
