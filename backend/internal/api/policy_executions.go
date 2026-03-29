@@ -135,17 +135,24 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if wsConnectionCount.Load() >= maxWSConnections {
-		http.Error(w, "too many WebSocket connections", http.StatusServiceUnavailable)
-		return
+	// Atomically claim a connection slot to avoid TOCTOU race.
+	for {
+		cur := wsConnectionCount.Load()
+		if cur >= maxWSConnections {
+			http.Error(w, "too many WebSocket connections", http.StatusServiceUnavailable)
+			return
+		}
+		if wsConnectionCount.CompareAndSwap(cur, cur+1) {
+			break
+		}
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		wsConnectionCount.Add(-1) // release the slot we claimed
 		slog.Warn("ws policy: upgrade failed", "execID", id, "err", err)
 		return
 	}
-	wsConnectionCount.Add(1)
 	slog.Info("ws policy: client connected", "execID", id, "remote_addr", conn.RemoteAddr())
 	metrics.WSConnectionsTotal.Inc()
 	metrics.WSActiveConnections.Inc()
