@@ -21,6 +21,7 @@ type Guardrails struct {
 	SchedulerAutoWake            bool   `gorm:"default:true" json:"schedulerAutoWake"`
 	SchedulerReconcileWhileAwake bool   `gorm:"default:true" json:"schedulerReconcileWhileAwake"`
 	ScalingConcurrency           int    `gorm:"default:10" json:"scalingConcurrency"`
+	ProtectCriticalPodNodes      bool   `gorm:"default:true" json:"protectCriticalPodNodes"` // protect nodes running system-node-critical / system-cluster-critical pods
 
 	UpdatedAt time.Time `json:"updatedAt"`
 }

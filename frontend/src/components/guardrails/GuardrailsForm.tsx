@@ -56,6 +56,7 @@ export default function GuardrailsForm() {
   const [evalInterval, setEvalInterval] = useState('30s')
   const [autoWake, setAutoWake] = useState(true)
   const [reconcileWhileAwake, setReconcileWhileAwake] = useState(true)
+  const [protectCriticalPodNodes, setProtectCriticalPodNodes] = useState(true)
   const { notify, SnackbarAlert } = useSnackbar()
   const [saveError, setSaveError] = useState<string | null>(null)
   const initialised = useRef(false)
@@ -71,6 +72,7 @@ export default function GuardrailsForm() {
       setEvalInterval(guardrails.schedulerEvalInterval)
       setAutoWake(guardrails.schedulerAutoWake)
       setReconcileWhileAwake(guardrails.schedulerReconcileWhileAwake)
+      setProtectCriticalPodNodes(guardrails.protectCriticalPodNodes)
     }
   }, [guardrails])
 
@@ -89,6 +91,7 @@ export default function GuardrailsForm() {
         schedulerEvalInterval: evalInterval.trim(),
         schedulerAutoWake: autoWake,
         schedulerReconcileWhileAwake: reconcileWhileAwake,
+        protectCriticalPodNodes,
       })
     },
     onSuccess: () => {
@@ -138,6 +141,15 @@ export default function GuardrailsForm() {
               <Typography variant="body2" color="text.secondary" mb={2.5}>
                 Nodes will not be drained if any of the following conditions match.
               </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                <Box>
+                  <Typography variant="body2" fontWeight={600}>Protect Critical Priority Pods</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Never drain nodes running system-node-critical or system-cluster-critical pods
+                  </Typography>
+                </Box>
+                <Switch checked={protectCriticalPodNodes} disabled={!hasEdit} onChange={(e) => setProtectCriticalPodNodes(e.target.checked)} />
+              </Box>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
                 <ChipInput
                   id="chip-input-critical-ns"

@@ -1,5 +1,5 @@
-// Package nodeutil provides shared node protection logic for matching labels
-// and taints against guardrail configurations.
+// Package nodeutil provides shared node protection logic for matching labels,
+// taints, and pod priority classes against guardrail configurations.
 package nodeutil
 
 import (
@@ -26,6 +26,13 @@ func MatchLabel(nodeLabels map[string]string, csvConfig string) string {
 		}
 	}
 	return ""
+}
+
+// IsCriticalPod returns true if the pod uses the system-node-critical or
+// system-cluster-critical PriorityClassName.
+func IsCriticalPod(priorityClassName string) bool {
+	return priorityClassName == "system-node-critical" ||
+		priorityClassName == "system-cluster-critical"
 }
 
 // MatchTaint checks if any node taint matches a CSV config of key=value:effect entries.

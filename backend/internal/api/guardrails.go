@@ -43,6 +43,7 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 		"schedulerReconcileWhileAwake": "scheduler_reconcile_while_awake",
 		"scalingPriorityNamespaces":    "scaling_priority_namespaces",
 		"scalingConcurrency":           "scaling_concurrency",
+		"protectCriticalPodNodes":      "protect_critical_pod_nodes",
 	}
 	updates := map[string]interface{}{}
 	for jsonKey, dbCol := range fieldMap {

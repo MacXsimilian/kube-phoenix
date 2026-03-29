@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/macxsimilian/kube-phoenix/backend/internal/nodeutil"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/stringutil"
 	corev1 "k8s.io/api/core/v1"
@@ -26,11 +27,14 @@ type drainTarget struct {
 // classifyNodes groups pods by node, identifying which nodes run critical
 // workloads (pods in protected namespaces) and how many evictable (non-DaemonSet)
 // pods each node has.
-func classifyNodes(pods []corev1.Pod, skipNsNode map[string]bool) (criticalNodes map[string]bool, podCountPerNode map[string]int) {
+func classifyNodes(pods []corev1.Pod, skipNsNode map[string]bool, protectCriticalPodNodes bool) (criticalNodes map[string]bool, podCountPerNode map[string]int) {
 	criticalNodes = map[string]bool{}
 	podCountPerNode = map[string]int{}
 	for _, pod := range pods {
 		if skipNsNode[pod.Namespace] {
+			criticalNodes[pod.Spec.NodeName] = true
+		}
+		if protectCriticalPodNodes && nodeutil.IsCriticalPod(pod.Spec.PriorityClassName) {
 			criticalNodes[pod.Spec.NodeName] = true
 		}
 		isDaemon := false
@@ -67,7 +71,7 @@ func (r *Runner) drainNodes(ctx context.Context, mode string, guardrails *store.
 	}
 
 	skipNsNode := stringutil.SplitCSVSet(guardrails.SkipNsNode)
-	criticalNodes, podCountPerNode := classifyNodes(allPods, skipNsNode)
+	criticalNodes, podCountPerNode := classifyNodes(allPods, skipNsNode, guardrails.ProtectCriticalPodNodes)
 
 	// Collect drainable nodes, skipping protected ones.
 	var targets []drainTarget
