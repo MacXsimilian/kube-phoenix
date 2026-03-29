@@ -419,6 +419,24 @@ func (s *Store) DeletePolicyOverride(id uint) error {
 
 // ─── Scheduled Exceptions ────────────────────────────────────────────────────
 
+// HasOverlappingException returns true if an active or pending exception of a
+// different type already covers part of the [startsAt, endsAt] window for the
+// same policy. excludeID is ignored (pass 0 for new exceptions).
+func (s *Store) HasOverlappingException(policyID uint, exceptionType string, startsAt, endsAt time.Time, excludeID uint) (bool, error) {
+	query := s.db.Model(&ScheduledException{}).
+		Where("policy_id = ? AND exception_type != ? AND status IN (?, ?)",
+			policyID, exceptionType, ExceptionStatusPending, ExceptionStatusActive).
+		Where("starts_at < ? AND ends_at > ?", endsAt, startsAt)
+	if excludeID != 0 {
+		query = query.Where("id != ?", excludeID)
+	}
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func (s *Store) CreateScheduledException(e *ScheduledException) error {
 	return s.db.Create(e).Error
 }
