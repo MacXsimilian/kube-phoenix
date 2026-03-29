@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.5](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.4...v0.5.5) (2026-03-29)
+
+
+### Bug Fixes
+
+* **scheduler:** exception evaluation, scaler reliability, and performance improvements ([#275](https://github.com/MacXsimilian/kube-phoenix/issues/275)) ([554980d](https://github.com/MacXsimilian/kube-phoenix/commit/554980da154d100bd4692ea187f48acd439f5a6e))
+
 ## [0.5.4](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.3...v0.5.4) (2026-03-28)
 
 
