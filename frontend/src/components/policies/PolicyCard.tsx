@@ -26,6 +26,7 @@ import { timeUntil } from '@/lib/formatters'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
 import { useColors } from '@/lib/colors'
 import ConfirmDialog from '@/components/common/ConfirmDialog'
+import TriggerModeDialog, { type TriggerDirection } from '@/components/common/TriggerModeDialog'
 import MiniTimeline from './MiniTimeline'
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -94,6 +95,7 @@ export default function PolicyCard({
   const router = useRouter()
   const isDark = useIsDark()
   const [deleteDialog, setDeleteDialog] = useState(false)
+  const [triggerDialog, setTriggerDialog] = useState<TriggerDirection | null>(null)
   const STATE_COLORS = stateColors(isDark)
   const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
   const led = LED_COLORS[policy.currentState] ?? LED_COLORS.unknown
@@ -203,7 +205,7 @@ export default function PolicyCard({
               )}
 
               {hasSleepWindows(windows) && (
-                <MiniTimeline windows={windows} height={48} timezone={policy.timezone} />
+                <MiniTimeline windows={windows} height={72} timezone={policy.timezone} />
               )}
             </Box>
 
@@ -269,7 +271,7 @@ export default function PolicyCard({
               <span>
                 <IconButton
                   size="small"
-                  onClick={() => sleepMut.mutate()}
+                  onClick={() => setTriggerDialog('sleep')}
                   disabled={!canTrigger || isBusy}
                   aria-label="Trigger sleep"
                   sx={{ ...actionBtnSx, color: sleepIconColor, '&:hover': { bgcolor: 'rgba(99,102,241,0.15)' } }}
@@ -282,7 +284,7 @@ export default function PolicyCard({
               <span>
                 <IconButton
                   size="small"
-                  onClick={() => wakeMut.mutate()}
+                  onClick={() => setTriggerDialog('wake')}
                   disabled={!canTrigger || isBusy}
                   aria-label="Trigger wake"
                   sx={{ ...actionBtnSx, color: wakeIconColor, '&:hover': { bgcolor: 'rgba(245,158,11,0.15)' } }}
@@ -322,6 +324,17 @@ export default function PolicyCard({
         confirmLabel="Delete"
         onConfirm={() => deleteMut.mutate()}
         onClose={() => setDeleteDialog(false)}
+      />
+
+      <TriggerModeDialog
+        open={triggerDialog !== null}
+        direction={triggerDialog ?? 'sleep'}
+        policyName={policy.name}
+        onConfirm={(mode) => {
+          if (triggerDialog === 'sleep') sleepMut.mutate(mode)
+          else wakeMut.mutate(mode)
+        }}
+        onClose={() => setTriggerDialog(null)}
       />
     </>
   )

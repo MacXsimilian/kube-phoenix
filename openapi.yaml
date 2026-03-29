@@ -181,6 +181,15 @@ components:
           type: integer
           description: Age of the ClusterCache snapshot in milliseconds.
 
+    TriggerModeOverride:
+      description: Optional request body for manual sleep/wake triggers to override the policy's default execution mode.
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [plan, apply]
+          description: Execution mode override. When omitted, the policy's configured mode is used.
+
     TriggerResponse:
       description: Response when a manual trigger is accepted.
       type: object
@@ -2077,6 +2086,12 @@ paths:
     post:
       summary: Manually trigger a sleep run for the policy
       tags: [Policies]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerModeOverride"
       responses:
         "200":
           description: Execution started.
@@ -2084,6 +2099,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TriggerResponse"
+        "400":
+          description: Invalid mode value
         "404":
           description: Not found
         "409":
@@ -2099,6 +2116,12 @@ paths:
     post:
       summary: Manually trigger a wake run for the policy
       tags: [Policies]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerModeOverride"
       responses:
         "200":
           description: Execution started.
@@ -2106,6 +2129,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TriggerResponse"
+        "400":
+          description: Invalid mode value
         "404":
           description: Not found
         "409":

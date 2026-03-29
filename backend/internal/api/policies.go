@@ -355,13 +355,25 @@ func (h *Handler) triggerPolicyWake(w http.ResponseWriter, r *http.Request) {
 }
 
 // triggerPolicyAction is the shared implementation for manual sleep/wake triggers.
-func (h *Handler) triggerPolicyAction(w http.ResponseWriter, r *http.Request, direction string, runFn func(uint, string) (uint, error), trigger, auditAction string) {
+func (h *Handler) triggerPolicyAction(w http.ResponseWriter, r *http.Request, direction string, runFn func(uint, string, string) (uint, error), trigger, auditAction string) {
 	p, ok := h.requirePolicy(w, r)
 	if !ok {
 		return
 	}
 	id := p.ID
-	execID, err := runFn(id, trigger)
+
+	// Parse optional mode override from request body.
+	var body struct {
+		Mode string `json:"mode"`
+	}
+	// Body may be empty — that's fine, mode stays "".
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if body.Mode != "" && body.Mode != "plan" && body.Mode != "apply" {
+		jsonError(w, "mode must be \"plan\" or \"apply\"", http.StatusBadRequest)
+		return
+	}
+
+	execID, err := runFn(id, trigger, body.Mode)
 	if err != nil {
 		if scheduler.IsAlreadyRunning(err) {
 			jsonError(w, "policy is already executing — wait for current run to finish", http.StatusConflict)
@@ -371,7 +383,11 @@ func (h *Handler) triggerPolicyAction(w http.ResponseWriter, r *http.Request, di
 		return
 	}
 	slog.Info("policy manual "+direction+" triggered", "policyID", id, "execID", execID)
-	h.audit(r, auditAction, "policy", &id, nil, map[string]interface{}{"executionId": execID, "trigger": trigger})
+	auditData := map[string]interface{}{"executionId": execID, "trigger": trigger}
+	if body.Mode != "" {
+		auditData["modeOverride"] = body.Mode
+	}
+	h.audit(r, auditAction, "policy", &id, nil, auditData)
 	jsonOK(w, map[string]uint{"executionId": execID})
 }
 

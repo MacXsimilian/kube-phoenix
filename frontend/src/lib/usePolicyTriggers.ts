@@ -38,13 +38,13 @@ export function usePolicyTriggers(
   }
 
   const sleepMut = useMutation({
-    mutationFn: () => triggerPolicySleep(policyId),
+    mutationFn: (mode?: 'plan' | 'apply') => triggerPolicySleep(policyId, mode),
     onSuccess,
     onError: (err: unknown) => onError(err),
   })
 
   const wakeMut = useMutation({
-    mutationFn: () => triggerPolicyWake(policyId),
+    mutationFn: (mode?: 'plan' | 'apply') => triggerPolicyWake(policyId, mode),
     onSuccess,
     onError: (err: unknown) => onError(err),
   })

@@ -290,11 +290,17 @@ export const updatePolicy = (id: number, data: Partial<PolicyInput>): Promise<Po
 export const deletePolicy = (id: number): Promise<void> =>
   apiFetch<void>(`/api/policies/${id}`, { method: 'DELETE' })
 
-export const triggerPolicySleep = (id: number): Promise<{ executionId: number }> =>
-  apiFetch<{ executionId: number }>(`/api/policies/${id}/sleep`, { method: 'POST' })
+export const triggerPolicySleep = (id: number, mode?: 'plan' | 'apply'): Promise<{ executionId: number }> =>
+  apiFetch<{ executionId: number }>(`/api/policies/${id}/sleep`, {
+    method: 'POST',
+    ...(mode ? { body: JSON.stringify({ mode }) } : {}),
+  })
 
-export const triggerPolicyWake = (id: number): Promise<{ executionId: number }> =>
-  apiFetch<{ executionId: number }>(`/api/policies/${id}/wake`, { method: 'POST' })
+export const triggerPolicyWake = (id: number, mode?: 'plan' | 'apply'): Promise<{ executionId: number }> =>
+  apiFetch<{ executionId: number }>(`/api/policies/${id}/wake`, {
+    method: 'POST',
+    ...(mode ? { body: JSON.stringify({ mode }) } : {}),
+  })
 
 // ── Policy executions ─────────────────────────────────────────────────────────
 
