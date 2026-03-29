@@ -24,18 +24,40 @@ import MenuItem from '@mui/material/MenuItem'
 import Alert from '@mui/material/Alert'
 import Skeleton from '@mui/material/Skeleton'
 import Tooltip from '@mui/material/Tooltip'
+import Avatar from '@mui/material/Avatar'
 import InputAdornment from '@mui/material/InputAdornment'
 import SearchIcon from '@mui/icons-material/Search'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined'
+import KeyOutlinedIcon from '@mui/icons-material/KeyOutlined'
+import StorageOutlinedIcon from '@mui/icons-material/StorageOutlined'
 import { useRouter } from 'next/navigation'
 import { getUsers, createUserAPI, updateUserAPI, deleteUserAPI } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { canManageUsers } from '@/lib/rbac'
 import type { User, Role } from '@/lib/types'
+import { TABLE_HEAD_CELL_SX, TABLE_BODY_CELL_SX } from '@/lib/tableStyles'
 
 const ROLE_COLORS: Record<string, 'error' | 'warning' | 'default'> = {
   admin: 'error', operator: 'warning', viewer: 'default',
+}
+
+const ROLE_CHIP_SX: Record<string, { bgcolor: string; color: string }> = {
+  admin: { bgcolor: 'rgba(239,68,68,0.12)', color: 'error.main' },
+  operator: { bgcolor: 'rgba(245,158,11,0.12)', color: 'warning.main' },
+  viewer: { bgcolor: 'action.hover', color: 'text.secondary' },
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  const hours = Math.floor(mins / 60)
+  const days = Math.floor(hours / 24)
+  if (days > 30) return new Date(iso).toLocaleDateString()
+  if (days > 0) return `${days}d ago`
+  if (hours > 0) return `${hours}h ago`
+  if (mins > 0) return `${mins}m ago`
+  return 'Just now'
 }
 
 export default function UsersPage() {
@@ -85,7 +107,6 @@ export default function UsersPage() {
     if (me && !canManageUsers(me.permissions)) router.replace('/overview')
   }, [me, router])
 
-  // Permission guard — return null after all hooks.
   if (me && !canManageUsers(me.permissions)) return null
 
   return (
@@ -93,7 +114,7 @@ export default function UsersPage() {
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box>
           <Typography variant="h5" fontWeight={700}>Users</Typography>
-          <Typography variant="body2" color="text.secondary">Manage user accounts and roles.</Typography>
+          <Typography variant="body2" color="text.secondary">{users?.length ?? 0} users total</Typography>
         </Box>
         <Button variant="contained" startIcon={<PersonAddOutlinedIcon />} onClick={() => { setCreateOpen(true); setCreateError('') }}>
           Add User
@@ -117,36 +138,46 @@ export default function UsersPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Username</TableCell>
-                <TableCell>Name</TableCell>
-                <TableCell>Email</TableCell>
-                <TableCell>Role</TableCell>
-                <TableCell>Source</TableCell>
-                <TableCell>Enabled</TableCell>
-                <TableCell>Last Login</TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>User</TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>Email</TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>Role</TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>Source</TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>Enabled</TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>Last Login</TableCell>
                 <TableCell width={60} />
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading && Array.from({ length: 3 }).map((_, i) => (
-                <TableRow key={i}><TableCell colSpan={8}><Skeleton /></TableCell></TableRow>
+                <TableRow key={i}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
               ))}
               {filteredUsers.map(u => (
-                <TableRow key={u.id} sx={{ opacity: u.enabled ? 1 : 0.5 }}>
-                  <TableCell>
-                    <Typography variant="body2" fontWeight={600}>{u.username}</Typography>
+                <TableRow key={u.id} hover sx={{ opacity: u.enabled ? 1 : 0.5 }}>
+                  <TableCell sx={TABLE_BODY_CELL_SX}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Avatar sx={{ width: 28, height: 28, fontSize: 11, fontWeight: 700 }}>
+                        {(u.givenName?.[0] ?? u.username[0]).toUpperCase()}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" fontWeight={600} fontSize={13}>{u.username}</Typography>
+                        <Typography variant="caption" color="text.secondary" fontSize={11}>
+                          {[u.givenName, u.familyName].filter(Boolean).join(' ') || '—'}
+                        </Typography>
+                      </Box>
+                    </Box>
                   </TableCell>
-                  <TableCell>{[u.givenName, u.familyName].filter(Boolean).join(' ') || '—'}</TableCell>
-                  <TableCell>{u.email || '—'}</TableCell>
+                  <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{u.email || '—'}</TableCell>
                   <TableCell>
                     {u.source === 'oidc' ? (
-                      <Tooltip title="Role managed by AD groups"><Chip label={u.role} size="small" color={ROLE_COLORS[u.role]} /></Tooltip>
+                      <Tooltip title="Role managed by AD groups">
+                        <Chip label={u.role} size="small" sx={{ fontSize: 10, height: 20, ...(ROLE_CHIP_SX[u.role] ?? {}) }} />
+                      </Tooltip>
                     ) : (
                       <TextField
                         select size="small" variant="standard" value={u.role}
                         disabled={u.id === me?.id || updateMutation.isPending}
                         onChange={e => updateMutation.mutate({ id: u.id, data: { role: e.target.value as Role } })}
-                        sx={{ minWidth: 100 }}
+                        sx={{ minWidth: 90 }}
                       >
                         <MenuItem value="admin">admin</MenuItem>
                         <MenuItem value="operator">operator</MenuItem>
@@ -154,7 +185,23 @@ export default function UsersPage() {
                       </TextField>
                     )}
                   </TableCell>
-                  <TableCell><Chip label={u.source} size="small" variant="outlined" /></TableCell>
+                  <TableCell>
+                    <Tooltip title={u.source === 'oidc' ? 'Authenticated via OIDC / Single Sign-On — role managed by AD groups' : 'Local account — password stored in the application database'} arrow>
+                      <Box sx={{
+                        display: 'inline-flex', alignItems: 'center', gap: 0.4, px: 0.75, py: 0.25,
+                        borderRadius: 2, border: '1.5px solid',
+                        borderColor: u.source === 'oidc' ? 'primary.main' : 'divider',
+                      }}>
+                        {u.source === 'oidc'
+                          ? <KeyOutlinedIcon sx={{ fontSize: 13, color: 'primary.main' }} />
+                          : <StorageOutlinedIcon sx={{ fontSize: 13, color: 'text.disabled' }} />
+                        }
+                        <Typography sx={{ fontSize: 10, fontWeight: 600, color: u.source === 'oidc' ? 'primary.main' : 'text.secondary' }}>
+                          {u.source === 'oidc' ? 'SSO' : 'Local'}
+                        </Typography>
+                      </Box>
+                    </Tooltip>
+                  </TableCell>
                   <TableCell>
                     <Switch
                       aria-label={`Toggle ${u.username} enabled`}
@@ -164,13 +211,15 @@ export default function UsersPage() {
                     />
                   </TableCell>
                   <TableCell>
-                    <Typography variant="caption" color="text.secondary">
-                      {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never'}
-                    </Typography>
+                    <Tooltip title={u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : ''}>
+                      <Typography variant="caption" color="text.disabled" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {u.lastLoginAt ? relativeTime(u.lastLoginAt) : 'Never'}
+                      </Typography>
+                    </Tooltip>
                   </TableCell>
                   <TableCell>
                     {u.id !== me?.id && (
-                      <IconButton aria-label={`Delete user ${u.username}`} size="small" color="error" onClick={() => setDeleteTarget(u)}>
+                      <IconButton aria-label={`Delete user ${u.username}`} size="small" color="error" onClick={() => setDeleteTarget(u)} sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}>
                         <DeleteOutlineIcon fontSize="small" />
                       </IconButton>
                     )}
