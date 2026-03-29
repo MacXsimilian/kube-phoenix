@@ -25,12 +25,12 @@ import CenteredSpinner from '@/components/common/CenteredSpinner'
 import { ChipInput } from '@/components/common/ChipInput'
 import { AMBER_40, AMBER_03 } from '@/components/guardrails/ProtectedChipInput'
 import SaveIcon from '@mui/icons-material/Save'
+import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { getGuardrails, updateGuardrails } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { canEditGuardrails } from '@/lib/rbac'
 import { useSnackbar } from '@/lib/useSnackbar'
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
+import Link from 'next/link'
 
 function joinCommaList(arr: string[]) { return arr.join(',') }
 function splitCommaList(s: string) { return s.split(',').map((v) => v.trim()).filter(Boolean) }
@@ -46,9 +46,7 @@ function validateEvalInterval(value: string): string | undefined {
   return undefined
 }
 
-// ── Main form ─────────────────────────────────────────────────────────────────
-
-export default function GuardrailsForm() {
+export default function GuardrailsHybridPage() {
   const { user } = useAuth()
   const hasEdit = canEditGuardrails(user?.permissions)
   const queryClient = useQueryClient()
@@ -106,34 +104,34 @@ export default function GuardrailsForm() {
       setSaveError(null)
       notify('Guardrails saved successfully.', 'success')
     },
-    onError: (err: unknown) => {
-      setSaveError(formatError(err))
-    },
+    onError: (err: unknown) => { setSaveError(formatError(err)) },
   })
 
-  if (isLoading) {
-    return <CenteredSpinner />
-  }
-
-  if (loadError && !guardrails) {
-    return <Alert severity="error">Could not load guardrails — please refresh the page.</Alert>
-  }
+  if (isLoading) return <CenteredSpinner />
+  if (loadError && !guardrails) return <Alert severity="error">Could not load guardrails.</Alert>
 
   const toggle = (key: string) => setExpanded(expanded === key ? null : key)
   const nodeRuleCount = (skipNsNode.length > 0 ? 1 : 0) + (skipLabels.length > 0 ? 1 : 0) + (skipTaints.length > 0 ? 1 : 0) + (protectCriticalPodNodes ? 1 : 0)
 
   return (
     <>
-      {loadError && guardrails && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          Could not refresh guardrails — showing last known values.
-        </Alert>
-      )}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+        <Button component={Link} href="/guardrails-redesign" size="small" startIcon={<ArrowBackIcon />} sx={{ minWidth: 0, color: 'text.secondary' }}>
+          Back
+        </Button>
+      </Box>
+      <Typography variant="h5" fontWeight={700} mb={0.5}>Guardrails</Typography>
+      <Typography variant="body2" color="text.secondary" mb={2}>
+        Variant E — Hybrid: D-style card headers with icon boxes and stat pills, B-style accordion interiors
+      </Typography>
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
 
         {/* ── 1. System-Protected Namespaces ──────────────────────── */}
-        <Card variant="outlined" sx={{ borderColor: AMBER_40, bgcolor: AMBER_03 }}>
+        <Card
+          variant="outlined"
+          sx={{ borderColor: AMBER_40, bgcolor: AMBER_03 }}
+        >
           <Box onClick={() => toggle('namespaces')} sx={{ cursor: 'pointer' }}>
             <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -158,19 +156,29 @@ export default function GuardrailsForm() {
                 Workloads in these namespaces are never scaled down or drained. Only remove an entry if you know what you are doing.
               </Typography>
               <ChipInput
-                id="chip-input-system-ns"
+                id="hybrid-chip-system-ns"
                 values={systemNs}
                 onChange={(v) => setSystemNs([...v].sort())}
                 readOnly={!hasEdit}
-                containerSx={{ borderColor: AMBER_40, bgcolor: 'rgba(245,158,11,0.06)', '&:focus-within': { borderColor: AMBER_40 } }}
-                chipSx={{ bgcolor: 'rgba(245,158,11,0.12)', color: 'warning.main', '& .MuiChip-deleteIcon': { color: 'warning.main', opacity: 0.6, '&:hover': { opacity: 1 } } }}
+                containerSx={{
+                  borderColor: AMBER_40,
+                  bgcolor: 'rgba(245,158,11,0.06)',
+                  '&:focus-within': { borderColor: AMBER_40 },
+                }}
+                chipSx={{
+                  bgcolor: 'rgba(245,158,11,0.12)',
+                  color: 'warning.main',
+                  '& .MuiChip-deleteIcon': { color: 'warning.main', opacity: 0.6, '&:hover': { opacity: 1 } },
+                }}
               />
             </CardContent>
           </Collapse>
         </Card>
 
         {/* ── 2. Node Protection ──────────────────────────────────── */}
-        <Card variant="outlined">
+        <Card
+          variant="outlined"
+        >
           <Box onClick={() => toggle('nodes')} sx={{ cursor: 'pointer' }}>
             <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -206,16 +214,18 @@ export default function GuardrailsForm() {
               </Box>
               <Divider sx={{ my: 2 }} />
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-                <ChipInput id="chip-input-critical-ns" label="Critical Namespaces (protect nodes)" hint="Nodes running pods from these namespaces are never drained" values={skipNsNode} onChange={setSkipNsNode} readOnly={!hasEdit} />
-                <ChipInput id="chip-input-skip-labels" label="Skip Node Labels" hint="key=value format, e.g. karpenter.k8s.aws/ec2nodeclass=default" values={skipLabels} onChange={setSkipLabels} readOnly={!hasEdit} />
-                <ChipInput id="chip-input-skip-taints" label="Skip Node Taints" hint="key=value:effect format, e.g. karpenter-eks-base=true:NoSchedule" values={skipTaints} onChange={setSkipTaints} readOnly={!hasEdit} />
+                <ChipInput id="hybrid-chip-critical-ns" label="Critical Namespaces (protect nodes)" hint="Nodes running pods from these namespaces are never drained" values={skipNsNode} onChange={setSkipNsNode} readOnly={!hasEdit} />
+                <ChipInput id="hybrid-chip-skip-labels" label="Skip Node Labels" hint="key=value format" values={skipLabels} onChange={setSkipLabels} readOnly={!hasEdit} />
+                <ChipInput id="hybrid-chip-skip-taints" label="Skip Node Taints" hint="key=value:effect format" values={skipTaints} onChange={setSkipTaints} readOnly={!hasEdit} />
               </Box>
             </CardContent>
           </Collapse>
         </Card>
 
         {/* ── 3. Scaling Priority ─────────────────────────────────── */}
-        <Card variant="outlined">
+        <Card
+          variant="outlined"
+        >
           <Box onClick={() => toggle('scaling')} sx={{ cursor: 'pointer' }}>
             <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -239,13 +249,15 @@ export default function GuardrailsForm() {
               <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
                 These namespaces are scaled first during wake-up, in listed order.
               </Typography>
-              <ChipInput id="chip-input-priority-ns" label="Priority Namespaces" hint="Add namespaces in the order they should be scaled" values={priorityNs} onChange={setPriorityNs} readOnly={!hasEdit} />
+              <ChipInput id="hybrid-chip-priority-ns" label="Priority Namespaces" hint="Add namespaces in the order they should be scaled" values={priorityNs} onChange={setPriorityNs} readOnly={!hasEdit} />
             </CardContent>
           </Collapse>
         </Card>
 
         {/* ── 4. Scheduler Behaviour ──────────────────────────────── */}
-        <Card variant="outlined">
+        <Card
+          variant="outlined"
+        >
           <Box onClick={() => toggle('scheduler')} sx={{ cursor: 'pointer' }}>
             <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -305,23 +317,13 @@ export default function GuardrailsForm() {
       <Box sx={{ mt: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
         <Tooltip title={hasEdit ? '' : 'You do not have permission to edit guardrails'}>
           <span>
-            <Button
-              variant="contained"
-              startIcon={save.isPending ? <CircularProgress size={14} /> : <SaveIcon fontSize="small" />}
-              disabled={save.isPending || !hasEdit}
-              onClick={() => save.mutate()}
-            >
+            <Button variant="contained" startIcon={save.isPending ? <CircularProgress size={14} /> : <SaveIcon fontSize="small" />} disabled={save.isPending || !hasEdit} onClick={() => save.mutate()}>
               Save Guardrails
             </Button>
           </span>
         </Tooltip>
-        {saveError && (
-          <Alert severity="error" sx={{ py: 0.5 }}>
-            {saveError}
-          </Alert>
-        )}
+        {saveError && <Alert severity="error" sx={{ py: 0.5 }}>{saveError}</Alert>}
       </Box>
-
       {SnackbarAlert}
     </>
   )
