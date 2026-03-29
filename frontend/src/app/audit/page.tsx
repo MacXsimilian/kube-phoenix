@@ -59,13 +59,16 @@ export default function AuditLogPage() {
     if (user && !hasPermission) router.replace('/overview')
   }, [user, hasPermission, router])
 
+  const localFrom = fromFilter ? new Date(`${fromFilter}T00:00:00`).toISOString() : undefined
+  const localTo = toFilter ? new Date(`${toFilter}T23:59:59`).toISOString() : undefined
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['audit-logs', page, pageSize, debouncedUserFilter, actionFilter, fromFilter, toFilter],
     queryFn: () => getAuditLogs({
       user: debouncedUserFilter || undefined,
       action: actionFilter || undefined,
-      from: fromFilter ? new Date(`${fromFilter}T00:00:00`).toISOString() : undefined,
-      to: toFilter ? new Date(`${toFilter}T23:59:59`).toISOString() : undefined,
+      from: localFrom,
+      to: localTo,
       page,
       pageSize,
     }),
@@ -78,8 +81,8 @@ export default function AuditLogPage() {
       const result = await getAuditLogs({
         user: debouncedUserFilter || undefined,
         action: actionFilter || undefined,
-        from: fromFilter ? new Date(`${fromFilter}T00:00:00`).toISOString() : undefined,
-        to: toFilter ? new Date(`${toFilter}T23:59:59`).toISOString() : undefined,
+        from: localFrom,
+        to: localTo,
         page: 0,
         pageSize: 1000,
       })
