@@ -31,9 +31,7 @@ export default function SettingsPage() {
         {/* Top row: Profile (left) + Appearance & Sessions (right) */}
         {user && user.id !== 0 && (
           <Grid size={{ xs: 12, md: 6 }} sx={{ display: 'flex' }}>
-            <Box sx={{ width: '100%', '& > *': { height: '100%' }, '& > * > .MuiCardContent-root': { height: '100%', boxSizing: 'border-box' } }}>
-              <AccountSettings user={user} />
-            </Box>
+            <AccountSettings user={user} />
           </Grid>
         )}
 

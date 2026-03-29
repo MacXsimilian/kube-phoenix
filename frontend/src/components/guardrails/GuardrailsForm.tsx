@@ -12,6 +12,7 @@ import Box from '@mui/material/Box'
 import TextField from '@mui/material/TextField'
 import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
+import Divider from '@mui/material/Divider'
 import CircularProgress from '@mui/material/CircularProgress'
 import Switch from '@mui/material/Switch'
 import CenteredSpinner from '@/components/common/CenteredSpinner'
@@ -22,8 +23,6 @@ import { getGuardrails, updateGuardrails } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { canEditGuardrails } from '@/lib/rbac'
 import { useSnackbar } from '@/lib/useSnackbar'
-
-// ── Constants ────────────────────────────────────────────────────────────────
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -204,7 +203,7 @@ export default function GuardrailsForm() {
                       />
                     </Box>
                   </Tooltip>
-                  <Box sx={{ width: '1px', bgcolor: 'divider' }} />
+                  <Divider orientation="vertical" flexItem />
                   {/* Auto Wake */}
                   <Tooltip title="Automatically wake clusters when outside a sleep window" arrow>
                     <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
@@ -212,7 +211,7 @@ export default function GuardrailsForm() {
                       <Switch checked={autoWake} disabled={!hasEdit} onChange={(e) => setAutoWake(e.target.checked)} />
                     </Box>
                   </Tooltip>
-                  <Box sx={{ width: '1px', bgcolor: 'divider' }} />
+                  <Divider orientation="vertical" flexItem />
                   {/* Reconcile */}
                   <Tooltip title="Re-evaluate policies during awake windows to correct drift" arrow>
                     <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
