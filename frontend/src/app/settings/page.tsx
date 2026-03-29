@@ -27,16 +27,18 @@ export default function SettingsPage() {
         Manage your account, appearance, and system configuration.
       </Typography>
 
-      <Grid container spacing={3}>
+      <Grid container spacing={3} sx={{ alignItems: 'stretch' }}>
         {/* Top row: Profile (left) + Appearance & Sessions (right) */}
         {user && user.id !== 0 && (
-          <Grid size={{ xs: 12, md: 6 }}>
-            <AccountSettings user={user} />
+          <Grid size={{ xs: 12, md: 6 }} sx={{ display: 'flex' }}>
+            <Box sx={{ width: '100%', '& > *': { height: '100%' }, '& > * > .MuiCardContent-root': { height: '100%', boxSizing: 'border-box' } }}>
+              <AccountSettings user={user} />
+            </Box>
           </Grid>
         )}
 
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <Grid size={{ xs: 12, md: 6 }} sx={{ display: 'flex' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
             <AppearanceSettings mode={mode} onModeChange={setMode} />
             <ActiveSessionsCard />
           </Box>

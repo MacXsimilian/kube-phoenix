@@ -53,11 +53,11 @@ export default function AccountSettings({ user }: { user: User }) {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
             <PersonOutlineIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
             <Typography variant="subtitle1" fontWeight={700}>
-              Profile &amp; Security
+              Profile
             </Typography>
           </Box>
           <Typography variant="body2" color="text.secondary" mb={2.5}>
-            Your account information and credentials.
+            Your account information and preferences.
           </Typography>
 
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
