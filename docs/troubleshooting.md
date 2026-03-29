@@ -23,7 +23,7 @@
 
 **Solution:**
 
-The scheduler automatically recovers stuck `transitioning` policies. If a policy has been in `transitioning` for more than 10 minutes, it is reset to `unknown` and re-evaluated on the next tick. No manual intervention is required.
+The scheduler automatically recovers stuck `transitioning` policies. If a policy has been in `transitioning` for longer than its execution timeout plus a 5-minute grace period (minimum 15 minutes), it is reset to `unknown` and re-evaluated on the next tick. No manual intervention is required.
 
 If you need to resolve it immediately:
 

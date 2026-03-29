@@ -96,7 +96,7 @@ If a workload is manually scaled back up while a sleep policy is active, the sys
 | R6.1 | A background scheduler evaluates all enabled policies on a configurable tick interval (default 30s)                                  |
 | R6.2 | Each tick computes the **intended state** (sleeping/awake) and compares to **current state**                                         |
 | R6.3 | State transitions are **atomically claimed** to prevent concurrent executions of the same policy                                     |
-| R6.4 | Stuck transitions (no completion within 10 min) are automatically reset                                                              |
+| R6.4 | Stuck transitions (no completion within policy timeout + grace period) are automatically reset                                        |
 | R6.5 | On startup, the scheduler must run **recovery** — detect mismatches and self-correct                                                |
 | R6.6 | While a policy is awake, **reconciliation** should detect open snapshots (drift) and attempt corrective wakes with backoff           |
 
