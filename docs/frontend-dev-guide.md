@@ -58,7 +58,7 @@ frontend/
       cluster/page.tsx          # /cluster -- workloads & nodes tabs
       policies/page.tsx         # /policies -- policy list
       policies/detail/page.tsx  # /policies/detail/?id=N -- single policy
-      exceptions/page.tsx       # /exceptions -- scheduled exceptions list
+      exceptions/page.tsx       # /exceptions -- calendar strip layout with history split
       history/page.tsx          # /history -- execution history
       audit/page.tsx            # /audit -- audit log (viewer and above)
       users/page.tsx            # /users -- user management (admin)
@@ -126,8 +126,14 @@ frontend/
         CenteredSpinner.tsx     # Centered CircularProgress spinner for loading states
       shared/
         StatusChip.tsx          # Reusable status chip with color mapping
+      exceptions/
+        ExceptionsCalendarStrip.tsx  # Calendar strip layout: day rows, span rows for multi-day, history split
+        ExceptionDetailPanel.tsx     # Expandable detail grid (dates, duration, namespace filter, workload targets)
+        ExceptionChips.tsx           # TypeChip (stay_awake/force_sleep) and StatusChipEx renderers
+        ExceptionActions.tsx         # Edit/cancel icon buttons with stopPropagation
       guardrails/
-        GuardrailsForm.tsx      # Chip-based namespace/label/taint editor (uses ChipInput + ProtectedChipInput)
+        GuardrailsForm.tsx      # Collapsible category cards with stat pills (uses useReducer, CategoryCard)
+        CategoryCard.tsx        # Reusable collapsible card: icon header, stat pills, chevron, expand body
         ProtectedChipInput.tsx  # ChipInput variant with removal confirmation dialog
       settings/
         AccountSettings.tsx     # Timezone selector (defaults from user preference)
@@ -159,7 +165,9 @@ frontend/
       usePolicyTriggers.ts      # Shared sleep/wake mutation hook (invalidation + navigation)
       useTriStateSort.ts        # Hook: tri-state column sort (asc -> desc -> none)
       SortHeader.tsx            # Reusable sort-header cell for MUI tables (uses useTriStateSort)
+      tableStyles.ts            # Shared table styling constants (TABLE_HEAD_CELL_SX, TABLE_BODY_CELL_SX, etc.)
       useSnackbar.tsx           # Hook: returns { notify, SnackbarAlert } for standardized snackbar rendering
+      useUnsavedChanges.tsx     # Context + provider: intercepts navigation when form has unsaved changes
     theme/
       theme.ts                  # MUI theme factory (createAppTheme) for dark and light modes
   next.config.mjs               # Static export config
@@ -862,7 +870,9 @@ A multi-step destructive action flow:
 
 `src/components/guardrails/GuardrailsForm.tsx`
 
-The guardrails editor uses a sticky save bar that appears at the bottom of the viewport when unsaved changes are detected. The bar uses `position: sticky` with `bottom: 0` and shows "Unsaved changes" with a Save button. It delegates tag-like editing to two extracted components:
+The guardrails editor uses collapsible category cards — each section (System-Protected Namespaces, Node Protection, Scaling Priority, Scheduler Behaviour) is a `CategoryCard` with an icon header, summary stat pills (hidden when expanded), and a chevron toggle. Form state is managed with `useReducer` and a typed `FormState` interface. Dirty tracking uses `buildSnapshot()` / `isDirty()` helpers that compare current state against the last saved snapshot, feeding into the `useUnsavedChanges` context to intercept navigation.
+
+**`CategoryCard`** (`components/guardrails/CategoryCard.tsx`): A reusable collapsible card accepting `icon`, `title`, `subtitle`, `pills`, `expanded`, `onToggle`, `children`, and optional `cardSx`/`dividerSx` props. Renders a clickable header with icon box, title, subtitle, conditional pills, and chevron. Body content renders inside a `Collapse` below a `Divider`.
 
 **`ChipInput`** (`components/common/ChipInput.tsx`): A reusable tag input component:
 
@@ -871,13 +881,15 @@ The guardrails editor uses a sticky save bar that appears at the bottom of the v
 - `onBlur` also commits the current input value
 - Values are stored as `string[]` locally and serialized to CSV for the API
 
-**`ProtectedChipInput`** (`components/guardrails/ProtectedChipInput.tsx`): A `ChipInput` variant for system namespaces that adds a confirmation dialog when removing a chip, warning that removing a system-protected namespace could affect critical infrastructure.
+**`ProtectedChipInput`** (`components/guardrails/ProtectedChipInput.tsx`): A `ChipInput` variant for system namespaces that adds a confirmation dialog when removing a chip, warning that removing a system-protected namespace could affect critical infrastructure. Note: the main `GuardrailsForm` uses `ChipInput` directly with amber styling for the namespace section (not `ProtectedChipInput`) to avoid a duplicate heading.
 
-Data is loaded from the API as CSV strings and split with `fromCsv()`. On save, arrays are joined back with `csv()`.
+Data is loaded from the API as CSV strings and split with `splitCommaList()`. On save, arrays are joined back with `joinCommaList()`.
 
-The form also includes a "Scheduler Behaviour" card with four controls: an `Eval Interval` text field (Go duration string, validated with a regex before save, description shown inline beside the field rather than below it), a `Scaling Concurrency` number input (range 1–50, default 10) that controls the maximum number of workloads scaled in parallel during sleep and wake runs, and two `LabeledSwitch` toggles for `Auto Wake` and `Reconcile While Awake`. These map to the four scheduler settings in the `Guardrails` model (`SchedulerEvalInterval`, `ScalingConcurrency`, `SchedulerAutoWake`, `SchedulerReconcileWhileAwake`).
+The Scheduler Behaviour section uses stacked label-left/control-right rows for Eval Interval (Go duration, validated), Auto Wake (switch), and Reconcile While Awake (switch).
 
-**`LabeledSwitch`** (`components/common/LabeledSwitch.tsx`): A shared component that renders a `FormControlLabel` wrapping a `Switch` with a two-line label (bold title + secondary caption). Used by `GuardrailsForm` and `ExceptionDialog`.
+**`useUnsavedChanges`** (`lib/useUnsavedChanges.tsx`): A context provider that tracks dirty state across any form. Intercepts internal `<a>` link clicks (capture phase) to show a confirmation dialog when dirty, and uses `beforeunload` for browser tab close. Wrapped in `UnsavedChangesProvider` inside `providers.tsx`.
+
+**`LabeledSwitch`** (`components/common/LabeledSwitch.tsx`): A shared component that renders a `FormControlLabel` wrapping a `Switch` with a two-line label (bold title + secondary caption). Used by `ExceptionDialog`.
 
 ---
 
@@ -1012,11 +1024,22 @@ A hook for tri-state column sorting: clicking the active column cycles `asc` -> 
 
 ### lib/SortHeader.tsx
 
-A reusable table header cell that renders a `TableSortLabel` wired to the `useTriStateSort` hook. Accepts `col`, `label`, `active`, `dir`, and `onSort` props. Eliminates duplicated sort-header markup across sortable tables.
+A reusable table header cell that renders a `TableSortLabel` wired to the `useTriStateSort` hook. Accepts `col`, `label`, `active`, `dir`, and `onSort` props. Uses the shared `TABLE_HEAD_CELL_SX` constant from `tableStyles.ts`.
+
+### lib/tableStyles.ts
+
+Shared table styling constants for consistent appearance across all pages:
+
+| Constant | Style | Used by |
+|:---------|:------|:--------|
+| `TABLE_HEAD_CELL_SX` | `fontWeight: 700, color: text.secondary, fontSize: 12, whiteSpace: nowrap` | SortHeader, ExecutionTable, audit, users, exceptions, overrides, policy exceptions |
+| `TABLE_BODY_CELL_SX` | `fontSize: 13` | Users page, workloads table |
+| `TABLE_BODY_CELL_SECONDARY_SX` | `fontSize: 13, color: text.secondary` | Users page |
+| `TABLE_BODY_CELL_MONO_SX` | `fontSize: 13, fontFamily: monospace` | Available for monospace cells |
 
 ### common/ConfirmDialog.tsx
 
-A shared confirmation dialog component accepting `open`, `title`, `message`, `confirmLabel`, `confirmColor`, `onConfirm`, and `onClose` props. Replaces ad-hoc inline confirmation dialogs in `PolicyCard`, `OverridesSection`, `GuardrailsForm`, `DetailDrawer`, and the exceptions page.
+A shared confirmation dialog component accepting `open`, `title`, `message`, `confirmLabel`, `confirmColor`, `onConfirm`, and `onClose` props. Replaces ad-hoc inline confirmation dialogs in `PolicyCard`, `OverridesSection`, `DetailDrawer`, and the exceptions page.
 
 ### common/CenteredSpinner.tsx
 
