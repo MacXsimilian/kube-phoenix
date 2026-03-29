@@ -371,7 +371,7 @@ func (h *Handler) triggerPolicyAction(w http.ResponseWriter, r *http.Request, di
 		return
 	}
 	slog.Info("policy manual "+direction+" triggered", "policyID", id, "execID", execID)
-	h.audit(r, auditAction, "policy", &id, nil, map[string]interface{}{"executionId": execID})
+	h.audit(r, auditAction, "policy", &id, nil, map[string]interface{}{"executionId": execID, "trigger": trigger})
 	jsonOK(w, map[string]uint{"executionId": execID})
 }
 
