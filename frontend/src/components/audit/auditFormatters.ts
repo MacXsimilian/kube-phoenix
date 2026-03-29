@@ -2,7 +2,6 @@
 
 type AuditAction =
   | 'policy.create' | 'policy.update' | 'policy.delete' | 'policy.sleep' | 'policy.wake'
-  | 'policy.override.create' | 'policy.override.delete'
   | 'exception.create' | 'exception.update' | 'exception.delete'
   | 'guardrail.update' | 'admin.reset_db'
   | 'user.create' | 'user.update' | 'user.delete'
@@ -11,7 +10,6 @@ type AuditAction =
 const ACTION_LABELS: Record<AuditAction, string> = {
   'policy.create': 'Policy Create', 'policy.update': 'Policy Update', 'policy.delete': 'Policy Delete',
   'policy.sleep': 'Policy Sleep', 'policy.wake': 'Policy Wake',
-  'policy.override.create': 'Override Create', 'policy.override.delete': 'Override Delete',
   'exception.create': 'Exception Create', 'exception.update': 'Exception Update', 'exception.delete': 'Exception Delete',
   'guardrail.update': 'Guardrail Update',
   'admin.reset_db': 'Reset Database',

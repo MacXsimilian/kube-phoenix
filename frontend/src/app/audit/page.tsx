@@ -32,7 +32,6 @@ import { TABLE_HEAD_CELL_SX } from '@/lib/tableStyles'
 const ACTION_GROUPS = [
   { label: 'Auth',       actions: ['auth.login', 'auth.logout', 'auth.password_change'] },
   { label: 'Policy',     actions: ['policy.create', 'policy.update', 'policy.delete', 'policy.sleep', 'policy.wake'] },
-  { label: 'Override',   actions: ['policy.override.create', 'policy.override.delete'] },
   { label: 'Exception',  actions: ['exception.create', 'exception.update', 'exception.delete'] },
   { label: 'Guardrail',  actions: ['guardrail.update'] },
   { label: 'User',       actions: ['user.create', 'user.update', 'user.delete'] },

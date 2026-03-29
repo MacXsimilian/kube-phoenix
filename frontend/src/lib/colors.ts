@@ -40,7 +40,6 @@ export const TIMELINE_COLORS = {
   sleepGlow:   'rgba(124,58,237,0.55)',
   exception:   '#ef4444',
   exceptionBg: '#f87171',
-  override:    '#f59e0b',
   awake:       '#22c55e',
   awakeBg:     'rgba(34,197,94,0.18)',
   sleepBg:     'rgba(124,58,237,0.50)',

@@ -93,7 +93,7 @@ func (s *Store) SeedDefaults() error {
 func (s *Store) DropAllTables() error {
 	if err := s.db.Exec(`DROP TABLE IF EXISTS
 		workload_snapshots, policy_log_lines, policy_executions,
-		policy_overrides, scheduled_exceptions, policies,
+		scheduled_exceptions, policies,
 		sessions, users, guardrails,
 		audit_logs CASCADE`).Error; err != nil {
 		return fmt.Errorf("drop tables: %w", err)

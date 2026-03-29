@@ -936,61 +936,6 @@ components:
         wasExternallyScaled:
           type: boolean
 
-    PolicyOverride:
-      description: A one-time override that takes precedence over the normal sleep/wake schedule.
-      type: object
-      properties:
-        id:
-          type: integer
-          readOnly: true
-        policyId:
-          type: integer
-        overrideType:
-          type: string
-          enum: [stay_awake, force_sleep, skip_sleep, skip_wake]
-        startsAt:
-          type: ["string", "null"]
-          format: date-time
-          description: Required for windowed overrides (stay_awake, force_sleep).
-        endsAt:
-          type: ["string", "null"]
-          format: date-time
-          description: Required for windowed overrides.
-        targetCronTime:
-          type: ["string", "null"]
-          format: date-time
-          description: Required for skip overrides (skip_sleep, skip_wake). The specific cron tick to skip.
-        reason:
-          type: string
-        createdBy:
-          type: string
-          readOnly: true
-        createdAt:
-          type: string
-          format: date-time
-          readOnly: true
-
-    PolicyOverrideCreate:
-      description: Request body for creating a policy override.
-      type: object
-      properties:
-        overrideType:
-          type: string
-          enum: [stay_awake, force_sleep, skip_sleep, skip_wake]
-        startsAt:
-          type: ["string", "null"]
-          format: date-time
-        endsAt:
-          type: ["string", "null"]
-          format: date-time
-        targetCronTime:
-          type: ["string", "null"]
-          format: date-time
-        reason:
-          type: string
-      required:
-        - overrideType
-
     WorkloadTarget:
       description: A specific workload targeted by a scheduled exception.
       type: object
@@ -2166,65 +2111,6 @@ paths:
                 items:
                   $ref: "#/components/schemas/WorkloadSnapshot"
 
-  /api/policies/{id}/overrides:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-    get:
-      summary: List overrides for a policy
-      tags: [Policies]
-      responses:
-        "200":
-          description: Array of overrides.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/PolicyOverride"
-    post:
-      summary: Create an override for a policy
-      tags: [Policies]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/PolicyOverrideCreate"
-      responses:
-        "201":
-          description: Override created.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PolicyOverride"
-        "400":
-          description: Validation error
-
-  /api/policies/{id}/overrides/{overrideId}:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-      - name: overrideId
-        in: path
-        required: true
-        schema:
-          type: integer
-    delete:
-      summary: Delete a policy override
-      tags: [Policies]
-      responses:
-        "204":
-          description: Deleted.
-        "404":
-          description: Not found
-
   # ── Policy executions ─────────────────────────────────────────────────────
 
   /api/policy-executions:
@@ -2454,6 +2340,6 @@ tags:
   - name: Admin
     description: Administrative operations (danger zone).
   - name: Policies
-    description: Policy-based sleep/wake management — CRUD, manual triggers, overrides, snapshots, and execution history.
+    description: Policy-based sleep/wake management — CRUD, manual triggers, snapshots, and execution history.
   - name: Exceptions
-    description: One-time scheduled exception windows that override normal policy scheduling.
+    description: One-time scheduled exception windows that take precedence over normal policy scheduling.

@@ -177,11 +177,6 @@ func startMaintenanceTickers(ctx context.Context, st *store.Store, retentionDays
 				} else if n > 0 {
 					slog.Info("retention: old executions removed (cascades to log lines + snapshots)", "count", n)
 				}
-				if n, err := st.CleanExpiredOverrides(retention); err != nil {
-					slog.Error("retention: expired overrides failed", "err", err)
-				} else if n > 0 {
-					slog.Info("retention: expired overrides removed", "count", n)
-				}
 			})
 		}()
 	}

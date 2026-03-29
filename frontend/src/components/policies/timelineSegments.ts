@@ -1,4 +1,4 @@
-import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
+import type { SleepWindow, ScheduledException } from '@/lib/types'
 import { timeToHours, isOvernight, DOW_MAP, computeTimeRangeBlocks } from '@/lib/windowUtils'
 import { TIMELINE_COLORS } from '@/lib/colors'
 
@@ -54,18 +54,6 @@ function timeRangeToSegments(
     color,
     variant,
   }))
-}
-
-export function computeOverrideSegments(overrides: PolicyOverride[], tz?: string): TimelineSegment[] {
-  if (!overrides) return []
-  const segs: TimelineSegment[] = []
-  for (const ov of overrides) {
-    if (!ov.startsAt || !ov.endsAt) continue
-    const color = ov.overrideType === 'force_sleep' ? TIMELINE_COLORS.exception : TIMELINE_COLORS.override
-    const variant = ov.overrideType === 'force_sleep' ? 'exception' : 'override'
-    segs.push(...timeRangeToSegments(ov.startsAt, ov.endsAt, color, variant, tz))
-  }
-  return segs
 }
 
 export function computeExceptionSegments(exceptions: ScheduledException[], tz?: string): TimelineSegment[] {

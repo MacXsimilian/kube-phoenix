@@ -132,12 +132,6 @@ var (
 		Help: "Total policy CRUD operations, partitioned by operation and status.",
 	}, []string{"operation", "status"})
 
-	// OverrideOperationsTotal counts override create/delete outcomes.
-	OverrideOperationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "kube_phoenix_override_operations_total",
-		Help: "Total override CRUD operations, partitioned by operation and status.",
-	}, []string{"operation", "status"})
-
 	// ExceptionOperationsTotal counts exception create/update/delete outcomes.
 	ExceptionOperationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "kube_phoenix_exception_operations_total",

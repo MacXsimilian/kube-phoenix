@@ -111,23 +111,19 @@ export function subtleBorder(isDark: boolean): string {
   return isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.06)'
 }
 
-// ── Exception / override type labels ─────────────────────────────────────────
+// ── Exception type labels ────────────────────────────────────────────────────
 
-type OverrideType = 'stay_awake' | 'force_sleep' | 'skip_sleep' | 'skip_wake'
+type ExceptionType = 'stay_awake' | 'force_sleep'
 
-const TYPE_LABELS_DARK: Record<OverrideType, { label: string; color: string; bg: string }> = {
+const TYPE_LABELS_DARK: Record<ExceptionType, { label: string; color: string; bg: string }> = {
   stay_awake:  { label: 'Stay Awake',  color: '#FCD34D', bg: 'rgba(245,158,11,0.15)' },
   force_sleep: { label: 'Force Sleep', color: '#FCA5A5', bg: 'rgba(239,68,68,0.15)' },
-  skip_sleep:  { label: 'Skip Sleep',  color: '#A5B4FC', bg: 'rgba(99,102,241,0.15)' },
-  skip_wake:   { label: 'Skip Wake',   color: '#A5B4FC', bg: 'rgba(99,102,241,0.15)' },
 }
-const TYPE_LABELS_LIGHT: Record<OverrideType, { label: string; color: string; bg: string }> = {
+const TYPE_LABELS_LIGHT: Record<ExceptionType, { label: string; color: string; bg: string }> = {
   stay_awake:  { label: 'Stay Awake',  color: '#92400E', bg: 'rgba(245,158,11,0.15)' },
   force_sleep: { label: 'Force Sleep', color: '#B91C1C', bg: 'rgba(239,68,68,0.15)' },
-  skip_sleep:  { label: 'Skip Sleep',  color: '#4F46E5', bg: 'rgba(99,102,241,0.15)' },
-  skip_wake:   { label: 'Skip Wake',   color: '#4F46E5', bg: 'rgba(99,102,241,0.15)' },
 }
-export function typeLabels(isDark: boolean): Record<OverrideType, { label: string; color: string; bg: string }> {
+export function typeLabels(isDark: boolean): Record<ExceptionType, { label: string; color: string; bg: string }> {
   return isDark ? TYPE_LABELS_DARK : TYPE_LABELS_LIGHT
 }
 
@@ -137,7 +133,7 @@ export function typeLabelFallback(isDark: boolean): { label: string; color: stri
   return isDark ? TYPE_FALLBACK_DARK : TYPE_FALLBACK_LIGHT
 }
 
-/** Look up override/exception type label with a safe fallback. */
+/** Look up exception type label with a safe fallback. */
 export function getTypeLabel(isDark: boolean, type: string): { label: string; color: string; bg: string } {
   const labels = isDark ? TYPE_LABELS_DARK : TYPE_LABELS_LIGHT
   const fallback = isDark ? TYPE_FALLBACK_DARK : TYPE_FALLBACK_LIGHT

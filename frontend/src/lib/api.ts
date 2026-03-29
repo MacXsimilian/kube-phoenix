@@ -1,4 +1,4 @@
-import type { Guardrails, Workload, Node, NodePod, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecutionPage, LogLine, PolicyOverride, ScheduledException, ScheduledExceptionInput, ClusterInfo, VersionInfo } from './types'
+import type { Guardrails, Workload, Node, NodePod, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecutionPage, LogLine, ScheduledException, ScheduledExceptionInput, ClusterInfo, VersionInfo } from './types'
 import { getCSRFToken } from './auth'
 import { REQUEST_TIMEOUT_MS } from './constants'
 
@@ -322,23 +322,6 @@ export const getPolicyExecutions = (params?: {
 
 export const getPolicyExecutionLogs = (id: number): Promise<LogLine[]> =>
   apiFetch<LogLine[]>(`/api/policy-executions/${id}/logs`)
-
-// ── Policy overrides ──────────────────────────────────────────────────────────
-
-export const getPolicyOverrides = (policyId: number): Promise<PolicyOverride[]> =>
-  apiFetch<PolicyOverride[]>(`/api/policies/${policyId}/overrides`)
-
-export const createPolicyOverride = (
-  policyId: number,
-  data: Omit<PolicyOverride, 'id' | 'policyId' | 'createdBy' | 'createdAt'>
-): Promise<PolicyOverride> =>
-  apiFetch<PolicyOverride>(`/api/policies/${policyId}/overrides`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  })
-
-export const deletePolicyOverride = (policyId: number, overrideId: number): Promise<void> =>
-  apiFetch<void>(`/api/policies/${policyId}/overrides/${overrideId}`, { method: 'DELETE' })
 
 // ── Scheduled exceptions ──────────────────────────────────────────────────────
 

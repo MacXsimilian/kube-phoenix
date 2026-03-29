@@ -60,6 +60,28 @@ components:
           type: string
           format: date-time
 
+    SessionInfo:
+      description: An active user session.
+      type: object
+      properties:
+        id:
+          type: integer
+        ipAddress:
+          type: string
+          example: "192.168.1.1:54321"
+        userAgent:
+          type: string
+          example: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        isCurrent:
+          type: boolean
+          description: True if this is the session making the request.
+
     Guardrails:
       description: Global guardrail configuration that protects namespaces, nodes, and workloads from the scaler.
       type: object
@@ -100,12 +122,6 @@ components:
         protectCriticalPodNodes:
           type: boolean
           description: When true, nodes running system-node-critical or system-cluster-critical pods are never drained. Default true.
-        scalingConcurrency:
-          type: integer
-          minimum: 1
-          maximum: 50
-          example: 10
-          description: Maximum number of workloads scaled in parallel during sleep and wake. Default 10.
         updatedAt:
           type: string
           format: date-time
@@ -133,10 +149,6 @@ components:
           type: boolean
         protectCriticalPodNodes:
           type: boolean
-        scalingConcurrency:
-          type: integer
-          minimum: 1
-          maximum: 50
 
     OverviewResponse:
       description: Pre-aggregated cluster summary for the dashboard.
@@ -173,6 +185,15 @@ components:
         cacheAgeMs:
           type: integer
           description: Age of the ClusterCache snapshot in milliseconds.
+
+    TriggerModeOverride:
+      description: Optional request body for manual sleep/wake triggers to override the policy's default execution mode.
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [plan, apply]
+          description: Execution mode override. When omitted, the policy's configured mode is used.
 
     TriggerResponse:
       description: Response when a manual trigger is accepted.
@@ -915,61 +936,6 @@ components:
         wasExternallyScaled:
           type: boolean
 
-    PolicyOverride:
-      description: A one-time override that takes precedence over the normal sleep/wake schedule.
-      type: object
-      properties:
-        id:
-          type: integer
-          readOnly: true
-        policyId:
-          type: integer
-        overrideType:
-          type: string
-          enum: [stay_awake, force_sleep, skip_sleep, skip_wake]
-        startsAt:
-          type: ["string", "null"]
-          format: date-time
-          description: Required for windowed overrides (stay_awake, force_sleep).
-        endsAt:
-          type: ["string", "null"]
-          format: date-time
-          description: Required for windowed overrides.
-        targetCronTime:
-          type: ["string", "null"]
-          format: date-time
-          description: Required for skip overrides (skip_sleep, skip_wake). The specific cron tick to skip.
-        reason:
-          type: string
-        createdBy:
-          type: string
-          readOnly: true
-        createdAt:
-          type: string
-          format: date-time
-          readOnly: true
-
-    PolicyOverrideCreate:
-      description: Request body for creating a policy override.
-      type: object
-      properties:
-        overrideType:
-          type: string
-          enum: [stay_awake, force_sleep, skip_sleep, skip_wake]
-        startsAt:
-          type: ["string", "null"]
-          format: date-time
-        endsAt:
-          type: ["string", "null"]
-          format: date-time
-        targetCronTime:
-          type: ["string", "null"]
-          format: date-time
-        reason:
-          type: string
-      required:
-        - overrideType
-
     WorkloadTarget:
       description: A specific workload targeted by a scheduled exception.
       type: object
@@ -991,7 +957,7 @@ components:
           readOnly: true
         policyId:
           type: ["integer", "null"]
-          description: The policy this exception applies to. Null = applies globally.
+          description: The policy this exception applies to. Required for creation — freestanding exceptions are not supported.
         exceptionType:
           type: string
           enum: [stay_awake, force_sleep]
@@ -1009,7 +975,7 @@ components:
         sleepOnEnd:
           type: boolean
           default: true
-          description: When the window ends, immediately sleep the targeted workloads.
+          description: When the window ends, revert to the inverse state (stay_awake → sleep, force_sleep → wake).
         namespaceFilter:
           type: string
           description: Comma-separated namespace filter. Empty = policy default.
@@ -1051,7 +1017,8 @@ components:
       type: object
       properties:
         policyId:
-          type: ["integer", "null"]
+          type: integer
+          description: The policy this exception applies to. Required — freestanding exceptions are not supported.
         exceptionType:
           type: string
           enum: [stay_awake, force_sleep]
@@ -1077,6 +1044,7 @@ components:
           items:
             $ref: "#/components/schemas/WorkloadTarget"
       required:
+        - policyId
         - exceptionType
         - startsAt
         - endsAt
@@ -1640,6 +1608,24 @@ paths:
         "401":
           description: Unauthorized
 
+  /api/auth/sessions:
+    get:
+      operationId: listSessions
+      summary: List active sessions
+      description: Returns all active (non-expired) sessions for the authenticated user. Each session includes device info and a flag indicating which is the current session.
+      tags: [Auth]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessionInfo"
+        "401":
+          description: Unauthorized
+
   /api/auth/password:
     put:
       operationId: changePassword
@@ -2050,6 +2036,12 @@ paths:
     post:
       summary: Manually trigger a sleep run for the policy
       tags: [Policies]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerModeOverride"
       responses:
         "200":
           description: Execution started.
@@ -2057,6 +2049,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TriggerResponse"
+        "400":
+          description: Invalid mode value
         "404":
           description: Not found
         "409":
@@ -2072,6 +2066,12 @@ paths:
     post:
       summary: Manually trigger a wake run for the policy
       tags: [Policies]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerModeOverride"
       responses:
         "200":
           description: Execution started.
@@ -2079,6 +2079,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TriggerResponse"
+        "400":
+          description: Invalid mode value
         "404":
           description: Not found
         "409":
@@ -2108,65 +2110,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/WorkloadSnapshot"
-
-  /api/policies/{id}/overrides:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-    get:
-      summary: List overrides for a policy
-      tags: [Policies]
-      responses:
-        "200":
-          description: Array of overrides.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/PolicyOverride"
-    post:
-      summary: Create an override for a policy
-      tags: [Policies]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/PolicyOverrideCreate"
-      responses:
-        "201":
-          description: Override created.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PolicyOverride"
-        "400":
-          description: Validation error
-
-  /api/policies/{id}/overrides/{overrideId}:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-      - name: overrideId
-        in: path
-        required: true
-        schema:
-          type: integer
-    delete:
-      summary: Delete a policy override
-      tags: [Policies]
-      responses:
-        "204":
-          description: Deleted.
-        "404":
-          description: Not found
 
   # ── Policy executions ─────────────────────────────────────────────────────
 
@@ -2397,6 +2340,6 @@ tags:
   - name: Admin
     description: Administrative operations (danger zone).
   - name: Policies
-    description: Policy-based sleep/wake management — CRUD, manual triggers, overrides, snapshots, and execution history.
+    description: Policy-based sleep/wake management — CRUD, manual triggers, snapshots, and execution history.
   - name: Exceptions
-    description: One-time scheduled exception windows that override normal policy scheduling.
+    description: One-time scheduled exception windows that take precedence over normal policy scheduling.
