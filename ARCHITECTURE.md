@@ -523,11 +523,12 @@ kube-phoenix/
 │   │   │   ├── audit/               # AuditRow, DiffLineRow, JsonDiffView, auditDiff helpers, auditFormatters
 │   │   │   ├── cluster/             # Tables, drawers, DetailDrawer, extracted subcomponents (MiniBar, LabelChip, etc.), statusColors
 │   │   │   ├── common/              # ChipInput, LabeledSwitch, ConfirmDialog, CenteredSpinner
-│   │   │   ├── guardrails/          # GuardrailsForm, ProtectedChipInput
+│   │   │   ├── exceptions/           # ExceptionsCalendarStrip, ExceptionDetailPanel, ExceptionChips, ExceptionActions
+│   │   │   ├── guardrails/          # GuardrailsForm (useReducer + CategoryCard), CategoryCard, ProtectedChipInput
 │   │   │   ├── history/             # ExecutionTable, LogViewer, ExecutionSummary, parseSummary, useExecutionLogs
 │   │   │   ├── policies/            # PolicyCard, timelines, WindowPicker, PolicyHeroBand, CreateOverrideForm, TimelineLegend, timelineSegments
 │   │   │   └── settings/            # AccountSettings, AppearanceSettings, DatabaseSettings, OIDCStatusCard, ActiveSessionsCard (live data), ClusterConnectionCard, AboutBar
-│   │   ├── lib/                     # API client (apiFetch), auth, types, query client, formatters, statusColors, SortHeader, shared hooks (useSnackbar, useIsDark, useTriStateSort, usePolicyTriggers, layoutConstants)
+│   │   ├── lib/                     # API client (apiFetch), auth, types, query client, formatters, statusColors, SortHeader, tableStyles, shared hooks (useSnackbar, useIsDark, useTriStateSort, usePolicyTriggers, useUnsavedChanges, layoutConstants)
 │   │   └── theme/                   # MUI theme (dark + light mode)
 │   ├── next.config.mjs              # Static export, trailing slash
 │   └── package.json
