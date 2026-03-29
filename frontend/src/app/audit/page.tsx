@@ -64,8 +64,8 @@ export default function AuditLogPage() {
     queryFn: () => getAuditLogs({
       user: debouncedUserFilter || undefined,
       action: actionFilter || undefined,
-      from: fromFilter ? `${fromFilter}T00:00:00Z` : undefined,
-      to: toFilter ? `${toFilter}T23:59:59Z` : undefined,
+      from: fromFilter ? new Date(`${fromFilter}T00:00:00`).toISOString() : undefined,
+      to: toFilter ? new Date(`${toFilter}T23:59:59`).toISOString() : undefined,
       page,
       pageSize,
     }),
@@ -78,8 +78,8 @@ export default function AuditLogPage() {
       const result = await getAuditLogs({
         user: debouncedUserFilter || undefined,
         action: actionFilter || undefined,
-        from: fromFilter ? `${fromFilter}T00:00:00Z` : undefined,
-        to: toFilter ? `${toFilter}T23:59:59Z` : undefined,
+        from: fromFilter ? new Date(`${fromFilter}T00:00:00`).toISOString() : undefined,
+        to: toFilter ? new Date(`${toFilter}T23:59:59`).toISOString() : undefined,
         page: 0,
         pageSize: 1000,
       })
@@ -175,7 +175,7 @@ export default function AuditLogPage() {
             <TableHead>
               <TableRow>
                 <TableCell width={40} />
-                <TableCell>Time (UTC)</TableCell>
+                <TableCell>Time <Typography component="span" variant="caption" sx={{ color: 'text.disabled', fontWeight: 400, fontSize: 10 }}>— local time, hover for UTC</Typography></TableCell>
                 <TableCell>User</TableCell>
                 <TableCell>Action</TableCell>
                 <TableCell>Resource</TableCell>

@@ -10,7 +10,9 @@ import IconButton from '@mui/material/IconButton'
 import Box from '@mui/material/Box'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
+import Tooltip from '@mui/material/Tooltip'
 import { formatActionLabel, actionColor } from '@/components/audit/auditFormatters'
+import { fmtDt } from '@/lib/formatters'
 import type { AuditLogEntry } from '@/lib/types'
 import JsonDiffView from './JsonDiffView'
 
@@ -21,8 +23,8 @@ function isEmptySnapshot(json?: string): boolean {
   return !json || json === NULL_SNAPSHOT
 }
 
-function toUTCString(ts: string): string {
-  return new Date(ts).toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
+function fmtUTC(iso: string): string {
+  return new Date(iso).toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
 }
 
 export default function AuditRow({ entry }: { entry: AuditLogEntry }) {
@@ -40,9 +42,11 @@ export default function AuditRow({ entry }: { entry: AuditLogEntry }) {
           )}
         </TableCell>
         <TableCell>
-          <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
-            {toUTCString(entry.timestamp)}
-          </Typography>
+          <Tooltip title={fmtUTC(entry.timestamp)} arrow placement="top">
+            <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums', cursor: 'default' }}>
+              {fmtDt(entry.timestamp)}
+            </Typography>
+          </Tooltip>
         </TableCell>
         <TableCell>
           <Typography variant="body2" fontWeight={600}>{entry.username}</Typography>
