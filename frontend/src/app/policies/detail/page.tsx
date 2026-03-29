@@ -32,6 +32,7 @@ import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
 import { useIsDark } from '@/lib/useIsDark'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { useSnackbar } from '@/lib/useSnackbar'
+import TriggerModeDialog, { type TriggerDirection } from '@/components/common/TriggerModeDialog'
 import { BLEED_MARGIN_X, BLEED_PADDING_X } from '@/lib/layoutConstants'
 
 function PolicyDetailContent() {
@@ -81,6 +82,7 @@ function PolicyDetailContent() {
   })
 
   const { sleepMut, wakeMut, isBusy } = usePolicyTriggers(policyId, notify)
+  const [triggerDialog, setTriggerDialog] = useState<TriggerDirection | null>(null)
 
   if (isNaN(policyId)) {
     return <Alert severity="error">No policy ID provided.</Alert>
@@ -106,8 +108,8 @@ function PolicyDetailContent() {
           isBusy,
           sleepPending: sleepMut.isPending,
           wakePending: wakeMut.isPending,
-          onSleep: () => sleepMut.mutate(),
-          onWake: () => wakeMut.mutate(),
+          onSleep: () => setTriggerDialog('sleep'),
+          onWake: () => setTriggerDialog('wake'),
         }}
         onBack={() => router.push('/policies')}
         onEdit={() => { setExceptionOpen(false); setEditOpen(true) }}
@@ -225,6 +227,17 @@ function PolicyDetailContent() {
         existing={editingException}
         defaultPolicyId={policyId}
         onNotify={notify}
+      />
+
+      <TriggerModeDialog
+        open={triggerDialog !== null}
+        direction={triggerDialog ?? 'sleep'}
+        policyName={policy.name}
+        onConfirm={(mode) => {
+          if (triggerDialog === 'sleep') sleepMut.mutate(mode)
+          else wakeMut.mutate(mode)
+        }}
+        onClose={() => setTriggerDialog(null)}
       />
 
       {SnackbarAlert}

@@ -225,23 +225,28 @@ func (ps *PolicyScheduler) NextTransitions(policyIDs []uint) map[uint]*time.Time
 }
 
 // RunSleepNow triggers an immediate sleep execution for a policy.
-func (ps *PolicyScheduler) RunSleepNow(policyID uint, trigger string) (uint, error) {
-	return ps.runNow(policyID, directionSleep, trigger)
+// An optional modeOverride ("plan" or "apply") replaces the policy's default mode for this execution.
+func (ps *PolicyScheduler) RunSleepNow(policyID uint, trigger string, modeOverride string) (uint, error) {
+	return ps.runNow(policyID, directionSleep, trigger, modeOverride)
 }
 
 // RunWakeNow triggers an immediate wake execution for a policy.
-func (ps *PolicyScheduler) RunWakeNow(policyID uint, trigger string) (uint, error) {
-	return ps.runNow(policyID, directionWake, trigger)
+// An optional modeOverride ("plan" or "apply") replaces the policy's default mode for this execution.
+func (ps *PolicyScheduler) RunWakeNow(policyID uint, trigger string, modeOverride string) (uint, error) {
+	return ps.runNow(policyID, directionWake, trigger, modeOverride)
 }
 
 // runNow fetches a policy by ID, warns if disabled, and delegates to run.
-func (ps *PolicyScheduler) runNow(policyID uint, direction, trigger string) (uint, error) {
+func (ps *PolicyScheduler) runNow(policyID uint, direction, trigger string, modeOverride string) (uint, error) {
 	p, err := ps.store.GetPolicy(policyID)
 	if err != nil {
 		return 0, fmt.Errorf("policy %d not found: %w", policyID, err)
 	}
 	if !p.Enabled {
 		slog.Warn("manual trigger on disabled policy", "policyID", policyID, "direction", direction, "trigger", trigger)
+	}
+	if modeOverride == "plan" || modeOverride == "apply" {
+		p.Mode = modeOverride
 	}
 	return ps.run(ps.execContext(), *p, direction, trigger)
 }
@@ -393,9 +398,9 @@ func (ps *PolicyScheduler) maybeEndException(ex store.ScheduledException, now ti
 // stay_awake → wake, force_sleep → sleep.
 func RunExceptionAction(ps *PolicyScheduler, policyID uint, exType string, trigger string) (uint, error) {
 	if exType == store.ExceptionTypeForceSleep {
-		return ps.RunSleepNow(policyID, trigger)
+		return ps.RunSleepNow(policyID, trigger, "")
 	}
-	return ps.RunWakeNow(policyID, trigger)
+	return ps.RunWakeNow(policyID, trigger, "")
 }
 
 // RevertExceptionAction determines the correct post-exception action by
@@ -422,9 +427,9 @@ func RevertExceptionAction(ps *PolicyScheduler, policyID uint, exType string, tr
 	})
 	switch intended {
 	case PolicyStateSleeping:
-		return ps.RunSleepNow(policyID, trigger)
+		return ps.RunSleepNow(policyID, trigger, "")
 	case PolicyStateAwake:
-		return ps.RunWakeNow(policyID, trigger)
+		return ps.RunWakeNow(policyID, trigger, "")
 	default:
 		slog.Info("exception revert: schedule says unknown, skipping", "policyID", policyID)
 		return 0, nil

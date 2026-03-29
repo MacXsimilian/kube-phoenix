@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -23,6 +24,7 @@ import { useColors } from '@/lib/colors'
 import { useClusterStream } from '@/lib/useClusterStream'
 import { useSnackbar } from '@/lib/useSnackbar'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
+import TriggerModeDialog, { type TriggerDirection } from '@/components/common/TriggerModeDialog'
 
 const statusPulseAnimation = {
   animation: 'statusPulse 2s ease-in-out infinite',
@@ -68,6 +70,8 @@ export default function ClusterStatusCard() {
       router.push(`/policies/detail/?id=${firstPolicy!.id}&exec=${executionId}`)
     },
   )
+
+  const [triggerDialog, setTriggerDialog] = useState<TriggerDirection | null>(null)
 
   const sleeping = overview?.sleepingCount ?? 0
   const running = overview?.runningCount ?? 0
@@ -198,7 +202,7 @@ export default function ClusterStatusCard() {
                     <Button
                       variant="outlined"
                       startIcon={<BedtimeIcon fontSize="small" />}
-                      onClick={() => sleepMut.mutate()}
+                      onClick={() => setTriggerDialog('sleep')}
                       disabled={!hasTrigger || !firstPolicy || isBusy}
                       sx={{ borderColor: 'divider', color: 'text.secondary' }}
                     >
@@ -211,7 +215,7 @@ export default function ClusterStatusCard() {
                     <Button
                       variant="outlined"
                       startIcon={<WbSunnyIcon fontSize="small" />}
-                      onClick={() => wakeMut.mutate()}
+                      onClick={() => setTriggerDialog('wake')}
                       disabled={!hasTrigger || !firstPolicy || isBusy}
                       sx={{ borderColor: 'divider', color: 'text.secondary' }}
                     >
@@ -246,6 +250,17 @@ export default function ClusterStatusCard() {
           )}
         </CardContent>
       </Card>
+
+      <TriggerModeDialog
+        open={triggerDialog !== null}
+        direction={triggerDialog ?? 'sleep'}
+        policyName={firstPolicy?.name}
+        onConfirm={(mode) => {
+          if (triggerDialog === 'sleep') sleepMut.mutate(mode)
+          else wakeMut.mutate(mode)
+        }}
+        onClose={() => setTriggerDialog(null)}
+      />
 
       {SnackbarAlert}
     </>
