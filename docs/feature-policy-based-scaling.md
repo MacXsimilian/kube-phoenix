@@ -58,8 +58,7 @@ If a workload is manually scaled back up while a sleep policy is active, the sys
 | R2.4 | If a workload is deleted while sleeping, wake must handle this gracefully (log, skip, mark)                                          |
 | R2.5 | Replica snapshots must be persisted to survive system restarts                                                                       |
 | R2.6 | An annotation-based fallback must exist on the workload itself in case the database is lost                                          |
-| R2.7 | Scaling operations must be bounded by a configurable **concurrency limit**                                                           |
-| R2.8 | Each execution must have a configurable **timeout**                                                                                  |
+| R2.7 | Each execution must have a configurable **timeout**                                                                                  |
 
 ### R3 — Overrides
 

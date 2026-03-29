@@ -259,7 +259,6 @@ erDiagram
         varchar eval_interval "30s"
         boolean auto_wake "true"
         boolean reconcile_awake "true"
-        int scaling_concurrency "10"
     }
 
     users {
@@ -373,8 +372,7 @@ scheduled exception activation.
 4. **PolicyScaler.RunSleep** begins:
    a. Load guardrails (skip namespaces, protected labels/taints).
    b. Match workloads by `namespace_filter` and `label_selector`.
-   c. Scale matched workloads concurrently (bounded by `scaling_concurrency`
-      guardrail, default 10): for each workload, save snapshot, annotate
+   c. Scale matched workloads concurrently: for each workload, save snapshot, annotate
       `previous-replicas`, scale to 0. Each scale operation retries on 409
       Conflict with exponential backoff.
    d. For each unprotected node: cordon, drain (dynamic timeout: `podCount*15+60`s),

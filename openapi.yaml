@@ -119,12 +119,6 @@ components:
         schedulerReconcileWhileAwake:
           type: boolean
           description: When true, detects and corrects drift from failed wake executions. Default true.
-        scalingConcurrency:
-          type: integer
-          minimum: 1
-          maximum: 50
-          example: 10
-          description: Maximum number of workloads scaled in parallel during sleep and wake. Default 10.
         updatedAt:
           type: string
           format: date-time
@@ -150,10 +144,6 @@ components:
           type: boolean
         schedulerReconcileWhileAwake:
           type: boolean
-        scalingConcurrency:
-          type: integer
-          minimum: 1
-          maximum: 50
 
     OverviewResponse:
       description: Pre-aggregated cluster summary for the dashboard.
