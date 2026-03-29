@@ -93,7 +93,7 @@ When neither `ADMIN_USER` nor `ADMIN_PASSWORD` is set, the application runs with
 | Create, edit, delete policies | Yes | Yes | No |
 | Edit guardrails | Yes | Yes | No |
 | Trigger Sleep Now / Wake Now / Cancel | Yes | Yes | No |
-| Manage overrides and exceptions | Yes | Yes | No |
+| Manage exceptions | Yes | Yes | No |
 | Manage users | Yes | No | No |
 | Reset database | Yes | No | No |
 
@@ -124,20 +124,9 @@ A **Policy** declares when workloads should sleep and wake. Unlike legacy per-sc
 | `transitioning` | A sleep or wake execution is in progress (can be cancelled via `POST /api/policies/{id}/cancel`) |
 | `unknown` | State not yet determined (new policy or indeterminate recovery) |
 
-### Overrides
-
-Overrides take precedence over the normal sleep window schedule.
-
-| Type | Description |
-| :--- | :---------- |
-| `stay_awake` | Keep workloads running between `startsAt` and `endsAt`, even during a sleep window |
-| `force_sleep` | Keep workloads at zero between `startsAt` and `endsAt`, even outside a sleep window |
-| `skip_sleep` | Skip exactly one scheduled sleep transition (expires after `targetCronTime`) |
-| `skip_wake` | Skip exactly one scheduled wake transition (expires after `targetCronTime`) |
-
-**Precedence (highest to lowest):** `force_sleep` > `stay_awake` > skip overrides > sleep window schedule.
-
 ### Scheduled Exceptions
+
+> **Note:** Active exceptions take precedence over the normal sleep window schedule.
 
 Exceptions are one-time windows for planned events such as release weekends or on-call periods.
 
@@ -148,13 +137,13 @@ Exceptions are one-time windows for planned events such as release weekends or o
 | Ticket Ref | External ticket reference (e.g., `JIRA-1234`, `GH#567`) |
 | Reason | Free-text reason |
 | Sleep on End | If true (default), triggers a sleep run when the window ends |
-| Namespace Filter / Label Selector | Optional overrides; defaults to the policy's own targeting |
+| Namespace Filter / Label Selector | Optional narrowing filters; defaults to the policy's own targeting |
 
 **Lifecycle:** `pending` -> `active` (when `startsAt` is reached) -> `completed` (when `endsAt` is reached). Deleting an active exception with `sleepOnEnd=true` triggers an immediate sleep run.
 
 ## Recovery and State Transitions
 
-On startup, kube-phoenix evaluates each policy's sleep windows and override stack to compute the **intended state** at the current time. If this differs from the persisted `currentState`, a recovery execution is queued automatically.
+On startup, kube-phoenix evaluates each policy's sleep windows and active exceptions to compute the **intended state** at the current time. If this differs from the persisted `currentState`, a recovery execution is queued automatically.
 
 Key behaviors:
 
@@ -174,7 +163,7 @@ Guardrails protect critical resources from being touched by the scaler. Configur
 | Scaling Priority Namespaces | Ordered list of namespaces that are scaled first during sleep and wake runs. Workloads in these namespaces are processed before all others, in list order. Empty by default (no priority). |
 | Scheduler Eval Interval | How often all enabled policies are evaluated. Accepts Go duration strings (`30s`, `1m`, `2m`). Changes take effect immediately — the ticker restarts with the new interval. |
 | Auto Wake | When disabled, the scheduler will only trigger sleep executions automatically. Wake transitions must be triggered manually. |
-| Reconcile While Awake | When enabled (default), the scheduler detects drift from failed or partial wake executions — workloads left at zero despite the policy being awake — and runs a corrective wake to restore them. Corrective wakes back off at 5-minute intervals per policy and bypass the Auto Wake gate and `skip_wake` overrides. When disabled, the scheduler skips reconciliation for policies already awake, reducing database load between sleep windows. |
+| Reconcile While Awake | When enabled (default), the scheduler detects drift from failed or partial wake executions — workloads left at zero despite the policy being awake — and runs a corrective wake to restore them. Corrective wakes back off at 5-minute intervals per policy and bypass the Auto Wake gate. When disabled, the scheduler skips reconciliation for policies already awake, reducing database load between sleep windows. |
 
 > **Tip:** Scheduler settings take effect immediately on save — no server restart required.
 

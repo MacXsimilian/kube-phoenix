@@ -95,14 +95,12 @@ frontend/
         CreatePolicyDialog.tsx  # Create/edit policy dialog with window picker + preview
         ExceptionDialog.tsx     # Create/edit scheduled exception
         ExceptionsSection.tsx   # Exception table in policy detail
-        OverridesSection.tsx    # Override table in policy detail
-        CreateOverrideForm.tsx  # Extracted inline override creation form with date validation
         WeeklyTimeline.tsx      # SVG 7-day bar chart timeline
         LedGlowTimeline.tsx     # SVG 7-day LED-strip timeline with glow filters
         MiniTimeline.tsx        # Full-width single-day 24h sparkline for policy cards
         WindowPicker.tsx        # Sleep window editor with day buttons + time selectors
         LegendItem.tsx          # Shared timeline legend dot + label
-        TimelineLegend.tsx      # Extracted legend strip for timelines (sleep, awake, override, exception)
+        TimelineLegend.tsx      # Extracted legend strip for timelines (sleep, awake, exception)
         ExecutionHistoryTable.tsx # Execution table embedded in policy detail
         PolicyHeroBand.tsx      # Full-width hero band with gradient bg, state icon, action buttons
         PolicyMetadataRow.tsx   # Metadata row (timezone, namespace filter, label selector)
@@ -403,14 +401,6 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T>
 | `getPolicyExecutions(params?)` | GET | `/api/policy-executions?...` |
 | `getPolicyExecutionLogs(id)` | GET | `/api/policy-executions/{id}/logs` |
 
-**Policy Overrides:**
-
-| Function | Method | Endpoint |
-|:---------|:-------|:---------|
-| `getPolicyOverrides(policyId)` | GET | `/api/policies/{policyId}/overrides` |
-| `createPolicyOverride(policyId, data)` | POST | `/api/policies/{policyId}/overrides` |
-| `deletePolicyOverride(policyId, overrideId)` | DELETE | `/api/policies/{policyId}/overrides/{overrideId}` |
-
 **Scheduled Exceptions:**
 
 | Function | Method | Endpoint |
@@ -635,7 +625,7 @@ Bands (top to bottom):
 1. **Hero band** -- `PolicyHeroBand`
 2. **Metadata row** -- `PolicyMetadataRow`
 3. **Timeline band** -- `LedGlowTimeline` filling the left, weekly stats (Sleep/Week, Awake/Week, Next Transition with countdown) on the right
-4. **Overrides + Exceptions band** -- subtle alternating background, side-by-side `OverridesSection` and `ExceptionsSection` (wraps on mobile)
+4. **Exceptions band** -- subtle alternating background, `ExceptionsSection` (wraps on mobile)
 5. **Execution History band** -- `ExecutionHistoryTable` at full width with status filter dropdown. Clicking a row opens the log viewer drawer inline (same behaviour as the History page), using `selectedExec` state and the `LogViewer` component.
 
 #### WindowPicker
@@ -657,13 +647,13 @@ The parent (`CreatePolicyDialog`) receives window changes via `onChange` and pas
 
 #### Timeline Components
 
-All three timeline components use raw SVG for rendering. They share timeline math from `lib/windowUtils.ts`. `WeeklyTimeline` and `LedGlowTimeline` also share segment computation logic via `timelineSegments.ts`, which exports `computeWindowSegments`, `computeOverrideSegments`, and `computeExceptionSegments`. This eliminates duplicated window-to-segment conversion code between the two timeline variants.
+All three timeline components use raw SVG for rendering. They share timeline math from `lib/windowUtils.ts`. `WeeklyTimeline` and `LedGlowTimeline` also share segment computation logic via `timelineSegments.ts`, which exports `computeWindowSegments` and `computeExceptionSegments`. This eliminates duplicated window-to-segment conversion code between the two timeline variants.
 
 **WeeklyTimeline** (`WeeklyTimeline.tsx`):
 - 7 rows (Mon-Sun), 24h per row
 - Responsive SVG via `viewBox`; scales to container width
 - Green background for awake time, purple blocks for sleep windows
-- Override blocks in orange/red, exception blocks in green/red
+- Exception blocks in green/red
 - Current time marker as a red vertical line spanning all rows
 - Hour labels at 0, 3, 6, 9, 12, 15, 18, 21
 - Today's row has a brighter background
@@ -673,7 +663,7 @@ All three timeline components use raw SVG for rendering. They share timeline mat
 - Same 7-row layout but rendered as thin LED strips (6px height)
 - Responsive SVG via `viewBox`; scales to container width
 - SVG `<filter>` elements create glow effects (feGaussianBlur + feMerge)
-- Different glow filters for sleep (purple), override (orange), exception (red/green)
+- Different glow filters for sleep (purple) and exception (red/green)
 - Current time marker with a circle indicator on today's row
 - Used on the policy detail page
 
@@ -690,24 +680,23 @@ All three timeline components use raw SVG for rendering. They share timeline mat
 - Wrapped in a Tooltip showing the full `windowsToText()` description
 - Used on `PolicyCard` as a full-width timeline row beneath the schedule text
 
-**TimelineLegend** (`TimelineLegend.tsx`): Extracted shared legend strip rendered below both `WeeklyTimeline` and `LedGlowTimeline`. Conditionally shows legend items for sleep, awake, overrides (stay_awake, force_sleep), and exceptions (stay_awake, force_sleep) based on which override/exception types are present in the data.
+**TimelineLegend** (`TimelineLegend.tsx`): Extracted shared legend strip rendered below both `WeeklyTimeline` and `LedGlowTimeline`. Shows legend items for sleep, awake, and exceptions (stay_awake, force_sleep).
 
 **Shared timeline math:**
 
 The `DOW_MAP` constant maps array index to JS day-of-week: `[1,2,3,4,5,6,0]` (Mon=0 through Sun=6 in timeline row space, where Mon is row 0 and Sun is row 6).
 
-`computeTimeRangeBlocks(startISO, endISO, tz?)` splits an absolute time range into per-day `TimeBlock` objects, each with `{ row, startHour, endHour }`. This is used by overrides and exceptions to render their blocks on the timeline grid.
+`computeTimeRangeBlocks(startISO, endISO, tz?)` splits an absolute time range into per-day `TimeBlock` objects, each with `{ row, startHour, endHour }`. This is used by exceptions to render their blocks on the timeline grid.
 
 **`timelineSegments.ts`** (`components/policies/timelineSegments.ts`): Shared by `WeeklyTimeline` and `LedGlowTimeline`. Exports:
 
 - `TimelineSegment` -- `{ row, startHour, endHour, color, variant }` interface
 - `computeWindowSegments(windows)` -- converts `SleepWindow[]` to per-row timeline segments
-- `computeOverrideSegments(overrides, tz)` -- converts active overrides to timeline segments
 - `computeExceptionSegments(exceptions, tz)` -- converts active exceptions to timeline segments
 
-#### Overrides and Exceptions on the Timeline
+#### Exceptions on the Timeline
 
-Both `WeeklyTimeline` and `LedGlowTimeline` accept optional `overrides` and `exceptions` props. They convert these absolute time ranges into timeline blocks using `computeTimeRangeBlocks()`, then render them on top of the sleep window blocks. Cancelled and completed exceptions are filtered out before rendering.
+Both `WeeklyTimeline` and `LedGlowTimeline` accept an optional `exceptions` prop. They convert these absolute time ranges into timeline blocks using `computeTimeRangeBlocks()`, then render them on top of the sleep window blocks. Cancelled and completed exceptions are filtered out before rendering.
 
 ### Execution History
 
@@ -756,7 +745,7 @@ The execution log viewer is a resizable right-side drawer. Data fetching and Web
 { info: '#0369A1', ok: '#15803D', plan: '#6D28D9', error: '#B91C1C', warn: '#92400E' }
 ```
 
-### Exceptions and Overrides
+### Exceptions
 
 #### ExceptionDialog
 
@@ -772,13 +761,11 @@ Key datetime handling:
 - Times are always displayed with a note: "Times are in your browser's local timezone"
 - Validation checks: policy must be selected, start must be in the future (for new exceptions), end must be after start
 
-#### ExceptionsSection / OverridesSection
+#### ExceptionsSection
 
-Both use `getTypeLabel(isDark, type)` from `lib/statusColors.ts` to color-code exception/override types with mode-aware colors. This accessor wraps `typeLabels(isDark)` with a fallback for unknown type strings, returning `{ label, color, bg }` for `stay_awake`, `force_sleep`, `skip_sleep`, and `skip_wake`.
+Uses `getTypeLabel(isDark, type)` from `lib/statusColors.ts` to color-code exception types with mode-aware colors. This accessor wraps `typeLabels(isDark)` with a fallback for unknown type strings, returning `{ label, color, bg }` for `stay_awake` and `force_sleep`.
 
 **Exception status lifecycle:** `pending` (created, start time is in the future) -> `active` (start time has passed, the backend activates the exception) -> `completed` (end time has passed) or `cancelled` (manually cancelled). The backend manages these transitions; the frontend only displays them.
-
-**OverridesSection** delegates inline override creation to the extracted `CreateOverrideForm` component (not a dialog). Override types `stay_awake` and `force_sleep` require start/end datetime fields with validation (via `validateDateRange`); `skip_sleep` and `skip_wake` require a single target cron time. The form includes a confirmation dialog for potentially disruptive override types.
 
 ### Audit Log
 
@@ -906,7 +893,7 @@ The Scheduler Behaviour section uses stacked label-left/control-right rows for E
 | `timeUntil(iso)` | `string -> string` | ISO to countdown: `"now"`, `"in 5m"`, `"in 2h 30m"`, `"in 5d 8h"` | ClusterStatusCard, PolicyCard, PolicyDetailPage |
 | `pct(used, total)` | `(number, number) -> number` | Safe percentage: returns 0 when total is 0 | NodesTable, NodeDetailDrawer |
 | `pctColor(p, isDark)` | `(number, boolean) -> string` | Color by percentage threshold using named constants (`PCT_WARNING` = 65%, `PCT_CRITICAL` = 85%): green < warning, amber warning-critical, red >= critical | NodesTable, NodeDetailDrawer |
-| `fmtDt(iso)` | `string \| null -> string` | ISO to locale string, or em-dash for null | PolicyDetailPage, ExceptionsSection, OverridesSection, ExceptionsPage, AuditRow |
+| `fmtDt(iso)` | `string \| null -> string` | ISO to locale string, or em-dash for null | PolicyDetailPage, ExceptionsSection, ExceptionsPage, AuditRow |
 | `fmtDtShort(iso)` | `string \| null -> string` | ISO to short date with year: `"Mar 24, 2026, 2:15 PM"` | ExecutionTable, ExecutionHistoryTable |
 | `fmtDuration(start, end)` | `(string, string \| null) -> string` | Duration between two ISO timestamps: `"5s"`, `"2m 30s"`, or `"Running…"` | ExecutionTable, ExecutionHistoryTable |
 | `formatError(e)` | `unknown -> string` | Extract human-readable message from a caught error | Mutations across all pages |
@@ -943,7 +930,7 @@ The Scheduler Behaviour section uses stacked label-left/control-right rows for E
 
 **`useColors()`** is a React hook that calls `useTheme()` to detect the current mode and returns `semanticColors(isDark)`.
 
-**`TIMELINE_COLORS`** is a static object with named colors for timeline rendering: `sleep`, `sleepGlow`, `exception`, `exceptionBg`, `override`, `awake`, `awakeBg`, `sleepBg`. These are not mode-aware because timelines render the same in both themes.
+**`TIMELINE_COLORS`** is a static object with named colors for timeline rendering: `sleep`, `sleepGlow`, `exception`, `exceptionBg`, `awake`, `awakeBg`, `sleepBg`. These are not mode-aware because timelines render the same in both themes.
 
 ### lib/statusColors.ts
 
@@ -960,7 +947,7 @@ Most color exports are mode-aware functions that accept an `isDark: boolean` par
 | `HERO_HEADER_GRADIENTS` | `Record<string, string>` | Vertical gradient for detail page hero band background |
 | `LED_COLORS` | `Record<string, { bg, glow }>` | LED dot colors per policy state (bg color + glow shadow) |
 | `subtleBorder(isDark)` | `(boolean) → string` | Subtle separator color for full-width bands |
-| `typeLabels(isDark)` | `(boolean) → Record<string, { label, color, bg }>` | Override/exception types (stay_awake, force_sleep, skip_sleep, skip_wake) |
+| `typeLabels(isDark)` | `(boolean) → Record<string, { label, color, bg }>` | Exception types (stay_awake, force_sleep) |
 | `typeLabelFallback(isDark)` | `(boolean) → { label, color, bg }` | Default for unknown type strings |
 | `getModeStyle(isDark, mode)` | `(boolean, string) → { bg, color }` | Safe accessor for `modeColors` with fallback for unknown mode strings |
 | `getTypeLabel(isDark, type)` | `(boolean, string) → { label, color, bg }` | Safe accessor for `typeLabels` with fallback for unknown type strings |
@@ -1032,14 +1019,14 @@ Shared table styling constants for consistent appearance across all pages:
 
 | Constant | Style | Used by |
 |:---------|:------|:--------|
-| `TABLE_HEAD_CELL_SX` | `fontWeight: 700, color: text.secondary, fontSize: 12, whiteSpace: nowrap` | SortHeader, ExecutionTable, audit, users, exceptions, overrides, policy exceptions |
+| `TABLE_HEAD_CELL_SX` | `fontWeight: 700, color: text.secondary, fontSize: 12, whiteSpace: nowrap` | SortHeader, ExecutionTable, audit, users, exceptions, policy exceptions |
 | `TABLE_BODY_CELL_SX` | `fontSize: 13` | Users page, workloads table |
 | `TABLE_BODY_CELL_SECONDARY_SX` | `fontSize: 13, color: text.secondary` | Users page |
 | `TABLE_BODY_CELL_MONO_SX` | `fontSize: 13, fontFamily: monospace` | Available for monospace cells |
 
 ### common/ConfirmDialog.tsx
 
-A shared confirmation dialog component accepting `open`, `title`, `message`, `confirmLabel`, `confirmColor`, `onConfirm`, and `onClose` props. Replaces ad-hoc inline confirmation dialogs in `PolicyCard`, `OverridesSection`, `DetailDrawer`, and the exceptions page.
+A shared confirmation dialog component accepting `open`, `title`, `message`, `confirmLabel`, `confirmColor`, `onConfirm`, and `onClose` props. Replaces ad-hoc inline confirmation dialogs in `PolicyCard`, `DetailDrawer`, and the exceptions page.
 
 ### common/CenteredSpinner.tsx
 

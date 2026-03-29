@@ -114,7 +114,7 @@ executions when intended state diverges from actual state.
 - Skip automatic wake transitions when `AutoWake` is disabled — the scheduler will only put policies to sleep, not wake them.
 - Back off for 5 minutes after a failed scheduled transition to avoid tight retry loops when the K8s API is down.
 - Execution goroutines derive their context from the scheduler's parent context, so `Stop()` can signal them to abort rather than hanging until the per-execution timeout expires.
-- When `ReconcileWhileAwake` is enabled (default), detect drift from failed or partial wake executions by counting open snapshots that still need restoring. If drift is found, run a corrective wake (trigger `"reconcile"`) that bypasses the `AutoWake` gate and `skip_wake` overrides. Retries back off at a minimum interval of 5 minutes per policy to avoid flooding history. When disabled, skip reconciliation entirely for policies already awake — reduces DB load between sleep windows.
+- When `ReconcileWhileAwake` is enabled (default), detect drift from failed or partial wake executions by counting open snapshots that still need restoring. If drift is found, run a corrective wake (trigger `"reconcile"`) that bypasses the `AutoWake` gate. Retries back off at a minimum interval of 5 minutes per policy to avoid flooding history. When disabled, skip reconciliation entirely for policies already awake — reduces DB load between sleep windows.
 
 **Key interfaces:**
 - `NewPolicyScheduler(st, k8sClient, cfg SchedulerConfig)` -- construct scheduler with configurable settings.
@@ -133,11 +133,11 @@ sleeping or awake at a given point in time.
 
 **Key responsibilities:**
 - Evaluate sleep windows against the current time in the policy's timezone.
-- Apply override and exception precedence: `force_sleep` override > `stay_awake` override > `force_sleep` exception > `stay_awake` exception > window evaluation.
+- Apply exception precedence: `force_sleep` exception > `stay_awake` exception > window evaluation.
 - Compute the next state transition time for dashboard display.
 
 **Key interfaces:**
-- `IntendedState(StateInput) PolicyState` -- accepts a `StateInput` struct containing windows, timezone, overrides, exceptions, and time. Returns `"sleeping"`, `"awake"`, or `"unknown"`.
+- `IntendedState(StateInput) PolicyState` -- accepts a `StateInput` struct containing windows, timezone, exceptions, and time. Returns `"sleeping"`, `"awake"`, or `"unknown"`.
 - `Evaluate(windows, timezone, now) string` -- window-only evaluation.
 - `NextTransition(windows, timezone, now) *time.Time` -- next sleep/wake edge.
 
@@ -213,10 +213,10 @@ more WebSocket clients.
 - Dashboard with cluster status, next-run countdown, and activity feed.
 - Cluster state explorer with workload, node, and pod detail drawers.
 - Policy management with sleep window picker, weekly timeline visualization,
-  plan/apply mode toggle, overrides, and scheduled exceptions. Policy cards
+  plan/apply mode toggle, and scheduled exceptions. Policy cards
   use a wide timeline card layout (gradient header bar, LED status dot,
   70/30 split with sparkline timeline). The policy detail page uses full-width
-  horizontal bands (hero, timeline, overrides+exceptions, execution history);
+  horizontal bands (hero, timeline, exceptions, execution history);
   clicking a row in the Recent Executions table opens the log viewer drawer inline.
 - Live execution log viewer via WebSocket, with auto-scroll and level coloring.
 - Live pod log viewer via chunked HTTP streaming from the Kubernetes API.
@@ -231,7 +231,7 @@ more WebSocket clients.
 - `useIsDark.ts` -- one-liner hook for dark/light mode detection, used by all components needing mode-aware colors.
 - `usePolicyTriggers.ts` -- sleep/wake/cancel trigger hook with `onSuccessOverride` callback.
 - `useTriStateSort.ts` -- generic tri-state column sort hook (asc/desc/none).
-- `statusColors.ts` -- mode-aware style maps for states, execution statuses, modes, override types; includes `getModeStyle` and `getTypeLabel` helpers.
+- `statusColors.ts` -- mode-aware style maps for states, execution statuses, and modes; includes `getModeStyle` and `getTypeLabel` helpers.
 - `formatters.ts` -- shared formatting utilities (`formatError`, `fmtDt`, `fmtDuration`, `timeAgo`, etc.).
 - TanStack Query with SSE-driven cache updates for the overview page.
 
@@ -245,7 +245,6 @@ erDiagram
     users ||--o{ audit_logs : "has many (SET NULL)"
     policies ||--o{ policy_executions : "has many"
     policies ||--o{ workload_snapshots : "has many"
-    policies ||--o{ policy_overrides : "has many"
     policies ||--o{ scheduled_exceptions : "optional FK"
     policy_executions ||--o{ policy_log_lines : "has many (CASCADE)"
     policy_executions ||--o{ workload_snapshots : "sleep/wake ref"
@@ -319,15 +318,6 @@ erDiagram
         boolean was_already_zero
     }
 
-    policy_overrides {
-        bigint id PK
-        bigint policy_id FK
-        varchar override_type "enum"
-        timestamptz starts_at "nullable"
-        timestamptz ends_at "nullable"
-        varchar reason
-    }
-
     scheduled_exceptions {
         bigint id PK
         bigint policy_id FK "nullable"
@@ -367,7 +357,7 @@ Triggered by the 30-second ticker (scheduled), a manual API call, or a
 scheduled exception activation.
 
 1. **PolicyScheduler** evaluates `IntendedState(StateInput)` for each enabled policy,
-   considering overrides, active exceptions, and sleep windows.
+   considering active exceptions and sleep windows.
    If intended state is `sleeping` but `current_state` is `awake`, a sleep
    execution is created.
 2. `current_state` is set to `transitioning` (prevents concurrent runs).
@@ -409,24 +399,21 @@ Triggered by the ticker, a manual call, or a scheduled exception ending.
 ```
 Every configurable interval (default 30s):
   for each enabled policy:
-    intended = PolicyEngine.IntendedState(StateInput{windows, tz, overrides, exceptions, now})
+    intended = PolicyEngine.IntendedState(StateInput{windows, tz, exceptions, now})
     if current_state == intended:
       if reconcileWhileAwake and intended == "awake":
         if backoff elapsed and open snapshots needing restore > 0:
-          spawn goroutine -> run(policy, "wake", "reconcile")  // bypasses autoWake + skip_wake
+          spawn goroutine -> run(policy, "wake", "reconcile")  // bypasses autoWake
       continue
     if current_state == "transitioning": check for stuck (>policy timeout + 5 min), reset to unknown
     if intended == "awake" and autoWake is false: skip
-    if skip_wake/skip_sleep override active: consume and skip
     spawn goroutine -> run(policy, intended_direction, "scheduled")
 ```
 
 Precedence within `IntendedState` (highest to lowest):
-1. Active `force_sleep` override → `sleeping`
-2. Active `stay_awake` override → `awake`
-3. Active `force_sleep` exception → `sleeping`
-4. Active `stay_awake` exception → `awake`
-5. Sleep window evaluation against current time in policy timezone
+1. Active `force_sleep` exception → `sleeping`
+2. Active `stay_awake` exception → `awake`
+3. Sleep window evaluation against current time in policy timezone
 
 ### 4. Real-Time Log Streaming (WebSocket)
 
@@ -461,7 +448,6 @@ kube-phoenix/
 │   │   │   ├── cluster_pods.go      # Pod list, detail, and log streaming handlers
 │   │   │   ├── overview.go          # Pre-aggregated dashboard overview endpoint
 │   │   │   ├── exceptions.go        # Scheduled exception CRUD
-│   │   │   ├── overrides.go         # Policy override CRUD
 │   │   │   ├── guardrails.go        # Guardrails get/update
 │   │   │   ├── users.go             # User CRUD (admin only)
 │   │   │   ├── audit.go             # AuditWriter, audit() enqueue, auditDeniedMiddleware, statusCapture response wrapper
@@ -474,7 +460,7 @@ kube-phoenix/
 │   │   ├── scheduler/
 │   │   │   ├── policy_scheduler.go  # 30s ticker, recovery, exception tick, drift detection, inflightPolicies/inflightCancels, executeAndFinalize
 │   │   │   ├── policy_scheduler_test.go # Scheduler unit tests (mock store + runner)
-│   │   │   ├── policy_engine.go     # IntendedState evaluation, override precedence
+│   │   │   ├── policy_engine.go     # IntendedState evaluation, exception precedence
 │   │   │   ├── policy_engine_test.go # Engine unit tests
 │   │   │   └── broker.go            # WebSocket log pub/sub
 │   │   ├── scaler/
@@ -491,7 +477,7 @@ kube-phoenix/
 │   │   ├── store/
 │   │   │   ├── models.go            # GORM model structs
 │   │   │   ├── store.go             # DB connection, AutoMigrate, connection pool
-│   │   │   ├── policies.go          # Policy CRUD, executions, log lines, snapshots, overrides, exceptions
+│   │   │   ├── policies.go          # Policy CRUD, executions, log lines, snapshots, exceptions
 │   │   │   ├── queries.go           # Guardrails queries, SeedDefaults, DropAllTables
 │   │   │   ├── store_helpers.go     # Shared GORM helpers (selectiveUpdate)
 │   │   │   ├── sessions.go          # Session CRUD, sliding window, cleanup
@@ -526,7 +512,7 @@ kube-phoenix/
 │   │   │   ├── exceptions/           # ExceptionsCalendarStrip, ExceptionDetailPanel, ExceptionChips, ExceptionActions
 │   │   │   ├── guardrails/          # GuardrailsForm (useReducer + CategoryCard), CategoryCard, ProtectedChipInput
 │   │   │   ├── history/             # ExecutionTable, LogViewer, ExecutionSummary, parseSummary, useExecutionLogs
-│   │   │   ├── policies/            # PolicyCard, timelines, WindowPicker, PolicyHeroBand, CreateOverrideForm, TimelineLegend, timelineSegments
+│   │   │   ├── policies/            # PolicyCard, timelines, WindowPicker, PolicyHeroBand, TimelineLegend, timelineSegments
 │   │   │   └── settings/            # AccountSettings, AppearanceSettings, DatabaseSettings, OIDCStatusCard, ActiveSessionsCard (live data), ClusterConnectionCard, AboutBar
 │   │   ├── lib/                     # API client (apiFetch), auth, types, query client, formatters, statusColors, SortHeader, tableStyles, shared hooks (useSnackbar, useIsDark, useTriStateSort, usePolicyTriggers, useUnsavedChanges, layoutConstants)
 │   │   └── theme/                   # MUI theme (dark + light mode)
