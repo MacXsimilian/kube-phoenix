@@ -1,0 +1,165 @@
+# Release Build — builds, signs, and publishes Docker image + Helm chart.
+#
+# Triggered by:
+#   - `release: published` event (from release-please creating a GitHub Release)
+#   - `workflow_dispatch` with a tag input (for manual re-runs after a failed build)
+#
+# This is decoupled from release-please.yml so that:
+#   1. The git tag always exists even if the build fails
+#   2. Failed builds can be re-triggered without re-running release-please
+#   3. The release PR merge is never blocked by build infrastructure issues
+
+name: Release Build
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing git tag to build (e.g. v0.5.10)"
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release-build-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ── Docker build, sign, and push ────────────────────────────────────────────
+  docker:
+    name: Docker build & push
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write   # cosign keyless signing via OIDC
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      version: ${{ steps.meta.outputs.version }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - name: Validate tag exists
+        run: |
+          git rev-parse "${{ steps.tag.outputs.tag }}" >/dev/null 2>&1 || {
+            echo "::error::Tag '${{ steps.tag.outputs.tag }}' does not exist"
+            exit 1
+          }
+
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image name
+        id: image
+        run: |
+          echo "name=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/kube-phoenix" >> $GITHUB_OUTPUT
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf  # v6.0.0
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ steps.tag.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }}
+            type=semver,pattern={{major}},value=${{ steps.tag.outputs.tag }}
+
+      - name: Build & push
+        id: build
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294  # v7.0.0
+        with:
+          context: .
+          platforms: linux/amd64
+          provenance: true
+          sbom: true
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            NEXT_PUBLIC_APP_VERSION=${{ steps.tag.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003  # v4.1.1
+
+      - name: Sign image (keyless)
+        run: |
+          cosign sign --yes "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0
+        with:
+          image: "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
+          artifact-name: sbom-kube-phoenix.spdx.json
+          output-file: sbom-kube-phoenix.spdx.json
+
+      - name: Attach SBOM to image
+        run: |
+          cosign attach sbom --sbom sbom-kube-phoenix.spdx.json "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
+
+      - name: Smoke test — verify image runs
+        run: |
+          docker pull "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
+          docker run --rm "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}" --version || true
+
+  # ── Helm chart package & push ───────────────────────────────────────────────
+  helm-publish:
+    name: Helm chart publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: docker
+    if: ${{ needs.docker.result == 'success' }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2  # v5.0.0
+        with:
+          version: "4.1.3"
+
+      - name: Log in to GHCR (OCI)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Package chart
+        run: |
+          VERSION="${{ steps.tag.outputs.tag }}"
+          VERSION="${VERSION#v}"
+          helm package helm/kube-phoenix \
+            --version "${VERSION}" \
+            --app-version "${VERSION}" \
+            --destination /tmp/chart
+
+      - name: Push chart to GHCR
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          helm push /tmp/chart/kube-phoenix-*.tgz oci://ghcr.io/${OWNER}/helm
