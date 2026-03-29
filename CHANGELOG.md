@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.11](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.10...v0.5.11) (2026-03-29)
+
+
+### Features
+
+* **frontend:** UI redesign — guardrails, exceptions, users, and table consistency ([#289](https://github.com/MacXsimilian/kube-phoenix/issues/289)) ([2d0e87a](https://github.com/MacXsimilian/kube-phoenix/commit/2d0e87ad4ea6d1530dfa53cacf0bb63128b0b448))
+
 ## [0.5.10](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.9...v0.5.10) (2026-03-29)
 
 
