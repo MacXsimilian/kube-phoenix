@@ -21,6 +21,7 @@ import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import CloudOffIcon from '@mui/icons-material/CloudOff'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
+import VerticalAlignBottomIcon from '@mui/icons-material/VerticalAlignBottom'
 import { useIsDark } from '@/lib/useIsDark'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { PolicyExecution, LogLine } from '@/lib/types'
@@ -66,23 +67,41 @@ export default function LogViewer({
   const { notify, SnackbarAlert } = useSnackbar()
   const { width: drawerWidth, onMouseDown: handleResizeMouseDown, onTouchStart: handleResizeTouchStart } = useDrawerResize(640)
   const [currentErrorIdx, setCurrentErrorIdx] = useState(-1)
+  const [autoScroll, setAutoScroll] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const logContainerRef = useRef<HTMLDivElement>(null)
   const lineEls = useRef<(HTMLElement | null)[]>([])
 
   const isRunning = execution?.status === 'running'
 
   const { lines, isConnected, logsError } = useExecutionLogs(execution?.id, isRunning)
 
-  // Reset error cursor when switching executions
+  // Reset error cursor and re-enable auto-scroll when switching executions
   useEffect(() => {
     setCurrentErrorIdx(-1)
+    setAutoScroll(true)
     lineEls.current = []
   }, [execution?.id])
 
-  // Auto-scroll
+  // Auto-scroll when enabled
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [lines])
+    if (autoScroll) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [lines, autoScroll])
+
+  // Detect manual scroll-up to pause auto-scroll, re-enable when scrolled to bottom
+  useEffect(() => {
+    const el = logContainerRef.current
+    if (!el) return
+    function handleScroll() {
+      if (!el) return
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+      setAutoScroll(atBottom)
+    }
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [execution?.id])
 
   const errorIndices = useMemo(
     () => lines.reduce<number[]>((acc, l, i) => {
@@ -226,10 +245,28 @@ export default function LogViewer({
 
             {/* Log area */}
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
-              <Box sx={{ minHeight: 40, px: 2.5, display: 'flex', alignItems: 'center', borderTop: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ minHeight: 40, px: 2.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid', borderColor: 'divider' }}>
                 <Typography variant="caption" fontWeight={700} letterSpacing={0.8} sx={{ color: 'text.secondary', textTransform: 'uppercase' }}>
                   Logs
                 </Typography>
+                <Tooltip title={autoScroll ? 'Auto-scroll on — click to pause' : 'Auto-scroll off — click to follow'}>
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setAutoScroll(prev => {
+                        if (!prev) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+                        return !prev
+                      })
+                    }}
+                    aria-label="Toggle auto-scroll"
+                    sx={{
+                      color: autoScroll ? 'primary.main' : 'text.disabled',
+                      transition: 'color 0.15s ease',
+                    }}
+                  >
+                    <VerticalAlignBottomIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Tooltip>
               </Box>
               {!isConnected && isRunning && (
                 <Alert severity="error" sx={{ borderRadius: 0 }}>
@@ -249,7 +286,7 @@ export default function LogViewer({
                   Could not load logs.
                 </Alert>
               )}
-              <Box sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: 'background.default', minHeight: 0 }}>
+              <Box ref={logContainerRef} sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: 'background.default', minHeight: 0 }}>
                 {lines.length === 0 && !isRunning && !logsError && (
                   <Typography variant="body2" color="text.secondary">
                     No log lines found.
