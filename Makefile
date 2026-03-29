@@ -11,7 +11,8 @@ HELM_VALUES ?=
 
 .PHONY: help frontend backend build docker-build copy-spec test lint \
         helm-lint helm-template helm-install helm-upgrade helm-uninstall \
-        dev dev-frontend dev-backend dev-mock
+        dev dev-frontend dev-backend dev-mock \
+        minikube-setup minikube-workloads minikube-teardown
 
 # ── Help ─────────────────────────────────────────────────────────────────────
 
@@ -89,3 +90,14 @@ helm-upgrade: helm-install ## Alias for helm-install
 
 helm-uninstall: ## Uninstall Helm release
 	helm uninstall $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+# ── Local Cluster ────────────────────────────────────────────────────────────
+
+minikube-setup: ## Provision minikube cluster, workloads, and deploy kube-phoenix
+	./hack/minikube-setup.sh
+
+minikube-workloads: ## Create sample workloads only (cluster must be running)
+	./hack/minikube-setup.sh --workloads
+
+minikube-teardown: ## Destroy minikube cluster
+	./hack/minikube-setup.sh --teardown
