@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.9](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.8...v0.5.9) (2026-03-29)
+
+
+### Bug Fixes
+
+* security audit remediation — snapshot safety, exception validation, audit guarantees, and CI release gating ([#284](https://github.com/MacXsimilian/kube-phoenix/issues/284)) ([012246d](https://github.com/MacXsimilian/kube-phoenix/commit/012246d65b9083d5ce1414a326861f7c94b39d7b))
+
 ## [0.5.8](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.7...v0.5.8) (2026-03-29)
 
 
