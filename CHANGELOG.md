@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.7](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.6...v0.5.7) (2026-03-29)
+
+
+### Bug Fixes
+
+* UI tweaks, trigger mode selection dialog, and log viewer auto-scroll ([#279](https://github.com/MacXsimilian/kube-phoenix/issues/279)) ([c94dbb1](https://github.com/MacXsimilian/kube-phoenix/commit/c94dbb12f60f4a5cae1cd5b9fa5790bfc59cae2f))
+
 ## [0.5.6](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.5...v0.5.6) (2026-03-29)
 
 
