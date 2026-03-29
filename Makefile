@@ -11,7 +11,7 @@ HELM_VALUES ?=
 
 .PHONY: help frontend backend build docker-build copy-spec test lint \
         helm-lint helm-template helm-install helm-upgrade helm-uninstall \
-        dev dev-frontend dev-backend
+        dev dev-frontend dev-backend dev-mock
 
 # ── Help ─────────────────────────────────────────────────────────────────────
 
@@ -27,6 +27,9 @@ dev: ## Start local PostgreSQL via docker compose
 
 dev-frontend: ## Start frontend dev server (Next.js)
 	cd frontend && npm install && npm run dev
+
+dev-mock: ## Start frontend with mock API (no backend or cluster needed)
+	cd frontend && npm install --silent && node mock-api/dev.mjs
 
 dev-backend: copy-spec ## Start backend dev server (Go)
 	cd backend && DATABASE_URL="host=localhost user=kube_phoenix password=kube_phoenix dbname=kube_phoenix port=5432 sslmode=disable" go run ./cmd/server/...
