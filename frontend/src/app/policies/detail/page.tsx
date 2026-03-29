@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
@@ -10,14 +10,12 @@ import Alert from '@mui/material/Alert'
 import {
   getPolicy,
   getPolicyExecutions,
-  getPolicyOverrides,
   getExceptions,
 } from '@/lib/api'
 import type { PolicyExecution, ScheduledException } from '@/lib/types'
 import CreatePolicyDialog from '@/components/policies/CreatePolicyDialog'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
 import LedGlowTimeline from '@/components/policies/LedGlowTimeline'
-import OverridesSection from '@/components/policies/OverridesSection'
 import ExceptionsSection from '@/components/policies/ExceptionsSection'
 import ExecutionHistoryTable from '@/components/policies/ExecutionHistoryTable'
 import PolicyHeroBand from '@/components/policies/PolicyHeroBand'
@@ -39,8 +37,6 @@ function PolicyDetailContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { user } = useAuth()
-  const queryClient = useQueryClient()
-
   const isDark = useIsDark()
   const STATE_COLORS = stateColors(isDark)
   const SUBTLE_BORDER = subtleBorder(isDark)
@@ -66,12 +62,6 @@ function PolicyDetailContent() {
   const { data: executions } = useQuery({
     queryKey: ['policy-executions', policyId],
     queryFn: () => getPolicyExecutions({ policyId, pageSize: 20 }),
-    enabled: !isNaN(policyId),
-  })
-
-  const { data: overrides, refetch: refetchOverrides } = useQuery({
-    queryKey: ['policy-overrides', policyId],
-    queryFn: () => getPolicyOverrides(policyId),
     enabled: !isNaN(policyId),
   })
 
@@ -131,7 +121,6 @@ function PolicyDetailContent() {
               </Typography>
               <LedGlowTimeline
                 windows={sleepWindows}
-                overrides={overrides}
                 exceptions={exceptions}
                 timezone={policy.timezone}
               />
@@ -174,7 +163,7 @@ function PolicyDetailContent() {
       {/* Metadata row (only if no windows) */}
       {!hasSleepWindows(sleepWindows) && <PolicyMetadataRow policy={policy} />}
 
-      {/* Overrides + Exceptions band */}
+      {/* Exceptions band */}
       <Box
         sx={{
           mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3,
@@ -182,26 +171,12 @@ function PolicyDetailContent() {
           borderBottom: '1px solid', borderColor: SUBTLE_BORDER,
         }}
       >
-        <Box sx={{ display: 'flex', gap: 3, flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <OverridesSection
-              policyId={policyId}
-              overrides={overrides}
-              canEdit={canEdit}
-              onRefetch={refetchOverrides}
-              onInvalidateExceptions={() => queryClient.invalidateQueries({ queryKey: ['exceptions', policyId] })}
-              onNotify={notify}
-            />
-          </Box>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <ExceptionsSection
-              exceptions={exceptions}
-              canEdit={canEdit}
-              onAddException={() => { setEditOpen(false); setEditingException(undefined); setExceptionOpen(true) }}
-              onEditException={(ex) => { setEditOpen(false); setEditingException(ex); setExceptionOpen(true) }}
-            />
-          </Box>
-        </Box>
+        <ExceptionsSection
+          exceptions={exceptions}
+          canEdit={canEdit}
+          onAddException={() => { setEditOpen(false); setEditingException(undefined); setExceptionOpen(true) }}
+          onEditException={(ex) => { setEditOpen(false); setEditingException(ex); setExceptionOpen(true) }}
+        />
       </Box>
 
       {/* Execution History band */}

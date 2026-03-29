@@ -1,12 +1,12 @@
 'use client'
 
 import Box from '@mui/material/Box'
-import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
+import type { SleepWindow, ScheduledException } from '@/lib/types'
 import { useIsDark } from '@/lib/useIsDark'
 import { nowInTimezone, DOW_MAP } from '@/lib/windowUtils'
 import { TIMELINE_COLORS } from '@/lib/colors'
 import TimelineLegend from './TimelineLegend'
-import { computeWindowSegments, computeOverrideSegments, computeExceptionSegments } from './timelineSegments'
+import { computeWindowSegments, computeExceptionSegments } from './timelineSegments'
 
 const ROW_H = 24
 const LABEL_W = 36
@@ -26,19 +26,16 @@ function rowY(row: number): number {
 
 const VARIANT_OPACITY: Record<string, number> = {
   sleep: 0.45,
-  override: 0.35,
   exception: 0.35,
   awake: 0.3,
 }
 
 export default function WeeklyTimeline({
   windows,
-  overrides,
   exceptions,
   timezone,
 }: {
   windows: SleepWindow[]
-  overrides?: PolicyOverride[]
   exceptions?: ScheduledException[]
   timezone?: string
 }) {
@@ -51,7 +48,6 @@ export default function WeeklyTimeline({
 
   const allSegs = [
     ...computeWindowSegments(windows),
-    ...computeOverrideSegments(overrides ?? [], timezone),
     ...computeExceptionSegments(exceptions ?? [], timezone),
   ]
 
@@ -155,7 +151,7 @@ export default function WeeklyTimeline({
         )}
       </svg>
 
-      <TimelineLegend overrides={overrides} exceptions={exceptions} />
+      <TimelineLegend exceptions={exceptions} />
     </Box>
   )
 }

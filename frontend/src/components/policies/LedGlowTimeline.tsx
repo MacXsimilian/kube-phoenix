@@ -1,12 +1,12 @@
 'use client'
 
 import Box from '@mui/material/Box'
-import type { SleepWindow, PolicyOverride, ScheduledException } from '@/lib/types'
+import type { SleepWindow, ScheduledException } from '@/lib/types'
 import { useIsDark } from '@/lib/useIsDark'
 import { nowInTimezone, DOW_MAP } from '@/lib/windowUtils'
 import { TIMELINE_COLORS } from '@/lib/colors'
 import TimelineLegend from './TimelineLegend'
-import { computeWindowSegments, computeOverrideSegments, computeExceptionSegments, type TimelineSegment } from './timelineSegments'
+import { computeWindowSegments, computeExceptionSegments, type TimelineSegment } from './timelineSegments'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -29,14 +29,12 @@ function stripY(row: number): number {
 
 const GLOW_COLORS = [
   { id: 'led-glow-purple', stdDeviation: 3 },
-  { id: 'led-glow-orange', stdDeviation: 2.5 },
   { id: 'led-glow-red',    stdDeviation: 2.5 },
   { id: 'led-glow-green',  stdDeviation: 2.5 },
 ] as const
 
 const VARIANT_TO_GLOW: Record<string, string> = {
   sleep: 'led-glow-purple',
-  override: 'led-glow-orange',
   exception: 'led-glow-red',
   awake: 'led-glow-green',
 }
@@ -44,19 +42,16 @@ const VARIANT_TO_GLOW: Record<string, string> = {
 /** Map shared segment variant to LED-specific glow color */
 function ledColor(seg: TimelineSegment): string {
   if (seg.variant === 'sleep') return TIMELINE_COLORS.sleepGlow
-  if (seg.variant === 'override') return 'rgba(245,158,11,0.55)'
   if (seg.variant === 'exception') return 'rgba(239,68,68,0.55)'
   return 'rgba(34,197,94,0.55)'
 }
 
 export default function LedGlowTimeline({
   windows,
-  overrides,
   exceptions,
   timezone,
 }: {
   windows: SleepWindow[]
-  overrides?: PolicyOverride[]
   exceptions?: ScheduledException[]
   timezone?: string
 }) {
@@ -69,7 +64,6 @@ export default function LedGlowTimeline({
 
   const allSegs = [
     ...computeWindowSegments(windows),
-    ...computeOverrideSegments(overrides ?? [], timezone),
     ...computeExceptionSegments(exceptions ?? [], timezone),
   ]
 
@@ -178,7 +172,7 @@ export default function LedGlowTimeline({
         )}
       </svg>
 
-      <TimelineLegend overrides={overrides} exceptions={exceptions} variant="led" />
+      <TimelineLegend exceptions={exceptions} variant="led" />
     </Box>
   )
 }

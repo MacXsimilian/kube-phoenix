@@ -24,7 +24,7 @@ var allModels = []interface{}{
 	&Guardrails{},
 	&User{}, &Session{}, &AuditLog{},
 	&Policy{}, &PolicyExecution{}, &PolicyLogLine{},
-	&WorkloadSnapshot{}, &PolicyOverride{}, &ScheduledException{},
+	&WorkloadSnapshot{}, &ScheduledException{},
 }
 
 type Store struct {
@@ -76,6 +76,11 @@ func runMigrations(db *gorm.DB) error {
 		slog.Warn("migration: drop legacy oidc index failed (non-fatal)", "err", err)
 	}
 
+	// Drop the legacy policy_overrides table (overrides were merged into exceptions).
+	if err := db.Exec("DROP TABLE IF EXISTS policy_overrides CASCADE").Error; err != nil {
+		slog.Warn("migration: drop policy_overrides table failed (non-fatal)", "err", err)
+	}
+
 	if err := db.AutoMigrate(allModels...); err != nil {
 		return err
 	}
@@ -119,7 +124,6 @@ func addEnumCheckConstraints(db *gorm.DB) {
 		{"policies", "chk_policy_mode", "mode IN ('plan','apply')"},
 		{"policies", "chk_policy_state", "current_state IN ('sleeping','awake','unknown','transitioning')"},
 		{"policy_executions", "chk_policy_execution_direction", "direction IN ('sleep','wake')"},
-		{"policy_overrides", "chk_override_type", "override_type IN ('stay_awake','force_sleep','skip_sleep','skip_wake')"},
 		{"users", "chk_user_role", "role IN ('admin','operator','viewer')"},
 		{"users", "chk_user_source", "source IN ('local','oidc')"},
 	}

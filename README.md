@@ -25,7 +25,7 @@ kube-phoenix replaces ad-hoc cron scripts with a proper operator for scheduling 
 - **Policy-based scheduling** -- Declare sleep windows with cron expressions, namespace filters, and label selectors. Plan mode lets you verify before anything scales.
 - **DB-backed replica snapshots** -- Replica counts are persisted in PostgreSQL, not just annotations. Restores are reliable even if annotations are overwritten.
 - **Startup recovery** -- On restart, the intended state is recomputed and any mismatch triggers automatic correction.
-- **Overrides and scheduled exceptions** -- Time-windowed overrides (`stay_awake`, `force_sleep`) and future exception windows with ticket references for release weekends or on-call periods.
+- **Scheduled exceptions** -- Time-windowed exceptions (`stay_awake`, `force_sleep`) with ticket references for release weekends or on-call periods.
 - **Live cluster visibility** -- Real-time view of deployments, stateful sets, nodes, pod metrics, Kubernetes events, and streaming container logs with search.
 - **Guardrails** -- Protect namespaces, node labels, and taints from the scaler. Priority namespace scaling ensures critical workloads are processed first.
 - **RBAC and OIDC** -- Session-based auth with admin/operator/viewer roles. Optional Keycloak SSO with AD group-to-role mapping.
@@ -35,7 +35,7 @@ kube-phoenix replaces ad-hoc cron scripts with a proper operator for scheduling 
 
 ## How It Works
 
-A **policy** declares when workloads should sleep using sleep windows -- human-readable time ranges evaluated on a 30-second tick loop. When the intended state (sleeping or awake) differs from the actual state, kube-phoenix executes a transition: scaling deployments and stateful sets to zero and draining nodes on sleep, or restoring saved replica counts and uncordoning nodes on wake. Overrides and scheduled exceptions take precedence over the normal schedule when active.
+A **policy** declares when workloads should sleep using sleep windows -- human-readable time ranges evaluated on a 30-second tick loop. When the intended state (sleeping or awake) differs from the actual state, kube-phoenix executes a transition: scaling deployments and stateful sets to zero and draining nodes on sleep, or restoring saved replica counts and uncordoning nodes on wake. Scheduled exceptions take precedence over the normal schedule when active.
 
 | Sleep | Wake |
 | :-- | :-- |

@@ -60,6 +60,19 @@ func isApply(mode string) bool { return mode == store.PolicyModeApply }
 // namespaceAllowed returns true if the namespace should be processed.
 // If filter is empty, all namespaces are allowed (subject to guardrail skip list).
 // If filter is set, only listed namespaces are allowed.
+// filterSnapshotsByNamespace returns only snapshots whose namespace matches
+// the comma-separated filter. Used by scoped exception wakes to avoid
+// restoring workloads outside the exception's target.
+func filterSnapshotsByNamespace(snaps []store.WorkloadSnapshot, filter string) []store.WorkloadSnapshot {
+	out := make([]store.WorkloadSnapshot, 0, len(snaps))
+	for _, s := range snaps {
+		if namespaceAllowed(s.Namespace, filter) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func namespaceAllowed(ns, filter string) bool {
 	if filter == "" {
 		return true

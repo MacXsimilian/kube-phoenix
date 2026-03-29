@@ -20,8 +20,8 @@ Only workloads in specific namespaces (e.g., `dev`, `staging`) or matching speci
 **UC-4: Safe Preview Before Enforcement**
 An operator wants to see what a policy *would* do before it actually scales anything — a dry-run/plan mode.
 
-**UC-5: Emergency Override**
-During an incident or demo, an operator needs to keep workloads awake beyond the scheduled sleep window, or force-sleep workloads outside the normal schedule.
+**UC-5: Emergency Exception**
+During an incident or demo, an operator creates an immediate exception to keep workloads awake beyond the scheduled sleep window, or force-sleep workloads outside the normal schedule.
 
 **UC-6: Scheduled Exception**
 A team has a load test next Tuesday 2 AM–6 AM. They need to pre-schedule a "stay awake" window that overrides the normal sleep policy for that night only.
@@ -60,17 +60,7 @@ If a workload is manually scaled back up while a sleep policy is active, the sys
 | R2.6 | An annotation-based fallback must exist on the workload itself in case the database is lost                                          |
 | R2.7 | Each execution must have a configurable **timeout**                                                                                  |
 
-### R3 — Overrides
-
-| #    | Requirement                                                                                                                          |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| R3.1 | `stay_awake` — time-windowed override that prevents sleep during the window                                                          |
-| R3.2 | `force_sleep` — time-windowed override that forces sleep regardless of the schedule                                                  |
-| R3.3 | `skip_sleep` — one-shot, consumed on the next scheduled sleep transition                                                             |
-| R3.4 | `skip_wake` — one-shot, consumed on the next scheduled wake transition                                                               |
-| R3.5 | **Precedence order**: `force_sleep` > `stay_awake` > normal schedule                                                                |
-
-### R4 — Scheduled Exceptions
+### R3 — Scheduled Exceptions
 
 | #    | Requirement                                                                                                                          |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -119,7 +109,7 @@ If a workload is manually scaled back up while a sleep policy is active, the sys
 | SC-2  | Workloads are restored to their exact pre-sleep replica counts when the sleep window ends                       | Compare post-wake replicas against stored snapshots                                             |
 | SC-3  | System namespaces and protected workloads are **never** scaled, under any policy configuration                  | Create a policy targeting `kube-system` — verify 0 workloads affected                          |
 | SC-4  | `plan` mode produces execution logs identical to `apply` mode but changes 0 replicas                           | Run same policy in both modes, diff execution logs vs. actual cluster state                     |
-| SC-5  | Overrides take precedence in the correct order (`force_sleep` > `stay_awake` > schedule)                       | Create conflicting overrides, verify the highest-priority one wins                              |
+| SC-5  | Exceptions take precedence in the correct order (`force_sleep` > `stay_awake` > schedule)                      | Create conflicting exceptions, verify the highest-priority one wins                             |
 | SC-6  | After a system restart mid-execution, the scheduler recovers and reaches the correct state within 2 ticks      | Kill the process during a sleep, restart, verify workloads reach intended state                 |
 | SC-7  | Two `apply`-mode policies cannot be created with overlapping scope                                              | Attempt to create overlapping policies, verify rejection                                        |
 | SC-8  | Snapshots survive process restarts and are correctly used for wake restoration                                  | Sleep workloads, restart the system, trigger wake, verify correct restoration                   |

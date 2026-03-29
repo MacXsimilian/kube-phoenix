@@ -15,7 +15,6 @@ function createSeedData() {
       user: 6,
       execution: 8,
       logLine: 60,
-      override: 3,
       exception: 7,
       audit: 25,
       session: 3,
@@ -190,11 +189,6 @@ function createSeedData() {
       { id: 6, policyId: 2, sleepExecutionId: 6, wakeExecutionId: null, namespace: 'staging', kind: 'Deployment', name: 'product-api', replicasBefore: 3, replicasRestored: null, restoredAt: null, wasAlreadyZero: false, wasDeletedAtWake: false, wasExternallyScaled: false, capturedAt: ago(6) },
     ],
 
-    // ── Overrides ────────────────────────────────────────────────────────────
-    overrides: [
-      { id: 1, policyId: 1, overrideType: 'stay_awake', startsAt: ago(2), endsAt: future(4), targetCronTime: null, reason: 'Load testing in progress', createdBy: 'admin', createdAt: ago(2) },
-      { id: 2, policyId: 1, overrideType: 'skip_sleep', startsAt: null, endsAt: null, targetCronTime: future(8), reason: 'Release deploy tonight', createdBy: 'operator1', createdAt: ago(5) },
-    ],
 
     // ── Scheduled exceptions ─────────────────────────────────────────────────
     exceptions: [
@@ -373,8 +367,6 @@ function createSeedData() {
       { id: 8, userId: 1, username: 'admin', action: 'policy.sleep', resourceType: 'policy', resourceId: 1, before: null, after: '{"trigger":"scheduled","executionId":1}', ipAddress: null, timestamp: ago(58) },
       { id: 9, userId: 1, username: 'admin', action: 'policy.wake', resourceType: 'policy', resourceId: 1, before: null, after: '{"trigger":"scheduled","executionId":2}', ipAddress: null, timestamp: ago(46) },
       { id: 10, userId: 1, username: 'admin', action: 'policy.sleep', resourceType: 'policy', resourceId: 2, before: null, after: '{"trigger":"scheduled","executionId":3}', ipAddress: null, timestamp: ago(30) },
-      { id: 11, userId: 1, username: 'admin', action: 'override.create', resourceType: 'override', resourceId: 1, before: null, after: '{"type":"stay_awake","policyId":1}', ipAddress: '192.168.1.42', timestamp: ago(2) },
-      { id: 12, userId: 2, username: 'operator1', action: 'override.create', resourceType: 'override', resourceId: 2, before: null, after: '{"type":"skip_sleep","policyId":1}', ipAddress: '10.0.0.5', timestamp: ago(5) },
       { id: 13, userId: 1, username: 'admin', action: 'exception.create', resourceType: 'exception', resourceId: 1, before: null, after: '{"type":"stay_awake","ticketRef":"OPS-1234"}', ipAddress: '192.168.1.42', timestamp: ago(12) },
       { id: 14, userId: 2, username: 'operator1', action: 'exception.create', resourceType: 'exception', resourceId: 2, before: null, after: '{"type":"stay_awake","ticketRef":"STAGING-99"}', ipAddress: '10.0.0.5', timestamp: ago(6) },
       { id: 15, userId: 1, username: 'admin', action: 'policy.wake', resourceType: 'policy', resourceId: 1, before: null, after: '{"trigger":"manual","executionId":7}', ipAddress: '192.168.1.42', timestamp: ago(10) },

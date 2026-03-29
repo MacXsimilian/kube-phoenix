@@ -52,24 +52,6 @@ type Policy struct {
 
 **Added fields**: `NextTransitionAt` — a single timestamp replacing the two previous next-fire fields.
 
-### PolicyOverride
-
-```go
-type PolicyOverride struct {
-    ID             uint
-    PolicyID       uint
-    OverrideType   string     // stay_awake | force_sleep | skip_sleep | skip_wake
-    StartsAt       *time.Time // nil for skip overrides
-    EndsAt         *time.Time // nil for skip overrides
-    TargetCronTime *time.Time // reused as "valid until" for skip overrides
-    Reason         string
-    CreatedBy      string
-    CreatedAt      time.Time
-}
-```
-
-Windowed overrides (`stay_awake`, `force_sleep`) have a `StartsAt`/`EndsAt` range. Skip overrides (`skip_sleep`, `skip_wake`) use `TargetCronTime` as a "valid until" expiry — when the scheduler detects a matching transition, it consumes and deletes the override.
-
 ### ScheduledException
 
 ```go
@@ -97,7 +79,6 @@ type ScheduledException struct {
 ```mermaid
 erDiagram
     Policy ||--o{ PolicyExecution : "triggers"
-    Policy ||--o{ PolicyOverride : "has"
     Policy ||--o{ WorkloadSnapshot : "captures"
     Policy |o--o{ ScheduledException : "governs"
     PolicyExecution ||--o{ PolicyLogLine : "emits"
@@ -112,15 +93,6 @@ erDiagram
         bool Enabled
         string CurrentState "enum"
         timestamp NextTransitionAt
-    }
-
-    PolicyOverride {
-        uint ID PK
-        uint PolicyID FK
-        string OverrideType "enum"
-        timestamp StartsAt "nullable"
-        timestamp EndsAt "nullable"
-        timestamp TargetCronTime "nullable"
     }
 
     ScheduledException {
@@ -240,31 +212,25 @@ The `PolicyScheduler` runs a `time.Ticker` at a 30-second interval. Each tick ca
 2. Releases the mutex.
 3. Evaluates each policy independently.
 
-### Override Precedence
+### Exception Precedence
 
 The `IntendedState()` function in `policy_engine.go` resolves the intended state with this precedence (highest to lowest):
 
 | Priority | Source | Result |
 |----------|--------|--------|
-| 1 | Active `force_sleep` override (time window) | Sleeping |
-| 2 | Active `stay_awake` override (time window) | Awake |
-| 3 | Active `force_sleep` exception | Sleeping |
-| 4 | Active `stay_awake` exception | Awake |
-| 5 | Window evaluator result | Sleeping or Awake |
+| 1 | Active `force_sleep` exception | Sleeping |
+| 2 | Active `stay_awake` exception | Awake |
+| 3 | Window evaluator result | Sleeping or Awake |
 
-Overrides always outrank exceptions. Within each tier, `force_sleep` beats `stay_awake`. If no windows are configured and no overrides or exceptions apply, the state is `Unknown` (no action taken).
-
-### Skip Overrides
-
-Skip overrides (`skip_sleep`, `skip_wake`) are checked *after* the intended state is determined but *before* the execution is triggered. If a matching skip override exists and has not expired (checked via `TargetCronTime` as a "valid until" field), the transition is suppressed and the override is consumed (deleted).
+`force_sleep` beats `stay_awake`. If no windows are configured and no exceptions apply, the state is `Unknown` (no action taken).
 
 ### State Transition Detection
 
-For each enabled policy, `evaluatePolicy()` loads active overrides from the database, computes `IntendedState()`, and routes to one of three sub-functions:
+For each enabled policy, `evaluatePolicy()` loads active exceptions from the database, computes `IntendedState()`, and routes to one of three sub-functions:
 
 - **`reconcilePolicy`** — current state matches intended. When `reconcileWhileAwake` is enabled and the policy is awake, delegates to `reconcileAwakePolicy` which detects drift (open snapshots needing restore) and runs a corrective wake if needed.
 - **`resetStuckTransition`** — `CurrentState == "transitioning"` for longer than the policy's execution timeout plus a 5-minute grace period (minimum 15 minutes). Resets to `unknown`.
-- **`executeTransition`** — state mismatch. Checks for skip overrides (consumes if present), respects the `autoWake` gate, and triggers a sleep or wake execution.
+- **`executeTransition`** — state mismatch. Respects the `autoWake` gate and triggers a sleep or wake execution.
 
 ### Execution Lifecycle
 
@@ -283,7 +249,7 @@ When a transition is triggered:
 
 ### Exception Ticker
 
-`TickExceptions()` is called periodically to manage `ScheduledException` lifecycle:
+`TickExceptions()` is called before `evaluateAll()` on each tick to manage `ScheduledException` lifecycle:
 
 - **Pending -> Active:** When `now >= StartsAt`, sets status to `"active"` and triggers the initial action based on exception type (`stay_awake` → wake, `force_sleep` → sleep). Once active, the exception also feeds into `IntendedState()` on every scheduler tick, preventing the normal schedule from overriding it.
 - **Active -> Completed:** When `now > EndsAt`, sets status to `"completed"` and optionally triggers the inverse revert action if `SleepOnEnd` is true (`stay_awake` → sleep, `force_sleep` → wake).
@@ -302,8 +268,6 @@ sequenceDiagram
     T->>PS: tick
     PS->>PS: snapshot policies
 
-    PS->>DB: ListActiveOverridesForPolicies()
-    DB-->>PS: overridesByPolicy
     PS->>DB: ListActiveExceptionsForPolicies()
     DB-->>PS: exceptionsByPolicy
 
@@ -313,8 +277,6 @@ sequenceDiagram
 
         alt no change / transitioning
             PS->>PS: skip
-        else skip override
-            PS->>DB: DeleteOverride()
         else state mismatch
             PS->>DB: SetTransitioning()
             PS->>DB: CreateExecution()
@@ -429,11 +391,11 @@ The `WindowPicker` component provides the schedule editing UI:
 
 **Source:** `frontend/src/components/policies/WeeklyTimeline.tsx`
 
-An SVG-based weekly timeline that visualizes sleep windows, overrides, and exceptions as colored blocks across a 7-day x 24-hour grid. Features:
+An SVG-based weekly timeline that visualizes sleep windows and exceptions as colored blocks across a 7-day x 24-hour grid. Features:
 
 - Renders sleep windows as brand-purple (`#7C3AED`, opacity 0.45) blocks on the appropriate day rows.
 - Awake periods are visually distinct with green (`#22C55E`, opacity 0.10, 0.18 for today) row backgrounds — awake is never empty/transparent.
-- Overlays override and exception windows in distinct colors (amber `#F59E0B`, red `#EF4444`).
+- Overlays exception windows in distinct colors (red `#EF4444` for force_sleep, green for stay_awake).
 - Shows a "now" marker line converted to the policy's timezone using `toLocaleString()`.
 - All-day windows render as full-width bars.
 - Overnight windows split across two rows (evening portion on the start day, morning portion on the next day).

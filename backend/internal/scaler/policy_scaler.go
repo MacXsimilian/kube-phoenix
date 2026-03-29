@@ -410,13 +410,19 @@ func (r *PolicyRunner) RunPolicyWake(
 		return nil, fmt.Errorf("get open snapshots: %w", err)
 	}
 
+	// When the policy carries a namespace filter (e.g. from a scoped
+	// exception), only restore snapshots that belong to those namespaces.
+	if policy.NamespaceFilter != "" {
+		snaps = filterSnapshotsByNamespace(snaps, policy.NamespaceFilter)
+	}
+
 	guardrails, err := r.store.GetGuardrails()
 	if err != nil {
 		return nil, fmt.Errorf("guardrails: %w", err)
 	}
 	snaps = sortSnapshotsByPriority(snaps, guardrails.ScalingPriorityNamespaces)
 
-	emit(logCh, "info", fmt.Sprintf("Policy wake — restoring %d snapshotted workloads", len(snaps)))
+	emit(logCh, "info", fmt.Sprintf("Policy wake — restoring %d snapshotted workloads (namespace filter: %q)", len(snaps), policy.NamespaceFilter))
 	if _, hasPriority := parsePriorityList(guardrails.ScalingPriorityNamespaces); hasPriority {
 		emit(logCh, "info", fmt.Sprintf("Scaling priority namespaces first: %s", guardrails.ScalingPriorityNamespaces))
 	}

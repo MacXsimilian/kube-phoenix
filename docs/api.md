@@ -78,9 +78,6 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 | `PUT` | `/api/policies/{id}` | Update a policy (partial update) |
 | `DELETE` | `/api/policies/{id}` | Delete a policy |
 | `GET` | `/api/policies/{id}/snapshots` | Workload snapshots for a policy (`?open=true` for un-restored only) |
-| `GET` | `/api/policies/{id}/overrides` | List overrides for a policy |
-| `POST` | `/api/policies/{id}/overrides` | Create an override |
-| `DELETE` | `/api/policies/{id}/overrides/{overrideId}` | Delete an override |
 
 ### Policy Operations -- operator and above
 

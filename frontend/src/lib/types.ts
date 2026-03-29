@@ -206,18 +206,6 @@ export interface WorkloadSnapshot {
   capturedAt: string
 }
 
-export interface PolicyOverride {
-  id: number
-  policyId: number
-  overrideType: 'stay_awake' | 'force_sleep' | 'skip_sleep' | 'skip_wake'
-  startsAt: string | null
-  endsAt: string | null
-  targetCronTime: string | null
-  reason: string
-  createdBy: string
-  createdAt: string
-}
-
 export interface WorkloadTarget {
   kind: 'Deployment' | 'StatefulSet'
   namespace: string
