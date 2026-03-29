@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.6](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.5...v0.5.6) (2026-03-29)
+
+
+### Bug Fixes
+
+* audit trigger visibility, settings page cleanup, and guardrails redesign ([#277](https://github.com/MacXsimilian/kube-phoenix/issues/277)) ([c0247dd](https://github.com/MacXsimilian/kube-phoenix/commit/c0247dd4742867e08b9a54b4e4fb31cede64902b))
+
 ## [0.5.5](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.4...v0.5.5) (2026-03-29)
 
 
