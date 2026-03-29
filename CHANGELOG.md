@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.10](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.9...v0.5.10) (2026-03-29)
+
+
+### Features
+
+* **frontend:** add mock API server for local development without backend ([#286](https://github.com/MacXsimilian/kube-phoenix/issues/286)) ([4056992](https://github.com/MacXsimilian/kube-phoenix/commit/4056992565887dc04820890bdfd8c99d9ade25c2))
+
 ## [0.5.9](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.8...v0.5.9) (2026-03-29)
 
 
