@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.13](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.12...v0.5.13) (2026-03-29)
+
+
+### Bug Fixes
+
+* **scheduler:** exception bugs and override removal ([#294](https://github.com/MacXsimilian/kube-phoenix/issues/294)) ([beaeaed](https://github.com/MacXsimilian/kube-phoenix/commit/beaeaed427c118a9af95efef47267124556a1532))
+
 ## [0.5.12](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.11...v0.5.12) (2026-03-29)
 
 
