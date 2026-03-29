@@ -227,19 +227,9 @@ export default function GuardrailsForm() {
 
       </Grid>
 
-      {/* Sticky save bar */}
       <Box
         sx={{
-          position: 'sticky',
-          bottom: 0,
-          zIndex: 10,
           mt: 3,
-          mx: -3,
-          px: 3,
-          py: 1.5,
-          bgcolor: 'background.paper',
-          borderTop: '1px solid',
-          borderColor: 'divider',
           display: 'flex',
           alignItems: 'center',
           gap: 2,

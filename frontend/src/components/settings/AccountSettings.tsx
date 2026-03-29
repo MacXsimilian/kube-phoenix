@@ -48,7 +48,7 @@ export default function AccountSettings({ user }: { user: User }) {
 
   return (
     <>
-      <Card sx={{ height: '100%' }}>
+      <Card sx={{ height: '100%', flex: 1 }}>
         <CardContent sx={{ p: 3, height: '100%', boxSizing: 'border-box' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
             <PersonOutlineIcon sx={{ color: 'text.secondary', fontSize: 20 }} />

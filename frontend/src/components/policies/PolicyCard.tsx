@@ -203,7 +203,7 @@ export default function PolicyCard({
               )}
 
               {hasSleepWindows(windows) && (
-                <MiniTimeline windows={windows} height={48} timezone={policy.timezone} />
+                <MiniTimeline windows={windows} height={72} timezone={policy.timezone} />
               )}
             </Box>
 
