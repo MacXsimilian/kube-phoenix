@@ -1,12 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useReducer } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { formatError } from '@/lib/formatters'
 import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
-import Card from '@mui/material/Card'
-import CardContent from '@mui/material/CardContent'
 import TextField from '@mui/material/TextField'
 import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
@@ -15,14 +13,13 @@ import CircularProgress from '@mui/material/CircularProgress'
 import Switch from '@mui/material/Switch'
 import Tooltip from '@mui/material/Tooltip'
 import Chip from '@mui/material/Chip'
-import Collapse from '@mui/material/Collapse'
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
 import DnsOutlinedIcon from '@mui/icons-material/DnsOutlined'
 import SwapVertIcon from '@mui/icons-material/SwapVert'
 import ScheduleIcon from '@mui/icons-material/Schedule'
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import CenteredSpinner from '@/components/common/CenteredSpinner'
 import { ChipInput } from '@/components/common/ChipInput'
+import CategoryCard from '@/components/guardrails/CategoryCard'
 import { AMBER_40, AMBER_03 } from '@/components/guardrails/ProtectedChipInput'
 import SaveIcon from '@mui/icons-material/Save'
 import { getGuardrails, updateGuardrails } from '@/lib/api'
@@ -31,7 +28,18 @@ import { canEditGuardrails } from '@/lib/rbac'
 import { useSnackbar } from '@/lib/useSnackbar'
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges'
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const SECTION = {
+  NAMESPACES: 'namespaces',
+  NODES: 'nodes',
+  SCALING: 'scaling',
+  SCHEDULER: 'scheduler',
+} as const
+
+type Section = typeof SECTION[keyof typeof SECTION]
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function joinCommaList(arr: string[]) { return arr.join(',') }
 function splitCommaList(s: string) { return s.split(',').map((v) => v.trim()).filter(Boolean) }
@@ -47,7 +55,77 @@ function validateEvalInterval(value: string): string | undefined {
   return undefined
 }
 
-// ── Main form ─────────────────────────────────────────────────────────────────
+// ── Form state ───────────────────────────────────────────────────────────────
+
+interface FormState {
+  systemNs: string[]
+  skipNsNode: string[]
+  skipLabels: string[]
+  skipTaints: string[]
+  priorityNs: string[]
+  evalInterval: string
+  autoWake: boolean
+  reconcileWhileAwake: boolean
+  protectCriticalPodNodes: boolean
+}
+
+const INITIAL_FORM: FormState = {
+  systemNs: [],
+  skipNsNode: [],
+  skipLabels: [],
+  skipTaints: [],
+  priorityNs: [],
+  evalInterval: '30s',
+  autoWake: true,
+  reconcileWhileAwake: true,
+  protectCriticalPodNodes: true,
+}
+
+type FormAction =
+  | { type: 'SET'; payload: FormState }
+  | { type: 'SET_FIELD'; field: keyof FormState; value: FormState[keyof FormState] }
+
+function formReducer(state: FormState, action: FormAction): FormState {
+  switch (action.type) {
+    case 'SET': return action.payload
+    case 'SET_FIELD': return { ...state, [action.field]: action.value }
+  }
+}
+
+interface Snapshot {
+  systemNs: string
+  skipNsNode: string
+  skipLabels: string
+  skipTaints: string
+  priorityNs: string
+  evalInterval: string
+  autoWake: boolean
+  reconcileWhileAwake: boolean
+  protectCriticalPodNodes: boolean
+}
+
+function buildSnapshot(form: FormState): Snapshot {
+  return {
+    systemNs: joinCommaList(form.systemNs),
+    skipNsNode: joinCommaList(form.skipNsNode),
+    skipLabels: joinCommaList(form.skipLabels),
+    skipTaints: joinCommaList(form.skipTaints),
+    priorityNs: joinCommaList(form.priorityNs),
+    evalInterval: form.evalInterval.trim(),
+    autoWake: form.autoWake,
+    reconcileWhileAwake: form.reconcileWhileAwake,
+    protectCriticalPodNodes: form.protectCriticalPodNodes,
+  }
+}
+
+function isDirty(form: FormState, snapshot: Snapshot): boolean {
+  const current = buildSnapshot(form)
+  return (Object.keys(current) as (keyof Snapshot)[]).some(
+    (key) => current[key] !== snapshot[key],
+  )
+}
+
+// ── Main form ────────────────────────────────────────────────────────────────
 
 export default function GuardrailsForm() {
   const { user } = useAuth()
@@ -55,98 +133,65 @@ export default function GuardrailsForm() {
   const queryClient = useQueryClient()
   const { data: guardrails, isLoading, isError: loadError } = useQuery({ queryKey: ['guardrails'], queryFn: getGuardrails })
 
-  const [expanded, setExpanded] = useState<string | null>(null)
-  const [systemNs, setSystemNs] = useState<string[]>([])
-  const [skipNsNode, setSkipNsNode] = useState<string[]>([])
-  const [skipLabels, setSkipLabels] = useState<string[]>([])
-  const [skipTaints, setSkipTaints] = useState<string[]>([])
-  const [priorityNs, setPriorityNs] = useState<string[]>([])
-  const [evalInterval, setEvalInterval] = useState('30s')
-  const [autoWake, setAutoWake] = useState(true)
-  const [reconcileWhileAwake, setReconcileWhileAwake] = useState(true)
-  const [protectCriticalPodNodes, setProtectCriticalPodNodes] = useState(true)
+  const [expanded, setExpanded] = useState<Section | null>(null)
+  const [form, dispatch] = useReducer(formReducer, INITIAL_FORM)
   const { notify, SnackbarAlert } = useSnackbar()
   const { setDirty } = useUnsavedChanges()
   const [saveError, setSaveError] = useState<string | null>(null)
   const initialised = useRef(false)
-  const savedSnapshot = useRef({ systemNs: '', skipNsNode: '', skipLabels: '', skipTaints: '', priorityNs: '', evalInterval: '30s', autoWake: true, reconcileWhileAwake: true, protectCriticalPodNodes: true })
+  const savedSnapshot = useRef<Snapshot>(buildSnapshot(INITIAL_FORM))
+
+  const setField = <K extends keyof FormState>(field: K, value: FormState[K]) =>
+    dispatch({ type: 'SET_FIELD', field, value })
 
   useEffect(() => {
     if (guardrails && !initialised.current) {
       initialised.current = true
-      const sns = splitCommaList(guardrails.systemNamespaces).sort()
-      setSystemNs(sns)
-      setSkipNsNode(splitCommaList(guardrails.skipNsNode))
-      setSkipLabels(splitCommaList(guardrails.skipNodeLabels))
-      setSkipTaints(splitCommaList(guardrails.skipNodeTaints))
-      setPriorityNs(splitCommaList(guardrails.scalingPriorityNamespaces))
-      setEvalInterval(guardrails.schedulerEvalInterval)
-      setAutoWake(guardrails.schedulerAutoWake)
-      setReconcileWhileAwake(guardrails.schedulerReconcileWhileAwake)
-      setProtectCriticalPodNodes(guardrails.protectCriticalPodNodes)
-      savedSnapshot.current = {
-        systemNs: joinCommaList(sns),
-        skipNsNode: guardrails.skipNsNode,
-        skipLabels: guardrails.skipNodeLabels,
-        skipTaints: guardrails.skipNodeTaints,
-        priorityNs: guardrails.scalingPriorityNamespaces,
+      const loaded: FormState = {
+        systemNs: splitCommaList(guardrails.systemNamespaces).sort(),
+        skipNsNode: splitCommaList(guardrails.skipNsNode),
+        skipLabels: splitCommaList(guardrails.skipNodeLabels),
+        skipTaints: splitCommaList(guardrails.skipNodeTaints),
+        priorityNs: splitCommaList(guardrails.scalingPriorityNamespaces),
         evalInterval: guardrails.schedulerEvalInterval,
         autoWake: guardrails.schedulerAutoWake,
         reconcileWhileAwake: guardrails.schedulerReconcileWhileAwake,
         protectCriticalPodNodes: guardrails.protectCriticalPodNodes,
       }
+      dispatch({ type: 'SET', payload: loaded })
+      savedSnapshot.current = buildSnapshot(loaded)
     }
   }, [guardrails])
 
   useEffect(() => {
-    const s = savedSnapshot.current
-    const dirty =
-      joinCommaList(systemNs) !== s.systemNs ||
-      joinCommaList(skipNsNode) !== s.skipNsNode ||
-      joinCommaList(skipLabels) !== s.skipLabels ||
-      joinCommaList(skipTaints) !== s.skipTaints ||
-      joinCommaList(priorityNs) !== s.priorityNs ||
-      evalInterval !== s.evalInterval ||
-      autoWake !== s.autoWake ||
-      reconcileWhileAwake !== s.reconcileWhileAwake ||
-      protectCriticalPodNodes !== s.protectCriticalPodNodes
-    setDirty(dirty)
-  }, [systemNs, skipNsNode, skipLabels, skipTaints, priorityNs, evalInterval, autoWake, reconcileWhileAwake, protectCriticalPodNodes, setDirty])
+    setDirty(isDirty(form, savedSnapshot.current))
+  }, [form, setDirty])
 
   useEffect(() => () => setDirty(false), [setDirty])
 
-  const evalIntervalError = validateEvalInterval(evalInterval)
+  const evalIntervalError = validateEvalInterval(form.evalInterval)
   const evalIntervalValid = !evalIntervalError
 
   const save = useMutation({
     mutationFn: () => {
       if (!evalIntervalValid) return Promise.reject(new Error(evalIntervalError))
+      const snapshot = buildSnapshot(form)
       return updateGuardrails({
-        systemNamespaces: joinCommaList(systemNs),
-        skipNsNode: joinCommaList(skipNsNode),
-        skipNodeLabels: joinCommaList(skipLabels),
-        skipNodeTaints: joinCommaList(skipTaints),
-        scalingPriorityNamespaces: joinCommaList(priorityNs),
-        schedulerEvalInterval: evalInterval.trim(),
-        schedulerAutoWake: autoWake,
-        schedulerReconcileWhileAwake: reconcileWhileAwake,
-        protectCriticalPodNodes,
+        systemNamespaces: snapshot.systemNs,
+        skipNsNode: snapshot.skipNsNode,
+        skipNodeLabels: snapshot.skipLabels,
+        skipNodeTaints: snapshot.skipTaints,
+        scalingPriorityNamespaces: snapshot.priorityNs,
+        schedulerEvalInterval: snapshot.evalInterval,
+        schedulerAutoWake: snapshot.autoWake,
+        schedulerReconcileWhileAwake: snapshot.reconcileWhileAwake,
+        protectCriticalPodNodes: snapshot.protectCriticalPodNodes,
       })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['guardrails'] })
       setSaveError(null)
-      savedSnapshot.current = {
-        systemNs: joinCommaList(systemNs),
-        skipNsNode: joinCommaList(skipNsNode),
-        skipLabels: joinCommaList(skipLabels),
-        skipTaints: joinCommaList(skipTaints),
-        priorityNs: joinCommaList(priorityNs),
-        evalInterval: evalInterval.trim(),
-        autoWake,
-        reconcileWhileAwake,
-        protectCriticalPodNodes,
-      }
+      savedSnapshot.current = buildSnapshot(form)
       setDirty(false)
       notify('Guardrails saved successfully.', 'success')
     },
@@ -163,8 +208,13 @@ export default function GuardrailsForm() {
     return <Alert severity="error">Could not load guardrails — please refresh the page.</Alert>
   }
 
-  const toggle = (key: string) => setExpanded(expanded === key ? null : key)
-  const nodeRuleCount = (skipNsNode.length > 0 ? 1 : 0) + (skipLabels.length > 0 ? 1 : 0) + (skipTaints.length > 0 ? 1 : 0) + (protectCriticalPodNodes ? 1 : 0)
+  const toggle = (key: Section) => setExpanded(expanded === key ? null : key)
+
+  const nodeRuleCount =
+    (form.skipNsNode.length > 0 ? 1 : 0) +
+    (form.skipLabels.length > 0 ? 1 : 0) +
+    (form.skipTaints.length > 0 ? 1 : 0) +
+    (form.protectCriticalPodNodes ? 1 : 0)
 
   return (
     <>
@@ -177,176 +227,141 @@ export default function GuardrailsForm() {
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
 
         {/* ── 1. System-Protected Namespaces ──────────────────────── */}
-        <Card variant="outlined" sx={{ borderColor: AMBER_40, bgcolor: AMBER_03 }}>
-          <Box onClick={() => toggle('namespaces')} sx={{ cursor: 'pointer' }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Box sx={{ width: 40, height: 40, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(245,158,11,.08)' }}>
-                  <ShieldOutlinedIcon sx={{ color: 'warning.main' }} />
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body1" fontWeight={700} fontSize={14}>System-Protected Namespaces</Typography>
-                  <Typography variant="caption" color="text.secondary">Namespaces that are never scaled down</Typography>
-                </Box>
-                {expanded !== 'namespaces' && (
-                  <Chip label={`${systemNs.length} protected`} size="small" sx={{ bgcolor: 'rgba(245,158,11,.12)', color: 'warning.main', fontWeight: 600, fontSize: 11 }} />
-                )}
-                <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', transform: expanded === 'namespaces' ? 'rotate(180deg)' : 'none', transition: '.2s' }} />
-              </Box>
-            </CardContent>
-          </Box>
-          <Collapse in={expanded === 'namespaces'}>
-            <Divider sx={{ borderColor: AMBER_40 }} />
-            <CardContent sx={{ px: 2.5, pb: 2.5, pt: 1.5 }}>
-              <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
-                Workloads in these namespaces are never scaled down or drained. Only remove an entry if you know what you are doing.
-              </Typography>
-              <ChipInput
-                id="chip-input-system-ns"
-                values={systemNs}
-                onChange={(v) => setSystemNs([...v].sort())}
-                readOnly={!hasEdit}
-                containerSx={{ borderColor: AMBER_40, bgcolor: 'rgba(245,158,11,0.06)', '&:focus-within': { borderColor: AMBER_40 } }}
-                chipSx={{ bgcolor: 'rgba(245,158,11,0.12)', color: 'warning.main', '& .MuiChip-deleteIcon': { color: 'warning.main', opacity: 0.6, '&:hover': { opacity: 1 } } }}
-              />
-            </CardContent>
-          </Collapse>
-        </Card>
+        <CategoryCard
+          icon={<ShieldOutlinedIcon sx={{ color: 'warning.main' }} />}
+          title="System-Protected Namespaces"
+          subtitle="Namespaces that are never scaled down"
+          expanded={expanded === SECTION.NAMESPACES}
+          onToggle={() => toggle(SECTION.NAMESPACES)}
+          pills={
+            <Chip label={`${form.systemNs.length} protected`} size="small" sx={{ bgcolor: 'rgba(245,158,11,.12)', color: 'warning.main', fontWeight: 600, fontSize: 11 }} />
+          }
+          cardSx={{ borderColor: AMBER_40, bgcolor: AMBER_03 }}
+          dividerSx={{ borderColor: AMBER_40 }}
+        >
+          <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+            Workloads in these namespaces are never scaled down or drained. Only remove an entry if you know what you are doing.
+          </Typography>
+          <ChipInput
+            id="chip-input-system-ns"
+            values={form.systemNs}
+            onChange={(v) => setField('systemNs', [...v].sort())}
+            readOnly={!hasEdit}
+            containerSx={{
+              borderColor: AMBER_40,
+              bgcolor: 'rgba(245,158,11,0.06)',
+              '&:focus-within': { borderColor: AMBER_40 },
+            }}
+            chipSx={{
+              bgcolor: 'rgba(245,158,11,0.12)',
+              color: 'warning.main',
+              '& .MuiChip-deleteIcon': { color: 'warning.main', opacity: 0.6, '&:hover': { opacity: 1 } },
+            }}
+          />
+        </CategoryCard>
 
         {/* ── 2. Node Protection ──────────────────────────────────── */}
-        <Card variant="outlined">
-          <Box onClick={() => toggle('nodes')} sx={{ cursor: 'pointer' }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Box sx={{ width: 40, height: 40, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover' }}>
-                  <DnsOutlinedIcon sx={{ color: 'text.secondary' }} />
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body1" fontWeight={700} fontSize={14}>Node Protection</Typography>
-                  <Typography variant="caption" color="text.secondary">Rules that prevent node draining</Typography>
-                </Box>
-                {expanded !== 'nodes' && (
-                  <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    <Chip label={protectCriticalPodNodes ? 'Critical: ON' : 'Critical: OFF'} size="small" sx={{ fontSize: 11 }} />
-                    <Chip label={`${nodeRuleCount} rules`} size="small" sx={{ fontSize: 11 }} />
-                  </Box>
-                )}
-                <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', transform: expanded === 'nodes' ? 'rotate(180deg)' : 'none', transition: '.2s' }} />
-              </Box>
-            </CardContent>
+        <CategoryCard
+          icon={<DnsOutlinedIcon sx={{ color: 'text.secondary' }} />}
+          title="Node Protection"
+          subtitle="Rules that prevent node draining"
+          expanded={expanded === SECTION.NODES}
+          onToggle={() => toggle(SECTION.NODES)}
+          pills={
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
+              <Chip label={form.protectCriticalPodNodes ? 'Critical: ON' : 'Critical: OFF'} size="small" sx={{ fontSize: 11 }} />
+              <Chip label={`${nodeRuleCount} rules`} size="small" sx={{ fontSize: 11 }} />
+            </Box>
+          }
+        >
+          <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+            Nodes matching these rules will never be drained, even if idle.
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+            <Box>
+              <Typography variant="body2" fontWeight={600}>Protect Critical Priority Pods</Typography>
+              <Typography variant="caption" color="text.secondary">Never drain nodes running system-critical pods</Typography>
+            </Box>
+            <Switch checked={form.protectCriticalPodNodes} disabled={!hasEdit} onChange={(e) => setField('protectCriticalPodNodes', e.target.checked)} />
           </Box>
-          <Collapse in={expanded === 'nodes'}>
-            <Divider />
-            <CardContent sx={{ px: 2.5, pb: 2.5, pt: 1.5 }}>
-              <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
-                Nodes matching these rules will never be drained, even if idle.
-              </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                <Box>
-                  <Typography variant="body2" fontWeight={600}>Protect Critical Priority Pods</Typography>
-                  <Typography variant="caption" color="text.secondary">Never drain nodes running system-critical pods</Typography>
-                </Box>
-                <Switch checked={protectCriticalPodNodes} disabled={!hasEdit} onChange={(e) => setProtectCriticalPodNodes(e.target.checked)} />
-              </Box>
-              <Divider sx={{ my: 2 }} />
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-                <ChipInput id="chip-input-critical-ns" label="Critical Namespaces (protect nodes)" hint="Nodes running pods from these namespaces are never drained" values={skipNsNode} onChange={setSkipNsNode} readOnly={!hasEdit} />
-                <ChipInput id="chip-input-skip-labels" label="Skip Node Labels" hint="key=value format, e.g. karpenter.k8s.aws/ec2nodeclass=default" values={skipLabels} onChange={setSkipLabels} readOnly={!hasEdit} />
-                <ChipInput id="chip-input-skip-taints" label="Skip Node Taints" hint="key=value:effect format, e.g. karpenter-eks-base=true:NoSchedule" values={skipTaints} onChange={setSkipTaints} readOnly={!hasEdit} />
-              </Box>
-            </CardContent>
-          </Collapse>
-        </Card>
+          <Divider sx={{ my: 2 }} />
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+            <ChipInput id="chip-input-critical-ns" label="Critical Namespaces (protect nodes)" hint="Nodes running pods from these namespaces are never drained" values={form.skipNsNode} onChange={(v) => setField('skipNsNode', v)} readOnly={!hasEdit} />
+            <ChipInput id="chip-input-skip-labels" label="Skip Node Labels" hint="key=value format, e.g. karpenter.k8s.aws/ec2nodeclass=default" values={form.skipLabels} onChange={(v) => setField('skipLabels', v)} readOnly={!hasEdit} />
+            <ChipInput id="chip-input-skip-taints" label="Skip Node Taints" hint="key=value:effect format, e.g. karpenter-eks-base=true:NoSchedule" values={form.skipTaints} onChange={(v) => setField('skipTaints', v)} readOnly={!hasEdit} />
+          </Box>
+        </CategoryCard>
 
         {/* ── 3. Scaling Priority ─────────────────────────────────── */}
-        <Card variant="outlined">
-          <Box onClick={() => toggle('scaling')} sx={{ cursor: 'pointer' }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Box sx={{ width: 40, height: 40, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover' }}>
-                  <SwapVertIcon sx={{ color: 'text.secondary' }} />
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body1" fontWeight={700} fontSize={14}>Scaling Priority</Typography>
-                  <Typography variant="caption" color="text.secondary">Wake-up order for namespaces</Typography>
-                </Box>
-                {expanded !== 'scaling' && (
-                  <Chip label={`${priorityNs.length} priority ns`} size="small" sx={{ fontSize: 11 }} />
-                )}
-                <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', transform: expanded === 'scaling' ? 'rotate(180deg)' : 'none', transition: '.2s' }} />
-              </Box>
-            </CardContent>
-          </Box>
-          <Collapse in={expanded === 'scaling'}>
-            <Divider />
-            <CardContent sx={{ px: 2.5, pb: 2.5, pt: 1.5 }}>
-              <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
-                These namespaces are scaled first during wake-up, in listed order.
-              </Typography>
-              <ChipInput id="chip-input-priority-ns" label="Priority Namespaces" hint="Add namespaces in the order they should be scaled" values={priorityNs} onChange={setPriorityNs} readOnly={!hasEdit} />
-            </CardContent>
-          </Collapse>
-        </Card>
+        <CategoryCard
+          icon={<SwapVertIcon sx={{ color: 'text.secondary' }} />}
+          title="Scaling Priority"
+          subtitle="Wake-up order for namespaces"
+          expanded={expanded === SECTION.SCALING}
+          onToggle={() => toggle(SECTION.SCALING)}
+          pills={
+            <Chip label={`${form.priorityNs.length} priority ns`} size="small" sx={{ fontSize: 11 }} />
+          }
+        >
+          <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+            These namespaces are scaled first during wake-up, in listed order.
+          </Typography>
+          <ChipInput id="chip-input-priority-ns" label="Priority Namespaces" hint="Add namespaces in the order they should be scaled" values={form.priorityNs} onChange={(v) => setField('priorityNs', v)} readOnly={!hasEdit} />
+        </CategoryCard>
 
         {/* ── 4. Scheduler Behaviour ──────────────────────────────── */}
-        <Card variant="outlined">
-          <Box onClick={() => toggle('scheduler')} sx={{ cursor: 'pointer' }}>
-            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Box sx={{ width: 40, height: 40, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover' }}>
-                  <ScheduleIcon sx={{ color: 'text.secondary' }} />
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body1" fontWeight={700} fontSize={14}>Scheduler Behaviour</Typography>
-                  <Typography variant="caption" color="text.secondary">Evaluation loop configuration</Typography>
-                </Box>
-                {expanded !== 'scheduler' && (
-                  <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    <Chip label={evalInterval} size="small" sx={{ fontSize: 11, fontFamily: 'monospace' }} />
-                    <Chip label={autoWake ? 'Wake: ON' : 'Wake: OFF'} size="small" sx={{ fontSize: 11 }} />
-                    <Chip label={reconcileWhileAwake ? 'Reconcile: ON' : 'Reconcile: OFF'} size="small" sx={{ fontSize: 11 }} />
-                  </Box>
-                )}
-                <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', transform: expanded === 'scheduler' ? 'rotate(180deg)' : 'none', transition: '.2s' }} />
+        <CategoryCard
+          icon={<ScheduleIcon sx={{ color: 'text.secondary' }} />}
+          title="Scheduler Behaviour"
+          subtitle="Evaluation loop configuration"
+          expanded={expanded === SECTION.SCHEDULER}
+          onToggle={() => toggle(SECTION.SCHEDULER)}
+          pills={
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
+              <Chip label={form.evalInterval} size="small" sx={{ fontSize: 11, fontFamily: 'monospace' }} />
+              <Chip label={form.autoWake ? 'Wake: ON' : 'Wake: OFF'} size="small" sx={{ fontSize: 11 }} />
+              <Chip label={form.reconcileWhileAwake ? 'Reconcile: ON' : 'Reconcile: OFF'} size="small" sx={{ fontSize: 11 }} />
+            </Box>
+          }
+        >
+          <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+            Control how the policy evaluation loop runs.
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: '8px 8px 0 0' }}>
+              <Box>
+                <Typography variant="body2" fontWeight={600}>Eval Interval</Typography>
+                <Typography variant="caption" color="text.secondary">How often the scheduler evaluates policy state</Typography>
               </Box>
-            </CardContent>
+              <TextField size="small" value={form.evalInterval} disabled={!hasEdit} error={!evalIntervalValid} onChange={(e) => setField('evalInterval', e.target.value)} slotProps={{ htmlInput: { style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} />
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none' }}>
+              <Box>
+                <Typography variant="body2" fontWeight={600}>Auto Wake</Typography>
+                <Typography variant="caption" color="text.secondary">Automatically wake clusters when outside a sleep window</Typography>
+              </Box>
+              <Switch checked={form.autoWake} disabled={!hasEdit} onChange={(e) => setField('autoWake', e.target.checked)} />
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none', borderRadius: '0 0 8px 8px' }}>
+              <Box>
+                <Typography variant="body2" fontWeight={600}>Reconcile While Awake</Typography>
+                <Typography variant="caption" color="text.secondary">Re-evaluate policies during awake windows to correct drift</Typography>
+              </Box>
+              <Switch checked={form.reconcileWhileAwake} disabled={!hasEdit} onChange={(e) => setField('reconcileWhileAwake', e.target.checked)} />
+            </Box>
           </Box>
-          <Collapse in={expanded === 'scheduler'}>
-            <Divider />
-            <CardContent sx={{ px: 2.5, pb: 2.5, pt: 1.5 }}>
-              <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
-                Control how the policy evaluation loop runs.
-              </Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: '8px 8px 0 0' }}>
-                  <Box>
-                    <Typography variant="body2" fontWeight={600}>Eval Interval</Typography>
-                    <Typography variant="caption" color="text.secondary">How often the scheduler evaluates policy state</Typography>
-                  </Box>
-                  <TextField size="small" value={evalInterval} disabled={!hasEdit} error={!evalIntervalValid} onChange={(e) => setEvalInterval(e.target.value)} slotProps={{ htmlInput: { style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} />
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none' }}>
-                  <Box>
-                    <Typography variant="body2" fontWeight={600}>Auto Wake</Typography>
-                    <Typography variant="caption" color="text.secondary">Automatically wake clusters when outside a sleep window</Typography>
-                  </Box>
-                  <Switch checked={autoWake} disabled={!hasEdit} onChange={(e) => setAutoWake(e.target.checked)} />
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none', borderRadius: '0 0 8px 8px' }}>
-                  <Box>
-                    <Typography variant="body2" fontWeight={600}>Reconcile While Awake</Typography>
-                    <Typography variant="caption" color="text.secondary">Re-evaluate policies during awake windows to correct drift</Typography>
-                  </Box>
-                  <Switch checked={reconcileWhileAwake} disabled={!hasEdit} onChange={(e) => setReconcileWhileAwake(e.target.checked)} />
-                </Box>
-              </Box>
-            </CardContent>
-          </Collapse>
-        </Card>
+        </CategoryCard>
 
       </Box>
 
-      <Box sx={{ mt: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+      <Box
+        sx={{
+          mt: 3,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2,
+        }}
+      >
         <Tooltip title={hasEdit ? '' : 'You do not have permission to edit guardrails'}>
           <span>
             <Button
