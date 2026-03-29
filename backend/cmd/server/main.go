@@ -100,13 +100,6 @@ func main() {
 			os.Exit(1)
 		}
 		defer policySched.Stop()
-		tickerWg.Add(1)
-		go func() {
-			defer tickerWg.Done()
-			runTicker(ctx, time.Minute, "exception-tick", func() {
-				policySched.TickExceptions(ctx)
-			})
-		}()
 	}
 
 	retentionDays := parseIntEnv("AUDIT_RETENTION_DAYS", 90)

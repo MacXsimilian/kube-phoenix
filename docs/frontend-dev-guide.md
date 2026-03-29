@@ -754,13 +754,15 @@ The execution log viewer is a resizable right-side drawer. Data fetching and Web
 
 `src/components/policies/ExceptionDialog.tsx`
 
-Handles both create and edit modes. Key datetime handling:
+Handles both create and edit modes. When opened without a `defaultPolicyId` (e.g. from the standalone Exceptions page), a policy dropdown is shown, lazy-loaded via `useQuery`. When opened from a policy detail page, the policy is pre-selected and the dropdown is hidden.
+
+Key datetime handling:
 
 - The dialog stores dates in two formats: `startsAtLocal` (for the `datetime-local` input) and `startsAt` (ISO string for the API)
 - `toLocalDatetimeInput(iso)` converts an ISO string to `YYYY-MM-DDTHH:mm` format for the input
 - `toISO(localDT)` converts the local datetime-local value back to ISO via `new Date(localDT).toISOString()`
 - Times are always displayed with a note: "Times are in your browser's local timezone"
-- Validation checks: start must be in the future (for new exceptions), end must be after start
+- Validation checks: policy must be selected, start must be in the future (for new exceptions), end must be after start
 
 #### ExceptionsSection / OverridesSection
 
@@ -782,11 +784,13 @@ Displays a paginated, filterable table of audit log entries. Gated by the `audit
 |:-----|:--------|
 | `auditDiff.ts` | Pure helpers: `flattenToLeaves`, `classifyLine`, `computeDiff`, `isEmptySnapshot`, `downloadCSV`. Shared by `JsonDiffView` and the page. |
 | `auditFormatters.ts` | `ACTION_LABELS` map, `formatActionLabel()`, and `actionColor()`. Moved from `lib/statusColors.ts` to co-locate with audit components. |
-| `AuditRow.tsx` | Expandable table row with diff toggle. Renders the action label, username, timestamp, and expand chevron. |
+| `AuditRow.tsx` | Expandable table row with diff toggle. Renders the action label, username, timestamp (browser-local time with UTC tooltip on hover), and expand chevron. |
 | `DiffLineRow.tsx` | Single classified diff line with prefix symbol (`+`, `-`, `~`, ` `) and colour coding. |
 | `JsonDiffView.tsx` | Renders the full diff panel: iterates classified lines via `DiffLineRow`, shows change count summary. |
 
-**Filters:** `User` (debounced via `useDebouncedValue`, exact-match) and `Action` (dropdown built from `ACTION_LABELS`). Both reset pagination to page 0 on change.
+**Timestamps:** Displayed in the browser's local timezone via `fmtDt()`, with a MUI `Tooltip` showing the UTC value on hover. The column header includes a hint: "local time, hover for UTC".
+
+**Filters:** `User` (debounced via `useDebouncedValue`, exact-match), `Action` (dropdown built from `ACTION_LABELS`), and `From`/`To` date range filters. Date filters use local midnight (not UTC midnight) so filtering by date matches the displayed timestamps. All filters reset pagination to page 0 on change.
 
 **Expandable diff rows:** Entries that carry `before` or `after` data show an expand chevron. Clicking it opens a `JsonDiffView` panel inside a `Collapse`.
 
@@ -890,7 +894,7 @@ The form also includes a "Scheduler Behaviour" card with four controls: an `Eval
 | `timeUntil(iso)` | `string -> string` | ISO to countdown: `"now"`, `"in 5m"`, `"in 2h 30m"`, `"in 5d 8h"` | ClusterStatusCard, PolicyCard, PolicyDetailPage |
 | `pct(used, total)` | `(number, number) -> number` | Safe percentage: returns 0 when total is 0 | NodesTable, NodeDetailDrawer |
 | `pctColor(p, isDark)` | `(number, boolean) -> string` | Color by percentage threshold using named constants (`PCT_WARNING` = 65%, `PCT_CRITICAL` = 85%): green < warning, amber warning-critical, red >= critical | NodesTable, NodeDetailDrawer |
-| `fmtDt(iso)` | `string \| null -> string` | ISO to locale string, or em-dash for null | PolicyDetailPage, ExceptionsSection, OverridesSection, ExceptionsPage |
+| `fmtDt(iso)` | `string \| null -> string` | ISO to locale string, or em-dash for null | PolicyDetailPage, ExceptionsSection, OverridesSection, ExceptionsPage, AuditRow |
 | `fmtDtShort(iso)` | `string \| null -> string` | ISO to short date with year: `"Mar 24, 2026, 2:15 PM"` | ExecutionTable, ExecutionHistoryTable |
 | `fmtDuration(start, end)` | `(string, string \| null) -> string` | Duration between two ISO timestamps: `"5s"`, `"2m 30s"`, or `"Running…"` | ExecutionTable, ExecutionHistoryTable |
 | `formatError(e)` | `unknown -> string` | Extract human-readable message from a caught error | Mutations across all pages |

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -16,7 +16,7 @@ import { formatError } from '@/lib/formatters'
 import CircularProgress from '@mui/material/CircularProgress'
 import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
-import { createException, updateException } from '@/lib/api'
+import { createException, updateException, getPolicies } from '@/lib/api'
 import type { ScheduledException, ScheduledExceptionInput } from '@/lib/types'
 
 function isoToLocalInput(iso: string | undefined): string {
@@ -56,6 +56,13 @@ export default function ExceptionDialog({
   defaultPolicyId?: number
 }) {
   const queryClient = useQueryClient()
+  const showPolicyPicker = !defaultPolicyId && !existing
+
+  const { data: policies } = useQuery({
+    queryKey: ['policies'],
+    queryFn: getPolicies,
+    enabled: open && showPolicyPicker,
+  })
 
   const [form, setForm] = useState<ScheduledExceptionInput>({ ...EMPTY_FORM })
   const [localTimes, setLocalTimes] = useState({ startsAt: '', endsAt: '' })
@@ -96,6 +103,7 @@ export default function ExceptionDialog({
   }
 
   function validate(): string {
+    if (!form.policyId) return 'Policy is required'
     if (!localTimes.startsAt) return 'Start time is required'
     if (!localTimes.endsAt) return 'End time is required'
     const start = new Date(localTimes.startsAt)
@@ -151,6 +159,23 @@ export default function ExceptionDialog({
       <DialogTitle fontWeight={700}>{existing ? 'Edit Exception' : 'New Exception'}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '20px !important' }}>
         {error && <Alert severity="error">{error}</Alert>}
+
+        {showPolicyPicker && (
+          <TextField
+            label="Policy"
+            value={form.policyId ?? ''}
+            onChange={e => setField('policyId', e.target.value ? Number(e.target.value) : undefined)}
+            select
+            fullWidth
+            size="small"
+            required
+          >
+            <MenuItem value="" disabled>Select a policy</MenuItem>
+            {policies?.map(p => (
+              <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+            ))}
+          </TextField>
+        )}
 
         <TextField
           label="Exception Type"

@@ -162,6 +162,12 @@ func validateSchedulerEvalInterval(s string) string {
 	if err != nil || d <= 0 {
 		return "schedulerEvalInterval must be a valid positive duration (e.g. 30s, 1m)"
 	}
+	if d < 10*time.Second {
+		return "schedulerEvalInterval must be at least 10s"
+	}
+	if d > 15*time.Minute {
+		return "schedulerEvalInterval must not exceed 15m"
+	}
 	return ""
 }
 

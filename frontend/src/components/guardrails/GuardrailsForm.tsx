@@ -29,6 +29,17 @@ import { useSnackbar } from '@/lib/useSnackbar'
 function joinCommaList(arr: string[]) { return arr.join(',') }
 function splitCommaList(s: string) { return s.split(',').map((v) => v.trim()).filter(Boolean) }
 
+function validateEvalInterval(value: string): string | undefined {
+  const v = value.trim()
+  if (!/^(\d+(s|m))+$/.test(v)) return 'Must be a valid duration (e.g. 30s, 1m, 2m)'
+  const min = v.match(/(\d+)m/)?.[1] ? Number(v.match(/(\d+)m/)![1]) * 60 : 0
+  const s = v.match(/(\d+)s/)?.[1] ? Number(v.match(/(\d+)s/)![1]) : 0
+  const total = min + s
+  if (total < 10) return 'Must be at least 10s'
+  if (total > 900) return 'Must not exceed 15m'
+  return undefined
+}
+
 // ── Main form ─────────────────────────────────────────────────────────────────
 
 export default function GuardrailsForm() {
@@ -63,9 +74,8 @@ export default function GuardrailsForm() {
     }
   }, [guardrails])
 
-  const evalIntervalValid = /^(\d+(ns|us|µs|ms|s|m|h))+$/.test(evalInterval.trim())
-    && !/^0+(ns|us|µs|ms|s|m|h)$/.test(evalInterval.trim())
-  const evalIntervalError = evalIntervalValid ? undefined : 'Must be a valid duration (e.g. 30s, 1m, 2m)'
+  const evalIntervalError = validateEvalInterval(evalInterval)
+  const evalIntervalValid = !evalIntervalError
 
   const save = useMutation({
     mutationFn: () => {
