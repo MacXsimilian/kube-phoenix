@@ -9,6 +9,7 @@ spec:
   type: {{ .Values.service.type }}
   selector:
     {{- include "kube-phoenix.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: server
   ports:
     - name: http
       port: {{ .Values.service.port }}
