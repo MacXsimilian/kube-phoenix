@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.8](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.7...v0.5.8) (2026-03-29)
+
+
+### Bug Fixes
+
+* audit log timezone, exception policy selector, eval interval bounds, and scheduler unification ([#281](https://github.com/MacXsimilian/kube-phoenix/issues/281)) ([5baf25b](https://github.com/MacXsimilian/kube-phoenix/commit/5baf25b97325b90e1ef6efe20541e07e8e894a2b))
+
 ## [0.5.7](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.6...v0.5.7) (2026-03-29)
 
 
