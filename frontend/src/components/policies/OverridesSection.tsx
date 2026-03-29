@@ -13,6 +13,7 @@ import TableHead from '@mui/material/TableHead'
 import TableBody from '@mui/material/TableBody'
 import TableRow from '@mui/material/TableRow'
 import TableCell from '@mui/material/TableCell'
+import { TABLE_HEAD_CELL_SX } from '@/lib/tableStyles'
 import IconButton from '@mui/material/IconButton'
 import ConfirmDialog from '@/components/common/ConfirmDialog'
 import AddIcon from '@mui/icons-material/Add'
@@ -68,10 +69,10 @@ export default function OverridesSection({
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Type</TableCell>
-                <TableCell>Window / Target</TableCell>
-                <TableCell>Reason</TableCell>
-                <TableCell>By</TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>Type</TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>Window / Target</TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>Reason</TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>By</TableCell>
                 <TableCell />
               </TableRow>
             </TableHead>

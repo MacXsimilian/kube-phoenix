@@ -10,6 +10,7 @@ import TableHead from '@mui/material/TableHead'
 import TableBody from '@mui/material/TableBody'
 import TableRow from '@mui/material/TableRow'
 import TableCell from '@mui/material/TableCell'
+import { TABLE_HEAD_CELL_SX } from '@/lib/tableStyles'
 import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
 import CircularProgress from '@mui/material/CircularProgress'
@@ -69,14 +70,14 @@ export default function ExecutionHistoryTable({
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>ID</TableCell>
-              <TableCell>Direction</TableCell>
-              <TableCell>Trigger</TableCell>
-              <TableCell>Mode</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Scaled</TableCell>
-              <TableCell>Started</TableCell>
-              <TableCell>Duration</TableCell>
+              <TableCell sx={TABLE_HEAD_CELL_SX}>ID</TableCell>
+              <TableCell sx={TABLE_HEAD_CELL_SX}>Direction</TableCell>
+              <TableCell sx={TABLE_HEAD_CELL_SX}>Trigger</TableCell>
+              <TableCell sx={TABLE_HEAD_CELL_SX}>Mode</TableCell>
+              <TableCell sx={TABLE_HEAD_CELL_SX}>Status</TableCell>
+              <TableCell sx={TABLE_HEAD_CELL_SX}>Scaled</TableCell>
+              <TableCell sx={TABLE_HEAD_CELL_SX}>Started</TableCell>
+              <TableCell sx={TABLE_HEAD_CELL_SX}>Duration</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
