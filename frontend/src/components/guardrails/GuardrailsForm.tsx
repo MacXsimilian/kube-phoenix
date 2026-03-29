@@ -29,6 +29,7 @@ import { getGuardrails, updateGuardrails } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { canEditGuardrails } from '@/lib/rbac'
 import { useSnackbar } from '@/lib/useSnackbar'
+import { useUnsavedChanges } from '@/lib/useUnsavedChanges'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -65,13 +66,16 @@ export default function GuardrailsForm() {
   const [reconcileWhileAwake, setReconcileWhileAwake] = useState(true)
   const [protectCriticalPodNodes, setProtectCriticalPodNodes] = useState(true)
   const { notify, SnackbarAlert } = useSnackbar()
+  const { setDirty } = useUnsavedChanges()
   const [saveError, setSaveError] = useState<string | null>(null)
   const initialised = useRef(false)
+  const savedSnapshot = useRef({ systemNs: '', skipNsNode: '', skipLabels: '', skipTaints: '', priorityNs: '', evalInterval: '30s', autoWake: true, reconcileWhileAwake: true, protectCriticalPodNodes: true })
 
   useEffect(() => {
     if (guardrails && !initialised.current) {
       initialised.current = true
-      setSystemNs(splitCommaList(guardrails.systemNamespaces).sort())
+      const sns = splitCommaList(guardrails.systemNamespaces).sort()
+      setSystemNs(sns)
       setSkipNsNode(splitCommaList(guardrails.skipNsNode))
       setSkipLabels(splitCommaList(guardrails.skipNodeLabels))
       setSkipTaints(splitCommaList(guardrails.skipNodeTaints))
@@ -80,8 +84,36 @@ export default function GuardrailsForm() {
       setAutoWake(guardrails.schedulerAutoWake)
       setReconcileWhileAwake(guardrails.schedulerReconcileWhileAwake)
       setProtectCriticalPodNodes(guardrails.protectCriticalPodNodes)
+      savedSnapshot.current = {
+        systemNs: joinCommaList(sns),
+        skipNsNode: guardrails.skipNsNode,
+        skipLabels: guardrails.skipNodeLabels,
+        skipTaints: guardrails.skipNodeTaints,
+        priorityNs: guardrails.scalingPriorityNamespaces,
+        evalInterval: guardrails.schedulerEvalInterval,
+        autoWake: guardrails.schedulerAutoWake,
+        reconcileWhileAwake: guardrails.schedulerReconcileWhileAwake,
+        protectCriticalPodNodes: guardrails.protectCriticalPodNodes,
+      }
     }
   }, [guardrails])
+
+  useEffect(() => {
+    const s = savedSnapshot.current
+    const dirty =
+      joinCommaList(systemNs) !== s.systemNs ||
+      joinCommaList(skipNsNode) !== s.skipNsNode ||
+      joinCommaList(skipLabels) !== s.skipLabels ||
+      joinCommaList(skipTaints) !== s.skipTaints ||
+      joinCommaList(priorityNs) !== s.priorityNs ||
+      evalInterval !== s.evalInterval ||
+      autoWake !== s.autoWake ||
+      reconcileWhileAwake !== s.reconcileWhileAwake ||
+      protectCriticalPodNodes !== s.protectCriticalPodNodes
+    setDirty(dirty)
+  }, [systemNs, skipNsNode, skipLabels, skipTaints, priorityNs, evalInterval, autoWake, reconcileWhileAwake, protectCriticalPodNodes, setDirty])
+
+  useEffect(() => () => setDirty(false), [setDirty])
 
   const evalIntervalError = validateEvalInterval(evalInterval)
   const evalIntervalValid = !evalIntervalError
@@ -104,6 +136,18 @@ export default function GuardrailsForm() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['guardrails'] })
       setSaveError(null)
+      savedSnapshot.current = {
+        systemNs: joinCommaList(systemNs),
+        skipNsNode: joinCommaList(skipNsNode),
+        skipLabels: joinCommaList(skipLabels),
+        skipTaints: joinCommaList(skipTaints),
+        priorityNs: joinCommaList(priorityNs),
+        evalInterval: evalInterval.trim(),
+        autoWake,
+        reconcileWhileAwake,
+        protectCriticalPodNodes,
+      }
+      setDirty(false)
       notify('Guardrails saved successfully.', 'success')
     },
     onError: (err: unknown) => {

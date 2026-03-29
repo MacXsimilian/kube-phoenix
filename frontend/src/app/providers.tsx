@@ -14,6 +14,7 @@ import LoginScreen from '@/components/auth/LoginScreen'
 import { ThemeModeProvider, useThemeMode } from '@/lib/themeMode'
 import CircularProgress from '@mui/material/CircularProgress'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import { UnsavedChangesProvider } from '@/lib/useUnsavedChanges'
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, checking, backendError } = useAuth()
@@ -32,7 +33,13 @@ function AppContent({ children }: { children: React.ReactNode }) {
     )
   }
   if (!isAuthenticated) return <LoginScreen />
-  return <ErrorBoundary><AppShell>{children}</AppShell></ErrorBoundary>
+  return (
+    <ErrorBoundary>
+      <UnsavedChangesProvider>
+        <AppShell>{children}</AppShell>
+      </UnsavedChangesProvider>
+    </ErrorBoundary>
+  )
 }
 
 function ThemedApp({ children }: { children: React.ReactNode }) {
