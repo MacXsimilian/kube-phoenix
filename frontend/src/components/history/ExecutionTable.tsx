@@ -32,8 +32,7 @@ import { EXECUTIONS_REFETCH_MS } from '@/lib/constants'
 import { getModeStyle, SMALL_CHIP_SX } from '@/lib/statusColors'
 import StatusChip from '@/components/shared/StatusChip'
 import type { PolicyExecution } from '@/lib/types'
-
-const TABLE_HEADER_CELL_SX = { fontWeight: 700, color: 'text.secondary', fontSize: 12 } as const
+import { TABLE_HEAD_CELL_SX } from '@/lib/tableStyles'
 
 function SummaryCell({ exec }: { exec: PolicyExecution }) {
   const isWake = exec.direction === 'wake'
@@ -164,13 +163,13 @@ export default function PolicyExecutionTable({
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={TABLE_HEADER_CELL_SX}>STARTED</TableCell>
-                  <TableCell sx={TABLE_HEADER_CELL_SX}>POLICY</TableCell>
-                  <TableCell sx={TABLE_HEADER_CELL_SX}>DIRECTION</TableCell>
-                  <TableCell sx={TABLE_HEADER_CELL_SX}>MODE</TableCell>
-                  <TableCell sx={TABLE_HEADER_CELL_SX}>STATUS</TableCell>
-                  <TableCell sx={TABLE_HEADER_CELL_SX}>DURATION</TableCell>
-                  <TableCell sx={TABLE_HEADER_CELL_SX}>SUMMARY</TableCell>
+                  <TableCell sx={TABLE_HEAD_CELL_SX}>STARTED</TableCell>
+                  <TableCell sx={TABLE_HEAD_CELL_SX}>POLICY</TableCell>
+                  <TableCell sx={TABLE_HEAD_CELL_SX}>DIRECTION</TableCell>
+                  <TableCell sx={TABLE_HEAD_CELL_SX}>MODE</TableCell>
+                  <TableCell sx={TABLE_HEAD_CELL_SX}>STATUS</TableCell>
+                  <TableCell sx={TABLE_HEAD_CELL_SX}>DURATION</TableCell>
+                  <TableCell sx={TABLE_HEAD_CELL_SX}>SUMMARY</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>

@@ -1,6 +1,7 @@
 import TableCell from '@mui/material/TableCell'
 import TableSortLabel from '@mui/material/TableSortLabel'
 import type { SortDir } from './useTriStateSort'
+import { TABLE_HEAD_CELL_SX } from './tableStyles'
 
 /**
  * Reusable sort-header cell for MUI tables with tri-state sorting.
@@ -16,7 +17,7 @@ export default function SortHeader<T extends string>({
   align?: 'left' | 'right'
 }) {
   return (
-    <TableCell align={align} sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12, whiteSpace: 'nowrap' }}>
+    <TableCell align={align} sx={TABLE_HEAD_CELL_SX}>
       <TableSortLabel
         active={active === col}
         direction={active === col ? dir : 'asc'}

@@ -27,6 +27,7 @@ import { formatActionLabel } from '@/components/audit/auditFormatters'
 import { downloadCSV } from '@/components/audit/auditDiff'
 import AuditRow from '@/components/audit/AuditRow'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
+import { TABLE_HEAD_CELL_SX } from '@/lib/tableStyles'
 
 const ACTION_GROUPS = [
   { label: 'Auth',       actions: ['auth.login', 'auth.logout', 'auth.password_change'] },
@@ -178,11 +179,11 @@ export default function AuditLogPage() {
             <TableHead>
               <TableRow>
                 <TableCell width={40} />
-                <TableCell>Time <Typography component="span" variant="caption" sx={{ color: 'text.disabled', fontWeight: 400, fontSize: 10 }}>— local time, hover for UTC</Typography></TableCell>
-                <TableCell>User</TableCell>
-                <TableCell>Action</TableCell>
-                <TableCell>Resource</TableCell>
-                <TableCell>IP</TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>Time <Typography component="span" variant="caption" sx={{ color: 'text.disabled', fontWeight: 400, fontSize: 10 }}>— local time, hover for UTC</Typography></TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>User</TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>Action</TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>Resource</TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>IP</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
