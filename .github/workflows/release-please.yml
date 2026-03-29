@@ -28,7 +28,7 @@ jobs:
       contents: write
       pull-requests: write
     outputs:
-      release_created: ${{ steps.rp.outputs.release_created || inputs.tag != '' }}
+      release_created: ${{ steps.rp.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '') }}
       tag_name: ${{ steps.rp.outputs.tag_name || inputs.tag }}
     steps:
       - uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38  # v4.4.0
@@ -51,12 +51,13 @@ jobs:
           curl -s -X POST https://goreportcard.com/checks \
             -d "repo=github.com/macxsimilian/kube-phoenix/backend"
 
+  # ── Docker release build & push (only when release-please creates a release) ─
   docker:
     name: Docker release build & push
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     permissions:
       contents: read
       packages: write
@@ -137,12 +138,13 @@ jobs:
           docker pull "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
           docker run --rm "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}" --version || true
 
+  # ── Helm release (only after successful Docker push) ────────────────────────
   helm-publish:
     name: Helm release package & push
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: [release-please, docker]
-    if: ${{ needs.release-please.outputs.release_created && needs.docker.result == 'success' }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' && needs.docker.result == 'success' }}
     permissions:
       contents: read
       packages: write
