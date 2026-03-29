@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3000",
+    "dev:mock": "node mock-api/dev.mjs",
+    "mock-api": "node mock-api/server.mjs",
     "build": "next build",
     "start": "next start"
   },
@@ -21,6 +23,7 @@
     "@types/node": "^25",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "typescript": "^6"
+    "typescript": "^6",
+    "ws": "^8.18.0"
   }
 }
