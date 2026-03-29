@@ -25,10 +25,6 @@ import { useSnackbar } from '@/lib/useSnackbar'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const DEFAULT_SCALING_CONCURRENCY = 10
-const MIN_SCALING_CONCURRENCY = 1
-const MAX_SCALING_CONCURRENCY = 50
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function joinCommaList(arr: string[]) { return arr.join(',') }
@@ -50,7 +46,6 @@ export default function GuardrailsForm() {
   const [evalInterval, setEvalInterval] = useState('30s')
   const [autoWake, setAutoWake] = useState(true)
   const [reconcileWhileAwake, setReconcileWhileAwake] = useState(true)
-  const [scalingConcurrency, setScalingConcurrency] = useState(DEFAULT_SCALING_CONCURRENCY)
   const { notify, SnackbarAlert } = useSnackbar()
   const [saveError, setSaveError] = useState<string | null>(null)
   const initialised = useRef(false)
@@ -66,7 +61,6 @@ export default function GuardrailsForm() {
       setEvalInterval(guardrails.schedulerEvalInterval)
       setAutoWake(guardrails.schedulerAutoWake)
       setReconcileWhileAwake(guardrails.schedulerReconcileWhileAwake)
-      setScalingConcurrency(guardrails.scalingConcurrency ?? DEFAULT_SCALING_CONCURRENCY)
     }
   }, [guardrails])
 
@@ -86,7 +80,6 @@ export default function GuardrailsForm() {
         schedulerEvalInterval: evalInterval.trim(),
         schedulerAutoWake: autoWake,
         schedulerReconcileWhileAwake: reconcileWhileAwake,
-        scalingConcurrency,
       })
     },
     onSuccess: () => {
@@ -196,67 +189,38 @@ export default function GuardrailsForm() {
                 <Typography variant="body2" color="text.secondary" mb={2.5}>
                   Control how the policy evaluation loop runs.
                 </Typography>
-                <Grid container spacing={2}>
-                  {/* Eval Interval tile */}
-                  <Grid size={6}>
-                    <Box sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider', height: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Box sx={{ display: 'flex', border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
+                  {/* Eval Interval */}
+                  <Tooltip title="How often the scheduler evaluates policy state. Go duration format, e.g. 30s, 1m, 2m30s" arrow>
+                    <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                       <Typography variant="body2" fontWeight={600}>Eval Interval</Typography>
                       <TextField
                         size="small"
-                        fullWidth
                         value={evalInterval}
                         disabled={!hasEdit}
                         error={!evalIntervalValid}
                         onChange={(e) => setEvalInterval(e.target.value)}
-                        slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
+                        slotProps={{ htmlInput: { style: { fontFamily: 'monospace', textAlign: 'center', width: 56 } } }}
                       />
-                      <Typography variant="caption" color={evalIntervalValid ? 'text.secondary' : 'error'}>
-                        {evalIntervalValid ? 'Go duration format, e.g. 30s, 1m' : evalIntervalError}
-                      </Typography>
                     </Box>
-                  </Grid>
-                  {/* Scaling Concurrency tile */}
-                  <Grid size={6}>
-                    <Box sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider', height: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      <Typography variant="body2" fontWeight={600}>Scaling Concurrency</Typography>
-                      <TextField
-                        size="small"
-                        fullWidth
-                        type="number"
-                        value={scalingConcurrency}
-                        disabled={!hasEdit}
-                        onChange={(e) => {
-                          const v = parseInt(e.target.value, 10)
-                          if (!isNaN(v)) setScalingConcurrency(Math.max(MIN_SCALING_CONCURRENCY, Math.min(MAX_SCALING_CONCURRENCY, v)))
-                        }}
-                        slotProps={{ htmlInput: { min: MIN_SCALING_CONCURRENCY, max: MAX_SCALING_CONCURRENCY, style: { fontFamily: 'monospace' } } }}
-                      />
-                      <Typography variant="caption" color="text.secondary">
-                        1–50 parallel operations per cycle
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  {/* Auto Wake tile */}
-                  <Grid size={6}>
-                    <Box sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                  </Tooltip>
+                  <Box sx={{ width: '1px', bgcolor: 'divider' }} />
+                  {/* Auto Wake */}
+                  <Tooltip title="Automatically wake clusters when outside a sleep window" arrow>
+                    <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                       <Typography variant="body2" fontWeight={600}>Auto Wake</Typography>
                       <Switch checked={autoWake} disabled={!hasEdit} onChange={(e) => setAutoWake(e.target.checked)} />
-                      <Typography variant="caption" color="text.secondary" textAlign="center">
-                        Wake clusters outside sleep windows
-                      </Typography>
                     </Box>
-                  </Grid>
-                  {/* Reconcile While Awake tile */}
-                  <Grid size={6}>
-                    <Box sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="body2" fontWeight={600}>Reconcile While Awake</Typography>
+                  </Tooltip>
+                  <Box sx={{ width: '1px', bgcolor: 'divider' }} />
+                  {/* Reconcile */}
+                  <Tooltip title="Re-evaluate policies during awake windows to correct drift" arrow>
+                    <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="body2" fontWeight={600}>Reconcile</Typography>
                       <Switch checked={reconcileWhileAwake} disabled={!hasEdit} onChange={(e) => setReconcileWhileAwake(e.target.checked)} />
-                      <Typography variant="caption" color="text.secondary" textAlign="center">
-                        Evaluate policies during awake windows
-                      </Typography>
                     </Box>
-                  </Grid>
-                </Grid>
+                  </Tooltip>
+                </Box>
               </CardContent>
             </Card>
           </Box>
