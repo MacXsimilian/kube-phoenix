@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.12](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.11...v0.5.12) (2026-03-29)
+
+
+### Bug Fixes
+
+* **helm:** local development setup, PostgreSQL permissions, and service routing ([#292](https://github.com/MacXsimilian/kube-phoenix/issues/292)) ([4b790a6](https://github.com/MacXsimilian/kube-phoenix/commit/4b790a6284e142737eadf8847f2d728e42583693))
+
 ## [0.5.11](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.10...v0.5.11) (2026-03-29)
 
 
