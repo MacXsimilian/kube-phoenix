@@ -461,6 +461,7 @@ func (ps *PolicyScheduler) tickLoop(ctx context.Context, interval time.Duration)
 			return
 		case <-ticker.C:
 			ps.safeEvaluateAll()
+			ps.TickExceptions(ctx)
 		}
 	}
 }
