@@ -38,7 +38,7 @@ export default function ActivityFeed() {
   const [selected, setSelected] = useState<PolicyExecution | null>(null)
   const { data, isLoading, isError } = useQuery({
     queryKey: ['policy-executions', 'feed'],
-    queryFn: () => getPolicyExecutions({ pageSize: 3 }),
+    queryFn: () => getPolicyExecutions({ pageSize: 4 }),
     staleTime: ACTIVITY_FEED_STALE_MS,
     refetchInterval: ACTIVITY_FEED_REFETCH_MS,
   })

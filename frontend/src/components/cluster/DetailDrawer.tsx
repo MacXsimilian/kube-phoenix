@@ -17,7 +17,6 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CloseIcon from '@mui/icons-material/Close'
-import RefreshIcon from '@mui/icons-material/Refresh'
 import { sinceMs, formatError } from '@/lib/formatters'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { NodePod } from '@/lib/types'
@@ -37,7 +36,6 @@ export interface DetailDrawerProps {
   isErrorPods: boolean
   errorPods: Error | null
   dataUpdatedAt: number | undefined
-  onRefreshPods: () => void
   /** Initial drawer width. */
   defaultWidth?: number
   /** Column headers for the pod table. */
@@ -64,7 +62,6 @@ export default function DetailDrawer({
   isErrorPods,
   errorPods,
   dataUpdatedAt,
-  onRefreshPods,
   defaultWidth = 540,
   podTableHeaders,
   renderPodTableBody,
@@ -173,11 +170,6 @@ export default function DetailDrawer({
               <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap', fontSize: 11 }}>
                 {dataUpdatedAt ? sinceMs(dataUpdatedAt) : ''}
               </Typography>
-              <Tooltip title="Refresh">
-                <IconButton size="small" onClick={onRefreshPods} aria-label="Refresh pod list">
-                  <RefreshIcon sx={{ fontSize: 16 }} />
-                </IconButton>
-              </Tooltip>
             </Box>
           )}
 

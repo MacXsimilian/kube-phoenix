@@ -66,6 +66,7 @@ interface FormState {
   evalInterval: string
   autoWake: boolean
   reconcileWhileAwake: boolean
+  enforceSleep: boolean
   protectCriticalPodNodes: boolean
 }
 
@@ -78,6 +79,7 @@ const INITIAL_FORM: FormState = {
   evalInterval: '30s',
   autoWake: true,
   reconcileWhileAwake: true,
+  enforceSleep: true,
   protectCriticalPodNodes: true,
 }
 
@@ -101,6 +103,7 @@ interface Snapshot {
   evalInterval: string
   autoWake: boolean
   reconcileWhileAwake: boolean
+  enforceSleep: boolean
   protectCriticalPodNodes: boolean
 }
 
@@ -114,6 +117,7 @@ function buildSnapshot(form: FormState): Snapshot {
     evalInterval: form.evalInterval.trim(),
     autoWake: form.autoWake,
     reconcileWhileAwake: form.reconcileWhileAwake,
+    enforceSleep: form.enforceSleep,
     protectCriticalPodNodes: form.protectCriticalPodNodes,
   }
 }
@@ -156,6 +160,7 @@ export default function GuardrailsForm() {
         evalInterval: guardrails.schedulerEvalInterval,
         autoWake: guardrails.schedulerAutoWake,
         reconcileWhileAwake: guardrails.schedulerReconcileWhileAwake,
+        enforceSleep: guardrails.schedulerEnforceSleep,
         protectCriticalPodNodes: guardrails.protectCriticalPodNodes,
       }
       dispatch({ type: 'SET', payload: loaded })
@@ -185,6 +190,7 @@ export default function GuardrailsForm() {
         schedulerEvalInterval: snapshot.evalInterval,
         schedulerAutoWake: snapshot.autoWake,
         schedulerReconcileWhileAwake: snapshot.reconcileWhileAwake,
+        schedulerEnforceSleep: snapshot.enforceSleep,
         protectCriticalPodNodes: snapshot.protectCriticalPodNodes,
       })
     },
@@ -321,6 +327,7 @@ export default function GuardrailsForm() {
               <Chip label={form.evalInterval} size="small" sx={{ fontSize: 11, fontFamily: 'monospace' }} />
               <Chip label={form.autoWake ? 'Wake: ON' : 'Wake: OFF'} size="small" sx={{ fontSize: 11 }} />
               <Chip label={form.reconcileWhileAwake ? 'Reconcile: ON' : 'Reconcile: OFF'} size="small" sx={{ fontSize: 11 }} />
+              <Chip label={form.enforceSleep ? 'Enforce: ON' : 'Enforce: OFF'} size="small" sx={{ fontSize: 11 }} />
             </Box>
           }
         >
@@ -342,12 +349,19 @@ export default function GuardrailsForm() {
               </Box>
               <Switch checked={form.autoWake} disabled={!hasEdit} onChange={(e) => setField('autoWake', e.target.checked)} />
             </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none', borderRadius: '0 0 8px 8px' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none' }}>
               <Box>
                 <Typography variant="body2" fontWeight={600}>Reconcile While Awake</Typography>
                 <Typography variant="caption" color="text.secondary">Re-evaluate policies during awake windows to correct drift</Typography>
               </Box>
               <Switch checked={form.reconcileWhileAwake} disabled={!hasEdit} onChange={(e) => setField('reconcileWhileAwake', e.target.checked)} />
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none', borderRadius: '0 0 8px 8px' }}>
+              <Box>
+                <Typography variant="body2" fontWeight={600}>Enforce Sleep</Typography>
+                <Typography variant="caption" color="text.secondary">When enabled, workloads manually scaled up during a sleep window are automatically scaled back to zero</Typography>
+              </Box>
+              <Switch checked={form.enforceSleep} disabled={!hasEdit} onChange={(e) => setField('enforceSleep', e.target.checked)} />
             </Box>
           </Box>
         </CategoryCard>

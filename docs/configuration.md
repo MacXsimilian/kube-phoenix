@@ -164,6 +164,7 @@ Guardrails protect critical resources from being touched by the scaler. Configur
 | Scheduler Eval Interval | How often all enabled policies are evaluated. Accepts Go duration strings (`30s`, `1m`, `2m`). Changes take effect immediately — the ticker restarts with the new interval. |
 | Auto Wake | When disabled, the scheduler will only trigger sleep executions automatically. Wake transitions must be triggered manually. |
 | Reconcile While Awake | When enabled (default), the scheduler detects drift from failed or partial wake executions — workloads left at zero despite the policy being awake — and runs a corrective wake to restore them. Corrective wakes back off at 5-minute intervals per policy and bypass the Auto Wake gate. When disabled, the scheduler skips reconciliation for policies already awake, reducing database load between sleep windows. |
+| Enforce Sleep | When enabled (default), the scheduler detects workloads manually scaled up during a sleep window and scales them back to zero. Uses targeted K8s GETs against open snapshots to detect drift, then runs a corrective sleep. Backs off at 5-minute intervals per policy. Respects system namespace guardrails and active stay_awake exceptions. |
 
 > **Tip:** Scheduler settings take effect immediately on save — no server restart required.
 

@@ -455,6 +455,157 @@ func (r *PolicyRunner) RunPolicyWake(
 	return counts, nil
 }
 
+// collectStayAwakeNamespaces returns the set of namespaces protected by active
+// stay_awake scoped exceptions. Workloads in these namespaces should not be
+// forcibly scaled back to zero during enforce-sleep reconciliation.
+func collectStayAwakeNamespaces(exceptions []store.ScheduledException) map[string]bool {
+	ns := map[string]bool{}
+	for _, ex := range exceptions {
+		if ex.ExceptionType != store.ExceptionTypeStayAwake {
+			continue
+		}
+		if ex.NamespaceFilter == "" {
+			continue
+		}
+		for k, v := range stringutil.SplitCSVSet(ex.NamespaceFilter) {
+			if v {
+				ns[k] = true
+			}
+		}
+	}
+	return ns
+}
+
+// HasDriftedFromSleep checks whether any workload covered by the policy's open
+// snapshots has been externally scaled above zero while the policy is sleeping.
+// Returns true on the first drifted workload found. This is a lightweight
+// pre-check — no scaling or DB writes occur.
+func (r *PolicyRunner) HasDriftedFromSleep(ctx context.Context, policyID uint) (bool, error) {
+	snaps, err := r.store.GetOpenSnapshotsForSleepReconcile(policyID)
+	if err != nil {
+		return false, fmt.Errorf("get open snapshots for sleep reconcile: %w", err)
+	}
+	if len(snaps) == 0 {
+		return false, nil
+	}
+
+	guardrails, err := r.store.GetGuardrails()
+	if err != nil {
+		return false, fmt.Errorf("guardrails: %w", err)
+	}
+	skipNS := stringutil.SplitCSVSet(guardrails.SystemNamespaces)
+
+	exceptions, err := r.store.ListActiveExceptionsForPolicy(policyID, time.Now())
+	if err != nil {
+		slog.Warn("enforce sleep: failed to list active exceptions", "policyID", policyID, "err", err)
+		exceptions = nil
+	}
+	exceptionNS := collectStayAwakeNamespaces(exceptions)
+
+	for _, snap := range snaps {
+		if skipNS[snap.Namespace] || exceptionNS[snap.Namespace] {
+			continue
+		}
+		exists, currentReplicas, err := r.lookupWorkload(ctx, snap.Kind, snap.Namespace, snap.Name)
+		if err != nil {
+			slog.Warn("enforce sleep: lookup error", "kind", snap.Kind, "ns", snap.Namespace, "name", snap.Name, "err", err)
+			continue
+		}
+		if exists && currentReplicas > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// RunPolicySleepReconcile scales drifted workloads back to zero during a sleep
+// window. Unlike RunPolicySleep, it does NOT create new snapshots — the existing
+// open snapshots already hold the correct ReplicasBefore for eventual wake.
+func (r *PolicyRunner) RunPolicySleepReconcile(
+	ctx context.Context,
+	p store.Policy,
+	execID uint,
+	logCh chan<- LogLine,
+) (*Counts, error) {
+	counts := &Counts{}
+
+	snaps, err := r.store.GetOpenSnapshotsForSleepReconcile(p.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get open snapshots for sleep reconcile: %w", err)
+	}
+
+	guardrails, err := r.store.GetGuardrails()
+	if err != nil {
+		return nil, fmt.Errorf("guardrails: %w", err)
+	}
+	skipNS := stringutil.SplitCSVSet(guardrails.SystemNamespaces)
+
+	exceptions, err := r.store.ListActiveExceptionsForPolicy(p.ID, time.Now())
+	if err != nil {
+		slog.Warn("enforce sleep: failed to list active exceptions", "policyID", p.ID, "err", err)
+		exceptions = nil
+	}
+	exceptionNS := collectStayAwakeNamespaces(exceptions)
+
+	emit(logCh, "info", fmt.Sprintf("Enforce sleep — checking %d open snapshots for drift", len(snaps)))
+
+	for _, snap := range snaps {
+		wl := formatWorkload(snap.Kind, snap.Namespace, snap.Name)
+
+		if skipNS[snap.Namespace] || exceptionNS[snap.Namespace] {
+			emit(logCh, "info", fmt.Sprintf("Skipping %s — namespace protected", wl))
+			counts.Skipped++
+			continue
+		}
+
+		exists, currentReplicas, err := r.lookupWorkload(ctx, snap.Kind, snap.Namespace, snap.Name)
+		if err != nil {
+			emit(logCh, "error", fmt.Sprintf("Failed to look up %s: %s", wl, err))
+			counts.Errors++
+			continue
+		}
+		if !exists {
+			emit(logCh, "info", fmt.Sprintf("Workload %s no longer exists — skipping", wl))
+			counts.Skipped++
+			continue
+		}
+		if currentReplicas == 0 {
+			counts.Skipped++
+			continue
+		}
+
+		if !isApply(p.Mode) {
+			emit(logCh, "plan", fmt.Sprintf("Would enforce sleep %s → 0 (currently %d replicas)", wl, currentReplicas))
+			counts.Scaled++
+			continue
+		}
+
+		_, scale, _, opsErr := r.workloadOps(snap.Kind)
+		if opsErr != nil {
+			emit(logCh, "error", fmt.Sprintf("Unsupported kind for %s: %s", wl, opsErr))
+			counts.Errors++
+			continue
+		}
+		if err := scale(ctx, snap.Namespace, snap.Name, 0); err != nil {
+			emit(logCh, "error", fmt.Sprintf("Failed to enforce sleep on %s: %s", wl, err))
+			counts.Errors++
+			continue
+		}
+		if err := r.store.MarkSnapshotExternallyScaled(snap.ID); err != nil {
+			slog.Warn("enforce sleep: failed to mark snapshot as externally scaled", "snapshotID", snap.ID, "err", err)
+		}
+		emit(logCh, "ok", fmt.Sprintf("Enforced sleep on %s (was %d replicas)", wl, currentReplicas))
+		counts.Scaled++
+	}
+
+	emit(logCh, "info", fmt.Sprintf("Enforce sleep complete — scaled %d workloads, %d skipped, %d errors",
+		counts.Scaled, counts.Skipped, counts.Errors))
+	if counts.Errors > 0 && counts.Scaled == 0 {
+		return counts, fmt.Errorf("enforce sleep failed: all %d workloads errored", counts.Errors)
+	}
+	return counts, nil
+}
+
 // annotationFallbackParams holds all context for the annotation-based recovery sweep.
 type annotationFallbackParams struct {
 	ctx        context.Context

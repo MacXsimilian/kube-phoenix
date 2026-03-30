@@ -9,7 +9,6 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import AddIcon from '@mui/icons-material/Add'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 import { useIsDark } from '@/lib/useIsDark'
 import {
@@ -41,12 +40,11 @@ interface PolicyHeroBandProps {
   trigger: TriggerActions
   onBack: () => void
   onEdit: () => void
-  onAddException: () => void
 }
 
 export default function PolicyHeroBand({
   policy, canEdit, canTrigger, trigger,
-  onBack, onEdit, onAddException,
+  onBack, onEdit,
 }: PolicyHeroBandProps) {
   const { isBusy, sleepPending, wakePending, onSleep, onWake } = trigger
   const isDark = useIsDark()
@@ -157,11 +155,6 @@ export default function PolicyHeroBand({
         {canEdit && (
           <Button size="small" startIcon={<EditOutlinedIcon />} onClick={onEdit}>
             Edit Policy
-          </Button>
-        )}
-        {canEdit && (
-          <Button size="small" startIcon={<AddIcon />} onClick={onAddException}>
-            Exception
           </Button>
         )}
       </Box>

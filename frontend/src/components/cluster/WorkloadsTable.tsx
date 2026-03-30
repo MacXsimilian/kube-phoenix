@@ -18,8 +18,6 @@ import MenuItem from '@mui/material/MenuItem'
 import Alert from '@mui/material/Alert'
 import CenteredSpinner from '@/components/common/CenteredSpinner'
 import Typography from '@mui/material/Typography'
-import IconButton from '@mui/material/IconButton'
-import RefreshIcon from '@mui/icons-material/Refresh'
 import Tooltip from '@mui/material/Tooltip'
 import { getWorkloads } from '@/lib/api'
 import type { Workload } from '@/lib/types'
@@ -38,7 +36,7 @@ type WorkloadSortCol = 'namespace' | 'name' | 'kind' | 'replicas' | 'status'
 
 export default function WorkloadsTable() {
   const searchParams = useSearchParams()
-  const { data: workloads = [], isLoading, isError, error, dataUpdatedAt, refetch } = useQuery({
+  const { data: workloads = [], isLoading, isError, error, dataUpdatedAt } = useQuery({
     queryKey: ['workloads'],
     queryFn: getWorkloads,
     refetchInterval: WORKLOADS_REFETCH_MS,
@@ -140,16 +138,9 @@ export default function WorkloadsTable() {
           ))}
         </TextField>
         <Box sx={{ flex: 1 }} />
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <Typography variant="caption" color="text.disabled">
-            {dataUpdatedAt ? `Updated ${sinceMs(dataUpdatedAt)}` : ''}
-          </Typography>
-          <Tooltip title="Refresh">
-            <IconButton size="small" onClick={() => refetch()} aria-label="Refresh workloads">
-              <RefreshIcon sx={{ fontSize: 16 }} />
-            </IconButton>
-          </Tooltip>
-        </Box>
+        <Typography variant="caption" color="text.disabled">
+          {dataUpdatedAt ? `Updated ${sinceMs(dataUpdatedAt)}` : ''}
+        </Typography>
       </Box>
 
       {/* Row count */}

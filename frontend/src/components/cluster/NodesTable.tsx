@@ -20,8 +20,6 @@ import Switch from '@mui/material/Switch'
 import Alert from '@mui/material/Alert'
 import CenteredSpinner from '@/components/common/CenteredSpinner'
 import Typography from '@mui/material/Typography'
-import IconButton from '@mui/material/IconButton'
-import RefreshIcon from '@mui/icons-material/Refresh'
 import { getNodes } from '@/lib/api'
 import type { Node } from '@/lib/types'
 import { fmtCpu, fmtMem, podAge, sinceMs, pct, pctColor, formatError } from '@/lib/formatters'
@@ -119,7 +117,7 @@ const NodeRow = React.memo(function NodeRow({ node, groupByZone, isSelected, onS
 })
 
 export default function NodesTable() {
-  const { data: nodes = [], isLoading, isError, error, dataUpdatedAt, refetch } = useQuery({
+  const { data: nodes = [], isLoading, isError, error, dataUpdatedAt } = useQuery({
     queryKey: ['nodes'],
     queryFn: getNodes,
     refetchInterval: NODES_REFETCH_MS,
@@ -191,16 +189,9 @@ export default function NodesTable() {
           sx={{ ml: 0.5 }}
         />
         <Box sx={{ flex: 1 }} />
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <Typography variant="caption" color="text.disabled">
-            {dataUpdatedAt ? `Updated ${sinceMs(dataUpdatedAt)}` : ''}
-          </Typography>
-          <Tooltip title="Refresh">
-            <IconButton size="small" onClick={() => refetch()} aria-label="Refresh nodes">
-              <RefreshIcon sx={{ fontSize: 16 }} />
-            </IconButton>
-          </Tooltip>
-        </Box>
+        <Typography variant="caption" color="text.disabled">
+          {dataUpdatedAt ? `Updated ${sinceMs(dataUpdatedAt)}` : ''}
+        </Typography>
       </Box>
 
       {isError ? (

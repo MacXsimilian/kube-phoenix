@@ -304,6 +304,15 @@ func (s *Store) CountOpenSnapshotsForRestore(policyID uint) (int64, error) {
 		Count(&count).Error
 }
 
+// GetOpenSnapshotsForSleepReconcile returns open snapshots that were actively scaled
+// to zero (not already-zero). Used by the enforce-sleep reconciler to detect drift.
+func (s *Store) GetOpenSnapshotsForSleepReconcile(policyID uint) ([]WorkloadSnapshot, error) {
+	var snaps []WorkloadSnapshot
+	return snaps, s.db.
+		Where("policy_id = ? AND wake_execution_id IS NULL AND was_deleted_at_wake = false AND was_already_zero = false", policyID).
+		Find(&snaps).Error
+}
+
 // GetSnapshotsForExecution returns all snapshots created by a specific sleep execution.
 func (s *Store) GetSnapshotsForExecution(sleepExecID uint) ([]WorkloadSnapshot, error) {
 	var snaps []WorkloadSnapshot

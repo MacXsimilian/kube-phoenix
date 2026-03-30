@@ -20,6 +20,7 @@ type Guardrails struct {
 	SchedulerEvalInterval        string `gorm:"size:20;default:'30s'" json:"schedulerEvalInterval"`
 	SchedulerAutoWake            bool   `gorm:"default:true" json:"schedulerAutoWake"`
 	SchedulerReconcileWhileAwake bool   `gorm:"default:true" json:"schedulerReconcileWhileAwake"`
+	SchedulerEnforceSleep        bool   `gorm:"default:true" json:"schedulerEnforceSleep"`
 	ScalingConcurrency           int    `gorm:"default:10" json:"scalingConcurrency"`
 	ProtectCriticalPodNodes      bool   `gorm:"default:true" json:"protectCriticalPodNodes"` // protect nodes running system-node-critical / system-cluster-critical pods
 

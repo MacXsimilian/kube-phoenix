@@ -103,7 +103,6 @@ function PolicyDetailContent() {
         }}
         onBack={() => router.push('/policies')}
         onEdit={() => { setExceptionOpen(false); setEditOpen(true) }}
-        onAddException={() => { setEditOpen(false); setEditingException(undefined); setExceptionOpen(true) }}
       />
 
       {/* Timeline band */}

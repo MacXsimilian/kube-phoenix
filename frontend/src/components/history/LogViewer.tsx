@@ -21,7 +21,8 @@ import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import CloudOffIcon from '@mui/icons-material/CloudOff'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
-import VerticalAlignBottomIcon from '@mui/icons-material/VerticalAlignBottom'
+import Switch from '@mui/material/Switch'
+import FormControlLabel from '@mui/material/FormControlLabel'
 import { useIsDark } from '@/lib/useIsDark'
 import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { PolicyExecution, LogLine } from '@/lib/types'
@@ -249,24 +250,22 @@ export default function LogViewer({
                 <Typography variant="caption" fontWeight={700} letterSpacing={0.8} sx={{ color: 'text.secondary', textTransform: 'uppercase' }}>
                   Logs
                 </Typography>
-                <Tooltip title={autoScroll ? 'Auto-scroll on — click to pause' : 'Auto-scroll off — click to follow'}>
-                  <IconButton
-                    size="small"
-                    onClick={() => {
-                      setAutoScroll(prev => {
-                        if (!prev) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-                        return !prev
-                      })
-                    }}
-                    aria-label="Toggle auto-scroll"
-                    sx={{
-                      color: autoScroll ? 'primary.main' : 'text.disabled',
-                      transition: 'color 0.15s ease',
-                    }}
-                  >
-                    <VerticalAlignBottomIcon sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </Tooltip>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      size="small"
+                      checked={autoScroll}
+                      onChange={(e) => {
+                        const on = e.target.checked
+                        setAutoScroll(on)
+                        if (on) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+                      }}
+                      sx={{ '& .MuiSwitch-thumb': { background: (t) => t.palette.primary.main } }}
+                    />
+                  }
+                  label={<Typography variant="caption" sx={{ color: 'text.secondary' }}>Auto-scroll</Typography>}
+                  sx={{ m: 0 }}
+                />
               </Box>
               {!isConnected && isRunning && (
                 <Alert severity="error" sx={{ borderRadius: 0 }}>
