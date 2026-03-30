@@ -163,7 +163,10 @@ operations, persisting workload snapshots for reliable restoration.
   enabled) nodes running `system-node-critical` or `system-cluster-critical` pods.
 - Deduplicate Deployment/StatefulSet dispatch via `workloadOps()` helper, which returns the appropriate get-replicas, scale, and remove-annotation functions for a given kind.
 - Emit structured log lines to a channel for real-time streaming via the Broker.
+  Summary lines include wall-clock duration, total K8s API calls, and req/s.
+  Before scaling begins, an estimate line logs the predicted call count.
 - Support plan mode (dry-run): log what would happen without mutating anything.
+- Concurrency bounded by `guardrails.ScalingConcurrency` (default 10, max 50).
 
 **Key interfaces:**
 - `RunSleep(ctx, policy, execID, mode, logCh) (*Counts, error)`

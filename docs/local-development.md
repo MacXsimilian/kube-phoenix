@@ -62,22 +62,19 @@ Two worker nodes allow testing node drain where workloads migrate from one worke
 
 **Addons:** metrics-server (for CPU/memory display in the cluster UI).
 
-**Namespaces and workloads:** Four namespaces simulating team-owned environments. All workloads use the `pause` container (near-zero CPU and memory).
+**Namespaces and workloads:** Nine namespaces simulating team-owned environments (~240 pods across ~70 deployments). Most workloads use `busybox` with lightweight activity (HTTP serve, log lines, DNS lookups, compute, cron jobs, file watchers); a handful use `pause` for idle pods. Each container has resource requests (5m CPU / 8Mi mem) and limits (20m CPU / 32Mi mem).
 
-| Namespace | Deployment | Replicas | Purpose |
-| :-------- | :--------- | :------: | :------ |
-| `team-backend` | `api` | 3 | Primary service -- exception target (keep alive during sleep) |
-| `team-backend` | `worker` | 2 | Background processor |
-| `team-backend` | `cron` | 1 | Scheduled jobs |
-| `team-web` | `web` | 2 | Frontend application |
-| `team-web` | `bff` | 1 | Backend-for-frontend |
-| `team-web` | `assets` | 1 | Static asset server -- exception target (CDN origin) |
-| `team-data` | `pipeline` | 2 | Data processing |
-| `team-data` | `scheduler` | 1 | Job orchestrator |
-| `team-data` | `dashboard` | 1 | Reporting UI -- exception target (keep for oncall) |
-| `team-qa` | `test-runner` | 2 | Automated tests |
-| `team-qa` | `selenium` | 1 | Browser automation |
-| `team-qa` | `mock-api` | 1 | Test doubles |
+| Namespace | Pods | What it tests |
+| :-------- | :--: | :------------ |
+| `team-backend` | 30 | Single-namespace policy. Exception: keep `api`. |
+| `team-web` | 25 | Multi-deployment sleep. Exception: `cdn-origin`. |
+| `team-data` | 30 | Cross-namespace policy (data + web). |
+| `team-qa` | 25 | Nightly sleep. Guardrail: release freeze. |
+| `team-platform` | 30 | Infra/observability stack. Guardrail target. |
+| `team-ml` | 25 | GPU-style workloads. Exception: `model-serve`. |
+| `team-mobile` | 25 | Multi-service mobile backend. Bulk sleep/wake. |
+| `team-payments` | 25 | Compliance-sensitive. Guardrail: always protect. |
+| `team-infra` | 25 | Cluster services. Node drain testing. |
 
 ### Suggested testing flow
 

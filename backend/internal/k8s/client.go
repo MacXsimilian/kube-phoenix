@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -81,16 +82,31 @@ func New() (*Client, error) {
 	}
 	// Raise client-side rate limits from the client-go defaults (5 QPS / 10 Burst)
 	// which are far too low for a controller that scales hundreds of workloads
-	// concurrently. These match Karpenter's defaults; the K8s API server has its
-	// own server-side throttling (APF, default 600 inflight) as a safety net.
-	cfg.QPS = 100
-	cfg.Burst = 200
+	// concurrently. Configurable via K8S_QPS and K8S_BURST env vars; the K8s API
+	// server has its own server-side throttling (APF, default 600 inflight) as a
+	// safety net.
+	cfg.QPS = float32(intEnvOrDefault("K8S_QPS", 100))
+	cfg.Burst = intEnvOrDefault("K8S_BURST", 200)
 
 	cs, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("k8s client: %w", err)
 	}
+	slog.Info("k8s client configured", "qps", cfg.QPS, "burst", cfg.Burst, "inCluster", inCluster)
 	return &Client{cs: cs, apiServer: cfg.Host, inCluster: inCluster}, nil
+}
+
+func intEnvOrDefault(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		slog.Warn("invalid int env var, using default", "key", key, "value", v, "default", fallback)
+		return fallback
+	}
+	return n
 }
 
 // clusterInfoTTL controls how long we cache the Discovery call. Kubernetes

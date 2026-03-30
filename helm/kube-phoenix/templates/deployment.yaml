@@ -99,6 +99,10 @@ spec:
               value: {{ .Values.session.cookieSecure | quote }}
             - name: AUDIT_RETENTION_DAYS
               value: {{ .Values.auditRetentionDays | quote }}
+            - name: K8S_QPS
+              value: {{ .Values.k8s.qps | quote }}
+            - name: K8S_BURST
+              value: {{ .Values.k8s.burst | quote }}
             {{- if .Values.oidc.enabled }}
             - name: OIDC_ISSUER_URL
               value: {{ .Values.oidc.issuerURL | quote }}

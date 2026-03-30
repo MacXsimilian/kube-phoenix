@@ -92,6 +92,16 @@ secret:
   # IMPORTANT: change adminPassword before deploying to any non-local environment.
   adminPassword: "kube-phoenix"
 
+# ── Kubernetes API client ─────────────────────────────────────────────────────
+#
+# Controls the client-side rate limiter for requests to the Kubernetes API
+# server. Higher values speed up large scaling events but put more pressure on
+# the control plane. The K8s API server has its own server-side throttling
+# (APF) as a safety net.
+k8s:
+  qps: 100     # sustained requests per second (client-go default: 5)
+  burst: 200   # short spike allowance above qps (client-go default: 10)
+
 # ── Session configuration ─────────────────────────────────────────────────────
 session:
   idleTimeout: "8h"     # sliding window — extended on each request

@@ -1008,6 +1008,7 @@ func (ps *PolicyScheduler) finalizeExecution(execID uint, status string, counts 
 			"protected": counts.Protected,
 			"drained":   counts.Drained,
 			"deleted":   counts.Deleted,
+			"requests":  counts.Requests,
 		}
 	}
 	if err := ps.store.FinishPolicyExecution(execID, status, countMap); err != nil {

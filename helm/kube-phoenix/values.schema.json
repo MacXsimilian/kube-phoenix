@@ -126,6 +126,14 @@
         "adminPassword": { "type": "string" }
       }
     },
+    "k8s": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "qps": { "type": "integer", "minimum": 1 },
+        "burst": { "type": "integer", "minimum": 1 }
+      }
+    },
     "session": {
       "type": "object",
       "additionalProperties": false,

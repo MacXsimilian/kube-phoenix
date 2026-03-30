@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
@@ -35,6 +36,30 @@ type Counts struct {
 	Skipped   int
 	Protected int
 	Errors    int
+	Requests  int       // K8s API calls made during this run
+	StartedAt time.Time // when the scaling operation began
+	mu        sync.Mutex
+}
+
+// AddRequests atomically increments the K8s API call counter.
+func (c *Counts) AddRequests(n int) {
+	c.mu.Lock()
+	c.Requests += n
+	c.mu.Unlock()
+}
+
+// Duration returns the wall-clock time elapsed since the run started.
+func (c *Counts) Duration() time.Duration {
+	return time.Since(c.StartedAt)
+}
+
+// RequestsPerSecond returns the average K8s API call rate for this run.
+func (c *Counts) RequestsPerSecond() float64 {
+	d := c.Duration().Seconds()
+	if d <= 0 {
+		return 0
+	}
+	return float64(c.Requests) / d
 }
 
 // Runner holds dependencies shared by scale-down and scale-up.
