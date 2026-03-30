@@ -63,6 +63,7 @@ interface FormState {
   skipLabels: string[]
   skipTaints: string[]
   priorityNs: string[]
+  scalingConcurrency: number
   evalInterval: string
   autoWake: boolean
   reconcileWhileAwake: boolean
@@ -76,6 +77,7 @@ const INITIAL_FORM: FormState = {
   skipLabels: [],
   skipTaints: [],
   priorityNs: [],
+  scalingConcurrency: 10,
   evalInterval: '30s',
   autoWake: true,
   reconcileWhileAwake: true,
@@ -100,6 +102,7 @@ interface Snapshot {
   skipLabels: string
   skipTaints: string
   priorityNs: string
+  scalingConcurrency: number
   evalInterval: string
   autoWake: boolean
   reconcileWhileAwake: boolean
@@ -114,6 +117,7 @@ function buildSnapshot(form: FormState): Snapshot {
     skipLabels: joinCommaList(form.skipLabels),
     skipTaints: joinCommaList(form.skipTaints),
     priorityNs: joinCommaList(form.priorityNs),
+    scalingConcurrency: form.scalingConcurrency,
     evalInterval: form.evalInterval.trim(),
     autoWake: form.autoWake,
     reconcileWhileAwake: form.reconcileWhileAwake,
@@ -157,6 +161,7 @@ export default function GuardrailsForm() {
         skipLabels: splitCommaList(guardrails.skipNodeLabels),
         skipTaints: splitCommaList(guardrails.skipNodeTaints),
         priorityNs: splitCommaList(guardrails.scalingPriorityNamespaces),
+        scalingConcurrency: guardrails.scalingConcurrency,
         evalInterval: guardrails.schedulerEvalInterval,
         autoWake: guardrails.schedulerAutoWake,
         reconcileWhileAwake: guardrails.schedulerReconcileWhileAwake,
@@ -187,6 +192,7 @@ export default function GuardrailsForm() {
         skipNodeLabels: snapshot.skipLabels,
         skipNodeTaints: snapshot.skipTaints,
         scalingPriorityNamespaces: snapshot.priorityNs,
+        scalingConcurrency: snapshot.scalingConcurrency,
         schedulerEvalInterval: snapshot.evalInterval,
         schedulerAutoWake: snapshot.autoWake,
         schedulerReconcileWhileAwake: snapshot.reconcileWhileAwake,
@@ -336,6 +342,13 @@ export default function GuardrailsForm() {
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: '8px 8px 0 0' }}>
+              <Box>
+                <Typography variant="body2" fontWeight={600}>Scaling Concurrency</Typography>
+                <Typography variant="caption" color="text.secondary">Max workloads scaled in parallel during sleep/wake (1–50)</Typography>
+              </Box>
+              <TextField size="small" type="number" value={form.scalingConcurrency} disabled={!hasEdit} error={form.scalingConcurrency < 1 || form.scalingConcurrency > 50} onChange={(e) => setField('scalingConcurrency', Math.max(1, Math.min(50, Number(e.target.value) || 1)))} slotProps={{ htmlInput: { min: 1, max: 50, style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} />
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none' }}>
               <Box>
                 <Typography variant="body2" fontWeight={600}>Eval Interval</Typography>
                 <Typography variant="caption" color="text.secondary">How often the scheduler evaluates policy state</Typography>
