@@ -228,7 +228,7 @@ The `IntendedState()` function in `policy_engine.go` resolves the intended state
 
 For each enabled policy, `evaluatePolicy()` loads active exceptions from the database, computes `IntendedState()`, and routes to one of three sub-functions:
 
-- **`reconcilePolicy`** — current state matches intended. When `reconcileWhileAwake` is enabled and the policy is awake, delegates to `reconcileAwakePolicy` which detects drift (open snapshots needing restore) and runs a corrective wake if needed.
+- **`reconcilePolicy`** — current state matches intended. When `reconcileWhileAwake` is enabled and the policy is awake, delegates to `reconcileAwakePolicy` which detects drift (open snapshots needing restore) and runs a corrective wake if needed. When `enforceSleep` is enabled and the policy is sleeping, delegates to `reconcileSleepingPolicy` which detects external scale-ups during the sleep window (via targeted K8s GETs against open snapshots) and runs a corrective sleep to re-scale drifted workloads back to zero.
 - **`resetStuckTransition`** — `CurrentState == "transitioning"` for longer than the policy's execution timeout plus a 5-minute grace period (minimum 15 minutes). Resets to `unknown`.
 - **`executeTransition`** — state mismatch. Respects the `autoWake` gate and triggers a sleep or wake execution.
 
@@ -275,8 +275,10 @@ sequenceDiagram
         PS->>E: IntendedState(StateInput)
         E-->>PS: intended
 
-        alt no change / transitioning
-            PS->>PS: skip
+        alt no change
+            PS->>PS: reconcilePolicy (enforce sleep / partial-wake drift)
+        else transitioning
+            PS->>PS: resetStuckTransition (if stale)
         else state mismatch
             PS->>DB: SetTransitioning()
             PS->>DB: CreateExecution()
@@ -300,7 +302,7 @@ sequenceDiagram
 | `GET` | `/api/policies` | List all policies |
 | `GET` | `/api/policies/:id` | Get a single policy |
 | `POST` | `/api/policies` | Create a policy |
-| `PATCH` | `/api/policies/:id` | Update a policy (partial) |
+| `PUT` | `/api/policies/{id}` | Update a policy (partial) |
 | `DELETE` | `/api/policies/:id` | Delete a policy |
 | `POST` | `/api/policies/:id/sleep` | Trigger immediate sleep |
 | `POST` | `/api/policies/:id/wake` | Trigger immediate wake |

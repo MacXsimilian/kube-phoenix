@@ -142,6 +142,7 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 | Method | Path | Description |
 | :----- | :--- | :---------- |
 | `POST` | `/api/danger/reset-db` | Reset database. Streams NDJSON progress. Body: `{"confirm":"RESET DATABASE"}` |
+| `POST` | `/api/danger/emergency-scale` | Emergency scale: disables all policies, cancels active exceptions, scales sleeping workloads to 1 replica. Streams NDJSON progress. Requires `admin.emergency_scale` permission. Body: `{"confirm":"EMERGENCY SCALE"}` |
 
 ## WebSocket Protocol
 

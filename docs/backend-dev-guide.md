@@ -88,7 +88,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `guardrails.go` | `getGuardrails`, `updateGuardrails` |
 | `users.go` | `listUsers`, `createUser`, `updateUser`, `deleteUser` |
 | `audit.go` | `AuditWriter.Start()`, `Handler.audit()`, `Handler.auditDeniedMiddleware()`, `marshalOrNull()`, `clientIP()`, `listAuditLogs` |
-| `admin.go` | `resetDB` -- streams NDJSON progress events while dropping/recreating all tables |
+| `admin.go` | `resetDB` -- streams NDJSON progress events while dropping/recreating all tables; `emergencyScale` -- disables all policies, cancels active exceptions, scales sleeping workloads to 1 replica, streams NDJSON progress |
 | `ws.go` | `wsReadPump`, `wsSendLines`, `wsDrainChannel`, `wsStreamLoop` -- WebSocket helpers |
 | `helpers.go` | `jsonOK`, `jsonCreated`, `jsonError`, `jsonInternalError`, `parseID`, `parsePageSize`, `reloadScheduler`, `handleStoreError`, `requireUser`, `nonNilMap` |
 | `cluster_info.go` | `getClusterInfo` -- returns Kubernetes API server URL, version, auth mode, and cluster name |
@@ -130,6 +130,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `evaluatePolicy(cp, ctx)` -- computes `IntendedState` and routes to one of three paths: `reconcilePolicy` (current matches intended), `resetStuckTransition` (stuck in transitioning), or `executeTransition` (state change needed).
 - `reconcilePolicy(p, ctx)` -- called when a policy is already in its intended state. When `reconcileWhileAwake` is enabled and the policy is awake, delegates to `reconcileAwakePolicy`.
 - `reconcileAwakePolicy(p, now)` -- detects drift from failed wakes by counting open snapshots that need restoring (`CountOpenSnapshotsForRestore`). If drift is found and the per-policy backoff (5 minutes) has elapsed, runs a corrective wake with trigger `"reconcile"`. Bypasses the `autoWake` gate.
+- `reconcileSleepingPolicy(p, now)` -- enforce sleep drift detection. When `enforceSleep` is enabled and the policy is sleeping, uses targeted K8s GETs against open snapshots (`HasDriftedFromSleep`) to detect workloads that were externally scaled up during a sleep window. If drift is found and the per-policy backoff (5 minutes) has elapsed, runs a corrective sleep with trigger `"enforce_sleep"`. Respects system namespace guardrails and active `stay_awake` exceptions.
 - `executeTransition(p, intended, ctx)` -- handles scheduled sleep/wake transitions, respecting the `autoWake` gate and the failed-transition backoff (5 minutes between retries after a failure).
 - `stuckTimeout(p)` -- computes the stuck-transition timeout for a policy from its `TimeoutMinutes` plus a 5-minute grace period, floored at 15 minutes. Prevents legitimate long drains from being falsely reset.
 - `resetStuckTransition(p, now)` -- resets policies stuck in `transitioning` for longer than `stuckTimeout(p)` back to `unknown`.
@@ -313,8 +314,8 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 **Key files:**
 
 **`permissions.go`:**
-- `Permission` type (string enum): `PermViewAll`, `PermScheduleEdit`, `PermScheduleTrigger`, `PermGuardrailEdit`, `PermUserManage`, `PermAdminResetDB`, `PermAuditView`, `PermPasswordChange`.
-- `RolePermissions` map: `admin` has all 8, `operator` has 6 (no `user.manage` or `admin.reset_db`), `viewer` has 3 (`view.all`, `audit.view`, `password.change`).
+- `Permission` type (string enum): `PermViewAll`, `PermScheduleEdit`, `PermScheduleTrigger`, `PermGuardrailEdit`, `PermUserManage`, `PermAdminResetDB`, `PermAdminEmergencyScale`, `PermAuditView`, `PermPasswordChange`.
+- `RolePermissions` map: `admin` has all 9, `operator` has 6 (no `user.manage`, `admin.reset_db`, or `admin.emergency_scale`), `viewer` has 3 (`view.all`, `audit.view`, `password.change`).
 - `HasPermission(role, perm) bool` -- lookup.
 - `PermissionsForRole(role) []Permission` -- returns the ordered list for `/api/auth/me`.
 - `ValidRole(role) bool` -- checks against `RolePermissions` keys.

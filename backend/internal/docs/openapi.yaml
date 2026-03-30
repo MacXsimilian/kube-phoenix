@@ -435,6 +435,16 @@ components:
         message:
           type: string
 
+    EmergencyScaleEvent:
+      description: A progress event emitted during emergency scale (NDJSON stream).
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [step, done, error]
+        message:
+          type: string
+
     User:
       description: A user account (local or OIDC).
       type: object
@@ -1537,6 +1547,56 @@ paths:
                 $ref: "#/components/schemas/Error"
         "401":
           description: Unauthorized
+        "422":
+          description: Missing or incorrect confirmation string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/danger/emergency-scale:
+    post:
+      operationId: emergencyScale
+      summary: Emergency scale — disable all policies and scale sleeping workloads to 1
+      description: |
+        Stops the scheduler, disables all policies, cancels active exceptions,
+        scales every sleeping workload to 1 replica, and restarts the scheduler.
+        Streams progress as newline-delimited JSON (NDJSON).
+        Requires admin role with admin.emergency_scale permission.
+
+        **This operation affects every managed workload in the cluster.**
+      tags: [Admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                confirm:
+                  type: string
+                  enum: ["EMERGENCY SCALE"]
+              required:
+                - confirm
+      responses:
+        "200":
+          description: Streaming NDJSON progress
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: "#/components/schemas/EmergencyScaleEvent"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: Missing or incorrect confirmation string
           content:

@@ -20,6 +20,8 @@
 | [API Reference](api.md) | REST, SSE, and WebSocket endpoints with authentication details |
 | [OpenAPI Spec](../openapi.yaml) | Machine-readable OpenAPI 3.1 definition (also served at `/api/docs/openapi.yaml`) |
 | [Window-Native Scheduling](window-native-scheduling.md) | Architecture of the sleep window evaluator and scheduler |
+| [Policy-Based Scaling Feature](feature-policy-based-scaling.md) | Problem statement, use cases, and requirements for policy-based scheduled scaling |
+| [Policy Test Plan](test-plan-policy.md) | End-to-end test scenarios for policies, exceptions, drift detection, and edge cases |
 | [Helm Values](../helm/kube-phoenix/values.yaml) | Full Helm values file with inline comments |
 
 ## Development

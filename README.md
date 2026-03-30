@@ -29,6 +29,8 @@ kube-phoenix replaces ad-hoc cron scripts with a proper operator for scheduling 
 - **Live cluster visibility** -- Real-time view of deployments, stateful sets, nodes, pod metrics, Kubernetes events, and streaming container logs with search.
 - **Guardrails** -- Protect namespaces, node labels, and taints from the scaler. Priority namespace scaling ensures critical workloads are processed first.
 - **RBAC and OIDC** -- Session-based auth with admin/operator/viewer roles. Optional Keycloak SSO with AD group-to-role mapping.
+- **Enforce sleep** -- Detects and corrects external scale-ups during sleeping policies, ensuring workloads stay at zero until the wake window.
+- **Emergency scale** -- Danger-zone admin action that disables all policies and scales sleeping workloads to 1 replica for minimum availability.
 - **Prometheus metrics** -- Built-in `/metrics` endpoint with 24 metrics covering HTTP requests, K8s API calls, policy executions, CRUD operations, scheduler health, WebSocket connections, auth, and caching.
 
 ---
@@ -77,6 +79,12 @@ See [docs/deployment.md](docs/deployment.md) for production setup with external 
 | API reference and Swagger UI | [docs/api.md](docs/api.md) |
 | Architecture and system design | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
+| Local development | [docs/local-development.md](docs/local-development.md) |
+| Backend dev guide | [docs/backend-dev-guide.md](docs/backend-dev-guide.md) |
+| Frontend dev guide | [docs/frontend-dev-guide.md](docs/frontend-dev-guide.md) |
+| Policy-based scaling | [docs/feature-policy-based-scaling.md](docs/feature-policy-based-scaling.md) |
+| Window-native scheduling | [docs/window-native-scheduling.md](docs/window-native-scheduling.md) |
+| Test plan (policy) | [docs/test-plan-policy.md](docs/test-plan-policy.md) |
 | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 
 ---
