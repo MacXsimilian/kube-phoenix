@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.14](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.13...v0.5.14) (2026-03-30)
+
+
+### Features
+
+* **scheduler:** enforce sleep and UI polish ([#296](https://github.com/MacXsimilian/kube-phoenix/issues/296)) ([f643fa1](https://github.com/MacXsimilian/kube-phoenix/commit/f643fa14bafcc6a8a43235fcef3b677a1a0c29b4))
+
 ## [0.5.13](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.12...v0.5.13) (2026-03-29)
 
 
