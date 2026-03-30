@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.15](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.14...v0.5.15) (2026-03-30)
+
+
+### Bug Fixes
+
+* **api:** policy validation and overlap detection with expanded test environment ([#298](https://github.com/MacXsimilian/kube-phoenix/issues/298)) ([771bd8e](https://github.com/MacXsimilian/kube-phoenix/commit/771bd8e8f844755274db8d58adab9aed09d26016))
+
 ## [0.5.14](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.13...v0.5.14) (2026-03-30)
 
 
