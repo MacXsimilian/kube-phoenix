@@ -56,6 +56,22 @@ export function register(router) {
       if (i >= steps.length) {
         clearInterval(tick)
         res.end()
+
+        // Disable all policies and create emergency wake executions.
+        const now = new Date().toISOString()
+        for (const p of db.policies) {
+          p.enabled = false
+          p.currentState = 'awake'
+          p.stateSince = now
+          const execId = ++db._seq.execution
+          db.executions.unshift({
+            id: execId, policyId: p.id, policy: { name: p.name },
+            direction: 'wake', trigger: 'emergency_scale',
+            startedAt: now, finishedAt: now, status: 'success', mode: 'apply',
+            countScaled: 4, countSkipped: 0, countErrors: 0,
+            countProtected: 0, countDrained: 0, countDeleted: 0,
+          })
+        }
       }
     }, 300)
   })

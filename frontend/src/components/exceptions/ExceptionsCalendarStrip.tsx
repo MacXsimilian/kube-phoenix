@@ -59,17 +59,11 @@ function isMultiDay(ex: ScheduledException): boolean {
   return e.getTime() > s.getTime()
 }
 
-function spanDayCount(ex: ScheduledException): number {
-  const s = new Date(ex.startsAt); s.setHours(0, 0, 0, 0)
-  const e = new Date(ex.endsAt); e.setHours(0, 0, 0, 0)
-  return Math.round((e.getTime() - s.getTime()) / 86400000) + 1
-}
-
 // ── Row model ───────────────────────────────────────────────────────────────
 
 type CalendarRow =
   | { type: 'day'; date: Date; key: string; exceptions: ScheduledException[] }
-  | { type: 'span'; exception: ScheduledException; startDate: Date; endDate: Date; dayCount: number }
+  | { type: 'span'; exception: ScheduledException; startDate: Date; endDate: Date }
 
 function buildRows(exceptions: ScheduledException[]): CalendarRow[] {
   const singleDayByDate = new Map<string, ScheduledException[]>()
@@ -79,7 +73,7 @@ function buildRows(exceptions: ScheduledException[]): CalendarRow[] {
     if (isMultiDay(ex)) {
       const s = new Date(ex.startsAt); s.setHours(0, 0, 0, 0)
       const e = new Date(ex.endsAt); e.setHours(0, 0, 0, 0)
-      spans.push({ type: 'span', exception: ex, startDate: s, endDate: e, dayCount: spanDayCount(ex) })
+      spans.push({ type: 'span', exception: ex, startDate: s, endDate: e })
     } else {
       const d = new Date(ex.startsAt); d.setHours(0, 0, 0, 0)
       const k = dayKey(d)
@@ -218,7 +212,7 @@ function RowList({
         return (
           <SpanRow
             key={`span-${row.exception.id}`}
-            ex={row.exception} startDate={row.startDate} endDate={row.endDate} dayCount={row.dayCount}
+            ex={row.exception} startDate={row.startDate} endDate={row.endDate}
             isDark={isDark} canEdit={canEdit} onEdit={onEdit} onCancel={onCancel}
             expandedId={expandedId} onToggleExpand={onToggleExpand}
           />
@@ -231,7 +225,7 @@ function RowList({
 // ── Exception block (shared between day + span rows) ────────────────────────
 
 function ExceptionBlock({
-  ex, isDark, canEdit, onEdit, onCancel, isExpanded, onToggle, extraChips,
+  ex, isDark, canEdit, onEdit, onCancel, isExpanded, onToggle,
 }: {
   ex: ScheduledException
   isDark: boolean
@@ -240,7 +234,6 @@ function ExceptionBlock({
   onCancel: () => void
   isExpanded: boolean
   onToggle: () => void
-  extraChips?: React.ReactNode
 }) {
   const hasTargets = ex.workloadTargets && ex.workloadTargets.length > 0
   return (
@@ -264,7 +257,6 @@ function ExceptionBlock({
         size="small"
         sx={{ fontSize: 10, height: 18, bgcolor: 'action.hover' }}
       />
-      {extraChips}
       {hasTargets && (
         <Chip label={`${ex.workloadTargets!.length} targets`} size="small" sx={{ fontSize: 10, height: 18 }} />
       )}
@@ -320,9 +312,9 @@ function DayRow({
 // ── Multi-day span row ──────────────────────────────────────────────────────
 
 function SpanRow({
-  ex, startDate, endDate, dayCount, isDark, canEdit, onEdit, onCancel, expandedId, onToggleExpand,
+  ex, startDate, endDate, isDark, canEdit, onEdit, onCancel, expandedId, onToggleExpand,
 }: {
-  ex: ScheduledException; startDate: Date; endDate: Date; dayCount: number
+  ex: ScheduledException; startDate: Date; endDate: Date
   isDark: boolean; canEdit: boolean
   onEdit: (ex: ScheduledException) => void; onCancel: (ex: ScheduledException) => void
   expandedId: number | null; onToggleExpand: (id: number | null) => void
@@ -348,7 +340,6 @@ function SpanRow({
             onEdit={() => onEdit(ex)} onCancel={() => onCancel(ex)}
             isExpanded={isExpanded}
             onToggle={() => onToggleExpand(isExpanded ? null : ex.id)}
-            extraChips={<Chip label={`${dayCount} days`} size="small" variant="outlined" sx={{ fontSize: 10, height: 18 }} />}
           />
         </Box>
       </Box>

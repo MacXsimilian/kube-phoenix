@@ -22,6 +22,7 @@ import { timeAgo } from '@/lib/formatters'
 import { useColors } from '@/lib/colors'
 import { ACTIVITY_FEED_STALE_MS, ACTIVITY_FEED_REFETCH_MS } from '@/lib/constants'
 import StatusChip from '@/components/shared/StatusChip'
+import TriggerChip from '@/components/shared/TriggerChip'
 import LogViewer from '@/components/history/LogViewer'
 import { useIsDark } from '@/lib/useIsDark'
 import { getModeStyle } from '@/lib/statusColors'
@@ -115,6 +116,7 @@ export default function ActivityFeed() {
                   <Typography variant="body2" fontWeight={500}>
                     {exec.direction === 'sleep' ? 'Sleep' : 'Wake'} #{exec.id}
                   </Typography>
+                  <TriggerChip trigger={exec.trigger} />
                   <StatusChip status={exec.status} />
                   <Chip
                     label={exec.mode.toUpperCase()}

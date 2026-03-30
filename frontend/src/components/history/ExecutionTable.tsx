@@ -31,6 +31,7 @@ import { useIsDark } from '@/lib/useIsDark'
 import { EXECUTIONS_REFETCH_MS } from '@/lib/constants'
 import { getModeStyle, SMALL_CHIP_SX } from '@/lib/statusColors'
 import StatusChip from '@/components/shared/StatusChip'
+import TriggerChip from '@/components/shared/TriggerChip'
 import type { PolicyExecution } from '@/lib/types'
 import { TABLE_HEAD_CELL_SX } from '@/lib/tableStyles'
 
@@ -166,6 +167,7 @@ export default function PolicyExecutionTable({
                   <TableCell sx={TABLE_HEAD_CELL_SX}>STARTED</TableCell>
                   <TableCell sx={TABLE_HEAD_CELL_SX}>POLICY</TableCell>
                   <TableCell sx={TABLE_HEAD_CELL_SX}>DIRECTION</TableCell>
+                  <TableCell sx={TABLE_HEAD_CELL_SX}>TRIGGER</TableCell>
                   <TableCell sx={TABLE_HEAD_CELL_SX}>MODE</TableCell>
                   <TableCell sx={TABLE_HEAD_CELL_SX}>STATUS</TableCell>
                   <TableCell sx={TABLE_HEAD_CELL_SX}>DURATION</TableCell>
@@ -175,7 +177,7 @@ export default function PolicyExecutionTable({
               <TableBody>
                 {!data?.items?.length ? (
                   <TableRow>
-                    <TableCell colSpan={7}>
+                    <TableCell colSpan={8}>
                       <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
                         {isError ? 'Could not load executions.' : 'No executions yet.'}
                       </Typography>
@@ -207,6 +209,7 @@ export default function PolicyExecutionTable({
                             <Typography variant="body2">{exec.direction === 'sleep' ? 'Sleep' : 'Wake'}</Typography>
                           </Box>
                         </TableCell>
+                        <TableCell><TriggerChip trigger={exec.trigger} /></TableCell>
                         <TableCell>
                           <Chip
                             label={exec.mode.toUpperCase()}

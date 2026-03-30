@@ -75,26 +75,19 @@ interface Preset {
 
 const PRESETS: Preset[] = [
   {
+    label: 'Business hours',
+    windows: [
+      { name: 'After Hours', daysOfWeek: [1, 2, 3, 4, 5], startTime: '17:00', endTime: '09:00', allDay: false },
+      { name: 'Weekends', daysOfWeek: [0, 6], startTime: '00:00', endTime: '00:00', allDay: true },
+    ],
+  },
+  {
     label: 'Weekday nights',
     windows: [{ name: 'Weekday Nights', daysOfWeek: [1, 2, 3, 4, 5], startTime: '19:00', endTime: '07:00', allDay: false }],
   },
   {
     label: 'Weekends',
     windows: [{ name: 'Weekends', daysOfWeek: [0, 6], startTime: '00:00', endTime: '00:00', allDay: true }],
-  },
-  {
-    label: 'Nights + weekends',
-    windows: [
-      { name: 'Weekday Nights', daysOfWeek: [1, 2, 3, 4, 5], startTime: '19:00', endTime: '07:00', allDay: false },
-      { name: 'Weekends', daysOfWeek: [0, 6], startTime: '00:00', endTime: '00:00', allDay: true },
-    ],
-  },
-  {
-    label: 'Business hours',
-    windows: [
-      { name: 'After Hours', daysOfWeek: [1, 2, 3, 4, 5], startTime: '17:00', endTime: '09:00', allDay: false },
-      { name: 'Weekends', daysOfWeek: [0, 6], startTime: '00:00', endTime: '00:00', allDay: true },
-    ],
   },
 ]
 
@@ -351,7 +344,7 @@ export default function WindowPicker({
   return (
     <Box>
       {/* Presets — pill buttons with dots */}
-      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2 }}>
+      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 2 }}>
         {PRESETS.map(preset => (
           <Button
             key={preset.label}

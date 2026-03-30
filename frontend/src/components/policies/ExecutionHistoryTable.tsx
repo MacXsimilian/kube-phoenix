@@ -18,6 +18,7 @@ import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import { useIsDark } from '@/lib/useIsDark'
 import StatusChip from '@/components/shared/StatusChip'
+import TriggerChip from '@/components/shared/TriggerChip'
 import { fmtDtShort, fmtDuration } from '@/lib/formatters'
 import { getModeStyle, SMALL_CHIP_SX } from '@/lib/statusColors'
 import type { PolicyExecution, PolicyExecutionPage } from '@/lib/types'
@@ -100,7 +101,7 @@ export default function ExecutionHistoryTable({
                       {ex.direction}
                     </Box>
                   </TableCell>
-                  <TableCell>{ex.trigger}</TableCell>
+                  <TableCell><TriggerChip trigger={ex.trigger} /></TableCell>
                   <TableCell>
                     <Chip
                       label={ex.mode?.toUpperCase() ?? '\u2014'}
