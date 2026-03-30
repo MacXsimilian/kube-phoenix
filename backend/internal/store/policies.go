@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/macxsimilian/kube-phoenix/backend/internal/stringutil"
 	"gorm.io/gorm"
 )
 
@@ -113,41 +114,53 @@ func (s *Store) DeletePolicy(id uint) error {
 	})
 }
 
-// HasApplyPolicyOverlap returns true when another enabled apply-mode policy
-// could potentially overlap with the given targeting parameters. Used for
-// conflict detection on save — blocks when overlap is likely.
+// HasApplyPolicyOverlap returns true when another apply-mode policy could
+// potentially overlap with the given namespace scope. Used for conflict
+// detection on save — blocks when overlap is likely.
 //
-// Overlap logic:
-//   - If the new policy targets everything (both filters empty), any other
-//     apply-mode policy is a conflict.
-//   - If another policy targets everything, it conflicts with any new policy.
-//   - If both policies share the same namespace scope (same filter or one is
-//     empty/universal), they may overlap — we flag it.
-//
-// Label selector intersection is not computed exactly (would require a K8s API
-// call); instead, same-namespace policies are treated as overlapping.
-func (s *Store) HasApplyPolicyOverlap(excludeID uint, namespaceFilter, labelSelector string) (bool, error) {
-	if namespaceFilter == "" && labelSelector == "" {
-		// New policy targets everything — overlap with ANY other apply-mode policy.
+// Both enabled and disabled policies are checked, because a disabled policy can
+// be enabled at any time and would then silently conflict. Label selector
+// intersection is not computed (would require a K8s API call); same-namespace
+// policies are treated as overlapping.
+func (s *Store) HasApplyPolicyOverlap(excludeID uint, namespaceFilter string) (bool, error) {
+	if namespaceFilter == "" {
 		var count int64
 		err := s.db.Model(&Policy{}).
-			Where("id != ? AND enabled = true AND mode = 'apply'", excludeID).
+			Where("id != ? AND mode = 'apply'", excludeID).
 			Count(&count).Error
 		return count > 0, err
 	}
 
-	// Check for policies that could overlap:
-	// 1. Another policy targets everything (namespace_filter = '' AND label_selector = '')
-	// 2. Another policy targets the same namespace scope (namespace_filter matches or is universal)
-	var count int64
+	var others []Policy
 	err := s.db.Model(&Policy{}).
-		Where(`id != ? AND enabled = true AND mode = 'apply' AND (
-			(namespace_filter = '' AND label_selector = '') OR
-			namespace_filter = '' OR
-			namespace_filter = ?
-		)`, excludeID, namespaceFilter).
-		Count(&count).Error
-	return count > 0, err
+		Where("id != ? AND mode = 'apply'", excludeID).
+		Find(&others).Error
+	if err != nil {
+		return false, err
+	}
+
+	newNS := stringutil.SplitCSVSet(namespaceFilter)
+	for _, other := range others {
+		if other.NamespaceFilter == "" {
+			return true, nil
+		}
+		if namespacesOverlap(newNS, stringutil.SplitCSVSet(other.NamespaceFilter)) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func namespacesOverlap(a, b map[string]bool) bool {
+	if len(a) > len(b) {
+		a, b = b, a
+	}
+	for ns := range a {
+		if b[ns] {
+			return true
+		}
+	}
+	return false
 }
 
 // ─── Policy Executions ────────────────────────────────────────────────────────

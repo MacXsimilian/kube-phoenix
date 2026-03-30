@@ -14,6 +14,8 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/policy"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 // reNamespace matches valid Kubernetes namespace names (RFC 1123 DNS label).
@@ -122,7 +124,7 @@ func (h *Handler) createPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if p.Mode == store.PolicyModeApply {
-		overlap, err := h.store.HasApplyPolicyOverlap(0, p.NamespaceFilter, p.LabelSelector)
+		overlap, err := h.store.HasApplyPolicyOverlap(0, p.NamespaceFilter)
 		if err != nil {
 			jsonInternalError(w, err, "conflict check failed")
 			return
@@ -255,11 +257,7 @@ func (h *Handler) checkPolicyOverlap(id uint, old *store.Policy, updates map[str
 	if v, ok := updates["namespace_filter"]; ok {
 		finalNS = fmt.Sprintf("%v", v)
 	}
-	finalLabel := old.LabelSelector
-	if v, ok := updates["label_selector"]; ok {
-		finalLabel = fmt.Sprintf("%v", v)
-	}
-	overlap, err := h.store.HasApplyPolicyOverlap(id, finalNS, finalLabel)
+	overlap, err := h.store.HasApplyPolicyOverlap(id, finalNS)
 	if err != nil {
 		return "", err
 	}
@@ -446,10 +444,16 @@ func validatePolicyDescription(desc string) string {
 	return ""
 }
 
-// validatePolicyLabelSelector returns an error message if the label selector is too long.
+// validatePolicyLabelSelector returns an error message if the label selector is
+// too long or syntactically invalid.
 func validatePolicyLabelSelector(sel string) string {
 	if len(sel) > maxLabelSelectorLen {
 		return "labelSelector must be 4096 characters or fewer"
+	}
+	if sel != "" {
+		if _, err := labels.Parse(sel); err != nil {
+			return fmt.Sprintf("invalid labelSelector: %v", err)
+		}
 	}
 	return ""
 }

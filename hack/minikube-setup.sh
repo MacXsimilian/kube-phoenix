@@ -89,30 +89,21 @@ create_cluster() {
 # The test environment simulates a company with four teams, each owning a
 # namespace. This structure exercises the main kube-phoenix features:
 #
-#   ┌─────────────────────────────────────────────────────────────────────────┐
-#   │ Namespace    │ Team        │ Workloads         │ What it tests         │
-#   ├─────────────────────────────────────────────────────────────────────────┤
-#   │ team-backend │ Backend     │ api (3), worker   │ Policy scoped to a    │
-#   │              │             │ (2), cron (1)     │ single namespace.     │
-#   │              │             │                   │ Exception: keep api   │
-#   │              │             │                   │ alive during sleep.   │
-#   ├─────────────────────────────────────────────────────────────────────────┤
-#   │ team-web     │ Frontend    │ web (2),          │ Multi-deployment      │
-#   │              │             │ bff (1),          │ namespace. Exception: │
-#   │              │             │ assets (1)        │ exempt assets from    │
-#   │              │             │                   │ sleep (CDN origin).   │
-#   ├─────────────────────────────────────────────────────────────────────────┤
-#   │ team-data    │ Data/ML     │ pipeline (2),     │ Cross-namespace       │
-#   │              │             │ scheduler (1),    │ policy (data + web).  │
-#   │              │             │ dashboard (1)     │ Exception: keep       │
-#   │              │             │                   │ dashboard for oncall. │
-#   ├─────────────────────────────────────────────────────────────────────────┤
-#   │ team-qa      │ QA          │ test-runner (2),  │ Nightly sleep policy. │
-#   │              │             │ selenium (1),     │ Wake before business  │
-#   │              │             │ mock-api (1)      │ hours. Guardrail:     │
-#   │              │             │                   │ protect during        │
-#   │              │             │                   │ release freeze.       │
-#   └─────────────────────────────────────────────────────────────────────────┘
+#   ┌──────────────────────────────────────────────────────────────────────────┐
+#   │ Namespace     │ Pods │ What it tests                                   │
+#   ├──────────────────────────────────────────────────────────────────────────┤
+#   │ team-backend  │  30  │ Single-namespace policy. Exception: keep api.   │
+#   │ team-web      │  25  │ Multi-deployment sleep. Exception: cdn-origin.  │
+#   │ team-data     │  30  │ Cross-namespace policy (data + web).            │
+#   │ team-qa       │  25  │ Nightly sleep. Guardrail: release freeze.       │
+#   │ team-platform │  30  │ Infra/observability stack. Guardrail target.    │
+#   │ team-ml       │  25  │ GPU-style workloads. Exception: model-serve.    │
+#   │ team-mobile   │  25  │ Multi-service mobile backend. Bulk sleep/wake.  │
+#   │ team-payments │  25  │ Compliance-sensitive. Guardrail: always protect. │
+#   │ team-infra    │  25  │ Cluster services. Node drain testing.           │
+#   ├──────────────────────────────────────────────────────────────────────────┤
+#   │ TOTAL         │ 240  │ ~80 pods per node across 3 nodes                │
+#   └──────────────────────────────────────────────────────────────────────────┘
 #
 # Suggested testing flow:
 #
@@ -135,29 +126,99 @@ create_cluster() {
 create_workloads() {
   info "Creating sample namespaces and workloads"
 
-  for ns in team-backend team-web team-data team-qa; do
+  for ns in team-backend team-web team-data team-qa team-platform team-ml team-mobile team-payments team-infra; do
     kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
   done
 
-  # ── team-backend ─────────────────────────────────────────────────────────
-  apply_deployment team-backend api    3
-  apply_deployment team-backend worker 2
-  apply_deployment team-backend cron   1
+  # ── team-backend (30 pods) ────────────────────────────────────────────────
+  apply_deployment team-backend api          5
+  apply_deployment team-backend worker       5
+  apply_deployment team-backend cron         3
+  apply_deployment team-backend gateway      5
+  apply_deployment team-backend auth         4
+  apply_deployment team-backend notifications 3
+  apply_deployment team-backend cache        3
+  apply_deployment team-backend search       2
 
-  # ── team-web ─────────────────────────────────────────────────────────────
-  apply_deployment team-web web    2
-  apply_deployment team-web bff    1
-  apply_deployment team-web assets 1
+  # ── team-web (25 pods) ──────────────────────────────────────────────────
+  apply_deployment team-web web        5
+  apply_deployment team-web bff        4
+  apply_deployment team-web assets     3
+  apply_deployment team-web ssr        4
+  apply_deployment team-web cdn-origin 3
+  apply_deployment team-web analytics  3
+  apply_deployment team-web preview    3
 
-  # ── team-data ────────────────────────────────────────────────────────────
-  apply_deployment team-data pipeline  2
-  apply_deployment team-data scheduler 1
-  apply_deployment team-data dashboard 1
+  # ── team-data (30 pods) ─────────────────────────────────────────────────
+  apply_deployment team-data pipeline    5
+  apply_deployment team-data scheduler   3
+  apply_deployment team-data dashboard   3
+  apply_deployment team-data etl         4
+  apply_deployment team-data warehouse   3
+  apply_deployment team-data spark-driver 2
+  apply_deployment team-data spark-worker 5
+  apply_deployment team-data airflow     3
+  apply_deployment team-data metabase    2
 
-  # ── team-qa ──────────────────────────────────────────────────────────────
-  apply_deployment team-qa test-runner 2
-  apply_deployment team-qa selenium    1
-  apply_deployment team-qa mock-api    1
+  # ── team-qa (25 pods) ───────────────────────────────────────────────────
+  apply_deployment team-qa test-runner  5
+  apply_deployment team-qa selenium     4
+  apply_deployment team-qa mock-api     3
+  apply_deployment team-qa cypress      4
+  apply_deployment team-qa load-test    3
+  apply_deployment team-qa coverage     3
+  apply_deployment team-qa report       3
+
+  # ── team-platform (30 pods) ─────────────────────────────────────────────
+  apply_deployment team-platform consul        4
+  apply_deployment team-platform vault         3
+  apply_deployment team-platform prometheus     3
+  apply_deployment team-platform grafana       2
+  apply_deployment team-platform alertmanager  2
+  apply_deployment team-platform loki          3
+  apply_deployment team-platform tempo         3
+  apply_deployment team-platform otel-collector 4
+  apply_deployment team-platform cert-manager  3
+  apply_deployment team-platform ingress       3
+
+  # ── team-ml (25 pods) ───────────────────────────────────────────────────
+  apply_deployment team-ml model-serve   5
+  apply_deployment team-ml trainer       3
+  apply_deployment team-ml feature-store 3
+  apply_deployment team-ml notebook      4
+  apply_deployment team-ml labeling      3
+  apply_deployment team-ml inference     4
+  apply_deployment team-ml vector-db     3
+
+  # ── team-mobile (25 pods) ───────────────────────────────────────────────
+  apply_deployment team-mobile push-service  4
+  apply_deployment team-mobile media-api     3
+  apply_deployment team-mobile chat-service  4
+  apply_deployment team-mobile sync          3
+  apply_deployment team-mobile deeplink      3
+  apply_deployment team-mobile config-server 3
+  apply_deployment team-mobile ab-testing    3
+  apply_deployment team-mobile crash-report  2
+
+  # ── team-payments (25 pods) ─────────────────────────────────────────────
+  apply_deployment team-payments ledger     4
+  apply_deployment team-payments processor  3
+  apply_deployment team-payments fraud      3
+  apply_deployment team-payments invoicing  3
+  apply_deployment team-payments webhook    4
+  apply_deployment team-payments reconciler 3
+  apply_deployment team-payments pci-proxy  3
+  apply_deployment team-payments audit      2
+
+  # ── team-infra (25 pods) ────────────────────────────────────────────────
+  apply_deployment team-infra dns          3
+  apply_deployment team-infra ntp          2
+  apply_deployment team-infra log-shipper  4
+  apply_deployment team-infra backup       3
+  apply_deployment team-infra registry     3
+  apply_deployment team-infra artifact     3
+  apply_deployment team-infra scanner      4
+  apply_deployment team-infra policy-agent 3
 
   ok "Sample workloads created"
   echo
