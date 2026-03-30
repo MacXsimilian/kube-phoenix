@@ -4,6 +4,11 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "global": {
+      "type": "object",
+      "description": "Global values injected by Helm and ArgoCD. Not used by this chart.",
+      "additionalProperties": true
+    },
     "nameOverride": {
       "type": "string",
       "description": "Override the chart name."
