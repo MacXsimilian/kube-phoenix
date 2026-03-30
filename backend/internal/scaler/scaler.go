@@ -12,6 +12,7 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/nodeutil"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/stringutil"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -77,12 +78,7 @@ func namespaceAllowed(ns, filter string) bool {
 	if filter == "" {
 		return true
 	}
-	for _, f := range strings.Split(filter, ",") {
-		if strings.TrimSpace(f) == ns {
-			return true
-		}
-	}
-	return false
+	return stringutil.SplitCSVSet(filter)[ns]
 }
 
 // formatWorkload returns "Deployment default/nginx" style.
