@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.16](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.15...v0.5.16) (2026-03-30)
+
+
+### Features
+
+* **admin:** emergency scale, CI release fix, and UI polish ([#300](https://github.com/MacXsimilian/kube-phoenix/issues/300)) ([5ade01b](https://github.com/MacXsimilian/kube-phoenix/commit/5ade01b827a55df5cde2b9ea0a1fed358dfdb21a))
+
 ## [0.5.15](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.14...v0.5.15) (2026-03-30)
 
 
