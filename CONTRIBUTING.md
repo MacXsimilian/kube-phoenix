@@ -56,6 +56,12 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:8080' > frontend/.env.local
 make dev-frontend
 ```
 
+Alternatively, if you only need the frontend (no backend or cluster):
+
+```bash
+make dev-mock    # starts frontend with a built-in mock API server
+```
+
 Open `http://localhost:3000` and log in with `admin` / `adminadmin`.
 
 The backend auto-migrates the database schema and seeds default data on startup. No
@@ -96,6 +102,7 @@ kube-phoenix/
       scheduler/                  # PolicyScheduler, PolicyEngine, WS log broker
       store/                      # GORM models + queries
       stringutil/                 # Generic string helpers (CSV parsing, etc.)
+  frontend/mock-api/                # Modular mock API server with route files
   frontend/src/
     app/                          # Next.js pages
     components/                   # UI components by domain (audit, cluster, common, guardrails,
@@ -223,7 +230,9 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 
 1. Merge PRs to `master` using conventional commit messages.
 2. release-please opens a **Release PR** containing the version bump and changelog diff.
-3. Merging the Release PR triggers the release pipeline:
+3. Merging the Release PR triggers the release pipeline. `release-please.yml` chains
+   the release build via `workflow_call` because `GITHUB_TOKEN`-generated events do not
+   trigger other workflows (so a `release: published` trigger would be silently skipped).
    - Docker image pushed to `ghcr.io/macxsimilian/kube-phoenix` (semver tags only — no `latest`).
    - Image signed with [cosign](https://github.com/sigstore/cosign) (keyless / OIDC).
    - SBOM generated with [Syft](https://github.com/anchore/syft) and attached to the image.

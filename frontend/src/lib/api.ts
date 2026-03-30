@@ -223,6 +223,41 @@ export async function* resetDatabaseStream(): AsyncGenerator<ResetEvent> {
   }
 }
 
+export async function* emergencyScaleStream(): AsyncGenerator<ResetEvent> {
+  const res = await fetch(`${BASE}/api/danger/emergency-scale`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken() },
+    body: JSON.stringify({ confirm: 'EMERGENCY SCALE' }),
+  })
+
+  await handleAuthErrors(res)
+
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => '')
+    let errMsg: string | undefined
+    try { errMsg = (JSON.parse(text) as { error?: string }).error } catch { /* not JSON */ }
+    throw new Error(errMsg || text || `HTTP ${res.status}`)
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    const lines = buf.split('\n')
+    buf = lines.pop() ?? ''
+    for (const line of lines) {
+      if (line.trim()) {
+        try { yield JSON.parse(line) } catch { if (process.env.NODE_ENV === 'development') console.warn('[kp] skipping malformed JSON line:', line) }
+      }
+    }
+  }
+}
+
 // ── Users ─────────────────────────────────────────────────────────────────────
 
 export const getUsers = (): Promise<User[]> =>

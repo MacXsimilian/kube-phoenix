@@ -30,4 +30,49 @@ export function register(router) {
       }
     }, 400)
   })
+
+  router.add('POST', '/api/danger/emergency-scale', (_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/x-ndjson', 'Transfer-Encoding': 'chunked' })
+
+    const steps = [
+      { type: 'step', message: 'Stopping policy scheduler...' },
+      { type: 'step', message: 'Disabling all policies...' },
+      { type: 'step', message: 'Disabled 3 policies' },
+      { type: 'step', message: 'Finding sleeping workloads...' },
+      { type: 'step', message: 'Found 4 workloads to scale up' },
+      { type: 'step', message: 'Scaled Deployment staging/api-server to 1 replica' },
+      { type: 'step', message: 'Scaled Deployment staging/web-frontend to 1 replica' },
+      { type: 'step', message: 'Scaled StatefulSet staging/redis to 1 replica' },
+      { type: 'step', message: 'Scaled Deployment dev/worker to 1 replica' },
+      { type: 'step', message: 'Scaling complete: 4 succeeded, 0 failed' },
+      { type: 'step', message: 'Restarting policy scheduler...' },
+      { type: 'done', message: 'Emergency scale complete. All policies disabled, sleeping workloads scaled to 1 replica.' },
+    ]
+
+    let i = 0
+    const tick = setInterval(() => {
+      res.write(JSON.stringify(steps[i]) + '\n')
+      i++
+      if (i >= steps.length) {
+        clearInterval(tick)
+        res.end()
+
+        // Disable all policies and create emergency wake executions.
+        const now = new Date().toISOString()
+        for (const p of db.policies) {
+          p.enabled = false
+          p.currentState = 'awake'
+          p.stateSince = now
+          const execId = ++db._seq.execution
+          db.executions.unshift({
+            id: execId, policyId: p.id, policy: { name: p.name },
+            direction: 'wake', trigger: 'emergency_scale',
+            startedAt: now, finishedAt: now, status: 'success', mode: 'apply',
+            countScaled: 4, countSkipped: 0, countErrors: 0,
+            countProtected: 0, countDrained: 0, countDeleted: 0,
+          })
+        }
+      }
+    }, 300)
+  })
 }

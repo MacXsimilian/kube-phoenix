@@ -1,8 +1,12 @@
 # Release Build — builds, signs, and publishes Docker image + Helm chart.
 #
 # Triggered by:
-#   - `release: published` event (from release-please creating a GitHub Release)
+#   - `workflow_call` from release-please.yml after creating a GitHub Release
 #   - `workflow_dispatch` with a tag input (for manual re-runs after a failed build)
+#
+# NOTE: We cannot rely on `release: published` because release-please creates
+# the release using GITHUB_TOKEN, and GitHub Actions does not trigger other
+# workflows from events created by GITHUB_TOKEN.
 #
 # This is decoupled from release-please.yml so that:
 #   1. The git tag always exists even if the build fails
@@ -12,8 +16,12 @@
 name: Release Build
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: "Git tag to build (e.g. v0.5.10)"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
@@ -24,7 +32,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: release-build-${{ github.event.release.tag_name || inputs.tag }}
+  group: release-build-${{ inputs.tag }}
   cancel-in-progress: false
 
 env:
@@ -48,7 +56,7 @@ jobs:
       - name: Resolve tag
         id: tag
         run: |
-          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          TAG="${{ inputs.tag }}"
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
@@ -138,7 +146,7 @@ jobs:
       - name: Resolve tag
         id: tag
         run: |
-          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          TAG="${{ inputs.tag }}"
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2

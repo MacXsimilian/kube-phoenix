@@ -32,6 +32,9 @@ If the system restarts mid-sleep or mid-wake, it must detect the mismatch betwee
 **UC-8: Drift Reconciliation**
 If a workload is manually scaled back up while a sleep policy is active, the system should detect and optionally re-enforce the policy.
 
+**UC-9: Emergency Scale**
+During a critical incident, an admin needs to immediately disable all policies, cancel all active exceptions, and scale every sleeping workload to at least 1 replica to restore service availability.
+
 ---
 
 ## Requirements
@@ -64,11 +67,11 @@ If a workload is manually scaled back up while a sleep policy is active, the sys
 
 | #    | Requirement                                                                                                                          |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| R4.1 | Exceptions define a future time window that overrides the normal policy schedule                                                     |
-| R4.2 | Exceptions have a lifecycle: `pending` → `active` → `completed` (or `cancelled`)                                                    |
-| R4.3 | Exception type (`stay_awake` or `force_sleep`) must determine the action taken on start — wake for stay_awake, sleep for force_sleep |
-| R4.4 | An exception may optionally trigger the inverse action on end (e.g., re-sleep after a stay_awake window)                             |
-| R4.5 | Only pending exceptions can be edited                                                                                                |
+| R3.1 | Exceptions define a future time window that overrides the normal policy schedule                                                     |
+| R3.2 | Exceptions have a lifecycle: `pending` → `active` → `completed` (or `cancelled`)                                                    |
+| R3.3 | Exception type (`stay_awake` or `force_sleep`) must determine the action taken on start — wake for stay_awake, sleep for force_sleep |
+| R3.4 | An exception may optionally trigger the inverse action on end (e.g., re-sleep after a stay_awake window)                             |
+| R3.5 | Only pending exceptions can be edited                                                                                                |
 
 ### R5 — Guardrails & Protection
 

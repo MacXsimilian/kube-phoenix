@@ -272,14 +272,14 @@ export default function CreatePolicyDialog({
 
         <Divider><Typography variant="caption" color="text.disabled">Settings</Typography></Divider>
 
-        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <TextField
             label="Mode"
             value={form.mode ?? 'plan'}
             onChange={e => setField('mode', e.target.value as 'plan' | 'apply')}
             select
             size="small"
-            sx={{ minWidth: 140 }}
+            sx={{ width: 160 }}
           >
             <MenuItem value="plan">Plan (dry-run)</MenuItem>
             <MenuItem value="apply">Apply (live)</MenuItem>
@@ -303,6 +303,7 @@ export default function CreatePolicyDialog({
               />
             }
             label="Enabled"
+            sx={{ mt: 1 }}
           />
         </Box>
       </DialogContent>

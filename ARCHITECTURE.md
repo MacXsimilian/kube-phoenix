@@ -96,6 +96,7 @@ Prometheus metrics from a single HTTP listener on port 8080.
 - `GET /ws/policy-executions/{id}/logs` -- WebSocket for live execution log streaming.
 - `POST /api/policies/{id}/sleep`, `/wake` -- manual execution triggers.
 - `POST /api/policies/{id}/cancel` -- cancel a running execution.
+- `POST /api/danger/emergency-scale` -- danger-zone operation that disables all policies, cancels active exceptions, and scales sleeping workloads to 1 replica.
 
 ### PolicyScheduler
 
@@ -112,6 +113,7 @@ executions when intended state diverges from actual state.
 - Manage an in-memory policy cache for fast tick evaluation.
 - Guard against concurrent runs via an atomic conditional DB update that claims the `transitioning` state (only one caller wins the race). The claim also updates `state_since` atomically to support accurate stuck-transition detection. Per-policy in-flight tracking (`inflightPolicies`/`inflightCancels` maps) prevents duplicate goroutines and supports mid-execution cancellation.
 - Skip automatic wake transitions when `AutoWake` is disabled — the scheduler will only put policies to sleep, not wake them.
+- Enforce sleep: detect workloads that were externally scaled up during a sleeping policy and re-scale them to 0.
 - Back off for 5 minutes after a failed scheduled transition to avoid tight retry loops when the K8s API is down.
 - Execution goroutines derive their context from the scheduler's parent context, so `Stop()` can signal them to abort rather than hanging until the per-execution timeout expires.
 - When `ReconcileWhileAwake` is enabled (default), detect drift from failed or partial wake executions by counting open snapshots that still need restoring. If drift is found, run a corrective wake (trigger `"reconcile"`) that bypasses the `AutoWake` gate. Retries back off at a minimum interval of 5 minutes per policy to avoid flooding history. When disabled, skip reconciliation entirely for policies already awake — reduces DB load between sleep windows.
@@ -486,7 +488,7 @@ kube-phoenix/
 │   │   │   └── status.go            # String constants for policy/execution/exception states (includes `interrupted`)
 │   │   ├── auth/
 │   │   │   ├── oidc.go              # OIDC provider discovery, token exchange, claim mapping
-│   │   │   ├── permissions.go       # RBAC permission checks by role
+│   │   │   ├── permissions.go       # RBAC permission checks by role (includes admin.emergency_scale for the emergency scale endpoint)
 │   │   │   └── ratelimit.go         # Per-IP and per-username login throttling
 │   │   ├── middleware/
 │   │   │   └── auth.go              # Session auth, CSRF double-submit
@@ -503,6 +505,7 @@ kube-phoenix/
 │       └── static/                  # Next.js build output (gitignored)
 │
 ├── frontend/
+│   ├── mock-api/                    # Zero-dependency mock API server for frontend-only development (make dev-mock)
 │   ├── src/
 │   │   ├── app/                     # Next.js pages (overview, cluster, policies, ...)
 │   │   ├── components/              # React components by domain
@@ -513,7 +516,8 @@ kube-phoenix/
 │   │   │   ├── guardrails/          # GuardrailsForm (useReducer + CategoryCard), CategoryCard, ProtectedChipInput
 │   │   │   ├── history/             # ExecutionTable, LogViewer, ExecutionSummary, parseSummary, useExecutionLogs
 │   │   │   ├── policies/            # PolicyCard, timelines, WindowPicker, PolicyHeroBand, TimelineLegend, timelineSegments
-│   │   │   └── settings/            # AccountSettings, AppearanceSettings, DatabaseSettings, OIDCStatusCard, ActiveSessionsCard (live data), ClusterConnectionCard, AboutBar
+│   │   │   ├── settings/            # AccountSettings, AppearanceSettings, DatabaseSettings, OIDCStatusCard, ActiveSessionsCard (live data), ClusterConnectionCard, AboutBar
+│   │   │   └── shared/              # StatusChip, TriggerChip
 │   │   ├── lib/                     # API client (apiFetch), auth, types, query client, formatters, statusColors, SortHeader, tableStyles, shared hooks (useSnackbar, useIsDark, useTriStateSort, usePolicyTriggers, useUnsavedChanges, layoutConstants)
 │   │   └── theme/                   # MUI theme (dark + light mode)
 │   ├── next.config.mjs              # Static export, trailing slash

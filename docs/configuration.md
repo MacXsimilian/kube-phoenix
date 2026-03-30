@@ -96,6 +96,7 @@ When neither `ADMIN_USER` nor `ADMIN_PASSWORD` is set, the application runs with
 | Manage exceptions | Yes | Yes | No |
 | Manage users | Yes | No | No |
 | Reset database | Yes | No | No |
+| Emergency scale (disable policies, wake sleeping workloads) | Yes | No | No |
 
 ## Policy Configuration
 

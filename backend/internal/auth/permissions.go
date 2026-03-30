@@ -10,16 +10,17 @@ const (
 	PermScheduleTrigger Permission = "schedule.trigger"
 	PermGuardrailEdit   Permission = "guardrail.edit"
 	PermUserManage      Permission = "user.manage"
-	PermAdminResetDB    Permission = "admin.reset_db"
-	PermAuditView       Permission = "audit.view"
-	PermPasswordChange  Permission = "password.change"
+	PermAdminResetDB         Permission = "admin.reset_db"
+	PermAdminEmergencyScale  Permission = "admin.emergency_scale"
+	PermAuditView            Permission = "audit.view"
+	PermPasswordChange       Permission = "password.change"
 )
 
 // AllPermissions is an ordered list used by the /api/auth/me endpoint to return
 // the permission set for the authenticated user.
 var AllPermissions = []Permission{
 	PermViewAll, PermScheduleEdit, PermScheduleTrigger, PermGuardrailEdit,
-	PermUserManage, PermAdminResetDB, PermAuditView, PermPasswordChange,
+	PermUserManage, PermAdminResetDB, PermAdminEmergencyScale, PermAuditView, PermPasswordChange,
 }
 
 // RolePermissions maps each role to its allowed permissions.
@@ -27,7 +28,7 @@ var RolePermissions = map[string]map[Permission]bool{
 	"admin": {
 		PermViewAll: true, PermScheduleEdit: true, PermScheduleTrigger: true,
 		PermGuardrailEdit: true, PermUserManage: true, PermAdminResetDB: true,
-		PermAuditView: true, PermPasswordChange: true,
+		PermAdminEmergencyScale: true, PermAuditView: true, PermPasswordChange: true,
 	},
 	"operator": {
 		PermViewAll: true, PermScheduleEdit: true, PermScheduleTrigger: true,

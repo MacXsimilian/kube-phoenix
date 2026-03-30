@@ -228,6 +228,16 @@ make dev-mock
 
 This starts a mock API server on port `4444` and the Next.js dev server on port `3000`. The mock includes realistic fixture data, full CRUD operations, and WebSocket streaming. It does not exercise real scaling logic.
 
+**Mock API directory structure:**
+
+```
+frontend/mock-api/
+  data.mjs          # Seed data: policies, workloads, users, executions, etc.
+  server.mjs        # HTTP server entry point (Express-style, listens on port 4444)
+  routes/
+    *.mjs           # Route handler modules (one per resource: policies, exceptions, cluster, etc.)
+```
+
 ---
 
 ## Testing Scaling End-to-End

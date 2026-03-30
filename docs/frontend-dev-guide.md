@@ -50,6 +50,10 @@ The dev server proxies API requests to the Go backend (default `http://localhost
 
 ```
 frontend/
+  mock-api/                     # Standalone mock API server for Mode 3 (frontend-only) development
+    data.mjs                    # Seed data (policies, workloads, users, etc.)
+    server.mjs                  # HTTP server entry point (port 4444)
+    routes/                     # Route handler modules (*.mjs)
   src/
     app/                        # Next.js App Router pages
       layout.tsx                # Root layout: Inter font, <Providers> wrapper
@@ -124,6 +128,7 @@ frontend/
         CenteredSpinner.tsx     # Centered CircularProgress spinner for loading states
       shared/
         StatusChip.tsx          # Reusable status chip with color mapping
+        TriggerChip.tsx         # Reusable chip displaying execution trigger type with icon and color
       exceptions/
         ExceptionsCalendarStrip.tsx  # Calendar strip layout: day rows, span rows for multi-day, history split
         ExceptionDetailPanel.tsx     # Expandable detail grid (dates, duration, namespace filter, workload targets)
@@ -322,6 +327,7 @@ export const canTriggerSchedules = (p?: string[]) => hasPerm(p, 'schedule.trigge
 export const canEditGuardrails   = (p?: string[]) => hasPerm(p, 'guardrail.edit')
 export const canManageUsers      = (p?: string[]) => hasPerm(p, 'user.manage')
 export const canResetDB          = (p?: string[]) => hasPerm(p, 'admin.reset_db')
+export const canEmergencyScale   = (p?: string[]) => hasPerm(p, 'admin.emergency_scale')
 export const canViewAudit        = (p?: string[]) => hasPerm(p, 'audit.view')
 ```
 
@@ -436,6 +442,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T>
 | Function | Method | Endpoint |
 |:---------|:-------|:---------|
 | `resetDatabaseStream()` | POST | `/api/danger/reset-db` |
+| `emergencyScaleStream()` | POST | `/api/danger/emergency-scale` |
 
 ### Streaming: Pod Logs
 
@@ -980,7 +987,7 @@ Most color exports are mode-aware functions that accept an `isDark: boolean` par
 
 ### lib/rbac.ts
 
-A thin permission-checking layer. The internal `hasPerm(permissions, perm)` function checks if a string exists in the permissions array. Six convenience wrappers are exported for common checks (`canEditSchedules`, `canTriggerSchedules`, `canEditGuardrails`, `canManageUsers`, `canResetDB`, `canViewAudit`). See [RBAC](#rbac) in Architecture Patterns.
+A thin permission-checking layer. The internal `hasPerm(permissions, perm)` function checks if a string exists in the permissions array. Seven convenience wrappers are exported for common checks (`canEditSchedules`, `canTriggerSchedules`, `canEditGuardrails`, `canManageUsers`, `canResetDB`, `canEmergencyScale`, `canViewAudit`). See [RBAC](#rbac) in Architecture Patterns.
 
 ### lib/usePolicyTriggers.ts
 

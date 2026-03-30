@@ -163,6 +163,37 @@ func namespacesOverlap(a, b map[string]bool) bool {
 	return false
 }
 
+// DisableAllPolicies sets enabled=false on all currently enabled policies.
+// Returns the number of policies that were disabled.
+func (s *Store) DisableAllPolicies() (int64, error) {
+	res := s.db.Model(&Policy{}).Where("enabled = true").Update("enabled", false)
+	return res.RowsAffected, res.Error
+}
+
+// CancelAllOpenExceptions cancels all pending or active exceptions.
+// Returns the number of exceptions that were cancelled.
+func (s *Store) CancelAllOpenExceptions(reason string) (int64, error) {
+	now := time.Now()
+	res := s.db.Model(&ScheduledException{}).
+		Where("status IN (?, ?)", ExceptionStatusPending, ExceptionStatusActive).
+		Updates(map[string]interface{}{
+			"status":        ExceptionStatusCancelled,
+			"cancelled_at":  now,
+			"cancel_reason": reason,
+		})
+	return res.RowsAffected, res.Error
+}
+
+// GetAllOpenSnapshots returns every open snapshot across all policies that was
+// actively scaled to zero (not already-zero, not deleted at wake). These are
+// the workloads that need restoring during an emergency scale.
+func (s *Store) GetAllOpenSnapshots() ([]WorkloadSnapshot, error) {
+	var snaps []WorkloadSnapshot
+	return snaps, s.db.
+		Where("wake_execution_id IS NULL AND was_deleted_at_wake = false AND was_already_zero = false").
+		Find(&snaps).Error
+}
+
 // ─── Policy Executions ────────────────────────────────────────────────────────
 
 func (s *Store) CreatePolicyExecution(e *PolicyExecution) error {
