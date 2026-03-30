@@ -17,6 +17,34 @@ import (
 
 const defaultScalingConcurrency = 10
 
+// API calls per workload for estimation.
+const (
+	apiCallsPerSleep = 4 // annotate (GET+UPDATE) + scale (GET+UPDATE)
+	apiCallsPerWake  = 5 // lookup (GET) + scale (GET+UPDATE) + remove annotation (GET+UPDATE)
+)
+
+// countScalable returns the number of entries with replicas > 0.
+func countScalable(entries []workloadEntry) int {
+	n := 0
+	for _, e := range entries {
+		if e.Replicas > 0 {
+			n++
+		}
+	}
+	return n
+}
+
+// emitEstimate logs an estimated K8s API call count before scaling begins.
+// extraCalls accounts for non-per-workload calls (e.g. LIST operations).
+func emitEstimate(logCh chan<- LogLine, direction string, workloads, callsPerWorkload, concurrency, extraCalls int) {
+	if workloads == 0 {
+		return
+	}
+	total := workloads*callsPerWorkload + extraCalls
+	emit(logCh, "info", fmt.Sprintf("Estimate: %s %d workloads → ~%d K8s API calls with concurrency %d",
+		direction, workloads, total, concurrency))
+}
+
 // PolicyRunner wraps Runner and adds DB-backed WorkloadSnapshot logic for
 // the policy model. RunPolicySleep and RunPolicyWake are the sole entry
 // points for all policy-driven scaling operations.
@@ -95,6 +123,7 @@ type sleepWorkloadParams struct {
 	execID  uint
 	logCh   chan<- LogLine
 	snapped map[string]bool // read-only after construction — safe for concurrent access
+	counts  *Counts
 }
 
 // sleepWorkload processes a single workload (Deployment or StatefulSet) during a policy sleep.
@@ -141,10 +170,14 @@ func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, e workloadEntry) (sc
 	if err := e.Annotate(p.ctx, e.Namespace, e.Name, annotationKey, fmt.Sprintf("%d", e.Replicas)); err != nil {
 		emit(p.logCh, "warn", fmt.Sprintf("Could not write annotation for %s: %s", wl, err))
 	}
+	p.counts.AddRequests(2) // GET + UPDATE for annotate
+
 	if err := e.Scale(p.ctx, e.Namespace, e.Name, 0); err != nil {
 		emit(p.logCh, "error", fmt.Sprintf("Failed to scale %s: %s", wl, err))
+		p.counts.AddRequests(2) // GET + UPDATE for scale
 		return false, false, true
 	}
+	p.counts.AddRequests(2) // GET + UPDATE for scale
 	if err := r.store.CreateWorkloadSnapshot(snap); err != nil {
 		// Workload is already scaled to 0 but snapshot failed — the annotation
 		// fallback will handle restoration on next wake.
@@ -167,7 +200,7 @@ func (r *PolicyRunner) RunPolicySleep(
 	execID uint,
 	logCh chan<- LogLine,
 ) (*Counts, error) {
-	counts := &Counts{}
+	counts := &Counts{StartedAt: time.Now()}
 
 	guardrails, err := r.store.GetGuardrails()
 	if err != nil {
@@ -183,11 +216,12 @@ func (r *PolicyRunner) RunPolicySleep(
 	}
 	snappedSet := buildSnapshotedSet(openSnaps)
 
-	sleepParams := sleepWorkloadParams{ctx: ctx, policy: policy, execID: execID, logCh: logCh, snapped: snappedSet}
+	sleepParams := sleepWorkloadParams{ctx: ctx, policy: policy, execID: execID, logCh: logCh, snapped: snappedSet, counts: counts}
 
 	// ── Deployments & StatefulSets ────────────────────────────────────────
 	emit(logCh, "info", "Fetching Deployments...")
 	deps, err := r.base.k8s.ListDeploymentsBySelector(ctx, "", policy.LabelSelector)
+	counts.AddRequests(1) // LIST deployments
 	if err != nil {
 		emit(logCh, "error", "Failed to list deployments: "+err.Error())
 		counts.Errors++
@@ -195,6 +229,7 @@ func (r *PolicyRunner) RunPolicySleep(
 
 	emit(logCh, "info", "Fetching StatefulSets...")
 	ssets, err := r.base.k8s.ListStatefulSetsBySelector(ctx, "", policy.LabelSelector)
+	counts.AddRequests(1) // LIST statefulsets
 	if err != nil {
 		emit(logCh, "error", "Failed to list statefulsets: "+err.Error())
 		counts.Errors++
@@ -205,6 +240,9 @@ func (r *PolicyRunner) RunPolicySleep(
 	if _, hasPriority := parsePriorityList(guardrails.ScalingPriorityNamespaces); hasPriority {
 		emit(logCh, "info", fmt.Sprintf("Scaling priority namespaces first: %s", guardrails.ScalingPriorityNamespaces))
 	}
+
+	scalable := countScalable(entries)
+	emitEstimate(logCh, "sleep", scalable, apiCallsPerSleep, guardrails.ScalingConcurrency, 2) // +2 LIST calls
 
 	runConcurrent(ctx, entries, guardrails.ScalingConcurrency, func(e workloadEntry) (scaled, skipped, errored bool) {
 		return r.sleepWorkload(sleepParams, e)
@@ -218,8 +256,8 @@ func (r *PolicyRunner) RunPolicySleep(
 		return counts, ctx.Err()
 	}
 
-	emit(logCh, "info", fmt.Sprintf("Sleep complete — scaled %d workloads, %d skipped, %d errors",
-		counts.Scaled, counts.Skipped, counts.Errors))
+	emit(logCh, "info", fmt.Sprintf("Sleep complete in %s — scaled %d workloads, %d skipped, %d errors, %d K8s API calls (%.1f req/s)",
+		counts.Duration().Round(time.Millisecond), counts.Scaled, counts.Skipped, counts.Errors, counts.Requests, counts.RequestsPerSecond()))
 	if counts.Errors > 0 && counts.Scaled == 0 {
 		return counts, fmt.Errorf("sleep failed: all %d workloads errored", counts.Errors)
 	}
@@ -304,6 +342,7 @@ type wakeWorkloadParams struct {
 	policy store.Policy
 	execID uint
 	logCh  chan<- LogLine
+	counts *Counts
 }
 
 // wakeWorkload processes a single snapshot during wake.
@@ -322,6 +361,7 @@ func (r *PolicyRunner) wakeWorkload(p wakeWorkloadParams, snap store.WorkloadSna
 	}
 
 	exists, currentReplicas, err := r.lookupWorkload(p.ctx, snap.Kind, snap.Namespace, snap.Name)
+	p.counts.AddRequests(1) // GET for lookup
 	if err != nil {
 		emit(p.logCh, "error", fmt.Sprintf("Failed to look up %s: %s", wl, err))
 		return false, false, true
@@ -351,8 +391,10 @@ func (r *PolicyRunner) wakeWorkload(p wakeWorkloadParams, snap store.WorkloadSna
 
 	if err := r.restoreWorkload(p.ctx, snap.Kind, snap.Namespace, snap.Name, target); err != nil {
 		emit(p.logCh, "error", fmt.Sprintf("Failed to restore %s: %s", wl, err))
+		p.counts.AddRequests(4) // GET + UPDATE for scale, GET + UPDATE for remove annotation
 		return false, false, true
 	}
+	p.counts.AddRequests(4) // GET + UPDATE for scale, GET + UPDATE for remove annotation
 	if err := r.store.CloseSnapshot(snap.ID, p.execID, target); err != nil {
 		slog.Warn("failed to close snapshot after restore", "snapshotID", snap.ID, "err", err)
 	}
@@ -403,7 +445,7 @@ func (r *PolicyRunner) RunPolicyWake(
 	execID uint,
 	logCh chan<- LogLine,
 ) (*Counts, error) {
-	counts := &Counts{}
+	counts := &Counts{StartedAt: time.Now()}
 
 	snaps, err := r.store.GetOpenSnapshots(policy.ID)
 	if err != nil {
@@ -427,7 +469,9 @@ func (r *PolicyRunner) RunPolicyWake(
 		emit(logCh, "info", fmt.Sprintf("Scaling priority namespaces first: %s", guardrails.ScalingPriorityNamespaces))
 	}
 
-	wakeParams := wakeWorkloadParams{ctx: ctx, policy: policy, execID: execID, logCh: logCh}
+	wakeParams := wakeWorkloadParams{ctx: ctx, policy: policy, execID: execID, logCh: logCh, counts: counts}
+
+	emitEstimate(logCh, "wake", len(snaps), apiCallsPerWake, guardrails.ScalingConcurrency, 0)
 
 	runConcurrent(ctx, snaps, guardrails.ScalingConcurrency, func(snap store.WorkloadSnapshot) (scaled, skipped, errored bool) {
 		return r.wakeWorkload(wakeParams, snap)
@@ -447,8 +491,8 @@ func (r *PolicyRunner) RunPolicyWake(
 		return counts, ctx.Err()
 	}
 
-	emit(logCh, "info", fmt.Sprintf("Wake complete — restored %d workloads, %d skipped, %d errors",
-		counts.Scaled, counts.Skipped, counts.Errors))
+	emit(logCh, "info", fmt.Sprintf("Wake complete in %s — restored %d workloads, %d skipped, %d errors, %d K8s API calls (%.1f req/s)",
+		counts.Duration().Round(time.Millisecond), counts.Scaled, counts.Skipped, counts.Errors, counts.Requests, counts.RequestsPerSecond()))
 	if counts.Errors > 0 && counts.Scaled == 0 {
 		return counts, fmt.Errorf("wake failed: all %d workloads errored", counts.Errors)
 	}
@@ -527,7 +571,7 @@ func (r *PolicyRunner) RunPolicySleepReconcile(
 	execID uint,
 	logCh chan<- LogLine,
 ) (*Counts, error) {
-	counts := &Counts{}
+	counts := &Counts{StartedAt: time.Now()}
 
 	snaps, err := r.store.GetOpenSnapshotsForSleepReconcile(p.ID)
 	if err != nil {
@@ -559,6 +603,7 @@ func (r *PolicyRunner) RunPolicySleepReconcile(
 		}
 
 		exists, currentReplicas, err := r.lookupWorkload(ctx, snap.Kind, snap.Namespace, snap.Name)
+		counts.AddRequests(1) // GET for lookup
 		if err != nil {
 			emit(logCh, "error", fmt.Sprintf("Failed to look up %s: %s", wl, err))
 			counts.Errors++
@@ -588,9 +633,11 @@ func (r *PolicyRunner) RunPolicySleepReconcile(
 		}
 		if err := scale(ctx, snap.Namespace, snap.Name, 0); err != nil {
 			emit(logCh, "error", fmt.Sprintf("Failed to enforce sleep on %s: %s", wl, err))
+			counts.AddRequests(2) // GET + UPDATE for scale
 			counts.Errors++
 			continue
 		}
+		counts.AddRequests(2) // GET + UPDATE for scale
 		if err := r.store.MarkSnapshotExternallyScaled(snap.ID); err != nil {
 			slog.Warn("enforce sleep: failed to mark snapshot as externally scaled", "snapshotID", snap.ID, "err", err)
 		}
@@ -598,8 +645,8 @@ func (r *PolicyRunner) RunPolicySleepReconcile(
 		counts.Scaled++
 	}
 
-	emit(logCh, "info", fmt.Sprintf("Enforce sleep complete — scaled %d workloads, %d skipped, %d errors",
-		counts.Scaled, counts.Skipped, counts.Errors))
+	emit(logCh, "info", fmt.Sprintf("Enforce sleep complete in %s — scaled %d workloads, %d skipped, %d errors, %d K8s API calls (%.1f req/s)",
+		counts.Duration().Round(time.Millisecond), counts.Scaled, counts.Skipped, counts.Errors, counts.Requests, counts.RequestsPerSecond()))
 	if counts.Errors > 0 && counts.Scaled == 0 {
 		return counts, fmt.Errorf("enforce sleep failed: all %d workloads errored", counts.Errors)
 	}
