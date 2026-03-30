@@ -20,9 +20,6 @@ K8S_VERSION="${MINIKUBE_K8S_VERSION:-stable}"
 ADMIN_USER="${ADMIN_USER:-admin}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-adminadmin}"
 
-# Pause image — near-zero resource usage, ideal for test workloads.
-PAUSE_IMAGE="registry.k8s.io/pause:3.10"
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 info()  { printf '\033[1;34m▸ %s\033[0m\n' "$*"; }
 ok()    { printf '\033[1;32m✓ %s\033[0m\n' "$*"; }
@@ -38,11 +35,80 @@ require() {
   done
 }
 
+# apply_deployment creates a deployment with a lightweight busybox command
+# that does something small (HTTP serve, log lines, compute, etc.) instead
+# of just pausing. Each "role" maps to a different activity so `kubectl logs`
+# and resource metrics look realistic during testing.
 apply_deployment() {
-  local ns="$1" name="$2" replicas="$3"
-  kubectl -n "$ns" create deployment "$name" \
-    --image="$PAUSE_IMAGE" --replicas="$replicas" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  local ns="$1" name="$2" replicas="$3" role="${4:-default}"
+
+  local image="busybox:1.37"
+  local cmd
+
+  case "$role" in
+    http)
+      # Serve a tiny health page on port 8080
+      cmd='["sh","-c","while true; do echo -e \"HTTP/1.1 200 OK\\r\\nContent-Length: 2\\r\\n\\r\\nOK\" | nc -l -p 8080; done"]'
+      ;;
+    log)
+      # Write a log line every 5 seconds
+      cmd='["sh","-c","i=0; while true; do echo \"$(date -u +%FT%TZ) level=info msg=heartbeat seq=$i\"; i=$((i+1)); sleep 5; done"]'
+      ;;
+    compute)
+      # Burn a tiny amount of CPU (checksum /dev/urandom in a loop with sleeps)
+      cmd='["sh","-c","while true; do dd if=/dev/urandom bs=64 count=1 2>/dev/null | md5sum >/dev/null; sleep 3; done"]'
+      ;;
+    watch)
+      # Watch /tmp for filesystem events (simulates a sidecar watcher)
+      cmd='["sh","-c","mkdir -p /tmp/spool; while true; do touch /tmp/spool/$(date +%s); sleep 10; ls /tmp/spool | tail -5; find /tmp/spool -mmin +2 -delete 2>/dev/null; done"]'
+      ;;
+    cron)
+      # Run a task every 30 seconds (simulates a lightweight cron job)
+      cmd='["sh","-c","while true; do echo \"$(date -u +%FT%TZ) running batch task\"; seq 1 100 | md5sum >/dev/null; sleep 30; done"]'
+      ;;
+    dns)
+      # Resolve a hostname every 10 seconds (simulates service discovery)
+      cmd='["sh","-c","while true; do nslookup kubernetes.default.svc.cluster.local 2>&1 | head -4; sleep 10; done"]'
+      ;;
+    pause)
+      # Do nothing — near-zero resource usage, like idle pods in a real cluster
+      image="registry.k8s.io/pause:3.10"
+      cmd='["/pause"]'
+      ;;
+    *)
+      # Default: simple heartbeat loop
+      cmd='["sh","-c","while true; do echo \"$(date -u +%FT%TZ) alive\"; sleep 15; done"]'
+      ;;
+  esac
+
+  cat <<EOF | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: $name
+  namespace: $ns
+spec:
+  replicas: $replicas
+  selector:
+    matchLabels:
+      app: $name
+  template:
+    metadata:
+      labels:
+        app: $name
+    spec:
+      containers:
+      - name: $name
+        image: $image
+        command: $cmd
+        resources:
+          requests:
+            cpu: 5m
+            memory: 8Mi
+          limits:
+            cpu: 20m
+            memory: 32Mi
+EOF
 }
 
 # ── Preflight ────────────────────────────────────────────────────────────────
@@ -131,94 +197,94 @@ create_workloads() {
   done
 
   # ── team-backend (30 pods) ────────────────────────────────────────────────
-  apply_deployment team-backend api          5
-  apply_deployment team-backend worker       5
-  apply_deployment team-backend cron         3
-  apply_deployment team-backend gateway      5
-  apply_deployment team-backend auth         4
-  apply_deployment team-backend notifications 3
-  apply_deployment team-backend cache        3
-  apply_deployment team-backend search       2
+  apply_deployment team-backend api           5 http
+  apply_deployment team-backend worker        5 compute
+  apply_deployment team-backend cron          3 cron
+  apply_deployment team-backend gateway       5 http
+  apply_deployment team-backend auth          4 http
+  apply_deployment team-backend notifications 3 log
+  apply_deployment team-backend cache         3 pause
+  apply_deployment team-backend search        2 dns
 
   # ── team-web (25 pods) ──────────────────────────────────────────────────
-  apply_deployment team-web web        5
-  apply_deployment team-web bff        4
-  apply_deployment team-web assets     3
-  apply_deployment team-web ssr        4
-  apply_deployment team-web cdn-origin 3
-  apply_deployment team-web analytics  3
-  apply_deployment team-web preview    3
+  apply_deployment team-web web        5 http
+  apply_deployment team-web bff        4 http
+  apply_deployment team-web assets     3 http
+  apply_deployment team-web ssr        4 compute
+  apply_deployment team-web cdn-origin 3 http
+  apply_deployment team-web analytics  3 log
+  apply_deployment team-web preview    3 pause
 
   # ── team-data (30 pods) ─────────────────────────────────────────────────
-  apply_deployment team-data pipeline    5
-  apply_deployment team-data scheduler   3
-  apply_deployment team-data dashboard   3
-  apply_deployment team-data etl         4
-  apply_deployment team-data warehouse   3
-  apply_deployment team-data spark-driver 2
-  apply_deployment team-data spark-worker 5
-  apply_deployment team-data airflow     3
-  apply_deployment team-data metabase    2
+  apply_deployment team-data pipeline     5 compute
+  apply_deployment team-data scheduler    3 cron
+  apply_deployment team-data dashboard    3 http
+  apply_deployment team-data etl          4 compute
+  apply_deployment team-data warehouse    3 pause
+  apply_deployment team-data spark-driver 2 compute
+  apply_deployment team-data spark-worker 5 compute
+  apply_deployment team-data airflow      3 cron
+  apply_deployment team-data metabase     2 http
 
   # ── team-qa (25 pods) ───────────────────────────────────────────────────
-  apply_deployment team-qa test-runner  5
-  apply_deployment team-qa selenium     4
-  apply_deployment team-qa mock-api     3
-  apply_deployment team-qa cypress      4
-  apply_deployment team-qa load-test    3
-  apply_deployment team-qa coverage     3
-  apply_deployment team-qa report       3
+  apply_deployment team-qa test-runner 5 compute
+  apply_deployment team-qa selenium    4 compute
+  apply_deployment team-qa mock-api    3 http
+  apply_deployment team-qa cypress     4 compute
+  apply_deployment team-qa load-test   3 compute
+  apply_deployment team-qa coverage    3 pause
+  apply_deployment team-qa report      3 cron
 
   # ── team-platform (30 pods) ─────────────────────────────────────────────
-  apply_deployment team-platform consul        4
-  apply_deployment team-platform vault         3
-  apply_deployment team-platform prometheus     3
-  apply_deployment team-platform grafana       2
-  apply_deployment team-platform alertmanager  2
-  apply_deployment team-platform loki          3
-  apply_deployment team-platform tempo         3
-  apply_deployment team-platform otel-collector 4
-  apply_deployment team-platform cert-manager  3
-  apply_deployment team-platform ingress       3
+  apply_deployment team-platform consul         4 dns
+  apply_deployment team-platform vault          3 http
+  apply_deployment team-platform prometheus     3 log
+  apply_deployment team-platform grafana        2 http
+  apply_deployment team-platform alertmanager   2 watch
+  apply_deployment team-platform loki           3 log
+  apply_deployment team-platform tempo          3 log
+  apply_deployment team-platform otel-collector 4 log
+  apply_deployment team-platform cert-manager   3 watch
+  apply_deployment team-platform ingress        3 http
 
   # ── team-ml (25 pods) ───────────────────────────────────────────────────
-  apply_deployment team-ml model-serve   5
-  apply_deployment team-ml trainer       3
-  apply_deployment team-ml feature-store 3
-  apply_deployment team-ml notebook      4
-  apply_deployment team-ml labeling      3
-  apply_deployment team-ml inference     4
-  apply_deployment team-ml vector-db     3
+  apply_deployment team-ml model-serve   5 http
+  apply_deployment team-ml trainer       3 compute
+  apply_deployment team-ml feature-store 3 http
+  apply_deployment team-ml notebook      4 http
+  apply_deployment team-ml labeling      3 log
+  apply_deployment team-ml inference     4 compute
+  apply_deployment team-ml vector-db     3 pause
 
   # ── team-mobile (25 pods) ───────────────────────────────────────────────
-  apply_deployment team-mobile push-service  4
-  apply_deployment team-mobile media-api     3
-  apply_deployment team-mobile chat-service  4
-  apply_deployment team-mobile sync          3
-  apply_deployment team-mobile deeplink      3
-  apply_deployment team-mobile config-server 3
-  apply_deployment team-mobile ab-testing    3
-  apply_deployment team-mobile crash-report  2
+  apply_deployment team-mobile push-service  4 http
+  apply_deployment team-mobile media-api     3 http
+  apply_deployment team-mobile chat-service  4 log
+  apply_deployment team-mobile sync          3 cron
+  apply_deployment team-mobile deeplink      3 http
+  apply_deployment team-mobile config-server 3 dns
+  apply_deployment team-mobile ab-testing    3 compute
+  apply_deployment team-mobile crash-report  2 pause
 
   # ── team-payments (25 pods) ─────────────────────────────────────────────
-  apply_deployment team-payments ledger     4
-  apply_deployment team-payments processor  3
-  apply_deployment team-payments fraud      3
-  apply_deployment team-payments invoicing  3
-  apply_deployment team-payments webhook    4
-  apply_deployment team-payments reconciler 3
-  apply_deployment team-payments pci-proxy  3
-  apply_deployment team-payments audit      2
+  apply_deployment team-payments ledger     4 log
+  apply_deployment team-payments processor  3 compute
+  apply_deployment team-payments fraud      3 compute
+  apply_deployment team-payments invoicing  3 cron
+  apply_deployment team-payments webhook    4 http
+  apply_deployment team-payments reconciler 3 cron
+  apply_deployment team-payments pci-proxy  3 pause
+  apply_deployment team-payments audit      2 log
 
   # ── team-infra (25 pods) ────────────────────────────────────────────────
-  apply_deployment team-infra dns          3
-  apply_deployment team-infra ntp          2
-  apply_deployment team-infra log-shipper  4
-  apply_deployment team-infra backup       3
-  apply_deployment team-infra registry     3
-  apply_deployment team-infra artifact     3
-  apply_deployment team-infra scanner      4
-  apply_deployment team-infra policy-agent 3
+  apply_deployment team-infra dns          3 dns
+  apply_deployment team-infra ntp          2 pause
+  apply_deployment team-infra log-shipper  4 log
+  apply_deployment team-infra backup       3 watch
+  apply_deployment team-infra registry     3 http
+  apply_deployment team-infra artifact     3 http
+  apply_deployment team-infra scanner      4 watch
+  apply_deployment team-infra policy-agent 3 dns
 
   ok "Sample workloads created"
   echo
