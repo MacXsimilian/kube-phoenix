@@ -168,7 +168,6 @@ export default function NodeDetailDrawer({ node, onClose }: NodeDetailDrawerProp
       isErrorPods={isError}
       errorPods={error instanceof Error ? error : null}
       dataUpdatedAt={dataUpdatedAt}
-      onRefreshPods={() => refetch()}
       defaultWidth={540}
       podTableHeaders={['POD', 'OWNER', 'READY', 'CPU', 'MEM', 'AGE']}
       renderPodTableBody={renderPodTableBody}

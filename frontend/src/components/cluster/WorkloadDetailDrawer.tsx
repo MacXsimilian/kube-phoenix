@@ -109,7 +109,6 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
       isErrorPods={isError}
       errorPods={error instanceof Error ? error : null}
       dataUpdatedAt={dataUpdatedAt}
-      onRefreshPods={() => refetch()}
       defaultWidth={560}
       podTableHeaders={['POD', 'READY', 'CPU', 'MEM', 'AGE']}
       renderPodTableBody={renderPodTableBody}
