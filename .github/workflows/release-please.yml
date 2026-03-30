@@ -4,9 +4,10 @@
 #   1. Creates/updates a release PR with changelog based on Conventional Commits
 #   2. When the release PR is merged, creates a GitHub Release + git tag
 #
-# This workflow ONLY handles versioning and tagging. The actual build/publish
-# is triggered by the separate release.yml workflow via the `release: published` event.
-# This decoupling ensures the tag always exists even if the build fails.
+# This workflow handles versioning/tagging AND chains the release build.
+# The build is triggered via `workflow_call` because `release: published` events
+# created by GITHUB_TOKEN do not trigger other workflows.
+# The decoupled release.yml can still be manually re-triggered via `workflow_dispatch`.
 
 name: Release Please
 
@@ -31,12 +32,28 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38  # v4.4.0
         id: rp
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           target-branch: ${{ github.ref_name }}
+
+  # ── Trigger release build when a new release is created ─────────────────────
+  release-build:
+    name: Trigger release build
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
 
   # ── Go Report Card refresh (runs on every merge to master) ──────────────────
   goreportcard:
