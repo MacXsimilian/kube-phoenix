@@ -86,8 +86,13 @@ func (m *mockStore) ListActiveExceptionsForPolicies(_ []uint, _ time.Time) (map[
 func (m *mockStore) ListActiveExceptionsForPolicy(_ uint, _ time.Time) ([]store.ScheduledException, error) {
 	return nil, nil
 }
+func (m *mockStore) GetOpenSnapshotsForSleepReconcile(_ uint) ([]store.WorkloadSnapshot, error) {
+	return nil, nil
+}
 
-type mockRunner struct{}
+type mockRunner struct {
+	hasDriftedFromSleep bool
+}
 
 func (m *mockRunner) RunPolicySleep(_ context.Context, _ store.Policy, _ uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error) {
 	return &scaler.Counts{}, nil
@@ -95,8 +100,30 @@ func (m *mockRunner) RunPolicySleep(_ context.Context, _ store.Policy, _ uint, l
 func (m *mockRunner) RunPolicyWake(_ context.Context, _ store.Policy, _ uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error) {
 	return &scaler.Counts{Scaled: 1}, nil
 }
+func (m *mockRunner) HasDriftedFromSleep(_ context.Context, _ uint) (bool, error) {
+	return m.hasDriftedFromSleep, nil
+}
+func (m *mockRunner) RunPolicySleepReconcile(_ context.Context, _ store.Policy, _ uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error) {
+	return &scaler.Counts{}, nil
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+func newTestSchedulerWithRunner(st schedulerStore, r policyRunner) *PolicyScheduler {
+	return &PolicyScheduler{
+		store:                st,
+		runner:               r,
+		Broker:               NewBroker(),
+		policies:             map[uint]cachedPolicy{},
+		lastReconcileAttempt: map[uint]time.Time{},
+		lastFailedTransition: map[uint]time.Time{},
+		inflightPolicies:     map[uint]struct{}{},
+		inflightCancels:      map[uint]context.CancelFunc{},
+		cfg: SchedulerConfig{
+			TickInterval: 30 * time.Second,
+		},
+	}
+}
 
 func newTestScheduler(st schedulerStore) *PolicyScheduler {
 	return &PolicyScheduler{
@@ -366,5 +393,95 @@ func TestClaimTransition_Success_UpdatesCache(t *testing.T) {
 	defer ms.mu.Unlock()
 	if len(ms.transitioningClaims) != 1 || ms.transitioningClaims[0] != 1 {
 		t.Errorf("expected transitioning claim for policy 1, got %v", ms.transitioningClaims)
+	}
+}
+
+// ─── Enforce sleep tests ─────────────────────────────────────────────────────
+
+func sleepingPolicy(id uint) cachedPolicy {
+	return cachedPolicy{
+		policy: store.Policy{
+			ID:           id,
+			Enabled:      true,
+			CurrentState: store.PolicyStateSleeping,
+			Timezone:     "UTC",
+			Mode:         "apply",
+		},
+		windows: []policy.SleepWindow{{
+			DaysOfWeek: []int{0, 1, 2, 3, 4, 5, 6},
+			StartTime:  "00:00",
+			EndTime:    "23:59",
+		}},
+	}
+}
+
+func TestEvaluatePolicy_EnforceSleep_DriftDetected_CorrectiveSleep(t *testing.T) {
+	ms := &mockStore{}
+	mr := &mockRunner{hasDriftedFromSleep: true}
+	ps := newTestSchedulerWithRunner(ms, mr)
+	cp := sleepingPolicy(1)
+	ps.policies[1] = cp
+	ctx := evalContext{
+		now:          time.Date(2024, 3, 13, 12, 0, 0, 0, time.UTC),
+		autoWake:     true,
+		enforceSleep: true,
+	}
+
+	ps.evaluatePolicy(cp, ctx)
+	waitForExecution(t, ms)
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if len(ms.createdExecutions) != 1 {
+		t.Fatalf("expected 1 execution, got %d", len(ms.createdExecutions))
+	}
+	exec := ms.createdExecutions[0]
+	if exec.Direction != directionSleep {
+		t.Errorf("expected direction=%q, got %q", directionSleep, exec.Direction)
+	}
+	if exec.Trigger != "enforce_sleep" {
+		t.Errorf("expected trigger=%q, got %q", "enforce_sleep", exec.Trigger)
+	}
+}
+
+func TestEvaluatePolicy_EnforceSleep_NoDrift_NoExecution(t *testing.T) {
+	ms := &mockStore{}
+	mr := &mockRunner{hasDriftedFromSleep: false}
+	ps := newTestSchedulerWithRunner(ms, mr)
+	cp := sleepingPolicy(1)
+	ps.policies[1] = cp
+	ctx := evalContext{
+		now:          time.Date(2024, 3, 13, 12, 0, 0, 0, time.UTC),
+		autoWake:     true,
+		enforceSleep: true,
+	}
+
+	ps.evaluatePolicy(cp, ctx)
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if len(ms.createdExecutions) != 0 {
+		t.Errorf("expected no execution when no drift, got %d", len(ms.createdExecutions))
+	}
+}
+
+func TestEvaluatePolicy_EnforceSleepDisabled_NoExecution(t *testing.T) {
+	ms := &mockStore{}
+	mr := &mockRunner{hasDriftedFromSleep: true}
+	ps := newTestSchedulerWithRunner(ms, mr)
+	cp := sleepingPolicy(1)
+	ps.policies[1] = cp
+	ctx := evalContext{
+		now:          time.Date(2024, 3, 13, 12, 0, 0, 0, time.UTC),
+		autoWake:     true,
+		enforceSleep: false,
+	}
+
+	ps.evaluatePolicy(cp, ctx)
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if len(ms.createdExecutions) != 0 {
+		t.Errorf("expected no execution when enforce sleep disabled, got %d", len(ms.createdExecutions))
 	}
 }

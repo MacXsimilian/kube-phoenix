@@ -41,6 +41,7 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 		"schedulerEvalInterval":        "scheduler_eval_interval",
 		"schedulerAutoWake":            "scheduler_auto_wake",
 		"schedulerReconcileWhileAwake": "scheduler_reconcile_while_awake",
+		"schedulerEnforceSleep":        "scheduler_enforce_sleep",
 		"scalingPriorityNamespaces":    "scaling_priority_namespaces",
 		"scalingConcurrency":           "scaling_concurrency",
 		"protectCriticalPodNodes":      "protect_critical_pod_nodes",
@@ -70,6 +71,7 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 			TickInterval:        guardrails.ParseSchedulerEvalInterval(),
 			AutoWake:            guardrails.SchedulerAutoWake,
 			ReconcileWhileAwake: guardrails.SchedulerReconcileWhileAwake,
+			EnforceSleep:        guardrails.SchedulerEnforceSleep,
 		}); err != nil {
 			slog.Error("scheduler settings update failed", "err", err)
 		}

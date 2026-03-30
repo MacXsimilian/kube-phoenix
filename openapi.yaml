@@ -119,6 +119,9 @@ components:
         schedulerReconcileWhileAwake:
           type: boolean
           description: When true, detects and corrects drift from failed wake executions. Default true.
+        schedulerEnforceSleep:
+          type: boolean
+          description: When true, workloads manually scaled up during a sleep window are automatically scaled back to zero. Default true.
         protectCriticalPodNodes:
           type: boolean
           description: When true, nodes running system-node-critical or system-cluster-critical pods are never drained. Default true.
@@ -146,6 +149,8 @@ components:
         schedulerAutoWake:
           type: boolean
         schedulerReconcileWhileAwake:
+          type: boolean
+        schedulerEnforceSleep:
           type: boolean
         protectCriticalPodNodes:
           type: boolean

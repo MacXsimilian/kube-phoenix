@@ -93,6 +93,7 @@ func main() {
 		TickInterval:        g.ParseSchedulerEvalInterval(),
 		AutoWake:            g.SchedulerAutoWake,
 		ReconcileWhileAwake: g.SchedulerReconcileWhileAwake,
+		EnforceSleep:        g.SchedulerEnforceSleep,
 	})
 	if k8s != nil {
 		if err := policySched.Start(ctx); err != nil {

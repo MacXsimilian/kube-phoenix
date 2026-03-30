@@ -55,12 +55,15 @@ type schedulerStore interface {
 	UpdateScheduledExceptionStatus(id uint, expectedStatus, newStatus string) error
 	ListActiveExceptionsForPolicies(policyIDs []uint, now time.Time) (map[uint][]store.ScheduledException, error)
 	ListActiveExceptionsForPolicy(policyID uint, now time.Time) ([]store.ScheduledException, error)
+	GetOpenSnapshotsForSleepReconcile(policyID uint) ([]store.WorkloadSnapshot, error)
 }
 
 // policyRunner abstracts the execution engine for sleep/wake operations.
 type policyRunner interface {
 	RunPolicySleep(ctx context.Context, p store.Policy, execID uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error)
 	RunPolicyWake(ctx context.Context, p store.Policy, execID uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error)
+	HasDriftedFromSleep(ctx context.Context, policyID uint) (bool, error)
+	RunPolicySleepReconcile(ctx context.Context, p store.Policy, execID uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error)
 }
 
 // SchedulerConfig holds the runtime-tunable settings for the policy evaluation loop.
@@ -68,6 +71,7 @@ type SchedulerConfig struct {
 	TickInterval        time.Duration
 	AutoWake            bool
 	ReconcileWhileAwake bool
+	EnforceSleep        bool
 }
 
 // evalContext carries per-tick configuration into the evaluation functions,
@@ -76,6 +80,7 @@ type evalContext struct {
 	now                  time.Time
 	autoWake             bool
 	reconcileWhileAwake  bool
+	enforceSleep         bool
 	exceptionsByPolicy   map[uint][]store.ScheduledException  // batch-fetched per tick
 }
 
@@ -512,6 +517,7 @@ func (ps *PolicyScheduler) evaluateAll() {
 		now:                 start,
 		autoWake:            ps.cfg.AutoWake,
 		reconcileWhileAwake: ps.cfg.ReconcileWhileAwake,
+		enforceSleep:        ps.cfg.EnforceSleep,
 	}
 	ps.mu.Unlock()
 
@@ -560,16 +566,16 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, ctx evalContext) {
 }
 
 // reconcilePolicy checks whether a policy that is already in its intended
-// state needs corrective action. Currently this only applies to awake
-// policies when reconcileWhileAwake is enabled.
+// state needs corrective action. For awake policies it detects partial-wake
+// drift; for sleeping policies it enforces sleep by scaling back workloads
+// that were manually scaled up.
 func (ps *PolicyScheduler) reconcilePolicy(p store.Policy, ctx evalContext) {
-	if !ctx.reconcileWhileAwake {
-		return
+	if ctx.reconcileWhileAwake && p.CurrentState == store.PolicyStateAwake {
+		ps.reconcileAwakePolicy(p, ctx.exceptionsByPolicy[p.ID], ctx.now)
 	}
-	if p.CurrentState != store.PolicyStateAwake {
-		return
+	if ctx.enforceSleep && p.CurrentState == store.PolicyStateSleeping {
+		ps.enforceSleepPolicy(p, ctx.exceptionsByPolicy[p.ID], ctx.now)
 	}
-	ps.reconcileAwakePolicy(p, ctx.exceptionsByPolicy[p.ID], ctx.now)
 }
 
 // reconcileAwakePolicy detects drift from a failed or partial wake and runs a
@@ -620,6 +626,39 @@ func (ps *PolicyScheduler) reconcileAwakePolicy(p store.Policy, exceptions []sto
 				"policyID", p.ID)
 		} else {
 			slog.Error("policy scheduler: corrective wake failed",
+				"policyID", p.ID, "err", err)
+		}
+	}
+}
+
+// enforceSleepPolicy detects workloads manually scaled up while a policy is
+// sleeping and scales them back to zero. Uses the same backoff as reconcileAwakePolicy.
+func (ps *PolicyScheduler) enforceSleepPolicy(p store.Policy, exceptions []store.ScheduledException, now time.Time) {
+	if !ps.reconcileBackoffElapsed(p.ID, now) {
+		return
+	}
+
+	drifted, err := ps.runner.HasDriftedFromSleep(ps.execContext(), p.ID)
+	if err != nil {
+		slog.Warn("policy scheduler: enforce sleep drift check failed",
+			"policyID", p.ID, "err", err)
+		return
+	}
+	if !drifted {
+		return
+	}
+
+	ps.recordReconcileAttempt(p.ID, now)
+
+	slog.Info("policy scheduler: drift detected during sleep, running enforce sleep",
+		"policyID", p.ID)
+
+	if _, err := ps.run(ps.execContext(), p, directionSleep, "enforce_sleep"); err != nil {
+		if IsAlreadyRunning(err) {
+			slog.Debug("policy scheduler: enforce sleep skipped, already running",
+				"policyID", p.ID)
+		} else {
+			slog.Error("policy scheduler: enforce sleep failed",
 				"policyID", p.ID, "err", err)
 		}
 	}
@@ -851,7 +890,7 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 				ps.updatePolicyState(p.ID, direction, store.ExecStatusFailed)
 			}
 		}()
-		ps.executeAndFinalize(ctx, p, direction, execID, exec.StartedAt)
+		ps.executeAndFinalize(ctx, p, direction, trigger, execID, exec.StartedAt)
 	}()
 
 	return execID, nil
@@ -859,7 +898,7 @@ func (ps *PolicyScheduler) run(ctx context.Context, p store.Policy, direction, t
 
 // executeAndFinalize runs the scaler with a timeout context, drains logs,
 // determines the final status, and persists the result.
-func (ps *PolicyScheduler) executeAndFinalize(ctx context.Context, p store.Policy, direction string, execID uint, startedAt time.Time) {
+func (ps *PolicyScheduler) executeAndFinalize(ctx context.Context, p store.Policy, direction, trigger string, execID uint, startedAt time.Time) {
 	timeout := time.Duration(p.TimeoutMinutes) * time.Minute
 	if timeout <= 0 {
 		timeout = defaultExecutionTimeout
@@ -880,7 +919,7 @@ func (ps *PolicyScheduler) executeAndFinalize(ctx context.Context, p store.Polic
 		ps.drainLogChannel(execID, logCh)
 	}()
 
-	counts, runErr := ps.executeScaler(runCtx, p, direction, execID, logCh)
+	counts, runErr := ps.executeScaler(runCtx, p, direction, trigger, execID, logCh)
 
 	close(logCh)
 	wg.Wait()
@@ -942,7 +981,10 @@ func (ps *PolicyScheduler) drainLogChannel(execID uint, logCh <-chan scaler.LogL
 }
 
 // executeScaler dispatches to the appropriate sleep or wake runner.
-func (ps *PolicyScheduler) executeScaler(ctx context.Context, p store.Policy, direction string, execID uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error) {
+func (ps *PolicyScheduler) executeScaler(ctx context.Context, p store.Policy, direction, trigger string, execID uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error) {
+	if trigger == "enforce_sleep" && direction == directionSleep {
+		return ps.runner.RunPolicySleepReconcile(ctx, p, execID, logCh)
+	}
 	switch direction {
 	case directionSleep:
 		return ps.runner.RunPolicySleep(ctx, p, execID, logCh)
