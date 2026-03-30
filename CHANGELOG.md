@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.17](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.16...v0.5.17) (2026-03-30)
+
+
+### Features
+
+* **scaler:** scaling observability and K8s API client tuning ([#302](https://github.com/MacXsimilian/kube-phoenix/issues/302)) ([439707a](https://github.com/MacXsimilian/kube-phoenix/commit/439707ae781ec0d1812ef28ac640db98f9b79f72))
+
 ## [0.5.16](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.15...v0.5.16) (2026-03-30)
 
 
