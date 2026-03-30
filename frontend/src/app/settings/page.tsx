@@ -5,7 +5,7 @@ import Grid from '@mui/material/Grid'
 import Box from '@mui/material/Box'
 import { useThemeMode } from '@/lib/themeMode'
 import { useAuth } from '@/lib/auth'
-import { canResetDB } from '@/lib/rbac'
+import { canResetDB, canEmergencyScale } from '@/lib/rbac'
 import AppearanceSettings from '@/components/settings/AppearanceSettings'
 import AccountSettings from '@/components/settings/AccountSettings'
 import ActiveSessionsCard from '@/components/settings/ActiveSessionsCard'
@@ -51,9 +51,9 @@ export default function SettingsPage() {
           <OIDCStatusCard />
         </Grid>
 
-        {canResetDB(user?.permissions) && (
+        {(canResetDB(user?.permissions) || canEmergencyScale(user?.permissions)) && (
           <Grid size={12}>
-            <DatabaseSettings />
+            <DatabaseSettings permissions={user?.permissions} />
           </Grid>
         )}
 

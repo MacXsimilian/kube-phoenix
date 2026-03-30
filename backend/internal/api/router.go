@@ -244,6 +244,11 @@ func (h *Handler) registerAdminRoutes(r chi.Router) {
 		r.Use(authmw.RequirePermission(auth.PermAdminResetDB))
 		r.Post("/danger/reset-db", h.resetDB)
 	})
+
+	r.Group(func(r chi.Router) {
+		r.Use(authmw.RequirePermission(auth.PermAdminEmergencyScale))
+		r.Post("/danger/emergency-scale", h.emergencyScale)
+	})
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

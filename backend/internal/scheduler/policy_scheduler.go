@@ -443,7 +443,8 @@ func (ps *PolicyScheduler) runExceptionScoped(policyID uint, ex store.ScheduledE
 		return 0, fmt.Errorf("policy %d not found: %w", policyID, err)
 	}
 	if !p.Enabled {
-		slog.Warn("exception trigger on disabled policy", "policyID", policyID, "direction", direction, "trigger", trigger)
+		slog.Warn("skipping exception on disabled policy", "policyID", policyID, "direction", direction, "trigger", trigger)
+		return 0, nil
 	}
 	// Override the policy's scope with the exception's narrower targeting.
 	if ex.NamespaceFilter != "" {

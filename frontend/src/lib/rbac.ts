@@ -9,4 +9,5 @@ export const canTriggerSchedules = (permissions?: string[]) => hasPerm(permissio
 export const canEditGuardrails   = (permissions?: string[]) => hasPerm(permissions, 'guardrail.edit')
 export const canManageUsers      = (permissions?: string[]) => hasPerm(permissions, 'user.manage')
 export const canResetDB          = (permissions?: string[]) => hasPerm(permissions, 'admin.reset_db')
+export const canEmergencyScale   = (permissions?: string[]) => hasPerm(permissions, 'admin.emergency_scale')
 export const canViewAudit        = (permissions?: string[]) => hasPerm(permissions, 'audit.view')

@@ -16,13 +16,16 @@ import Divider from '@mui/material/Divider'
 import CircularProgress from '@mui/material/CircularProgress'
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded'
 import DeleteForeverOutlinedIcon from '@mui/icons-material/DeleteForeverOutlined'
+import FlashOnIcon from '@mui/icons-material/FlashOn'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import { useTheme } from '@mui/material/styles'
-import { resetDatabaseStream, type ResetEvent } from '@/lib/api'
+import { resetDatabaseStream, emergencyScaleStream, type ResetEvent } from '@/lib/api'
+import { canResetDB, canEmergencyScale } from '@/lib/rbac'
 import { formatError } from '@/lib/formatters'
 
-const CONFIRM_PHRASE = 'RESET DATABASE'
+const RESET_CONFIRM_PHRASE = 'RESET DATABASE'
+const EMERGENCY_CONFIRM_PHRASE = 'EMERGENCY SCALE'
 
 interface ResetProgressDialogProps {
   open: boolean
@@ -109,36 +112,50 @@ function ResetProgressDialog({
   )
 }
 
-export default function DatabaseSettings() {
+interface DangerZoneProps {
+  permissions?: string[]
+}
+
+export default function DatabaseSettings({ permissions }: DangerZoneProps) {
   const queryClient = useQueryClient()
-  const [step1Open, setStep1Open] = useState(false)
-  const [step2Open, setStep2Open] = useState(false)
-  const [phrase, setPhrase] = useState('')
-  const [progressOpen, setProgressOpen] = useState(false)
-  const [progressEvents, setProgressEvents] = useState<ResetEvent[]>([])
-  const [progressDone, setProgressDone] = useState(false)
 
-  function openStep1() {
-    setStep1Open(true)
+  // ── Reset Database state ─────────────────────────────────────────────
+  const [resetStep1Open, setResetStep1Open] = useState(false)
+  const [resetStep2Open, setResetStep2Open] = useState(false)
+  const [resetPhrase, setResetPhrase] = useState('')
+  const [resetProgressOpen, setResetProgressOpen] = useState(false)
+  const [resetProgressEvents, setResetProgressEvents] = useState<ResetEvent[]>([])
+  const [resetProgressDone, setResetProgressDone] = useState(false)
+
+  // ── Emergency Scale state ────────────────────────────────────────────
+  const [esStep1Open, setEsStep1Open] = useState(false)
+  const [esStep2Open, setEsStep2Open] = useState(false)
+  const [esPhrase, setEsPhrase] = useState('')
+  const [esProgressOpen, setEsProgressOpen] = useState(false)
+  const [esProgressEvents, setEsProgressEvents] = useState<ResetEvent[]>([])
+  const [esProgressDone, setEsProgressDone] = useState(false)
+
+  const showResetDB = canResetDB(permissions)
+  const showEmergencyScale = canEmergencyScale(permissions)
+
+  // ── Reset Database handlers ──────────────────────────────────────────
+  function confirmResetStep1() {
+    setResetStep1Open(false)
+    setResetPhrase('')
+    setResetStep2Open(true)
   }
 
-  function confirmStep1() {
-    setStep1Open(false)
-    setPhrase('')
-    setStep2Open(true)
-  }
-
-  async function confirmStep2() {
-    if (phrase !== CONFIRM_PHRASE) return
-    setStep2Open(false)
-    setPhrase('')
-    setProgressEvents([])
-    setProgressDone(false)
-    setProgressOpen(true)
+  async function confirmResetStep2() {
+    if (resetPhrase !== RESET_CONFIRM_PHRASE) return
+    setResetStep2Open(false)
+    setResetPhrase('')
+    setResetProgressEvents([])
+    setResetProgressDone(false)
+    setResetProgressOpen(true)
 
     try {
       for await (const event of resetDatabaseStream()) {
-        setProgressEvents((prev) => [...prev, event])
+        setResetProgressEvents((prev) => [...prev, event])
         if (event.type === 'done') {
           queryClient.clear()
           break
@@ -147,16 +164,42 @@ export default function DatabaseSettings() {
       }
     } catch (err) {
       const msg = formatError(err)
-      setProgressEvents((prev) => [...prev, { type: 'error', message: msg }])
+      setResetProgressEvents((prev) => [...prev, { type: 'error', message: msg }])
     } finally {
-      setProgressDone(true)
+      setResetProgressDone(true)
     }
   }
 
-  function closeProgress() {
-    setProgressOpen(false)
-    setProgressEvents([])
-    setProgressDone(false)
+  // ── Emergency Scale handlers ─────────────────────────────────────────
+  function confirmEsStep1() {
+    setEsStep1Open(false)
+    setEsPhrase('')
+    setEsStep2Open(true)
+  }
+
+  async function confirmEsStep2() {
+    if (esPhrase !== EMERGENCY_CONFIRM_PHRASE) return
+    setEsStep2Open(false)
+    setEsPhrase('')
+    setEsProgressEvents([])
+    setEsProgressDone(false)
+    setEsProgressOpen(true)
+
+    try {
+      for await (const event of emergencyScaleStream()) {
+        setEsProgressEvents((prev) => [...prev, event])
+        if (event.type === 'done') {
+          queryClient.clear()
+          break
+        }
+        if (event.type === 'error') break
+      }
+    } catch (err) {
+      const msg = formatError(err)
+      setEsProgressEvents((prev) => [...prev, { type: 'error', message: msg }])
+    } finally {
+      setEsProgressDone(true)
+    }
   }
 
   return (
@@ -175,30 +218,58 @@ export default function DatabaseSettings() {
 
           <Divider sx={{ mb: 3 }} />
 
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
-            <Box>
-              <Typography variant="body2" fontWeight={600}>
-                Reset Database
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Drops all tables, recreates the schema, and reseeds default schedules and guardrails.
-                All execution history and custom schedules will be permanently deleted.
-              </Typography>
+          {showEmergencyScale && (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: showResetDB ? 3 : 0 }}>
+              <Box>
+                <Typography variant="body2" fontWeight={600}>
+                  Emergency Scale
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Immediately disables all policies and scales every sleeping workload to 1 replica.
+                  Use this in an emergency to restore minimum availability.
+                </Typography>
+              </Box>
+              <Button
+                variant="outlined"
+                color="error"
+                startIcon={<FlashOnIcon />}
+                onClick={() => setEsStep1Open(true)}
+                sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+              >
+                Emergency Scale
+              </Button>
             </Box>
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<DeleteForeverOutlinedIcon />}
-              onClick={openStep1}
-              sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
-            >
-              Reset Database
-            </Button>
-          </Box>
+          )}
+
+          {showEmergencyScale && showResetDB && <Divider sx={{ mb: 3 }} />}
+
+          {showResetDB && (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+              <Box>
+                <Typography variant="body2" fontWeight={600}>
+                  Reset Database
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Drops all tables, recreates the schema, and reseeds default schedules and guardrails.
+                  All execution history and custom schedules will be permanently deleted.
+                </Typography>
+              </Box>
+              <Button
+                variant="outlined"
+                color="error"
+                startIcon={<DeleteForeverOutlinedIcon />}
+                onClick={() => setResetStep1Open(true)}
+                sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+              >
+                Reset Database
+              </Button>
+            </Box>
+          )}
         </CardContent>
       </Card>
 
-      <Dialog open={step1Open} onClose={() => setStep1Open(false)} maxWidth="xs" fullWidth>
+      {/* ── Reset Database dialogs ──────────────────────────────────────── */}
+      <Dialog open={resetStep1Open} onClose={() => setResetStep1Open(false)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <WarningAmberRoundedIcon color="error" />
           Are you absolutely sure?
@@ -213,38 +284,38 @@ export default function DatabaseSettings() {
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setStep1Open(false)}>Cancel</Button>
-          <Button variant="contained" color="error" onClick={confirmStep1}>
+          <Button onClick={() => setResetStep1Open(false)}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={confirmResetStep1}>
             I understand, continue
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={step2Open} onClose={() => setStep2Open(false)} maxWidth="xs" fullWidth>
+      <Dialog open={resetStep2Open} onClose={() => setResetStep2Open(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Confirm destructive operation</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" mb={2}>
-            To confirm, type <strong>{CONFIRM_PHRASE}</strong> in the field below.
+            To confirm, type <strong>{RESET_CONFIRM_PHRASE}</strong> in the field below.
           </Typography>
           <TextField
             autoFocus
             fullWidth
             size="small"
-            placeholder={CONFIRM_PHRASE}
-            value={phrase}
-            onChange={(e) => setPhrase(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && phrase === CONFIRM_PHRASE && confirmStep2()}
-            error={phrase.length > 0 && phrase !== CONFIRM_PHRASE}
-            helperText={phrase.length > 0 && phrase !== CONFIRM_PHRASE ? 'Phrase does not match' : ' '}
+            placeholder={RESET_CONFIRM_PHRASE}
+            value={resetPhrase}
+            onChange={(e) => setResetPhrase(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && resetPhrase === RESET_CONFIRM_PHRASE && confirmResetStep2()}
+            error={resetPhrase.length > 0 && resetPhrase !== RESET_CONFIRM_PHRASE}
+            helperText={resetPhrase.length > 0 && resetPhrase !== RESET_CONFIRM_PHRASE ? 'Phrase does not match' : ' '}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setStep2Open(false)}>Cancel</Button>
+          <Button onClick={() => setResetStep2Open(false)}>Cancel</Button>
           <Button
             variant="contained"
             color="error"
-            onClick={confirmStep2}
-            disabled={phrase !== CONFIRM_PHRASE}
+            onClick={confirmResetStep2}
+            disabled={resetPhrase !== RESET_CONFIRM_PHRASE}
             startIcon={<DeleteForeverOutlinedIcon />}
           >
             Reset Database
@@ -253,10 +324,72 @@ export default function DatabaseSettings() {
       </Dialog>
 
       <ResetProgressDialog
-        open={progressOpen}
-        events={progressEvents}
-        done={progressDone}
-        onClose={closeProgress}
+        open={resetProgressOpen}
+        events={resetProgressEvents}
+        done={resetProgressDone}
+        onClose={() => { setResetProgressOpen(false); setResetProgressEvents([]); setResetProgressDone(false) }}
+      />
+
+      {/* ── Emergency Scale dialogs ─────────────────────────────────────── */}
+      <Dialog open={esStep1Open} onClose={() => setEsStep1Open(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <WarningAmberRoundedIcon color="error" />
+          Are you absolutely sure?
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            This will <strong>disable all policies</strong> and immediately scale every sleeping workload to
+            {' '}<strong>1 replica</strong>. Policies will need to be manually re-enabled afterward.
+          </Typography>
+          <Typography variant="body2" color="error" mt={2} fontWeight={600}>
+            All policies will be disabled. Workloads will not return to their original replica counts.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setEsStep1Open(false)}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={confirmEsStep1}>
+            I understand, continue
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={esStep2Open} onClose={() => setEsStep2Open(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Confirm emergency operation</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" mb={2}>
+            To confirm, type <strong>{EMERGENCY_CONFIRM_PHRASE}</strong> in the field below.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            size="small"
+            placeholder={EMERGENCY_CONFIRM_PHRASE}
+            value={esPhrase}
+            onChange={(e) => setEsPhrase(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && esPhrase === EMERGENCY_CONFIRM_PHRASE && confirmEsStep2()}
+            error={esPhrase.length > 0 && esPhrase !== EMERGENCY_CONFIRM_PHRASE}
+            helperText={esPhrase.length > 0 && esPhrase !== EMERGENCY_CONFIRM_PHRASE ? 'Phrase does not match' : ' '}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setEsStep2Open(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={confirmEsStep2}
+            disabled={esPhrase !== EMERGENCY_CONFIRM_PHRASE}
+            startIcon={<FlashOnIcon />}
+          >
+            Emergency Scale
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <ResetProgressDialog
+        open={esProgressOpen}
+        events={esProgressEvents}
+        done={esProgressDone}
+        onClose={() => { setEsProgressOpen(false); setEsProgressEvents([]); setEsProgressDone(false) }}
       />
     </>
   )
