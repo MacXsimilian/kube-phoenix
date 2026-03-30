@@ -1,7 +1,7 @@
 # Policy Feature — Test Planbook
 
 > Target environment: minikube 3-node cluster (local-cluster)
-> 9 namespaces, 72 deployments, 240 pods (all `pause:3.10`)
+> 9 namespaces, 72 deployments, 240 pods (`busybox:1.37` with role-based activity, some `pause:3.10` for idle workloads)
 > Access: `http://localhost:8080` — admin / adminadmin
 
 ---

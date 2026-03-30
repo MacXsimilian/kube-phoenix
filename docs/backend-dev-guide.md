@@ -158,7 +158,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `Runner` -- holds `*k8s.Client` and `*store.Store`; provides low-level scale/drain operations.
 - `PolicyRunner` -- wraps `Runner` and adds DB-backed `WorkloadSnapshot` logic. This is what the scheduler uses.
 - `LogLine` -- `{Level, Message, Time}` emitted to a channel during runs.
-- `Counts` -- aggregates: `Saved`, `Scaled`, `Drained`, `Deleted`, `Skipped`, `Protected`, `Errors`.
+- `Counts` -- aggregates: `Saved`, `Scaled`, `Drained`, `Deleted`, `Skipped`, `Protected`, `Errors`, `Requests` (K8s API calls). Tracks `StartedAt` for duration and req/s calculations. Thread-safe request counting via `AddRequests(n)`.
 - `workloadEntry` -- uniform representation of a Deployment or StatefulSet with function pointers for `Annotate`, `Scale`, `RemoveAnnotation`.
 
 **Key functions (PolicyRunner):**

@@ -249,6 +249,8 @@ kubectl delete namespace kube-phoenix
 | `session.maxLifetime` | `24h` | Absolute session hard cap |
 | `session.cookieSecure` | `true` | Set `false` for HTTP-only environments |
 | `auditRetentionDays` | `90` | Auto-delete audit entries older than this (0 = keep forever) |
+| `k8s.qps` | `100` | Sustained K8s API requests per second (client-go default: 5) |
+| `k8s.burst` | `200` | Short spike allowance above QPS (client-go default: 10) |
 
 ### OIDC
 

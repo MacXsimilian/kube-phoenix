@@ -109,6 +109,12 @@ components:
           type: string
           example: "payments,checkout,api-gateway"
           description: Ordered list of namespaces to scale first during sleep and wake. Comma-separated.
+        scalingConcurrency:
+          type: integer
+          minimum: 1
+          maximum: 50
+          example: 10
+          description: Max workloads scaled in parallel during sleep/wake. Default 10.
         schedulerEvalInterval:
           type: string
           example: "30s"
@@ -144,6 +150,10 @@ components:
           type: string
         scalingPriorityNamespaces:
           type: string
+        scalingConcurrency:
+          type: integer
+          minimum: 1
+          maximum: 50
         schedulerEvalInterval:
           type: string
         schedulerAutoWake:
@@ -893,6 +903,9 @@ components:
           type: integer
         countErrors:
           type: integer
+        countRequests:
+          type: integer
+          description: Total K8s API calls made during this execution.
 
     PaginatedPolicyExecutions:
       description: Paginated list of policy executions.

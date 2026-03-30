@@ -16,6 +16,8 @@
 | `CORS_ALLOWED_ORIGIN` | -- | No | Allowed CORS origin (e.g., `https://kube-phoenix.example.com`). Unset = same-origin only. In dev mode, CORS allows all origins. |
 | `KUBECONFIG` | -- | No | Path to kubeconfig file. Fallback when in-cluster config is unavailable. |
 | `CLUSTER_NAME` | -- | No | Human-readable cluster name returned by `GET /api/cluster/info`. When unset, the endpoint omits the field. |
+| `K8S_QPS` | `100` | No | Sustained K8s API requests per second (client-go default: 5). Higher values speed up large scaling events but increase control plane load. |
+| `K8S_BURST` | `200` | No | Short spike allowance above `K8S_QPS` (client-go default: 10). The K8s API server's own APF throttling acts as a server-side safety net. |
 
 ### OIDC Variables
 
@@ -161,6 +163,8 @@ Guardrails protect critical resources from being touched by the scaler. Configur
 | Skip Node Labels | Nodes with these labels are never cordoned, drained, or deleted |
 | Skip Node Taints | Nodes with these taints are never cordoned, drained, or deleted |
 | Scaling Priority Namespaces | Ordered list of namespaces that are scaled first during sleep and wake runs. Workloads in these namespaces are processed before all others, in list order. Empty by default (no priority). |
+| Scaling Concurrency | Max workloads scaled in parallel during sleep/wake (1–50, default 10). Higher values increase throughput but generate more concurrent K8s API calls. |
+| Protect Critical Pod Nodes | When enabled (default), nodes running system-critical priority pods are never drained. |
 | Scheduler Eval Interval | How often all enabled policies are evaluated. Accepts Go duration strings (`30s`, `1m`, `2m`). Changes take effect immediately — the ticker restarts with the new interval. |
 | Auto Wake | When disabled, the scheduler will only trigger sleep executions automatically. Wake transitions must be triggered manually. |
 | Reconcile While Awake | When enabled (default), the scheduler detects drift from failed or partial wake executions — workloads left at zero despite the policy being awake — and runs a corrective wake to restore them. Corrective wakes back off at 5-minute intervals per policy and bypass the Auto Wake gate. When disabled, the scheduler skips reconciliation for policies already awake, reducing database load between sleep windows. |
