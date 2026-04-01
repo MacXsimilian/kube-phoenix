@@ -325,7 +325,6 @@ func (h *Handler) resolveNodeInstanceType(ctx context.Context, nodeName string) 
 	return nodeLabel(*node, "node.kubernetes.io/instance-type", "beta.kubernetes.io/instance-type")
 }
 
-
 // ── Pod logs (streamed from K8s API — no DB) ─────────────────────────────────
 
 func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {

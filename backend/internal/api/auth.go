@@ -16,7 +16,7 @@ import (
 
 // Sentinel errors for credential verification.
 var (
-	errLoginFailed    = errors.New("invalid username or password")
+	errLoginFailed     = errors.New("invalid username or password")
 	errAccountDisabled = errors.New("account disabled")
 )
 

@@ -77,11 +77,11 @@ type SchedulerConfig struct {
 // evalContext carries per-tick configuration into the evaluation functions,
 // grouping values that would otherwise be passed as individual arguments.
 type evalContext struct {
-	now                  time.Time
-	autoWake             bool
-	reconcileWhileAwake  bool
-	enforceSleep         bool
-	exceptionsByPolicy   map[uint][]store.ScheduledException  // batch-fetched per tick
+	now                 time.Time
+	autoWake            bool
+	reconcileWhileAwake bool
+	enforceSleep        bool
+	exceptionsByPolicy  map[uint][]store.ScheduledException // batch-fetched per tick
 }
 
 // cachedPolicy holds a parsed in-memory representation of a policy.
@@ -104,8 +104,8 @@ type PolicyScheduler struct {
 	parentCtx            context.Context
 	policies             map[uint]cachedPolicy
 	lastReconcileAttempt map[uint]time.Time
-	lastFailedTransition map[uint]time.Time           // backoff for failed scheduled transitions
-	inflightPolicies     map[uint]struct{}            // policies with a running execution
+	lastFailedTransition map[uint]time.Time          // backoff for failed scheduled transitions
+	inflightPolicies     map[uint]struct{}           // policies with a running execution
 	inflightCancels      map[uint]context.CancelFunc // cancel funcs for running executions
 	inflight             sync.WaitGroup              // tracks running execution goroutines
 }
