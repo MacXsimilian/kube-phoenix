@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.18](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.17...v0.5.18) (2026-04-01)
+
+
+### Features
+
+* **scaler:** wave-based wake scaling and scheduler recovery fix ([#304](https://github.com/MacXsimilian/kube-phoenix/issues/304)) ([89178f0](https://github.com/MacXsimilian/kube-phoenix/commit/89178f048b4a75fc33b793b3d53e0e3ab6c4320a))
+
 ## [0.5.17](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.16...v0.5.17) (2026-03-30)
 
 
