@@ -22,6 +22,8 @@ type Guardrails struct {
 	SchedulerReconcileWhileAwake bool   `gorm:"default:true" json:"schedulerReconcileWhileAwake"`
 	SchedulerEnforceSleep        bool   `gorm:"default:true" json:"schedulerEnforceSleep"`
 	ScalingConcurrency           int    `gorm:"default:10" json:"scalingConcurrency"`
+	WakeWaveSize                 int    `gorm:"default:0" json:"wakeWaveSize"`               // workloads per wave during wake; 0 = disabled
+	WakeWavePauseSeconds         int    `gorm:"default:90" json:"wakeWavePauseSeconds"`      // max seconds to wait for pod readiness between waves
 	ProtectCriticalPodNodes      bool   `gorm:"default:true" json:"protectCriticalPodNodes"` // protect nodes running system-node-critical / system-cluster-critical pods
 
 	UpdatedAt time.Time `json:"updatedAt"`

@@ -615,6 +615,58 @@ func (c *Client) GetPod(ctx context.Context, namespace, name string) (*corev1.Po
 	return pod, nil
 }
 
+// CountReadyPods returns the number of Ready pods and total pods owned by the
+// given Deployment or StatefulSet. Used to verify workload health after wake.
+func (c *Client) CountReadyPods(ctx context.Context, kind, namespace, name string) (ready, total int, err error) {
+	selector, err := c.workloadLabelSelector(ctx, kind, namespace, name)
+	if err != nil {
+		return 0, 0, err
+	}
+	start := time.Now()
+	list, err := c.cs.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
+	recordK8sOp("list", "pod", start, err)
+	if err != nil {
+		return 0, 0, fmt.Errorf("list pods for %s %s/%s: %w", kind, namespace, name, err)
+	}
+	for _, pod := range list.Items {
+		total++
+		if isPodReady(pod) {
+			ready++
+		}
+	}
+	return ready, total, nil
+}
+
+func (c *Client) workloadLabelSelector(ctx context.Context, kind, namespace, name string) (string, error) {
+	var labels map[string]string
+	switch kind {
+	case "Deployment":
+		d, err := c.GetDeployment(ctx, namespace, name)
+		if err != nil {
+			return "", err
+		}
+		labels = d.Spec.Selector.MatchLabels
+	case "StatefulSet":
+		ss, err := c.GetStatefulSet(ctx, namespace, name)
+		if err != nil {
+			return "", err
+		}
+		labels = ss.Spec.Selector.MatchLabels
+	default:
+		return "", fmt.Errorf("unsupported kind %q", kind)
+	}
+	return metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: labels}), nil
+}
+
+func isPodReady(pod corev1.Pod) bool {
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.PodReady {
+			return c.Status == corev1.ConditionTrue
+		}
+	}
+	return false
+}
+
 func (c *Client) GetNode(ctx context.Context, name string) (*corev1.Node, error) {
 	start := time.Now()
 	node, err := c.cs.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})

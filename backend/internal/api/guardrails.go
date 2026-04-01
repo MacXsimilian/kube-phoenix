@@ -44,6 +44,8 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 		"schedulerEnforceSleep":        "scheduler_enforce_sleep",
 		"scalingPriorityNamespaces":    "scaling_priority_namespaces",
 		"scalingConcurrency":           "scaling_concurrency",
+		"wakeWaveSize":                 "wake_wave_size",
+		"wakeWavePauseSeconds":         "wake_wave_pause_seconds",
 		"protectCriticalPodNodes":      "protect_critical_pod_nodes",
 	}
 	updates := map[string]interface{}{}
@@ -114,6 +116,18 @@ func validateGuardrailFields(body map[string]interface{}) string {
 		n, ok := v.(float64)
 		if !ok || n < 1 || n > 50 || n != float64(int(n)) {
 			return "scalingConcurrency must be a whole number between 1 and 50"
+		}
+	}
+	if v, ok := body["wakeWaveSize"]; ok {
+		n, ok := v.(float64)
+		if !ok || n < 0 || n > 200 || n != float64(int(n)) {
+			return "wakeWaveSize must be a whole number between 0 and 200"
+		}
+	}
+	if v, ok := body["wakeWavePauseSeconds"]; ok {
+		n, ok := v.(float64)
+		if !ok || n < 10 || n > 600 || n != float64(int(n)) {
+			return "wakeWavePauseSeconds must be a whole number between 10 and 600"
 		}
 	}
 	return ""

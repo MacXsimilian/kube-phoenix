@@ -92,6 +92,8 @@ function createSeedData() {
       schedulerAutoWake: true,
       schedulerReconcileWhileAwake: true,
       scalingConcurrency: 5,
+      wakeWaveSize: 0,
+      wakeWavePauseSeconds: 90,
       protectCriticalPodNodes: true,
       updatedAt: ago(48),
     },
