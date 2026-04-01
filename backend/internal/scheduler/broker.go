@@ -14,14 +14,14 @@ const (
 
 // Broker manages WebSocket subscriber channels for live log streaming.
 type Broker struct {
-	mu     sync.RWMutex
-	subs   map[uint][]chan store.PolicyLogLine
+	mu             sync.RWMutex
+	subs           map[uint][]chan store.PolicyLogLine
 	closedChannels map[uint]map[chan store.PolicyLogLine]bool // tracks channels already closed
 }
 
 func NewBroker() *Broker {
 	return &Broker{
-		subs:   map[uint][]chan store.PolicyLogLine{},
+		subs:           map[uint][]chan store.PolicyLogLine{},
 		closedChannels: map[uint]map[chan store.PolicyLogLine]bool{},
 	}
 }

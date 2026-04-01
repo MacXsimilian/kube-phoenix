@@ -299,7 +299,6 @@ func (s *Store) CleanOldExecutions(olderThan time.Duration) (int64, error) {
 	return result.RowsAffected, result.Error
 }
 
-
 // ─── Policy Log Lines ─────────────────────────────────────────────────────────
 
 func (s *Store) AppendPolicyLogLine(line *PolicyLogLine) error {

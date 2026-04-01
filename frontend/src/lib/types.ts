@@ -10,6 +10,8 @@ export interface Guardrails {
   schedulerReconcileWhileAwake: boolean
   schedulerEnforceSleep: boolean
   scalingConcurrency: number
+  wakeWaveSize: number
+  wakeWavePauseSeconds: number
   protectCriticalPodNodes: boolean
   updatedAt: string
 }

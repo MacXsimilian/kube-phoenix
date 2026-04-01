@@ -64,6 +64,8 @@ interface FormState {
   skipTaints: string[]
   priorityNs: string[]
   scalingConcurrency: number
+  wakeWaveSize: number
+  wakeWavePauseSeconds: number
   evalInterval: string
   autoWake: boolean
   reconcileWhileAwake: boolean
@@ -78,6 +80,8 @@ const INITIAL_FORM: FormState = {
   skipTaints: [],
   priorityNs: [],
   scalingConcurrency: 10,
+  wakeWaveSize: 0,
+  wakeWavePauseSeconds: 90,
   evalInterval: '30s',
   autoWake: true,
   reconcileWhileAwake: true,
@@ -103,6 +107,8 @@ interface Snapshot {
   skipTaints: string
   priorityNs: string
   scalingConcurrency: number
+  wakeWaveSize: number
+  wakeWavePauseSeconds: number
   evalInterval: string
   autoWake: boolean
   reconcileWhileAwake: boolean
@@ -118,6 +124,8 @@ function buildSnapshot(form: FormState): Snapshot {
     skipTaints: joinCommaList(form.skipTaints),
     priorityNs: joinCommaList(form.priorityNs),
     scalingConcurrency: form.scalingConcurrency,
+    wakeWaveSize: form.wakeWaveSize,
+    wakeWavePauseSeconds: form.wakeWavePauseSeconds,
     evalInterval: form.evalInterval.trim(),
     autoWake: form.autoWake,
     reconcileWhileAwake: form.reconcileWhileAwake,
@@ -162,6 +170,8 @@ export default function GuardrailsForm() {
         skipTaints: splitCommaList(guardrails.skipNodeTaints),
         priorityNs: splitCommaList(guardrails.scalingPriorityNamespaces),
         scalingConcurrency: guardrails.scalingConcurrency,
+        wakeWaveSize: guardrails.wakeWaveSize,
+        wakeWavePauseSeconds: guardrails.wakeWavePauseSeconds,
         evalInterval: guardrails.schedulerEvalInterval,
         autoWake: guardrails.schedulerAutoWake,
         reconcileWhileAwake: guardrails.schedulerReconcileWhileAwake,
@@ -193,6 +203,8 @@ export default function GuardrailsForm() {
         skipNodeTaints: snapshot.skipTaints,
         scalingPriorityNamespaces: snapshot.priorityNs,
         scalingConcurrency: snapshot.scalingConcurrency,
+        wakeWaveSize: snapshot.wakeWaveSize,
+        wakeWavePauseSeconds: snapshot.wakeWavePauseSeconds,
         schedulerEvalInterval: snapshot.evalInterval,
         schedulerAutoWake: snapshot.autoWake,
         schedulerReconcileWhileAwake: snapshot.reconcileWhileAwake,
@@ -334,6 +346,7 @@ export default function GuardrailsForm() {
               <Chip label={form.autoWake ? 'Wake: ON' : 'Wake: OFF'} size="small" sx={{ fontSize: 11 }} />
               <Chip label={form.reconcileWhileAwake ? 'Reconcile: ON' : 'Reconcile: OFF'} size="small" sx={{ fontSize: 11 }} />
               <Chip label={form.enforceSleep ? 'Enforce: ON' : 'Enforce: OFF'} size="small" sx={{ fontSize: 11 }} />
+              <Chip label={form.wakeWaveSize > 0 ? `Wave: ${form.wakeWaveSize}` : 'Wave: OFF'} size="small" sx={{ fontSize: 11 }} />
             </Box>
           }
         >
@@ -347,6 +360,20 @@ export default function GuardrailsForm() {
                 <Typography variant="caption" color="text.secondary">Max workloads scaled in parallel during sleep/wake (1–50)</Typography>
               </Box>
               <TextField size="small" type="number" value={form.scalingConcurrency} disabled={!hasEdit} error={form.scalingConcurrency < 1 || form.scalingConcurrency > 50} onChange={(e) => setField('scalingConcurrency', Math.max(1, Math.min(50, Number(e.target.value) || 1)))} slotProps={{ htmlInput: { min: 1, max: 50, style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} />
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none' }}>
+              <Box>
+                <Typography variant="body2" fontWeight={600}>Wake Wave Size</Typography>
+                <Typography variant="caption" color="text.secondary">Workloads per wave during wake-up, 0 = disabled (0–200)</Typography>
+              </Box>
+              <TextField size="small" type="number" value={form.wakeWaveSize} disabled={!hasEdit} error={form.wakeWaveSize < 0 || form.wakeWaveSize > 200} onChange={(e) => setField('wakeWaveSize', Math.max(0, Math.min(200, Number(e.target.value) || 0)))} slotProps={{ htmlInput: { min: 0, max: 200, style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} />
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none', opacity: form.wakeWaveSize === 0 ? 0.5 : 1 }}>
+              <Box>
+                <Typography variant="body2" fontWeight={600}>Wake Wave Pause</Typography>
+                <Typography variant="caption" color="text.secondary">Max seconds to wait for pod readiness between waves (10–600)</Typography>
+              </Box>
+              <TextField size="small" type="number" value={form.wakeWavePauseSeconds} disabled={!hasEdit || form.wakeWaveSize === 0} error={form.wakeWaveSize > 0 && (form.wakeWavePauseSeconds < 10 || form.wakeWavePauseSeconds > 600)} onChange={(e) => setField('wakeWavePauseSeconds', Math.max(10, Math.min(600, Number(e.target.value) || 90)))} slotProps={{ htmlInput: { min: 10, max: 600, style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} />
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none' }}>
               <Box>

@@ -155,7 +155,6 @@ func nodeLabel(node corev1.Node, keys ...string) string {
 	return ""
 }
 
-
 // convertTaints maps Kubernetes taints to their API response representation.
 func convertTaints(taints []corev1.Taint) []NodeTaintResponse {
 	out := make([]NodeTaintResponse, 0, len(taints))

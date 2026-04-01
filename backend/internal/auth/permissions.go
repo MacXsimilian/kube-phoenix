@@ -5,15 +5,15 @@ package auth
 type Permission string
 
 const (
-	PermViewAll         Permission = "view.all"
-	PermScheduleEdit    Permission = "schedule.edit"
-	PermScheduleTrigger Permission = "schedule.trigger"
-	PermGuardrailEdit   Permission = "guardrail.edit"
-	PermUserManage      Permission = "user.manage"
-	PermAdminResetDB         Permission = "admin.reset_db"
-	PermAdminEmergencyScale  Permission = "admin.emergency_scale"
-	PermAuditView            Permission = "audit.view"
-	PermPasswordChange       Permission = "password.change"
+	PermViewAll             Permission = "view.all"
+	PermScheduleEdit        Permission = "schedule.edit"
+	PermScheduleTrigger     Permission = "schedule.trigger"
+	PermGuardrailEdit       Permission = "guardrail.edit"
+	PermUserManage          Permission = "user.manage"
+	PermAdminResetDB        Permission = "admin.reset_db"
+	PermAdminEmergencyScale Permission = "admin.emergency_scale"
+	PermAuditView           Permission = "audit.view"
+	PermPasswordChange      Permission = "password.change"
 )
 
 // AllPermissions is an ordered list used by the /api/auth/me endpoint to return
