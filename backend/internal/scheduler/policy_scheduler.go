@@ -129,6 +129,10 @@ func NewPolicyScheduler(st *store.Store, k8sClient *k8s.Client, cfg SchedulerCon
 // evaluation ticker. Recovery runs synchronously before the tick loop starts
 // to avoid race conditions between recovery and scheduled evaluations.
 func (ps *PolicyScheduler) Start(ctx context.Context) error {
+	return ps.start(ctx, true)
+}
+
+func (ps *PolicyScheduler) start(ctx context.Context, recover bool) error {
 	ps.mu.Lock()
 	ps.parentCtx = ctx
 	tickCtx, cancel := context.WithCancel(ctx)
@@ -139,9 +143,10 @@ func (ps *PolicyScheduler) Start(ctx context.Context) error {
 	}
 	ps.mu.Unlock()
 
-	// Recovery runs before the tick loop — no concurrent evaluation.
-	if err := ps.RecoverPolicies(ctx); err != nil {
-		slog.Error("policy scheduler: recovery failed (continuing)", "err", err)
+	if recover {
+		if err := ps.RecoverPolicies(ctx); err != nil {
+			slog.Error("policy scheduler: recovery failed (continuing)", "err", err)
+		}
 	}
 
 	interval := ps.cfg.TickInterval
@@ -183,10 +188,13 @@ func (ps *PolicyScheduler) Reload() error {
 	return ps.reload()
 }
 
-// Restart stops and restarts the scheduler. Used after a database reset.
+// Restart stops and restarts the ticker loop without running recovery.
+// Recovery is only needed on cold boot when state may be stale from a crash;
+// a restart happens in a running process where the previous tick already
+// left state consistent.
 func (ps *PolicyScheduler) Restart(ctx context.Context) error {
 	ps.Stop()
-	return ps.Start(ctx)
+	return ps.start(ctx, false)
 }
 
 // NextTransition returns the next predicted state change for a policy.
