@@ -94,6 +94,7 @@ function createSeedData() {
       scalingConcurrency: 5,
       wakeWaveSize: 0,
       wakeWavePauseSeconds: 90,
+      schedulerEnforceSleep: true,
       protectCriticalPodNodes: true,
       updatedAt: ago(48),
     },
@@ -271,6 +272,9 @@ function createSeedData() {
       { namespace: 'staging', name: 'product-api', kind: 'Deployment', currentReplicas: 0, savedReplicas: 3, readyReplicas: 0, status: 'sleeping' },
       { namespace: 'staging', name: 'cart-svc', kind: 'Deployment', currentReplicas: 0, savedReplicas: 2, readyReplicas: 0, status: 'sleeping' },
       { namespace: 'staging', name: 'postgres', kind: 'StatefulSet', currentReplicas: 0, savedReplicas: 1, readyReplicas: 0, status: 'sleeping' },
+      // kube-system namespace — system-protected
+      { namespace: 'kube-system', name: 'coredns', kind: 'Deployment', currentReplicas: 2, savedReplicas: null, readyReplicas: 2, status: 'running' },
+      { namespace: 'kube-system', name: 'kube-proxy', kind: 'Deployment', currentReplicas: 3, savedReplicas: null, readyReplicas: 3, status: 'running' },
       // monitoring namespace — always running
       { namespace: 'monitoring', name: 'prometheus', kind: 'StatefulSet', currentReplicas: 1, savedReplicas: null, readyReplicas: 1, status: 'running' },
       { namespace: 'monitoring', name: 'grafana', kind: 'Deployment', currentReplicas: 1, savedReplicas: null, readyReplicas: 1, status: 'running' },
@@ -330,8 +334,12 @@ function createSeedData() {
       { name: 'grafana-8d7e6f-k4l2m', namespace: 'monitoring', ownerKind: 'Deployment', ownerName: 'grafana', nodeName: 'node-2', status: 'Running', readyContainers: 1, totalContainers: 1, cpuRequest: 200, memRequest: 512_000_000, cpuUsage: 80, memUsage: 300_000_000, startedAt: ago(720) },
       { name: 'alertmanager-9c8d7e-n5o3p', namespace: 'monitoring', ownerKind: 'Deployment', ownerName: 'alertmanager', nodeName: 'node-1', status: 'Running', readyContainers: 1, totalContainers: 1, cpuRequest: 100, memRequest: 256_000_000, cpuUsage: 20, memUsage: 120_000_000, startedAt: ago(720) },
       { name: 'loki-0', namespace: 'monitoring', ownerKind: 'StatefulSet', ownerName: 'loki', nodeName: 'node-1', status: 'Running', readyContainers: 1, totalContainers: 1, cpuRequest: 300, memRequest: 1_000_000_000, cpuUsage: 200, memUsage: 800_000_000, startedAt: ago(720) },
-      // node-3 — light load
+      // node-3 — light load + kube-system pods
       { name: 'coredns-abc123-x1y2z', namespace: 'kube-system', ownerKind: 'Deployment', ownerName: 'coredns', nodeName: 'node-3', status: 'Running', readyContainers: 1, totalContainers: 1, cpuRequest: 100, memRequest: 128_000_000, cpuUsage: 15, memUsage: 40_000_000, startedAt: ago(2160) },
+      { name: 'coredns-abc123-a3b4c', namespace: 'kube-system', ownerKind: 'Deployment', ownerName: 'coredns', nodeName: 'node-1', status: 'Running', readyContainers: 1, totalContainers: 1, cpuRequest: 100, memRequest: 128_000_000, cpuUsage: 12, memUsage: 38_000_000, startedAt: ago(2160) },
+      { name: 'kube-proxy-d5e6f', namespace: 'kube-system', ownerKind: 'Deployment', ownerName: 'kube-proxy', nodeName: 'node-1', status: 'Running', readyContainers: 1, totalContainers: 1, cpuRequest: 100, memRequest: 128_000_000, cpuUsage: 10, memUsage: 30_000_000, startedAt: ago(2160) },
+      { name: 'kube-proxy-g7h8i', namespace: 'kube-system', ownerKind: 'Deployment', ownerName: 'kube-proxy', nodeName: 'node-2', status: 'Running', readyContainers: 1, totalContainers: 1, cpuRequest: 100, memRequest: 128_000_000, cpuUsage: 8, memUsage: 28_000_000, startedAt: ago(2160) },
+      { name: 'kube-proxy-j9k0l', namespace: 'kube-system', ownerKind: 'Deployment', ownerName: 'kube-proxy', nodeName: 'node-3', status: 'Running', readyContainers: 1, totalContainers: 1, cpuRequest: 100, memRequest: 128_000_000, cpuUsage: 9, memUsage: 29_000_000, startedAt: ago(2160) },
     ],
 
     // ── Pod details (lookup by "namespace/podName") ──────────────────────────

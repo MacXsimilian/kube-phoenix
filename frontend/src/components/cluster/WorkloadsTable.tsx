@@ -19,7 +19,7 @@ import Alert from '@mui/material/Alert'
 import CenteredSpinner from '@/components/common/CenteredSpinner'
 import Typography from '@mui/material/Typography'
 import Tooltip from '@mui/material/Tooltip'
-import { getWorkloads } from '@/lib/api'
+import { getWorkloads, getGuardrails } from '@/lib/api'
 import type { Workload } from '@/lib/types'
 import { sinceMs, formatError } from '@/lib/formatters'
 import { useIsDark } from '@/lib/useIsDark'
@@ -28,6 +28,7 @@ import { useColors } from '@/lib/colors'
 import { WORKLOADS_REFETCH_MS } from '@/lib/constants'
 import { useTriStateSort } from '@/lib/useTriStateSort'
 import SortHeader from '@/lib/SortHeader'
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
 import WorkloadDetailDrawer from './WorkloadDetailDrawer'
 
 const validStatuses = ['running', 'sleeping', 'partial']
@@ -42,8 +43,15 @@ export default function WorkloadsTable() {
     refetchInterval: WORKLOADS_REFETCH_MS,
   })
 
+  const { data: guardrails } = useQuery({ queryKey: ['guardrails'], queryFn: getGuardrails })
+  const protectedNamespaces = useMemo(
+    () => new Set(guardrails?.systemNamespaces.split(',').map((s) => s.trim()).filter(Boolean) ?? []),
+    [guardrails],
+  )
+
   const [search, setSearch] = useState('')
   const [nsFilter, setNsFilter] = useState('all')
+  const [protectionFilter, setProtectionFilter] = useState<'all' | 'protected' | 'unprotected'>('all')
   const initialStatus = searchParams.get('status') ?? 'all'
   const [statusFilter, setStatusFilter] = useState(validStatuses.includes(initialStatus) ? initialStatus : 'all')
 
@@ -69,10 +77,12 @@ export default function WorkloadsTable() {
       workloads.filter((w) => {
         if (nsFilter !== 'all' && w.namespace !== nsFilter) return false
         if (statusFilter !== 'all' && w.status !== statusFilter) return false
+        if (protectionFilter === 'protected' && !protectedNamespaces.has(w.namespace)) return false
+        if (protectionFilter === 'unprotected' && protectedNamespaces.has(w.namespace)) return false
         if (search && !w.name.toLowerCase().includes(search.toLowerCase())) return false
         return true
       }),
-    [workloads, nsFilter, statusFilter, search]
+    [workloads, nsFilter, statusFilter, protectionFilter, protectedNamespaces, search]
   )
 
   const sorted = useMemo(() => {
@@ -96,7 +106,7 @@ export default function WorkloadsTable() {
   )
 
   // Reset page when filters change
-  useEffect(() => { setPage(0) }, [search, nsFilter, statusFilter])
+  useEffect(() => { setPage(0) }, [search, nsFilter, statusFilter, protectionFilter])
 
   return (
     <>
@@ -136,6 +146,18 @@ export default function WorkloadsTable() {
               {s === 'all' ? 'All Statuses' : s.charAt(0).toUpperCase() + s.slice(1)}
             </MenuItem>
           ))}
+        </TextField>
+        <TextField
+          select
+          label="Protection"
+          size="small"
+          value={protectionFilter}
+          onChange={(e) => setProtectionFilter(e.target.value as 'all' | 'protected' | 'unprotected')}
+          sx={{ minWidth: 150 }}
+        >
+          <MenuItem value="all">All</MenuItem>
+          <MenuItem value="protected">Protected</MenuItem>
+          <MenuItem value="unprotected">Unprotected</MenuItem>
         </TextField>
         <Box sx={{ flex: 1 }} />
         <Typography variant="caption" color="text.disabled">
@@ -185,7 +207,16 @@ export default function WorkloadsTable() {
                   const unhealthy = w.readyReplicas < w.currentReplicas && w.currentReplicas > 0
                   return (
                     <TableRow key={`${w.namespace}/${w.name}/${w.kind}`} hover onClick={() => setSelectedWorkload(w)} sx={{ cursor: 'pointer' }}>
-                      <TableCell sx={{ color: 'text.secondary', fontSize: 13 }}>{w.namespace}</TableCell>
+                      <TableCell sx={{ color: 'text.secondary', fontSize: 13 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          {w.namespace}
+                          {protectedNamespaces.has(w.namespace) && (
+                            <Tooltip title="System-protected namespace" arrow>
+                              <ShieldOutlinedIcon sx={{ fontSize: 14, color: 'warning.main' }} />
+                            </Tooltip>
+                          )}
+                        </Box>
+                      </TableCell>
                       <TableCell sx={{ fontWeight: 500, fontSize: 13 }}>{w.name}</TableCell>
                       <TableCell>
                         <Chip
@@ -231,7 +262,7 @@ export default function WorkloadsTable() {
             onPageChange={(_, p) => setPage(p)}
             rowsPerPage={rowsPerPage}
             onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0) }}
-            rowsPerPageOptions={[10, 20, 50]}
+            rowsPerPageOptions={[10, 20, 50, 100]}
           />
         </TableContainer>
       )}

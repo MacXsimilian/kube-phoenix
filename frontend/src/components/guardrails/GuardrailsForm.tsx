@@ -8,6 +8,10 @@ import Box from '@mui/material/Box'
 import TextField from '@mui/material/TextField'
 import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
 import Divider from '@mui/material/Divider'
 import CircularProgress from '@mui/material/CircularProgress'
 import Switch from '@mui/material/Switch'
@@ -21,6 +25,8 @@ import CenteredSpinner from '@/components/common/CenteredSpinner'
 import { ChipInput } from '@/components/common/ChipInput'
 import CategoryCard from '@/components/guardrails/CategoryCard'
 import { AMBER_40, AMBER_03 } from '@/components/guardrails/ProtectedChipInput'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import SaveIcon from '@mui/icons-material/Save'
 import { getGuardrails, updateGuardrails } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -63,9 +69,9 @@ interface FormState {
   skipLabels: string[]
   skipTaints: string[]
   priorityNs: string[]
-  scalingConcurrency: number
-  wakeWaveSize: number
-  wakeWavePauseSeconds: number
+  scalingConcurrency: number | string
+  wakeWaveSize: number | string
+  wakeWavePauseSeconds: number | string
   evalInterval: string
   autoWake: boolean
   reconcileWhileAwake: boolean
@@ -123,9 +129,9 @@ function buildSnapshot(form: FormState): Snapshot {
     skipLabels: joinCommaList(form.skipLabels),
     skipTaints: joinCommaList(form.skipTaints),
     priorityNs: joinCommaList(form.priorityNs),
-    scalingConcurrency: form.scalingConcurrency,
-    wakeWaveSize: form.wakeWaveSize,
-    wakeWavePauseSeconds: form.wakeWavePauseSeconds,
+    scalingConcurrency: Number(form.scalingConcurrency) || 10,
+    wakeWaveSize: Number(form.wakeWaveSize) || 0,
+    wakeWavePauseSeconds: Number(form.wakeWavePauseSeconds) || 90,
     evalInterval: form.evalInterval.trim(),
     autoWake: form.autoWake,
     reconcileWhileAwake: form.reconcileWhileAwake,
@@ -154,11 +160,18 @@ export default function GuardrailsForm() {
   const { notify, SnackbarAlert } = useSnackbar()
   const { setDirty } = useUnsavedChanges()
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [nsToRemove, setNsToRemove] = useState<string | null>(null)
   const initialised = useRef(false)
   const savedSnapshot = useRef<Snapshot>(buildSnapshot(INITIAL_FORM))
 
   const setField = <K extends keyof FormState>(field: K, value: FormState[K]) =>
     dispatch({ type: 'SET_FIELD', field, value })
+
+  const clampField = (field: 'scalingConcurrency' | 'wakeWaveSize' | 'wakeWavePauseSeconds', min: number, max: number, fallback: number) => {
+    const raw = Number(form[field])
+    const clamped = Number.isNaN(raw) ? fallback : Math.max(min, Math.min(max, raw))
+    setField(field, clamped)
+  }
 
   useEffect(() => {
     if (guardrails && !initialised.current) {
@@ -270,6 +283,7 @@ export default function GuardrailsForm() {
             id="chip-input-system-ns"
             values={form.systemNs}
             onChange={(v) => setField('systemNs', [...v].sort())}
+            onDelete={(v) => setNsToRemove(v)}
             readOnly={!hasEdit}
             containerSx={{
               borderColor: AMBER_40,
@@ -346,7 +360,7 @@ export default function GuardrailsForm() {
               <Chip label={form.autoWake ? 'Wake: ON' : 'Wake: OFF'} size="small" sx={{ fontSize: 11 }} />
               <Chip label={form.reconcileWhileAwake ? 'Reconcile: ON' : 'Reconcile: OFF'} size="small" sx={{ fontSize: 11 }} />
               <Chip label={form.enforceSleep ? 'Enforce: ON' : 'Enforce: OFF'} size="small" sx={{ fontSize: 11 }} />
-              <Chip label={form.wakeWaveSize > 0 ? `Wave: ${form.wakeWaveSize}` : 'Wave: OFF'} size="small" sx={{ fontSize: 11 }} />
+              <Chip label={Number(form.wakeWaveSize) > 0 ? `Wave: ${form.wakeWaveSize}` : 'Wave: OFF'} size="small" sx={{ fontSize: 11 }} />
             </Box>
           }
         >
@@ -359,26 +373,26 @@ export default function GuardrailsForm() {
                 <Typography variant="body2" fontWeight={600}>Scaling Concurrency</Typography>
                 <Typography variant="caption" color="text.secondary">Max workloads scaled in parallel during sleep/wake (1–50)</Typography>
               </Box>
-              <TextField size="small" type="number" value={form.scalingConcurrency} disabled={!hasEdit} error={form.scalingConcurrency < 1 || form.scalingConcurrency > 50} onChange={(e) => setField('scalingConcurrency', Math.max(1, Math.min(50, Number(e.target.value) || 1)))} slotProps={{ htmlInput: { min: 1, max: 50, style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} />
+              <TextField size="small" type="number" value={form.scalingConcurrency} disabled={!hasEdit} error={form.scalingConcurrency !== '' && (Number(form.scalingConcurrency) < 1 || Number(form.scalingConcurrency) > 50)} onChange={(e) => setField('scalingConcurrency', e.target.value)} onBlur={() => clampField('scalingConcurrency', 1, 50, 10)} slotProps={{ htmlInput: { min: 1, max: 50, style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} sx={{ '& input::-webkit-outer-spin-button, & input::-webkit-inner-spin-button': { WebkitAppearance: 'none', m: 0 }, '& input[type=number]': { MozAppearance: 'textfield' } }} />
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none' }}>
               <Box>
                 <Typography variant="body2" fontWeight={600}>Wake Wave Size</Typography>
                 <Typography variant="caption" color="text.secondary">Workloads per wave during wake-up, 0 = disabled (0–200)</Typography>
               </Box>
-              <TextField size="small" type="number" value={form.wakeWaveSize} disabled={!hasEdit} error={form.wakeWaveSize < 0 || form.wakeWaveSize > 200} onChange={(e) => setField('wakeWaveSize', Math.max(0, Math.min(200, Number(e.target.value) || 0)))} slotProps={{ htmlInput: { min: 0, max: 200, style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} />
+              <TextField size="small" type="number" value={form.wakeWaveSize} disabled={!hasEdit} error={form.wakeWaveSize !== '' && (Number(form.wakeWaveSize) < 0 || Number(form.wakeWaveSize) > 200)} onChange={(e) => setField('wakeWaveSize', e.target.value)} onBlur={() => clampField('wakeWaveSize', 0, 200, 0)} slotProps={{ htmlInput: { min: 0, max: 200, style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} sx={{ '& input::-webkit-outer-spin-button, & input::-webkit-inner-spin-button': { WebkitAppearance: 'none', m: 0 }, '& input[type=number]': { MozAppearance: 'textfield' } }} />
             </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none', opacity: form.wakeWaveSize === 0 ? 0.5 : 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none', opacity: Number(form.wakeWaveSize) === 0 ? 0.5 : 1 }}>
               <Box>
                 <Typography variant="body2" fontWeight={600}>Wake Wave Pause</Typography>
                 <Typography variant="caption" color="text.secondary">Max seconds to wait for pod readiness between waves (10–600)</Typography>
               </Box>
-              <TextField size="small" type="number" value={form.wakeWavePauseSeconds} disabled={!hasEdit || form.wakeWaveSize === 0} error={form.wakeWaveSize > 0 && (form.wakeWavePauseSeconds < 10 || form.wakeWavePauseSeconds > 600)} onChange={(e) => setField('wakeWavePauseSeconds', Math.max(10, Math.min(600, Number(e.target.value) || 90)))} slotProps={{ htmlInput: { min: 10, max: 600, style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} />
+              <TextField size="small" type="number" value={form.wakeWavePauseSeconds} disabled={!hasEdit || Number(form.wakeWaveSize) === 0} error={Number(form.wakeWaveSize) > 0 && form.wakeWavePauseSeconds !== '' && (Number(form.wakeWavePauseSeconds) < 10 || Number(form.wakeWavePauseSeconds) > 600)} onChange={(e) => setField('wakeWavePauseSeconds', e.target.value)} onBlur={() => clampField('wakeWavePauseSeconds', 10, 600, 90)} slotProps={{ htmlInput: { min: 10, max: 600, style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} sx={{ '& input::-webkit-outer-spin-button, & input::-webkit-inner-spin-button': { WebkitAppearance: 'none', m: 0 }, '& input[type=number]': { MozAppearance: 'textfield' } }} />
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none' }}>
               <Box>
                 <Typography variant="body2" fontWeight={600}>Eval Interval</Typography>
-                <Typography variant="caption" color="text.secondary">How often the scheduler evaluates policy state</Typography>
+                <Typography variant="caption" color="text.secondary">How often the scheduler evaluates policy state (10s–15m)</Typography>
               </Box>
               <TextField size="small" value={form.evalInterval} disabled={!hasEdit} error={!evalIntervalValid} onChange={(e) => setField('evalInterval', e.target.value)} slotProps={{ htmlInput: { style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} />
             </Box>
@@ -436,6 +450,51 @@ export default function GuardrailsForm() {
       </Box>
 
       {SnackbarAlert}
+
+      <Dialog open={!!nsToRemove} onClose={() => setNsToRemove(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Remove protected namespace?</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 2, mb: 2, borderRadius: 2, bgcolor: 'rgba(239,68,68,0.06)', border: '1px solid', borderColor: 'rgba(239,68,68,0.2)' }}>
+            <ErrorOutlineIcon sx={{ color: 'error.main', fontSize: 32, flexShrink: 0 }} />
+            <Box>
+              <Typography variant="body2" fontWeight={600} color="error.main">
+                {nsToRemove}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                will lose system protection
+              </Typography>
+            </Box>
+          </Box>
+          <Typography variant="body2" fontWeight={600} mb={0.5}>
+            What this means:
+          </Typography>
+          <Box component="ul" sx={{ pl: 2.5, m: 0, mb: 1 }}>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Workloads can be scaled to zero by sleep policies
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              Nodes running only these workloads may be drained
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary">
+              Changes apply after saving guardrails
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setNsToRemove(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<DeleteOutlineIcon />}
+            onClick={() => {
+              setField('systemNs', form.systemNs.filter((ns) => ns !== nsToRemove).sort())
+              setNsToRemove(null)
+            }}
+          >
+            Remove
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   )
 }
