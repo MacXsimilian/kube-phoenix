@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.19](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.18...v0.5.19) (2026-04-03)
+
+
+### Features
+
+* **guardrails:** improve UX with number input clamping, namespace removal confirmation, and workloads protection filter ([#308](https://github.com/MacXsimilian/kube-phoenix/issues/308)) ([87cbf85](https://github.com/MacXsimilian/kube-phoenix/commit/87cbf850555753ac9374e573254afb81238b93a2))
+
 ## [0.5.18](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.17...v0.5.18) (2026-04-01)
 
 
