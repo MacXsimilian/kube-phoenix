@@ -286,7 +286,7 @@ export default function NodesTable() {
             onPageChange={(_, p) => setPage(p)}
             rowsPerPage={rowsPerPage}
             onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0) }}
-            rowsPerPageOptions={[10, 20, 50]}
+            rowsPerPageOptions={[10, 20, 50, 100]}
           />
         </TableContainer>
       )}
