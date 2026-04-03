@@ -13,8 +13,8 @@ function createSeedData() {
     _seq: {
       policy: 4,
       user: 6,
-      execution: 8,
-      logLine: 60,
+      execution: 9,
+      logLine: 70,
       exception: 7,
       audit: 25,
       session: 3,
@@ -109,7 +109,7 @@ function createSeedData() {
           { name: 'Weekend', daysOfWeek: [0, 6], startTime: '00:00', endTime: '00:00', allDay: true },
         ],
         timezone: 'Europe/Berlin', mode: 'apply', enabled: true, timeoutMinutes: 15,
-        currentState: 'awake', stateSince: ago(10), lastSleepAt: ago(34), lastWakeAt: ago(10),
+        currentState: 'transitioning', stateSince: ago(0.05), lastSleepAt: ago(34), lastWakeAt: ago(10),
         createdAt: ago(720), updatedAt: ago(48), nextTransitionAt: future(8),
       },
       {
@@ -143,6 +143,7 @@ function createSeedData() {
       { id: 5, policyId: 1, policy: { name: 'EU Dev Sleep' }, direction: 'sleep', trigger: 'scheduled', startedAt: ago(34), finishedAt: ago(33.7), status: 'success', mode: 'apply', countScaled: 4, countSkipped: 0, countErrors: 0, countProtected: 0, countDrained: 1, countDeleted: 0 },
       { id: 6, policyId: 2, policy: { name: 'US Staging Nightly' }, direction: 'sleep', trigger: 'scheduled', startedAt: ago(6), finishedAt: ago(5.8), status: 'success', mode: 'apply', countScaled: 4, countSkipped: 0, countErrors: 0, countProtected: 0, countDrained: 0, countDeleted: 0 },
       { id: 7, policyId: 1, policy: { name: 'EU Dev Sleep' }, direction: 'wake', trigger: 'manual', startedAt: ago(10), finishedAt: ago(9.9), status: 'success', mode: 'apply', countScaled: 4, countSkipped: 0, countErrors: 0, countProtected: 0, countDrained: 0, countDeleted: 0 },
+      { id: 8, policyId: 1, policy: { name: 'EU Dev Sleep' }, direction: 'sleep', trigger: 'scheduled', startedAt: ago(0.05), finishedAt: null, status: 'running', mode: 'apply', countScaled: 2, countSkipped: 0, countErrors: 0, countProtected: 0, countDrained: 0, countDeleted: 0, progress: 0.55, currentPhase: 'Scaling' },
     ],
 
     // ── Log lines (per execution) ────────────────────────────────────────────
@@ -180,6 +181,16 @@ function createSeedData() {
       { id: 44, executionId: 6, seq: 5, level: 'ok', message: 'Scaled deployment staging/cart-svc from 2 to 0', timestamp: ago(5.85) },
       { id: 45, executionId: 6, seq: 6, level: 'ok', message: 'Scaled statefulset staging/postgres from 1 to 0', timestamp: ago(5.82) },
       { id: 46, executionId: 6, seq: 7, level: 'ok', message: 'Execution completed — 4 scaled, 0 skipped, 0 errors', timestamp: ago(5.8) },
+      // Execution 8 (running — in progress sleep)
+      { id: 50, executionId: 8, seq: 1, level: 'info', message: 'Starting scheduled sleep for policy "EU Dev Sleep"', timestamp: ago(0.05) },
+      { id: 51, executionId: 8, seq: 2, level: 'info', message: 'Found 4 matching workloads in namespace dev', timestamp: ago(0.048) },
+      { id: 52, executionId: 8, seq: 3, level: 'ok', message: 'Scaled deployment dev/api-server from 3 to 0', timestamp: ago(0.045) },
+      { id: 53, executionId: 8, seq: 4, level: 'warn', message: 'Slow API response from kube-apiserver (1.2s latency)', timestamp: ago(0.042) },
+      { id: 54, executionId: 8, seq: 5, level: 'ok', message: 'Scaled deployment dev/web-frontend from 2 to 0', timestamp: ago(0.04) },
+      { id: 55, executionId: 8, seq: 6, level: 'error', message: 'Failed to scale statefulset dev/redis — context deadline exceeded', timestamp: ago(0.038) },
+      { id: 56, executionId: 8, seq: 7, level: 'info', message: 'Retrying statefulset dev/redis (attempt 2/3)', timestamp: ago(0.035) },
+      { id: 57, executionId: 8, seq: 8, level: 'ok', message: 'Scaled statefulset dev/redis from 1 to 0 (retry succeeded)', timestamp: ago(0.032) },
+      { id: 58, executionId: 8, seq: 9, level: 'info', message: 'Scaling deployment dev/worker from 2 to 0...', timestamp: ago(0.03) },
     ],
 
     // ── Workload snapshots ───────────────────────────────────────────────────
@@ -272,6 +283,8 @@ function createSeedData() {
       { namespace: 'staging', name: 'product-api', kind: 'Deployment', currentReplicas: 0, savedReplicas: 3, readyReplicas: 0, status: 'sleeping' },
       { namespace: 'staging', name: 'cart-svc', kind: 'Deployment', currentReplicas: 0, savedReplicas: 2, readyReplicas: 0, status: 'sleeping' },
       { namespace: 'staging', name: 'postgres', kind: 'StatefulSet', currentReplicas: 0, savedReplicas: 1, readyReplicas: 0, status: 'sleeping' },
+      // dev namespace — one unhealthy workload (CrashLoopBackOff pod)
+      { namespace: 'dev', name: 'event-processor', kind: 'Deployment', currentReplicas: 3, savedReplicas: null, readyReplicas: 1, status: 'partial' },
       // kube-system namespace — system-protected
       { namespace: 'kube-system', name: 'coredns', kind: 'Deployment', currentReplicas: 2, savedReplicas: null, readyReplicas: 2, status: 'running' },
       { namespace: 'kube-system', name: 'kube-proxy', kind: 'Deployment', currentReplicas: 3, savedReplicas: null, readyReplicas: 3, status: 'running' },
@@ -340,6 +353,12 @@ function createSeedData() {
       { name: 'kube-proxy-d5e6f', namespace: 'kube-system', ownerKind: 'Deployment', ownerName: 'kube-proxy', nodeName: 'node-1', status: 'Running', readyContainers: 1, totalContainers: 1, cpuRequest: 100, memRequest: 128_000_000, cpuUsage: 10, memUsage: 30_000_000, startedAt: ago(2160) },
       { name: 'kube-proxy-g7h8i', namespace: 'kube-system', ownerKind: 'Deployment', ownerName: 'kube-proxy', nodeName: 'node-2', status: 'Running', readyContainers: 1, totalContainers: 1, cpuRequest: 100, memRequest: 128_000_000, cpuUsage: 8, memUsage: 28_000_000, startedAt: ago(2160) },
       { name: 'kube-proxy-j9k0l', namespace: 'kube-system', ownerKind: 'Deployment', ownerName: 'kube-proxy', nodeName: 'node-3', status: 'Running', readyContainers: 1, totalContainers: 1, cpuRequest: 100, memRequest: 128_000_000, cpuUsage: 9, memUsage: 29_000_000, startedAt: ago(2160) },
+      // Pods with varied statuses for lifecycle animations
+      { name: 'worker-6a5b4c-z9y8x', namespace: 'dev', ownerKind: 'Deployment', ownerName: 'worker', nodeName: 'node-1', status: 'Pending', readyContainers: 0, totalContainers: 1, cpuRequest: 200, memRequest: 512_000_000, cpuUsage: 0, memUsage: 0, startedAt: ago(0.1) },
+      { name: 'api-server-7f8b9c-crash1', namespace: 'dev', ownerKind: 'Deployment', ownerName: 'api-server', nodeName: 'node-1', status: 'CrashLoopBackOff', readyContainers: 0, totalContainers: 1, cpuRequest: 250, memRequest: 512_000_000, cpuUsage: 0, memUsage: 0, startedAt: ago(2) },
+      { name: 'batch-job-complete-abc', namespace: 'dev', ownerKind: 'Job', ownerName: 'batch-job', nodeName: 'node-2', status: 'Succeeded', readyContainers: 0, totalContainers: 1, cpuRequest: 100, memRequest: 256_000_000, cpuUsage: 0, memUsage: 0, startedAt: ago(4) },
+      { name: 'web-frontend-5c4d3e-fail1', namespace: 'dev', ownerKind: 'Deployment', ownerName: 'web-frontend', nodeName: 'node-3', status: 'Failed', readyContainers: 0, totalContainers: 1, cpuRequest: 100, memRequest: 256_000_000, cpuUsage: 0, memUsage: 0, startedAt: ago(1) },
+      { name: 'redis-evict-0', namespace: 'dev', ownerKind: 'StatefulSet', ownerName: 'redis', nodeName: 'node-3', status: 'Terminating', readyContainers: 0, totalContainers: 1, cpuRequest: 200, memRequest: 1_000_000_000, cpuUsage: 10, memUsage: 50_000_000, startedAt: ago(168) },
     ],
 
     // ── Pod details (lookup by "namespace/podName") ──────────────────────────
@@ -361,6 +380,44 @@ function createSeedData() {
           { type: 'Normal', reason: 'Scheduled', message: 'Successfully assigned dev/api-server-7f8b9c-x2k4q to node-1', count: 1, lastSeen: ago(10) },
           { type: 'Normal', reason: 'Pulled', message: 'Container image already present on machine', count: 1, lastSeen: ago(10) },
           { type: 'Normal', reason: 'Started', message: 'Started container api-server', count: 1, lastSeen: ago(10) },
+        ],
+      },
+      'dev/api-server-7f8b9c-crash1': {
+        name: 'api-server-7f8b9c-crash1', namespace: 'dev', phase: 'CrashLoopBackOff', nodeName: 'node-1',
+        nodeInstanceType: 'm5.xlarge', podIP: '10.244.1.45', hostIP: '172.16.0.1', qosClass: 'Burstable',
+        startedAt: ago(2),
+        labels: { app: 'api-server', 'app.kubernetes.io/name': 'api-server', 'pod-template-hash': '7f8b9c' },
+        annotations: { 'prometheus.io/scrape': 'true', 'prometheus.io/port': '8080' },
+        containers: [
+          { name: 'api-server', image: 'ghcr.io/example/api-server:v1.5.3-broken', ready: false, restartCount: 7, cpuRequest: 250, memRequest: 512_000_000, cpuLimit: 1000, memLimit: 1_000_000_000, cpuUsage: 0, memUsage: 0, lastState: 'OOMKilled' },
+        ],
+        conditions: [
+          { type: 'Ready', status: 'False' }, { type: 'ContainersReady', status: 'False' },
+          { type: 'Initialized', status: 'True' }, { type: 'PodScheduled', status: 'True' },
+        ],
+        events: [
+          { type: 'Normal', reason: 'Scheduled', message: 'Successfully assigned dev/api-server-7f8b9c-crash1 to node-1', count: 1, lastSeen: ago(2) },
+          { type: 'Normal', reason: 'Pulled', message: 'Container image already present on machine', count: 7, lastSeen: ago(0.1) },
+          { type: 'Normal', reason: 'Started', message: 'Started container api-server', count: 7, lastSeen: ago(0.1) },
+          { type: 'Warning', reason: 'BackOff', message: 'Back-off restarting failed container api-server', count: 6, lastSeen: ago(0.05) },
+          { type: 'Warning', reason: 'OOMKilled', message: 'Container api-server was OOM killed with exit code 137', count: 7, lastSeen: ago(0.1) },
+        ],
+      },
+      'dev/worker-6a5b4c-z9y8x': {
+        name: 'worker-6a5b4c-z9y8x', namespace: 'dev', phase: 'Pending', nodeName: '',
+        nodeInstanceType: '', podIP: '', hostIP: '', qosClass: 'Burstable',
+        startedAt: ago(0.1),
+        labels: { app: 'worker', 'app.kubernetes.io/name': 'worker', 'pod-template-hash': '6a5b4c' },
+        annotations: {},
+        containers: [
+          { name: 'worker', image: 'ghcr.io/example/worker:v2.1.0', ready: false, restartCount: 0, cpuRequest: 200, memRequest: 512_000_000, cpuLimit: 800, memLimit: 1_000_000_000, cpuUsage: 0, memUsage: 0, lastState: '' },
+        ],
+        conditions: [
+          { type: 'Ready', status: 'False' }, { type: 'ContainersReady', status: 'False' },
+          { type: 'Initialized', status: 'True' }, { type: 'PodScheduled', status: 'False' },
+        ],
+        events: [
+          { type: 'Warning', reason: 'FailedScheduling', message: 'Insufficient cpu: 0/4 nodes available (3 Insufficient cpu, 1 cordoned)', count: 3, lastSeen: ago(0.02) },
         ],
       },
     },

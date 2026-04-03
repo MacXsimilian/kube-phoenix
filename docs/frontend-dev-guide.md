@@ -15,7 +15,8 @@
 7. [State Management](#7-state-management)
 8. [Styling Patterns](#8-styling-patterns)
 9. [Real-Time Data Flows](#9-real-time-data-flows)
-10. [Adding New Features Guide](#10-adding-new-features-guide)
+10. [Animation Prototypes](#10-animation-prototypes)
+11. [Adding New Features Guide](#11-adding-new-features-guide)
 
 ---
 
@@ -25,14 +26,15 @@ The kube-phoenix frontend is the operator-facing UI for managing Kubernetes slee
 
 **Tech stack:**
 
-| Layer | Version |
-|:------|:--------|
-| Next.js | 16 (static export, `output: 'export'`) |
-| React | 19 |
-| MUI (Material UI) | v7 |
-| TanStack Query | v5 |
-| Emotion | v11 (MUI's styling engine) |
-| TypeScript | 6 |
+| Layer | Version | Notes |
+|:------|:--------|:------|
+| Next.js | 16 (static export, `output: 'export'`) | |
+| React | 19 | |
+| MUI (Material UI) | v7 | |
+| TanStack Query | v5 | |
+| Emotion | v11 (MUI's styling engine) | |
+| Framer Motion | 12 | Used in animation prototypes only (dev-mock) |
+| TypeScript | 6 | |
 
 **Running locally:**
 
@@ -68,6 +70,10 @@ frontend/
       users/page.tsx            # /users -- user management (admin)
       settings/page.tsx         # /settings -- two-column grid: account, appearance, OIDC, sessions, cluster, DB reset, about
       guardrails/page.tsx       # /guardrails -- guardrails editor
+      prototypes/              # Animation prototypes (dev-mock only, uses .proto.tsx extension)
+        page.proto.tsx         # Index page with prototype card grid
+        layout.proto.tsx       # Shared layout
+        */page.proto.tsx       # Individual prototype demos (10 total)
     components/
       layout/
         Sidebar.tsx             # Navigation sidebar (permanent on desktop, temporary on mobile)
@@ -1198,7 +1204,45 @@ Components that do not use SSE or WebSocket rely on TanStack Query's `refetchInt
 
 ---
 
-## 10. Adding New Features Guide
+## 10. Animation Prototypes
+
+Animation prototypes are interactive demos for evaluating proposed UI animations before implementing them in production code. They are only available in `dev-mock` mode.
+
+### How it works
+
+Prototype pages use a `.proto.tsx` file extension instead of `.tsx`. The `next.config.mjs` conditionally includes `proto.tsx` in `pageExtensions` only when `NEXT_PUBLIC_PROTOTYPES=1` is set. The `dev-mock` launcher sets this automatically. In production builds, Next.js ignores `.proto.tsx` files entirely -- no routes, no HTML, no JS bundles are generated.
+
+The `prototypes/` directory is also gitignored (`**/prototypes/` in the root `.gitignore`), so prototype files are not committed to the repository.
+
+### Adding a new prototype
+
+1. Create a directory: `src/app/prototypes/<name>/`
+2. Add a `page.proto.tsx` file with a `'use client'` directive
+3. Add an entry to the `PROTOTYPES` array in `src/app/prototypes/page.proto.tsx`
+4. Run `make dev-mock` and navigate to `/prototypes/<name>/`
+
+### Current prototypes
+
+| Code | Name | Category |
+|:-----|:-----|:---------|
+| A1 | Phoenix Rise | Onboarding -- skeleton screen with staggered reveal |
+| A3 | Staggered Reveal | Onboarding -- cascading card grid entrance |
+| B1 | Heartbeat Pulse | Real-time -- cluster status with health-dependent pulse |
+| B2 | Stream Glow | Real-time -- metric bar updates with glow highlights |
+| B4 | Log Waterfall | Real-time -- log stream slide-in with error highlighting |
+| C1 | Phoenix Lifecycle | State transitions -- pod state machine animations |
+| C3 | Rollout Wave | State transitions -- execution progress bar with barberpole |
+| C4 | Sleep/Wake Morph | State transitions -- policy state chip and hero band morphing |
+| D4 | Drawer Slide | Micro-interactions -- spring physics drawer with staggered content |
+| D5 | Sidebar Morph | Micro-interactions -- collapsible sidebar with label fade |
+
+### Dependencies
+
+Prototypes use [Framer Motion](https://www.framer.com/motion/) for spring physics and layout animations. This dependency is listed in `package.json` but is only imported by `.proto.tsx` files, so it is tree-shaken from production builds.
+
+---
+
+## 11. Adding New Features Guide
 
 ### Adding a New Page
 

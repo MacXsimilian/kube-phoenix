@@ -46,6 +46,7 @@ These are Next.js build-time variables baked into the static export, not backend
 | :------- | :------ | :---------- |
 | `NEXT_PUBLIC_API_URL` | `""` | API base URL for dev mode (empty = same-origin) |
 | `NEXT_PUBLIC_APP_VERSION` | `""` | Version string shown in the About modal |
+| `NEXT_PUBLIC_PROTOTYPES` | `""` | Set to `1` to enable the `/prototypes` route and sidebar link. Automatically set by `make dev-mock`. When unset, prototype pages are excluded from the build entirely. |
 
 ## Authentication
 

@@ -231,9 +231,47 @@ This starts a mock API server on port `4444` and the Next.js dev server on port 
 frontend/mock-api/
   data.mjs          # Seed data: policies, workloads, users, executions, etc.
   server.mjs        # HTTP server entry point (Express-style, listens on port 4444)
+  dev.mjs           # Combined launcher: mock API + Next.js dev server
   routes/
     *.mjs           # Route handler modules (one per resource: policies, exceptions, cluster, etc.)
 ```
+
+### Mock data highlights
+
+The seed data is designed to exercise every UI state:
+
+| Entity | What it provides |
+| :----- | :--------------- |
+| Policies | 3 policies: one awake, one sleeping, one transitioning (shimmer visible on cards) |
+| Executions | 7 completed + 1 running (shows progress bar, barberpole, and live log streaming) |
+| Workloads | Running, sleeping, and partial statuses across dev/staging/monitoring namespaces |
+| Pods | All lifecycle states: Running, Pending, CrashLoopBackOff, Failed, Succeeded, Terminating |
+| Pod logs | Weighted random levels (INFO 50%, DEBUG 20%, WARN 15%, ERROR 15%) with realistic messages |
+| Log streaming | Follow mode cycles through varied messages including error and warning lines |
+
+### Animation prototypes
+
+`dev-mock` automatically sets `NEXT_PUBLIC_PROTOTYPES=1`, which enables the `/prototypes` route and adds a "Prototypes" link in the sidebar. This route hosts interactive animation demos for evaluating proposed UI animations before implementing them in production.
+
+Prototype pages use the `.proto.tsx` file extension (e.g., `page.proto.tsx`). Next.js only recognizes this extension when `NEXT_PUBLIC_PROTOTYPES=1` is set. In production builds, these files are completely excluded -- no routes, no HTML, no JavaScript bundles are generated.
+
+```
+frontend/src/app/prototypes/
+  page.proto.tsx              # Index page with card grid of all prototypes
+  layout.proto.tsx            # Shared layout wrapper
+  phoenix-rise/page.proto.tsx # A1: Skeleton screen → staggered reveal
+  staggered-reveal/...        # A3: Dashboard card cascade
+  heartbeat-pulse/...         # B1: Cluster status pulse with health states
+  stream-glow/...             # B2: Real-time metric bar updates
+  log-waterfall/...           # B4: Log stream with slide-in and error highlighting
+  phoenix-lifecycle/...       # C1: Pod state machine (Pending, Running, CrashLoopBackOff, ...)
+  rollout-wave/...            # C3: Execution progress bar with barberpole and glow tip
+  sleep-wake-morph/...        # C4: Policy state transitions with shimmer
+  drawer-slide/...            # D4: Spring physics drawer with staggered content
+  sidebar-morph/...           # D5: Collapsible sidebar with label fade
+```
+
+To add a new prototype, create a directory under `prototypes/` with a `page.proto.tsx` file and add an entry to the `PROTOTYPES` array in `page.proto.tsx`.
 
 ---
 
@@ -302,6 +340,7 @@ What works in each local setup:
 | Guardrails enforcement | Yes | Yes | Simulated |
 | Audit log | Yes | Yes | Fixture data |
 | Authentication / RBAC | Yes | Yes | Simulated |
+| Animation prototypes | -- | -- | Yes |
 
 ---
 
@@ -316,6 +355,7 @@ What works in each local setup:
 | `CLUSTER_NAME` | _(empty)_ | Human-readable cluster name shown in `GET /api/cluster/info` |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | Backend URL for the frontend dev server (build-time, Mode 2 only) |
 | `NEXT_PUBLIC_APP_VERSION` | `dev` | Version string shown in the About modal |
+| `NEXT_PUBLIC_PROTOTYPES` | _(empty)_ | Set to `1` to enable `/prototypes` route (auto-set by `make dev-mock`) |
 
 See `.env.example` for a copy-paste template.
 

@@ -40,9 +40,24 @@ export function register(router) {
       res.writeHead(200, { 'Content-Type': 'text/plain', 'Transfer-Encoding': 'chunked' })
       res.write(logLines.join('\n') + '\n')
 
+      const liveMsgs = [
+        ['INFO ', 'Processing request POST /api/v1/resources'],
+        ['INFO ', 'Health check passed — latency 3ms'],
+        ['DEBUG', 'Cache miss for key session:abc — fetching from db'],
+        ['INFO ', 'Request completed in 8ms — 200 OK'],
+        ['WARN ', 'Slow upstream response: 420ms from payment-svc'],
+        ['INFO ', 'Scheduled task metrics.export executed'],
+        ['ERROR', 'Connection to redis timed out after 5s'],
+        ['INFO ', 'Reconnected to redis cluster (attempt 1)'],
+        ['WARN ', 'Memory usage at 82% of limit'],
+        ['INFO ', 'GC pause 2.1ms — heap 64MB/128MB'],
+      ]
+      let msgIdx = 0
       const interval = setInterval(() => {
         const ts = new Date().toISOString()
-        res.write(`${ts} INFO  [main] Processing request ${Math.random().toString(36).slice(2, 8)}\n`)
+        const [level, msg] = liveMsgs[msgIdx % liveMsgs.length]
+        msgIdx++
+        res.write(`${ts} ${level} [main] ${msg}\n`)
       }, 2000)
 
       req.on('close', () => clearInterval(interval))
@@ -113,14 +128,45 @@ function computeOverview() {
 }
 
 function generatePodDetail(pod) {
+  const isHealthy = pod.status === 'Running' && pod.readyContainers > 0
+  const isCrashing = pod.status === 'CrashLoopBackOff' || pod.status === 'Failed'
+  const isPending = pod.status === 'Pending'
+
+  const conditions = isPending
+    ? [
+        { type: 'Ready', status: 'False' }, { type: 'ContainersReady', status: 'False' },
+        { type: 'Initialized', status: 'True' }, { type: 'PodScheduled', status: isPending ? 'False' : 'True' },
+      ]
+    : isCrashing
+      ? [
+          { type: 'Ready', status: 'False' }, { type: 'ContainersReady', status: 'False' },
+          { type: 'Initialized', status: 'True' }, { type: 'PodScheduled', status: 'True' },
+        ]
+      : [
+          { type: 'Ready', status: 'True' }, { type: 'ContainersReady', status: 'True' },
+          { type: 'Initialized', status: 'True' }, { type: 'PodScheduled', status: 'True' },
+        ]
+
+  const events = []
+  if (!isPending) {
+    events.push({ type: 'Normal', reason: 'Scheduled', message: `Successfully assigned ${pod.namespace}/${pod.name} to ${pod.nodeName ?? 'node-1'}`, count: 1, lastSeen: pod.startedAt })
+    events.push({ type: 'Normal', reason: 'Started', message: `Started container ${pod.ownerName}`, count: isCrashing ? 5 : 1, lastSeen: pod.startedAt })
+  }
+  if (isPending) {
+    events.push({ type: 'Warning', reason: 'FailedScheduling', message: 'Insufficient cpu: 0/4 nodes available', count: 3, lastSeen: pod.startedAt })
+  }
+  if (isCrashing) {
+    events.push({ type: 'Warning', reason: 'BackOff', message: `Back-off restarting failed container ${pod.ownerName}`, count: 4, lastSeen: pod.startedAt })
+  }
+
   return {
     name: pod.name,
     namespace: pod.namespace,
     phase: pod.status,
-    nodeName: pod.nodeName ?? 'node-1',
-    nodeInstanceType: 'm5.xlarge',
-    podIP: `10.244.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
-    hostIP: '172.16.0.1',
+    nodeName: isPending ? '' : (pod.nodeName ?? 'node-1'),
+    nodeInstanceType: isPending ? '' : 'm5.xlarge',
+    podIP: isPending ? '' : `10.244.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
+    hostIP: isPending ? '' : '172.16.0.1',
     qosClass: 'Burstable',
     startedAt: pod.startedAt,
     labels: { app: pod.ownerName, 'app.kubernetes.io/name': pod.ownerName },
@@ -129,50 +175,74 @@ function generatePodDetail(pod) {
       {
         name: pod.ownerName,
         image: `ghcr.io/example/${pod.ownerName}:latest`,
-        ready: pod.readyContainers > 0,
-        restartCount: 0,
+        ready: isHealthy,
+        restartCount: isCrashing ? 5 : 0,
         cpuRequest: pod.cpuRequest,
         memRequest: pod.memRequest,
         cpuLimit: pod.cpuRequest * 4,
         memLimit: pod.memRequest * 2,
         cpuUsage: pod.cpuUsage,
         memUsage: pod.memUsage,
-        lastState: '',
+        lastState: isCrashing ? 'OOMKilled' : '',
       },
     ],
-    conditions: [
-      { type: 'Ready', status: 'True' },
-      { type: 'ContainersReady', status: 'True' },
-      { type: 'Initialized', status: 'True' },
-      { type: 'PodScheduled', status: 'True' },
-    ],
-    events: [
-      { type: 'Normal', reason: 'Scheduled', message: `Successfully assigned ${pod.namespace}/${pod.name} to ${pod.nodeName ?? 'node-1'}`, count: 1, lastSeen: pod.startedAt },
-      { type: 'Normal', reason: 'Started', message: `Started container ${pod.ownerName}`, count: 1, lastSeen: pod.startedAt },
-    ],
+    conditions,
+    events,
   }
 }
 
 function generatePodLogLines(namespace, podName, count) {
-  const levels = ['INFO ', 'DEBUG', 'INFO ', 'INFO ', 'WARN ']
-  const messages = [
+  const weighted = [
+    { level: 'INFO ', weight: 50 },
+    { level: 'DEBUG', weight: 20 },
+    { level: 'WARN ', weight: 15 },
+    { level: 'ERROR', weight: 15 },
+  ]
+  const infoMsgs = [
     'Server started on :8080',
-    'Connected to database',
-    'Health check passed',
-    'Processing incoming request',
-    'Request completed in 12ms',
-    'Cache hit for key user:123',
-    'Scheduled task executed',
-    'Metrics exported successfully',
-    'Connection pool: 5/20 active',
-    'GC pause 1.2ms',
+    'Connected to database pool (5 connections)',
+    'Health check passed — latency 2ms',
+    'Processing incoming request POST /api/v1/resources',
+    'Request completed in 12ms — 200 OK',
+    'Cache hit for key user:123 (ttl=300s)',
+    'Scheduled task cron.cleanup executed',
+    'Metrics exported to prometheus endpoint',
+    'Connection pool: 5/20 active, 0 waiting',
+    'GC pause 1.2ms — heap 48MB/128MB',
+    'TLS certificate valid for 89 days',
+    'Loaded 42 config entries from configmap',
+  ]
+  const warnMsgs = [
+    'Slow query detected: SELECT * FROM events took 850ms',
+    'Memory usage at 78% of limit (400Mi/512Mi)',
+    'Connection pool near capacity: 18/20 active',
+    'Deprecated API version v1beta1 called by client 10.244.1.5',
+    'Rate limiter triggered for IP 192.168.1.100 (50 req/s)',
+    'Certificate expires in 14 days — renewal recommended',
+  ]
+  const errorMsgs = [
+    'Failed to connect to postgres:5432 — connection refused',
+    'OOMKilled: container exceeded memory limit (512Mi)',
+    'Panic recovered: runtime error: index out of range [3] with length 3',
+    'CrashLoopBackOff: back-off 5m0s restarting failed container',
+    'Liveness probe failed: HTTP probe failed with statuscode 503',
+    'context deadline exceeded after 30s waiting for upstream',
   ]
   const lines = []
   const base = Date.now() - count * 1000
+  let totalWeight = weighted.reduce((s, w) => s + w.weight, 0)
   for (let i = 0; i < count; i++) {
     const ts = new Date(base + i * 1000).toISOString()
-    const level = levels[i % levels.length]
-    const msg = messages[i % messages.length]
+    let r = Math.random() * totalWeight
+    let level = 'INFO '
+    for (const w of weighted) {
+      r -= w.weight
+      if (r <= 0) { level = w.level; break }
+    }
+    let msg
+    if (level === 'ERROR') msg = errorMsgs[Math.floor(Math.random() * errorMsgs.length)]
+    else if (level === 'WARN ') msg = warnMsgs[Math.floor(Math.random() * warnMsgs.length)]
+    else msg = infoMsgs[Math.floor(Math.random() * infoMsgs.length)]
     lines.push(`${ts} ${level} [main] ${msg}`)
   }
   return lines

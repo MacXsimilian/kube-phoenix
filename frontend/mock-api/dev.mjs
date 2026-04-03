@@ -28,6 +28,7 @@ const next = spawn('npx', ['next', 'dev', '--port', '3000'], {
   env: {
     ...process.env,
     NEXT_PUBLIC_API_URL: `http://localhost:${PORT}`,
+    NEXT_PUBLIC_PROTOTYPES: '1',
   },
   stdio: 'inherit',
 })
