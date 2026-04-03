@@ -152,7 +152,7 @@ export default function UsersPage() {
                 <TableRow key={i}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
               ))}
               {filteredUsers.map(u => (
-                <TableRow key={u.id} hover sx={{ opacity: u.enabled ? 1 : 0.5 }}>
+                <TableRow key={u.id} hover>
                   <TableCell sx={TABLE_BODY_CELL_SX}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <Avatar sx={{ width: 28, height: 28, fontSize: 11, fontWeight: 700 }}>
