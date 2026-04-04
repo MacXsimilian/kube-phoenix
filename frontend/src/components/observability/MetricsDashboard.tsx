@@ -31,14 +31,14 @@ let echartsPromise: Promise<typeof import('echarts/core')> | null = null
 async function loadECharts() {
   if (!echartsPromise) {
     echartsPromise = (async () => {
-      const [core, { LineChart, BarChart, ScatterChart, GaugeChart }, { GridComponent, TooltipComponent, LegendComponent, MarkLineComponent }, { CanvasRenderer }] =
+      const [core, { LineChart, BarChart, ScatterChart }, { GridComponent, TooltipComponent, LegendComponent, MarkLineComponent }, { CanvasRenderer }] =
         await Promise.all([
           import('echarts/core'),
           import('echarts/charts'),
           import('echarts/components'),
           import('echarts/renderers'),
         ])
-      core.use([LineChart, BarChart, ScatterChart, GaugeChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, CanvasRenderer])
+      core.use([LineChart, BarChart, ScatterChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, CanvasRenderer])
       return core
     })()
   }
@@ -69,7 +69,6 @@ const PANELS: PanelConfig[] = [
   { key: 'latency', title: 'HTTP Latency', unit: 'ms', panelKey: 'latency_p99', getValue: (s) => s.httpLatencyP99Ms, chartType: 'multiline' },
   { key: 'k8s-api', title: 'K8s API Calls', unit: '/min', panelKey: 'k8s_api', getValue: (s) => s.k8sGetRate + s.k8sPatchRate + s.k8sDeleteRate, chartType: 'multiline' },
   { key: 'ws-conns', title: 'WebSocket Connections', unit: '', panelKey: 'ws_connections', getValue: (s) => s.wsActiveConnections, chartType: 'line' },
-  { key: 'cache-hit', title: 'Cache Hit Rate', unit: '%', panelKey: 'cache_hit', getValue: (s) => s.cacheHitRate, chartType: 'gauge' },
   { key: 'scale-ops', title: 'Pod Scale Operations', unit: '', panelKey: 'scheduler_health', getValue: (s) => s.workloadsScaledCount, chartType: 'scatter' },
   { key: 'error-rate', title: 'Error Rate', unit: '/s', panelKey: 'error_rate', getValue: (s) => s.totalErrorRate, chartType: 'errorline' },
 ]
@@ -617,38 +616,6 @@ function buildChartOption(
       }
     }
 
-    case 'gauge': {
-      const val = history.length > 0 ? config.getValue(history[history.length - 1]) : 0
-      const gaugeDetailColor = getGaugeDetailColor(val, theme)
-      return {
-        animation: false,
-        series: [{
-          type: 'gauge',
-          startAngle: 225,
-          endAngle: -45,
-          min: 0,
-          max: 100,
-          progress: { show: true, width: 12 },
-          detail: { formatter: '{value}%', fontSize: 18, fontWeight: 700, color: gaugeDetailColor, offsetCenter: [0, '60%'] },
-          data: [{ value: Math.round(val * 10) / 10 }],
-          axisLine: {
-            lineStyle: {
-              width: 12,
-              color: [
-                [0.7, theme.palette.error.main],
-                [0.9, theme.palette.warning.main],
-                [1, theme.palette.success.main],
-              ],
-            },
-          },
-          pointer: { show: false },
-          axisTick: { show: false },
-          splitLine: { show: false },
-          axisLabel: { show: false },
-        }],
-      }
-    }
-
     case 'scatter': {
       const successData: [number, number][] = []
       const failData: [number, number][] = []
@@ -715,21 +682,10 @@ function formatScatterTooltip(params: any) {
   return `<b>${p.seriesName}</b><br/>${p.value[1].toFixed(0)} ms`
 }
 
-function getGaugeDetailColor(val: number, theme: Theme): string {
-  if (val > 90) return theme.palette.success.main
-  if (val > 70) return theme.palette.warning.main
-  return theme.palette.error.main
-}
-
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function getThresholdStatus(value: number, panelKey: string, threshold: ObservabilityThreshold | undefined): 'ok' | 'warn' | 'crit' {
+function getThresholdStatus(value: number, _panelKey: string, threshold: ObservabilityThreshold | undefined): 'ok' | 'warn' | 'crit' {
   if (!threshold) return 'ok'
-  if (panelKey === 'cache_hit') {
-    if (value < threshold.critVal) return 'crit'
-    if (value < threshold.warnVal) return 'warn'
-    return 'ok'
-  }
   if (value >= threshold.critVal) return 'crit'
   if (value >= threshold.warnVal) return 'warn'
   return 'ok'

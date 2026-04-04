@@ -93,6 +93,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
 	r.Use(prometheusMiddleware)
+	r.Use(callRecorderMiddleware(obsCollector.CallRecorder()))
 	r.Use(corsHandler())
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -296,6 +297,24 @@ func prometheusMiddleware(next http.Handler) http.Handler {
 		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, routePattern, status).Inc()
 		metrics.HTTPRequestDuration.WithLabelValues(r.Method, routePattern).Observe(duration)
 	})
+}
+
+func callRecorderMiddleware(recorder *observability.CallRecorder) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			ww := chiMiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
+
+			next.ServeHTTP(ww, r)
+
+			routePattern := chi.RouteContext(r.Context()).RoutePattern()
+			if routePattern == "" {
+				return
+			}
+			durationMs := float64(time.Since(start).Nanoseconds()) / 1e6
+			recorder.Record(r.Method, routePattern, ww.Status(), durationMs)
+		})
+	}
 }
 
 func parseDuration(envKey string, fallback time.Duration) time.Duration {

@@ -32,6 +32,7 @@ type Collector struct {
 	prevTime      time.Time
 	mu            sync.RWMutex
 	latestPayload *store.ObservabilityStreamPayload
+	callRecorder  *CallRecorder
 }
 
 // NewCollector creates a collector that reads from the default Prometheus registry.
@@ -41,9 +42,10 @@ func NewCollector(st *store.Store) (*Collector, error) {
 		return nil, fmt.Errorf("default prometheus registerer is not a *prometheus.Registry")
 	}
 	return &Collector{
-		store:    st,
-		registry: reg,
-		prev:     make(map[string]float64),
+		store:        st,
+		registry:     reg,
+		prev:         make(map[string]float64),
+		callRecorder: NewCallRecorder(),
 	}, nil
 }
 
@@ -137,7 +139,8 @@ func (c *Collector) collect() error {
 	}
 
 	thresholds, _ := c.store.ListObservabilityThresholds()
-	payload := buildPayload(snap, thresholds)
+	recentCalls := c.callRecorder.Recent(50)
+	payload := buildPayload(snap, thresholds, recentCalls)
 	c.mu.Lock()
 	c.latestPayload = &payload
 	c.mu.Unlock()
@@ -150,6 +153,11 @@ func (c *Collector) LatestPayload() *store.ObservabilityStreamPayload {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.latestPayload
+}
+
+// CallRecorder returns the recorder used to track API calls.
+func (c *Collector) CallRecorder() *CallRecorder {
+	return c.callRecorder
 }
 
 // counterRate computes per-second rate for all label combinations of a counter.
@@ -296,7 +304,7 @@ func computeCacheHitRate(rebuildsMf *dto.MetricFamily) float64 {
 }
 
 // buildPayload constructs the SSE event payload from current metrics.
-func buildPayload(snap *store.MetricSnapshot, thresholds []store.ObservabilityThreshold) store.ObservabilityStreamPayload {
+func buildPayload(snap *store.MetricSnapshot, thresholds []store.ObservabilityThreshold, recentCalls []store.ApiCall) store.ObservabilityStreamPayload {
 	thresholdMap := make(map[string]store.ObservabilityThreshold)
 	for _, t := range thresholds {
 		thresholdMap[t.PanelKey] = t
@@ -327,10 +335,11 @@ func buildPayload(snap *store.MetricSnapshot, thresholds []store.ObservabilityTh
 	}
 
 	return store.ObservabilityStreamPayload{
-		Snapshot:   *snap,
-		Components: components,
-		Links:      links,
-		Thresholds: thresholds,
+		Snapshot:    *snap,
+		Components:  components,
+		Links:       links,
+		Thresholds:  thresholds,
+		RecentCalls: recentCalls,
 	}
 }
 

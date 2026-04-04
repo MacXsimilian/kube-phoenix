@@ -255,12 +255,26 @@ type RiverLinkMetrics struct {
 	Category  string  `json:"category"` // "http" | "k8s" | "store" | "internal" | "ws"
 }
 
+// ApiCall represents a single recorded API call for the observability dashboard.
+type ApiCall struct {
+	ID         string  `json:"id"`
+	Timestamp  string  `json:"timestamp"`
+	Method     string  `json:"method"`
+	Path       string  `json:"path"`
+	StatusCode int     `json:"statusCode"`
+	DurationMs float64 `json:"durationMs"`
+	Component  string  `json:"component"`
+	GoFunc     string  `json:"goFunc"`
+	Category   string  `json:"category"`
+}
+
 // ObservabilityStreamPayload is the SSE event payload sent to the frontend.
 type ObservabilityStreamPayload struct {
-	Snapshot   MetricSnapshot          `json:"snapshot"`
-	Components []RiverComponentMetrics `json:"components"`
-	Links      []RiverLinkMetrics      `json:"links"`
-	Thresholds []ObservabilityThreshold `json:"thresholds"`
+	Snapshot    MetricSnapshot           `json:"snapshot"`
+	Components  []RiverComponentMetrics  `json:"components"`
+	Links       []RiverLinkMetrics       `json:"links"`
+	Thresholds  []ObservabilityThreshold `json:"thresholds"`
+	RecentCalls []ApiCall                `json:"recentCalls"`
 }
 
 // migrateObservability is called from runMigrations to add observability tables.
