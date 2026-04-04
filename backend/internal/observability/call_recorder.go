@@ -99,6 +99,19 @@ var routeComponentMap = map[string]routeInfo{
 	"GET /api/observability/config":      {"handlers", "h.getObservabilityConfig", "http"},
 }
 
+// streamingRoutes are long-lived SSE/WS connections that should not be
+// recorded as completed requests (their duration grows indefinitely).
+var streamingRoutes = map[string]bool{
+	"/api/cluster/stream":      true,
+	"/api/observability/stream": true,
+}
+
+// IsStreamingRoute returns true for SSE/WebSocket endpoints that should
+// be excluded from call recording.
+func IsStreamingRoute(routePattern string) bool {
+	return streamingRoutes[routePattern]
+}
+
 var defaultRouteInfo = routeInfo{
 	component: "handlers",
 	goFunc:    "unknown",
