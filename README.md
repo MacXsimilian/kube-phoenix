@@ -32,6 +32,7 @@ kube-phoenix replaces ad-hoc cron scripts with a proper operator for scheduling 
 - **Enforce sleep** -- Detects and corrects external scale-ups during sleeping policies, ensuring workloads stay at zero until the wake window.
 - **Emergency scale** -- Danger-zone admin action that disables all policies and scales sleeping workloads to 1 replica for minimum availability.
 - **Prometheus metrics** -- Built-in `/metrics` endpoint with 24 metrics covering HTTP requests, K8s API calls, policy executions, CRUD operations, scheduler health, WebSocket connections, auth, and caching.
+- **Observability Center** -- Dual-view dashboard combining a Metrics Dashboard (8 real-time panels with eCharts, live API call feed, system overview, configurable thresholds) and an API Rivers topology visualization (animated particle flows through 15 Go backend components with live metrics, trace mode, and scenario filtering).
 
 ---
 
@@ -85,6 +86,7 @@ See [docs/deployment.md](docs/deployment.md) for production setup with external 
 | Policy-based scaling | [docs/feature-policy-based-scaling.md](docs/feature-policy-based-scaling.md) |
 | Window-native scheduling | [docs/window-native-scheduling.md](docs/window-native-scheduling.md) |
 | Test plan (policy) | [docs/test-plan-policy.md](docs/test-plan-policy.md) |
+| Observability Center | [docs/observability.md](docs/observability.md) |
 | Changelog | [CHANGELOG.md](CHANGELOG.md) |
 
 ---

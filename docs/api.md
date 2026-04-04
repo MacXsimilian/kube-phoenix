@@ -144,6 +144,64 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 | `POST` | `/api/danger/reset-db` | Reset database. Streams NDJSON progress. Body: `{"confirm":"RESET DATABASE"}` |
 | `POST` | `/api/danger/emergency-scale` | Emergency scale: disables all policies, cancels active exceptions, scales sleeping workloads to 1 replica. Streams NDJSON progress. Requires `admin.emergency_scale` permission. Body: `{"confirm":"EMERGENCY SCALE"}` |
 
+### Observability -- viewer and above
+
+| Method | Path | Description |
+| :----- | :--- | :---------- |
+| `GET` | `/api/observability/stream` | SSE stream with real-time metric snapshots, component health, link metrics, and recent API calls (2s interval) |
+| `GET` | `/api/observability/history` | Historical metric snapshots (query params: `range` duration string e.g. `1h`, `3d`, or `from`/`to` as RFC3339) |
+| `GET` | `/api/observability/thresholds` | List all configured warn/crit thresholds per metric panel |
+| `PUT` | `/api/observability/thresholds` | Create or update a threshold (body: `{"panelKey", "warnVal", "critVal"}`) |
+| `GET` | `/api/observability/config` | Runtime component limits (DB pool size, K8s QPS, rate limits, scheduler interval) |
+
+#### SSE Stream Payload
+
+The `/api/observability/stream` endpoint pushes JSON events in SSE format (`data: {...}\n\n`) every 2 seconds:
+
+```json
+{
+  "snapshot": {
+    "timestamp": "2024-01-15T14:32:05Z",
+    "httpRequestRate": 120.5,
+    "httpLatencyP50Ms": 25.0,
+    "httpLatencyP95Ms": 85.0,
+    "httpLatencyP99Ms": 250.0,
+    "httpErrorRate": 1.2,
+    "k8sGetRate": 65.0,
+    "k8sPatchRate": 12.0,
+    "k8sDeleteRate": 3.0,
+    "wsActiveConnections": 8,
+    "cacheHitRate": 95.0,
+    "schedulerEvalRate": 2.0,
+    "schedulerEvalDurationMs": 15.0,
+    "totalErrorRate": 1.2
+  },
+  "components": [
+    {"component": "router", "rpsIn": 120.5, "rpsOut": 120.5, "latencyMs": 25.0, "errorRate": 1.2, "status": "ok"}
+  ],
+  "links": [
+    {"source": "router", "target": "auth", "rps": 120.5, "latencyMs": 2.0, "errorRate": 0, "category": "http"}
+  ],
+  "thresholds": [
+    {"panelKey": "http_rate", "warnVal": 150, "critVal": 200}
+  ],
+  "recentCalls": [
+    {"id": "call-1", "timestamp": "...", "method": "GET", "path": "/api/policies", "statusCode": 200, "durationMs": 8.2, "component": "handlers", "goFunc": "h.listPolicies", "category": "http"}
+  ]
+}
+```
+
+#### History Query
+
+The `range` parameter supports: `1m`, `5m`, `15m`, `1h`, `6h`, `1d`, `3d`. Responses are automatically downsampled for longer ranges:
+
+| Range | Resolution |
+| :---- | :--------- |
+| 1m | 1s (60 points) |
+| 1h | 15s (240 points) |
+| 1d | 1m (1440 points) |
+| 3d | 5m (864 points) |
+
 ## WebSocket Protocol
 
 The live log streaming endpoint (`/ws/policy-executions/{id}/logs`) uses the following protocol:

@@ -44,6 +44,7 @@ flowchart TB
                     Cache["ClusterCache"]
                     SPA["Embedded SPA"]
                     K8s["k8s Client"]
+                    Observability["Observability\n(Collector + SSE)"]
                 end
             end
             PG[("PostgreSQL")]
@@ -58,6 +59,8 @@ flowchart TB
     Scaler --> K8s
     Cache --> K8s
     K8s --> K8sAPI
+    Handlers --> Observability
+    Observability --> Store
     Store --> PG
 ```
 
@@ -97,6 +100,23 @@ Prometheus metrics from a single HTTP listener on port 8080.
 - `POST /api/policies/{id}/sleep`, `/wake` -- manual execution triggers.
 - `POST /api/policies/{id}/cancel` -- cancel a running execution.
 - `POST /api/danger/emergency-scale` -- danger-zone operation that disables all policies, cancels active exceptions, and scales sleeping workloads to 1 replica.
+
+### Observability Center
+
+**Purpose:** Real-time system observability with dual-view dashboard: Metrics Dashboard for quantitative monitoring and API Rivers for visual request flow topology.
+
+**Key responsibilities:**
+- Self-scrape the Prometheus registry every 2 seconds, computing counter deltas, histogram quantiles, and gauge values into structured metric snapshots.
+- Store snapshots in PostgreSQL for historical queries (up to 3 days, auto-pruned).
+- Stream live metrics via SSE to connected dashboards.
+- Serve component runtime configuration (DB pool sizes, rate limits, K8s QPS, scheduler interval) from actual runtime values.
+- Provide configurable warn/crit thresholds per metric panel with default seeding.
+
+**Key interfaces:**
+- `GET /api/observability/stream` -- SSE stream pushing metric snapshots, component health, link metrics, and recent API calls every 2 seconds.
+- `GET /api/observability/history?range=1h` -- Historical snapshots with auto-downsampling (1s for 1m, 15s for 1h, 5m for 3d).
+- `GET /api/observability/config` -- Runtime component limits (reads from guardrails, env vars, and constants).
+- `GET /api/observability/thresholds` / `PUT` -- CRUD for warn/crit threshold configuration.
 
 ### PolicyScheduler
 
