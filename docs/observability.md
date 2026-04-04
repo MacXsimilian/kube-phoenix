@@ -106,11 +106,15 @@ Example: `/observability?tab=rivers&range=1h`
 
 ### Metric Collector
 
-A background goroutine self-scrapes the Prometheus default registry every 2 seconds, computes counter deltas and histogram quantiles, and writes `MetricSnapshot` rows to PostgreSQL. Snapshots older than 3 days are pruned hourly.
+A background goroutine self-scrapes the Prometheus default registry every 2 seconds, computes counter deltas and histogram quantiles, and writes `MetricSnapshot` rows to PostgreSQL. After each write, the collector builds the full SSE payload (snapshot + component metrics + link metrics + thresholds) and stores it in memory under a `sync.RWMutex`. Snapshots older than 3 days are pruned hourly. Counter resets are handled by treating the current value as the delta when the previous value exceeds the current.
 
 ### SSE Endpoint
 
-`GET /api/observability/stream` reads the latest snapshot, computes per-component and per-link metrics, and pushes the full payload every 2 seconds with 30-second keepalive comments.
+`GET /api/observability/stream` reads the latest payload from the collector's in-memory buffer (not from the database), avoiding per-client DB queries. The payload is pushed every 2 seconds with 30-second keepalive comments. This design scales to many concurrent dashboard clients without increasing database load.
+
+### History Endpoint
+
+`GET /api/observability/history?range=1h` queries historical snapshots with SQL-level downsampling using `ROW_NUMBER() OVER (ORDER BY timestamp)` to select every Nth row, avoiding loading all rows into application memory for long time ranges.
 
 ### Runtime Config
 

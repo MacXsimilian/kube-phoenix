@@ -108,13 +108,13 @@ Prometheus metrics from a single HTTP listener on port 8080.
 **Key responsibilities:**
 - Self-scrape the Prometheus registry every 2 seconds, computing counter deltas, histogram quantiles, and gauge values into structured metric snapshots.
 - Store snapshots in PostgreSQL for historical queries (up to 3 days, auto-pruned).
-- Stream live metrics via SSE to connected dashboards.
+- Cache the latest SSE payload in memory under a `sync.RWMutex`. The SSE handler reads from this buffer, never from the database, so multiple concurrent dashboard clients do not increase DB load.
 - Serve component runtime configuration (DB pool sizes, rate limits, K8s QPS, scheduler interval) from actual runtime values.
 - Provide configurable warn/crit thresholds per metric panel with default seeding.
 
 **Key interfaces:**
-- `GET /api/observability/stream` -- SSE stream pushing metric snapshots, component health, link metrics, and recent API calls every 2 seconds.
-- `GET /api/observability/history?range=1h` -- Historical snapshots with auto-downsampling (1s for 1m, 15s for 1h, 5m for 3d).
+- `GET /api/observability/stream` -- SSE stream reading from in-memory buffer, pushing every 2 seconds.
+- `GET /api/observability/history?range=1h` -- Historical snapshots with SQL-level downsampling via `ROW_NUMBER` (1s for 1m, 15s for 1h, 5m for 3d).
 - `GET /api/observability/config` -- Runtime component limits (reads from guardrails, env vars, and constants).
 - `GET /api/observability/thresholds` / `PUT` -- CRUD for warn/crit threshold configuration.
 
