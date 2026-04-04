@@ -114,9 +114,10 @@ function ResetProgressDialog({
 
 interface DangerZoneProps {
   permissions?: string[]
+  bare?: boolean
 }
 
-export default function DatabaseSettings({ permissions }: DangerZoneProps) {
+export default function DatabaseSettings({ permissions, bare }: DangerZoneProps) {
   const queryClient = useQueryClient()
 
   // ── Reset Database state ─────────────────────────────────────────────
@@ -202,71 +203,77 @@ export default function DatabaseSettings({ permissions }: DangerZoneProps) {
     }
   }
 
-  return (
+  const content = (
     <>
-      <Card sx={{ border: '1px solid', borderColor: 'error.main', bgcolor: 'rgba(239,68,68,0.04)' }}>
-        <CardContent sx={{ p: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <WarningAmberRoundedIcon sx={{ color: 'error.main' }} />
-            <Typography variant="subtitle1" fontWeight={700} color="error.main">
-              Danger Zone
+      {showEmergencyScale && (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: showResetDB ? 3 : 0 }}>
+          <Box>
+            <Typography variant="body2" fontWeight={600}>
+              Emergency Scale
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Immediately disables all policies and scales every sleeping workload to 1 replica.
+              Use this in an emergency to restore minimum availability.
             </Typography>
           </Box>
-          <Typography variant="body2" color="text.secondary" mb={3}>
-            These operations are irreversible. Proceed with extreme caution.
-          </Typography>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<FlashOnIcon />}
+            onClick={() => setEsStep1Open(true)}
+            sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+          >
+            Emergency Scale
+          </Button>
+        </Box>
+      )}
 
-          <Divider sx={{ mb: 3 }} />
+      {showEmergencyScale && showResetDB && <Divider sx={{ mb: 3 }} />}
 
-          {showEmergencyScale && (
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: showResetDB ? 3 : 0 }}>
-              <Box>
-                <Typography variant="body2" fontWeight={600}>
-                  Emergency Scale
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Immediately disables all policies and scales every sleeping workload to 1 replica.
-                  Use this in an emergency to restore minimum availability.
-                </Typography>
-              </Box>
-              <Button
-                variant="outlined"
-                color="error"
-                startIcon={<FlashOnIcon />}
-                onClick={() => setEsStep1Open(true)}
-                sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
-              >
-                Emergency Scale
-              </Button>
+      {showResetDB && (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+          <Box>
+            <Typography variant="body2" fontWeight={600}>
+              Reset Database
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Drops all tables, recreates the schema, and reseeds default schedules and guardrails.
+              All execution history and custom schedules will be permanently deleted.
+            </Typography>
+          </Box>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteForeverOutlinedIcon />}
+            onClick={() => setResetStep1Open(true)}
+            sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+          >
+            Reset Database
+          </Button>
+        </Box>
+      )}
+    </>
+  )
+
+  return (
+    <>
+      {bare ? content : (
+        <Card sx={{ border: '1px solid', borderColor: 'error.main', bgcolor: 'rgba(239,68,68,0.04)' }}>
+          <CardContent sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <WarningAmberRoundedIcon sx={{ color: 'error.main' }} />
+              <Typography variant="subtitle1" fontWeight={700} color="error.main">
+                Danger Zone
+              </Typography>
             </Box>
-          )}
-
-          {showEmergencyScale && showResetDB && <Divider sx={{ mb: 3 }} />}
-
-          {showResetDB && (
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
-              <Box>
-                <Typography variant="body2" fontWeight={600}>
-                  Reset Database
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Drops all tables, recreates the schema, and reseeds default schedules and guardrails.
-                  All execution history and custom schedules will be permanently deleted.
-                </Typography>
-              </Box>
-              <Button
-                variant="outlined"
-                color="error"
-                startIcon={<DeleteForeverOutlinedIcon />}
-                onClick={() => setResetStep1Open(true)}
-                sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
-              >
-                Reset Database
-              </Button>
-            </Box>
-          )}
-        </CardContent>
-      </Card>
+            <Typography variant="body2" color="text.secondary" mb={3}>
+              These operations are irreversible. Proceed with extreme caution.
+            </Typography>
+            <Divider sx={{ mb: 3 }} />
+            {content}
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Reset Database dialogs ──────────────────────────────────────── */}
       <Dialog open={resetStep1Open} onClose={() => setResetStep1Open(false)} maxWidth="xs" fullWidth>
