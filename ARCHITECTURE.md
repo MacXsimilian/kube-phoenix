@@ -44,6 +44,7 @@ flowchart TB
                     Cache["ClusterCache"]
                     SPA["Embedded SPA"]
                     K8s["k8s Client"]
+                    Observability["Observability\n(Collector + SSE)"]
                 end
             end
             PG[("PostgreSQL")]
@@ -58,6 +59,8 @@ flowchart TB
     Scaler --> K8s
     Cache --> K8s
     K8s --> K8sAPI
+    Handlers --> Observability
+    Observability --> Store
     Store --> PG
 ```
 
@@ -97,6 +100,24 @@ Prometheus metrics from a single HTTP listener on port 8080.
 - `POST /api/policies/{id}/sleep`, `/wake` -- manual execution triggers.
 - `POST /api/policies/{id}/cancel` -- cancel a running execution.
 - `POST /api/danger/emergency-scale` -- danger-zone operation that disables all policies, cancels active exceptions, and scales sleeping workloads to 1 replica.
+
+### Observability Center
+
+**Purpose:** Real-time system observability with dual-view dashboard: Metrics Dashboard for quantitative monitoring and API Rivers for visual request flow topology.
+
+**Key responsibilities:**
+- Self-scrape the Prometheus registry every 2 seconds, computing counter deltas, histogram quantiles, and gauge values into structured metric snapshots.
+- Store snapshots in PostgreSQL for historical queries (up to 3 days, auto-pruned).
+- Cache the latest SSE payload in memory under a `sync.RWMutex`. The SSE handler reads from this buffer, never from the database, so multiple concurrent dashboard clients do not increase DB load.
+- Serve component runtime configuration (DB pool sizes, rate limits, K8s QPS, scheduler interval) from actual runtime values.
+- Provide configurable warn/crit thresholds per metric panel with default seeding.
+- Record API calls via a Chi middleware into a 100-entry ring buffer (Call Recorder). Each call is mapped to a component and Go function name via a static lookup table of 49 route patterns. The latest 50 calls are included in each SSE payload for the Live API Call Feed.
+
+**Key interfaces:**
+- `GET /api/observability/stream` -- SSE stream reading from in-memory buffer, pushing every 2 seconds.
+- `GET /api/observability/history?range=1h` -- Historical snapshots with SQL-level downsampling via `ROW_NUMBER` (1s for 1m, 15s for 1h, 5m for 3d).
+- `GET /api/observability/config` -- Runtime component limits (reads from guardrails, env vars, and constants).
+- `GET /api/observability/thresholds` / `PUT` -- CRUD for warn/crit threshold configuration.
 
 ### PolicyScheduler
 

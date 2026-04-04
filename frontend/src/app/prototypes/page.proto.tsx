@@ -1,11 +1,15 @@
 'use client'
 
+import { useState, useMemo } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import CardActionArea from '@mui/material/CardActionArea'
 import Chip from '@mui/material/Chip'
+import TextField from '@mui/material/TextField'
+import InputAdornment from '@mui/material/InputAdornment'
+import SearchIcon from '@mui/icons-material/Search'
 import { useRouter } from 'next/navigation'
 
 interface Prototype {
@@ -48,44 +52,8 @@ const PROTOTYPES: Prototype[] = [
     libraries: ['Framer Motion', 'GSAP', 'MUI'],
   },
   {
-    id: 'flagship-observatory',
-    code: 'FL4',
-    title: 'Cost Savings Observatory',
-    category: 'Flagship',
-    categoryColor: '#F97316',
-    description: 'Bloomberg-terminal-style cost dashboard — animated savings counter, area timeline, treemap, waterfall, and live ticker.',
-    libraries: ['eCharts', 'GSAP', 'CSS'],
-  },
-  {
-    id: 'flagship-command-center',
-    code: 'FL5',
-    title: 'Policy Command Center',
-    category: 'Flagship',
-    categoryColor: '#F97316',
-    description: 'Air traffic control for policies — status LEDs, live countdowns, schedule heatmap, execution feed, and cluster gauges.',
-    libraries: ['eCharts', 'GSAP', 'Canvas', 'Framer Motion'],
-  },
-  {
-    id: 'flagship-replay',
-    code: 'FL6',
-    title: 'Execution Replay',
-    category: 'Flagship',
-    categoryColor: '#F97316',
-    description: 'Time-travel debugger — scrub through past executions frame-by-frame. Synchronized log, workload, and node panels.',
-    libraries: ['Framer Motion', 'MUI'],
-  },
-  {
-    id: 'flagship-ops-center',
-    code: 'FL7',
-    title: 'Prometheus Ops Center',
-    category: 'Flagship',
-    categoryColor: '#F97316',
-    description: '8-panel streaming metrics dashboard — live charts, threshold alerts, incident feed. Datadog meets kube-phoenix.',
-    libraries: ['eCharts', 'GSAP', 'Framer Motion'],
-  },
-  {
     id: 'flagship-resource-flow',
-    code: 'FL8',
+    code: 'FL4',
     title: 'Resource Flow Sankey',
     category: 'Flagship',
     categoryColor: '#F97316',
@@ -94,39 +62,12 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'flagship-constellation',
-    code: 'FL9',
+    code: 'FL5',
     title: 'Constellation Map',
     category: 'Flagship',
     categoryColor: '#F97316',
     description: 'Star-field topology — pods are twinkling stars, workloads are constellations, namespaces are nebulae. Sleep dims the sky.',
     libraries: ['Canvas 2D'],
-  },
-  {
-    id: 'flagship-gravity',
-    code: 'FL10',
-    title: 'Gravitational Field',
-    category: 'Flagship',
-    categoryColor: '#F97316',
-    description: 'Physics-driven topology — pods orbit workload gravity wells. Sleep triggers gravitational collapse. Wake is the Big Bang.',
-    libraries: ['Canvas 2D'],
-  },
-  {
-    id: 'flagship-metro',
-    code: 'FL11',
-    title: 'Metro Map',
-    category: 'Flagship',
-    categoryColor: '#F97316',
-    description: 'Subway map topology — namespaces are colored lines, workloads are stations, pods are trains. Sleep shuts down a line.',
-    libraries: ['SVG', 'GSAP', 'Framer Motion'],
-  },
-  {
-    id: 'flagship-hexgrid',
-    code: 'FL12',
-    title: 'Hexagonal Grid',
-    category: 'Flagship',
-    categoryColor: '#F97316',
-    description: 'Strategy-game hex map — workloads as hexagons grouped into namespace territories. Sleep ripples outward from the center.',
-    libraries: ['Canvas 2D', 'GSAP'],
   },
   {
     id: 'phoenix-rise',
@@ -140,7 +81,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'staggered-reveal',
-    code: 'A3',
+    code: 'A2',
     title: 'Staggered Reveal',
     category: 'Onboarding',
     categoryColor: '#7C3AED',
@@ -170,7 +111,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'log-waterfall',
-    code: 'B4',
+    code: 'B3',
     title: 'Log Waterfall',
     category: 'Real-Time',
     categoryColor: '#22C55E',
@@ -190,7 +131,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'rollout-wave',
-    code: 'C3',
+    code: 'C2',
     title: 'Rollout Wave',
     category: 'State Transitions',
     categoryColor: '#F59E0B',
@@ -200,7 +141,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'sleep-wake-morph',
-    code: 'C4',
+    code: 'C3',
     title: 'Sleep / Wake Morph',
     category: 'State Transitions',
     categoryColor: '#F59E0B',
@@ -210,7 +151,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'drawer-slide',
-    code: 'D4',
+    code: 'D1',
     title: 'Drawer Slide',
     category: 'Micro-Interactions',
     categoryColor: '#3B82F6',
@@ -220,7 +161,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'sidebar-morph',
-    code: 'D5',
+    code: 'D2',
     title: 'Sidebar Morph',
     category: 'Micro-Interactions',
     categoryColor: '#3B82F6',
@@ -238,17 +179,8 @@ const PROTOTYPES: Prototype[] = [
     libraries: ['eCharts'],
   },
   {
-    id: 'execution-gantt',
-    code: 'F2',
-    title: 'Execution Gantt',
-    category: 'Data Viz',
-    categoryColor: '#22D3EE',
-    description: 'Horizontal bar timeline of policy executions with staggered draw-in and status coloring.',
-    libraries: ['eCharts'],
-  },
-  {
     id: 'counter-animate',
-    code: 'F3',
+    code: 'F2',
     title: 'Counter Animate',
     category: 'Data Viz',
     categoryColor: '#22D3EE',
@@ -257,7 +189,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'cost-savings',
-    code: 'F4',
+    code: 'F3',
     title: 'Cost Savings',
     category: 'Data Viz',
     categoryColor: '#22D3EE',
@@ -266,7 +198,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'node-drain-grid',
-    code: 'F5',
+    code: 'F4',
     title: 'Node Drain Grid',
     category: 'Data Viz',
     categoryColor: '#22D3EE',
@@ -275,7 +207,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'pod-metrics-chart',
-    code: 'F7',
+    code: 'F5',
     title: 'Pod Metrics Chart',
     category: 'Data Viz',
     categoryColor: '#22D3EE',
@@ -284,7 +216,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'sleep-window-pulse',
-    code: 'F8',
+    code: 'F6',
     title: 'Sleep Window Pulse',
     category: 'Data Viz',
     categoryColor: '#22D3EE',
@@ -293,7 +225,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'phoenix-moment',
-    code: 'F18',
+    code: 'F7',
     title: 'Phoenix Moment',
     category: 'Delight',
     categoryColor: '#F97316',
@@ -302,7 +234,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'workload-waterfall',
-    code: 'F6',
+    code: 'F8',
     title: 'Workload Waterfall',
     category: 'Data Viz',
     categoryColor: '#22D3EE',
@@ -320,7 +252,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'audit-diff',
-    code: 'F11',
+    code: 'F10',
     title: 'Audit Diff',
     category: 'Data Viz',
     categoryColor: '#22D3EE',
@@ -329,7 +261,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'danger-zone',
-    code: 'F19',
+    code: 'F11',
     title: 'Danger Zone',
     category: 'Delight',
     categoryColor: '#F97316',
@@ -338,7 +270,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'skeleton-loading',
-    code: 'F20',
+    code: 'F12',
     title: 'Skeleton Loading',
     category: 'Onboarding',
     categoryColor: '#7C3AED',
@@ -347,7 +279,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'empty-state-egg',
-    code: 'F24',
+    code: 'F13',
     title: 'Empty State Egg',
     category: 'Delight',
     categoryColor: '#F97316',
@@ -427,17 +359,8 @@ const PROTOTYPES: Prototype[] = [
     libraries: ['GSAP', 'Framer Motion'],
   },
   {
-    id: 'prometheus-ops-center',
-    code: 'G1-v2',
-    title: 'Ops Center',
-    category: 'Data Viz',
-    categoryColor: '#22D3EE',
-    description: '8-metric ops dashboard — canvas sparklines, live counters, warn/crit threshold badges, incident event feed.',
-    libraries: ['Canvas', 'CSS'],
-  },
-  {
     id: 'topology-live',
-    code: 'G3-v2',
+    code: 'G9',
     title: 'Live Topology',
     category: 'Data Viz',
     categoryColor: '#22D3EE',
@@ -446,7 +369,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'topology-treemap',
-    code: 'G3-v3',
+    code: 'G10',
     title: 'Topology Treemap',
     category: 'Data Viz',
     categoryColor: '#22D3EE',
@@ -455,7 +378,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'topology-radial',
-    code: 'G3-v4',
+    code: 'G11',
     title: 'Radial Topology',
     category: 'Data Viz',
     categoryColor: '#22D3EE',
@@ -463,40 +386,13 @@ const PROTOTYPES: Prototype[] = [
     libraries: ['eCharts'],
   },
   {
-    id: 'topology-swimlane',
-    code: 'G3-v5',
-    title: 'Swim Lane Topology',
-    category: 'Data Viz',
-    categoryColor: '#22D3EE',
-    description: 'Horizontal namespace lanes with workload groups and pod dots. Sleep collapses lanes. Node sidebar highlights pod placement.',
-    libraries: ['Framer Motion', 'GSAP'],
-  },
-  {
-    id: 'topology-dot-matrix',
-    code: 'G3-v6',
-    title: 'Dot Matrix',
-    category: 'Data Viz',
-    categoryColor: '#22D3EE',
-    description: 'Every pod replica is a dot. Sleep wave turns dots off one-by-one. Group by namespace or node. LED matrix aesthetic.',
-    libraries: ['GSAP', 'Framer Motion'],
-  },
-  {
     id: 'topology-circuit',
-    code: 'G3-v7',
+    code: 'G12',
     title: 'Circuit Board',
     category: 'Data Viz',
     categoryColor: '#22D3EE',
     description: 'PCB-aesthetic topology — nodes as IC chips, pods as LEDs, Manhattan-routed traces with animated current flow.',
     libraries: ['SVG', 'GSAP'],
-  },
-  {
-    id: 'metric-deep-dive',
-    code: 'G1-v3',
-    title: 'Metric Deep Dive',
-    category: 'Data Viz',
-    categoryColor: '#22D3EE',
-    description: 'Single-metric focus — P50-P95-P99 percentile bands, warn/crit color zones, deploy annotations, live streaming.',
-    libraries: ['eCharts'],
   },
   {
     id: 'savings-ticker',
@@ -589,35 +485,8 @@ const PROTOTYPES: Prototype[] = [
     libraries: ['CSS Transitions'],
   },
   {
-    id: 'execution-radar',
-    code: 'I3',
-    title: 'Execution Radar',
-    category: 'Data Viz',
-    categoryColor: '#22D3EE',
-    description: 'Radar chart overlaying multiple executions across 6 axes — scaled, drained, skipped, errors, protected, duration.',
-    libraries: ['eCharts'],
-  },
-  {
-    id: 'policy-swimlane',
-    code: 'I4',
-    title: 'Policy Swimlane',
-    category: 'Data Viz',
-    categoryColor: '#22D3EE',
-    description: 'Horizontal swimlane timeline — one lane per policy, execution blocks on 24h axis with barberpole for running.',
-    libraries: ['Framer Motion'],
-  },
-  {
-    id: 'namespace-bubble',
-    code: 'I5',
-    title: 'Namespace Bubble',
-    category: 'Data Viz',
-    categoryColor: '#22D3EE',
-    description: 'Scatter/bubble chart — X=workloads, Y=replicas, size=CPU. Sleeping namespaces are faded. Elastic entrance animation.',
-    libraries: ['eCharts'],
-  },
-  {
     id: 'cost-forecast-area',
-    code: 'I6',
+    code: 'I3',
     title: 'Cost Forecast',
     category: 'Data Viz',
     categoryColor: '#22D3EE',
@@ -626,7 +495,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'wake-ripple',
-    code: 'I7',
+    code: 'I4',
     title: 'Wake Ripple',
     category: 'Delight',
     categoryColor: '#F97316',
@@ -635,7 +504,7 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'scaling-matrix',
-    code: 'I8',
+    code: 'I5',
     title: 'Scaling Matrix',
     category: 'Data Viz',
     categoryColor: '#22D3EE',
@@ -645,7 +514,7 @@ const PROTOTYPES: Prototype[] = [
   // ── New Flagships ───────────────────────────────────────────────────────
   {
     id: 'multi-region-globe',
-    code: 'FL13',
+    code: 'FL6',
     title: 'Multi-Region Globe',
     category: 'Flagship',
     categoryColor: '#F97316',
@@ -654,28 +523,8 @@ const PROTOTYPES: Prototype[] = [
     implemented: true,
   },
   {
-    id: 'policy-dna',
-    code: 'FL14',
-    title: 'Policy DNA Sequencer',
-    category: 'Flagship',
-    categoryColor: '#F97316',
-    description: 'Policy sleep windows as a DNA double-helix timeline — base pairs per 30min slot, multi-policy overlap, scanning line.',
-    libraries: ['SVG', 'Framer Motion', 'GSAP'],
-    implemented: true,
-  },
-  {
-    id: 'workload-symphony',
-    code: 'FL15',
-    title: 'Workload Symphony',
-    category: 'Flagship',
-    categoryColor: '#F97316',
-    description: 'Cluster as a musical score — workloads are notes on namespace staffs, conductor playhead, Web Audio tones, stream chart.',
-    libraries: ['Canvas 2D', 'GSAP', 'Web Audio API'],
-    implemented: true,
-  },
-  {
     id: 'nervous-system',
-    code: 'FL16',
+    code: 'FL7',
     title: 'Cluster Nervous System',
     category: 'Flagship',
     categoryColor: '#F97316',
@@ -685,42 +534,12 @@ const PROTOTYPES: Prototype[] = [
   },
   {
     id: 'incident-cinema',
-    code: 'FL17',
+    code: 'FL8',
     title: 'Incident Cinema',
     category: 'Flagship',
     categoryColor: '#F97316',
     description: 'Cinematic replay of failed executions — 5 scene cuts with CSS 3D camera, red alert mode, scanlines, ember titles.',
     libraries: ['Framer Motion', 'GSAP', 'CSS 3D'],
-    implemented: true,
-  },
-  {
-    id: 'carbon-footprint',
-    code: 'FL18',
-    title: 'Carbon Footprint',
-    category: 'Flagship',
-    categoryColor: '#F97316',
-    description: 'Environmental impact dashboard — CO2 counter, growing fractal tree, carbon timeline, energy sunburst, leaf particles.',
-    libraries: ['eCharts', 'GSAP', 'SVG', 'Canvas 2D'],
-    implemented: true,
-  },
-  {
-    id: 'pod-collider',
-    code: 'FL19',
-    title: 'Physics Pod Collider',
-    category: 'Flagship',
-    categoryColor: '#F97316',
-    description: 'Pods as physics rigid bodies orbiting deployment gravity wells — real collision, sleep ejects pods, wake spawns them back.',
-    libraries: ['Three.js', 'React Three Fiber', 'Custom Physics'],
-    implemented: true,
-  },
-  {
-    id: 'cytoscape-topology',
-    code: 'FL20',
-    title: 'Cytoscape Topology Pro',
-    category: 'Flagship',
-    categoryColor: '#F97316',
-    description: 'Production-grade 2D cluster graph with compound nodes, drag, zoom, sleep collapse, staggered pod removal.',
-    libraries: ['Canvas 2D', 'GSAP', 'Framer Motion'],
     implemented: true,
   },
   // ── New Data Viz ────────────────────────────────────────────────────────
@@ -926,28 +745,8 @@ const PROTOTYPES: Prototype[] = [
     implemented: true,
   },
   {
-    id: 'cursor-trail',
-    code: 'K12',
-    title: 'Cursor Cluster Trail',
-    category: 'Micro-Interactions',
-    categoryColor: '#3B82F6',
-    description: 'Custom cursor trail — embers float up over healthy zones, moons drift down over sleeping zones.',
-    libraries: ['Canvas 2D', 'Framer Motion'],
-    implemented: true,
-  },
-  {
-    id: 'empty-state',
-    code: 'K13',
-    title: 'Smart Empty State',
-    category: 'Micro-Interactions',
-    categoryColor: '#3B82F6',
-    description: 'Three animated empty states — cracking phoenix egg, filling hourglass, radar sweep scanning.',
-    libraries: ['SVG', 'GSAP', 'CSS'],
-    implemented: true,
-  },
-  {
     id: 'haptic-buttons',
-    code: 'K14',
+    code: 'K12',
     title: 'Haptic Button Feedback',
     category: 'Micro-Interactions',
     categoryColor: '#3B82F6',
@@ -955,40 +754,29 @@ const PROTOTYPES: Prototype[] = [
     libraries: ['GSAP', 'Framer Motion'],
     implemented: true,
   },
-  {
-    id: 'data-rivers',
-    code: 'K15',
-    title: 'Data Flow Rivers',
-    category: 'Micro-Interactions',
-    categoryColor: '#3B82F6',
-    description: 'Service traffic as animated rivers — flowing particles, latency coloring, sleep dries up rivers, wake refills.',
-    libraries: ['SVG', 'Canvas 2D', 'GSAP'],
-    implemented: true,
-  },
-  {
-    id: 'internal-rivers',
-    code: 'K15-v2',
-    title: 'Internal API Rivers',
-    category: 'Micro-Interactions',
-    categoryColor: '#3B82F6',
-    description: 'kube-phoenix internal request flows — Chi, Store, K8s client, Scheduler, Scaler, Broker, Prometheus.',
-    libraries: ['SVG', 'Canvas 2D', 'GSAP', 'Framer Motion'],
-    implemented: true,
-  },
-  {
-    id: 'internal-rivers-v2',
-    code: 'K15-v3',
-    title: 'Internal API Rivers v3',
-    category: 'Micro-Interactions',
-    categoryColor: '#3B82F6',
-    description: 'Enhanced: particle trails, step-through playback, error injection, request tracing, live sparklines, Go source refs.',
-    libraries: ['SVG', 'Canvas 2D', 'GSAP', 'eCharts', 'Framer Motion'],
-    implemented: true,
-  },
 ]
+
+const CATEGORIES = [...new Set(PROTOTYPES.map((p) => p.category))]
 
 export default function PrototypesIndex() {
   const router = useRouter()
+  const [search, setSearch] = useState('')
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+
+  const filtered = useMemo(() => {
+    const query = search.toLowerCase().trim()
+    return PROTOTYPES.filter((p) => {
+      if (activeCategory && p.category !== activeCategory) return false
+      if (!query) return true
+      return (
+        p.title.toLowerCase().includes(query) ||
+        p.code.toLowerCase().includes(query) ||
+        p.description.toLowerCase().includes(query) ||
+        p.category.toLowerCase().includes(query) ||
+        p.libraries.some((lib) => lib.toLowerCase().includes(query))
+      )
+    })
+  }, [search, activeCategory])
 
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', py: 4, px: 2 }}>
@@ -1002,6 +790,58 @@ export default function PrototypesIndex() {
         </Typography>
       </Box>
 
+      <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <TextField
+          placeholder="Search prototypes..."
+          size="small"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+                </InputAdornment>
+              ),
+            },
+          }}
+          sx={{ maxWidth: 400 }}
+        />
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Chip
+            label="All"
+            size="small"
+            onClick={() => setActiveCategory(null)}
+            sx={{
+              fontWeight: 600,
+              bgcolor: !activeCategory ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)',
+              color: !activeCategory ? 'text.primary' : 'text.secondary',
+            }}
+          />
+          {CATEGORIES.map((cat) => {
+            const color = PROTOTYPES.find((p) => p.category === cat)!.categoryColor
+            const isActive = activeCategory === cat
+            return (
+              <Chip
+                key={cat}
+                label={cat}
+                size="small"
+                onClick={() => setActiveCategory(isActive ? null : cat)}
+                sx={{
+                  fontWeight: 600,
+                  bgcolor: isActive ? `${color}25` : 'rgba(255,255,255,0.04)',
+                  color: isActive ? color : 'text.secondary',
+                  border: isActive ? `1px solid ${color}40` : '1px solid transparent',
+                }}
+              />
+            )
+          })}
+        </Box>
+        <Typography variant="caption" color="text.secondary">
+          {filtered.length} of {PROTOTYPES.length} prototypes
+        </Typography>
+      </Box>
+
       <Box
         sx={{
           display: 'grid',
@@ -1009,7 +849,7 @@ export default function PrototypesIndex() {
           gap: 2.5,
         }}
       >
-        {PROTOTYPES.map((p) => (
+        {filtered.map((p) => (
           <Card
             key={p.id}
             sx={{

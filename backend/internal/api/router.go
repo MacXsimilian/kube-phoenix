@@ -18,6 +18,7 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	authmw "github.com/macxsimilian/kube-phoenix/backend/internal/middleware"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/observability"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"github.com/macxsimilian/kube-phoenix/backend/web"
@@ -37,6 +38,7 @@ type Handler struct {
 	k8s             *k8s.Client
 	policyScheduler *scheduler.PolicyScheduler
 	cache           *k8s.ClusterCache
+	obsCollector    *observability.Collector
 	ipLimiter       *auth.RateLimiter
 	userLimiter     *auth.RateLimiter
 	idleTimeout     time.Duration
@@ -47,7 +49,7 @@ type Handler struct {
 	cookieSecure    bool
 }
 
-func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, policySched *scheduler.PolicyScheduler, cache *k8s.ClusterCache) *chi.Mux {
+func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, policySched *scheduler.PolicyScheduler, cache *k8s.ClusterCache, obsCollector *observability.Collector) *chi.Mux {
 	idleTimeout := parseDuration("SESSION_IDLE_TIMEOUT", 8*time.Hour)
 	maxLifetime := parseDuration("SESSION_MAX_LIFETIME", 24*time.Hour)
 
@@ -75,6 +77,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 		k8s:             k8sClient,
 		policyScheduler: policySched,
 		cache:           cache,
+		obsCollector:    obsCollector,
 		ipLimiter:       auth.NewRateLimiter(rateLimitPerIP, rateLimitWindow),
 		userLimiter:     auth.NewRateLimiter(rateLimitPerUser, rateLimitWindow),
 		idleTimeout:     idleTimeout,
@@ -90,6 +93,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
 	r.Use(prometheusMiddleware)
+	r.Use(callRecorderMiddleware(obsCollector.CallRecorder()))
 	r.Use(corsHandler())
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -143,6 +147,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 		r.Route("/api", func(r chi.Router) {
 			h.registerClusterRoutes(r)
 			h.registerPolicyRoutes(r)
+			h.registerObservabilityRoutes(r)
 			h.registerAdminRoutes(r)
 		})
 
@@ -292,6 +297,24 @@ func prometheusMiddleware(next http.Handler) http.Handler {
 		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, routePattern, status).Inc()
 		metrics.HTTPRequestDuration.WithLabelValues(r.Method, routePattern).Observe(duration)
 	})
+}
+
+func callRecorderMiddleware(recorder *observability.CallRecorder) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			ww := chiMiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
+
+			next.ServeHTTP(ww, r)
+
+			routePattern := chi.RouteContext(r.Context()).RoutePattern()
+			if routePattern == "" || observability.IsSkippedRoute(routePattern) {
+				return
+			}
+			durationMs := float64(time.Since(start).Nanoseconds()) / 1e6
+			recorder.Record(r.Method, routePattern, ww.Status(), durationMs)
+		})
+	}
 }
 
 func parseDuration(envKey string, fallback time.Duration) time.Duration {

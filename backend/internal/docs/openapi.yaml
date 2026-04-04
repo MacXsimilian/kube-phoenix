@@ -1064,6 +1064,178 @@ components:
         - startsAt
         - endsAt
 
+    # ── Observability models ─────────────────────────────────────────────────
+
+    MetricSnapshot:
+      description: A point-in-time capture of all system metrics.
+      type: object
+      properties:
+        id:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+        httpRequestRate:
+          type: number
+        httpLatencyP50Ms:
+          type: number
+        httpLatencyP95Ms:
+          type: number
+        httpLatencyP99Ms:
+          type: number
+        httpErrorRate:
+          type: number
+        k8sGetRate:
+          type: number
+        k8sPatchRate:
+          type: number
+        k8sDeleteRate:
+          type: number
+        policySuccessCount:
+          type: integer
+        policyFailedCount:
+          type: integer
+        policySkippedCount:
+          type: integer
+        wsActiveConnections:
+          type: integer
+        cacheHitRate:
+          type: number
+        schedulerEvalRate:
+          type: number
+        schedulerEvalDurationMs:
+          type: number
+        workloadsScaledCount:
+          type: integer
+        scaleOperationDurationMs:
+          type: number
+        schedulerPanics:
+          type: integer
+        auditDrops:
+          type: integer
+        rateLimitHits:
+          type: integer
+        totalErrorRate:
+          type: number
+
+    ObservabilityThreshold:
+      description: A configurable warning/critical threshold for a dashboard panel.
+      type: object
+      required: [panelKey]
+      properties:
+        id:
+          type: integer
+        panelKey:
+          type: string
+          example: "http_rate"
+        warnVal:
+          type: number
+          example: 150
+        critVal:
+          type: number
+          example: 200
+
+    ApiCall:
+      description: A recorded API call with timing, method, and category information.
+      type: object
+      properties:
+        id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        method:
+          type: string
+          enum: [GET, POST, PUT, DELETE, PATCH, WS, SSE]
+        path:
+          type: string
+        statusCode:
+          type: integer
+        durationMs:
+          type: number
+        component:
+          type: string
+        goFunc:
+          type: string
+        category:
+          type: string
+          enum: [http, k8s, store, internal, ws]
+
+    RiverComponentMetrics:
+      description: Live metrics for a single component in the data-flow river diagram.
+      type: object
+      properties:
+        component:
+          type: string
+        rpsIn:
+          type: number
+        rpsOut:
+          type: number
+        latencyMs:
+          type: number
+        errorRate:
+          type: number
+        status:
+          type: string
+          enum: [ok, warn, crit]
+
+    RiverLinkMetrics:
+      description: Live metrics for a link between two components in the data-flow river diagram.
+      type: object
+      properties:
+        source:
+          type: string
+        target:
+          type: string
+        rps:
+          type: number
+        latencyMs:
+          type: number
+        errorRate:
+          type: number
+        category:
+          type: string
+          enum: [http, k8s, store, internal, ws]
+
+    ObservabilityStreamPayload:
+      description: The composite payload pushed on each SSE tick of the observability stream.
+      type: object
+      properties:
+        snapshot:
+          $ref: "#/components/schemas/MetricSnapshot"
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/RiverComponentMetrics"
+        links:
+          type: array
+          items:
+            $ref: "#/components/schemas/RiverLinkMetrics"
+        thresholds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObservabilityThreshold"
+        recentCalls:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiCall"
+
+    RuntimeConfig:
+      description: Runtime configuration describing available components and their options.
+      type: object
+      properties:
+        components:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              properties:
+                label:
+                  type: string
+                value:
+                  type: string
+
 paths:
   /healthz:
     get:
@@ -2387,11 +2559,137 @@ paths:
         "404":
           description: Not found
 
+  # ── Observability ────────────────────────────────────────────────────────
+
+  /api/observability/stream:
+    get:
+      operationId: streamObservability
+      summary: SSE observability stream
+      description: |
+        Server-Sent Events stream. Sends the current observability snapshot immediately
+        on connect, then pushes a new `data:` event on each collection tick (~2 s cadence).
+        Each event payload is a JSON-serialised `ObservabilityStreamPayload`.
+      tags: [Observability]
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Each `data:` line contains a JSON ObservabilityStreamPayload.
+        "401":
+          description: Unauthorized
+
+  /api/observability/history:
+    get:
+      operationId: getObservabilityHistory
+      summary: Query metric history
+      description: Returns an array of MetricSnapshot records for the requested time range. Use either the `range` shorthand or explicit `from`/`to` parameters.
+      tags: [Observability]
+      parameters:
+        - name: range
+          in: query
+          schema:
+            type: string
+          description: Shorthand range string (e.g. "1h", "24h", "7d"). Mutually exclusive with from/to.
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Start of time range (RFC3339). Used with `to`.
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: End of time range (RFC3339). Used with `from`.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MetricSnapshot"
+        "400":
+          description: Invalid range or time parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+
+  /api/observability/thresholds:
+    get:
+      operationId: listObservabilityThresholds
+      summary: List thresholds
+      description: Returns all configured observability thresholds.
+      tags: [Observability]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ObservabilityThreshold"
+        "401":
+          description: Unauthorized
+    put:
+      operationId: updateObservabilityThreshold
+      summary: Create or update a threshold
+      description: Upserts an observability threshold by panel key. Returns the saved threshold.
+      tags: [Observability]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObservabilityThreshold"
+      responses:
+        "200":
+          description: Threshold saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObservabilityThreshold"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+
+  /api/observability/config:
+    get:
+      operationId: getObservabilityConfig
+      summary: Runtime configuration
+      description: Returns the runtime configuration describing available components and their options.
+      tags: [Observability]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeConfig"
+        "401":
+          description: Unauthorized
+
 tags:
   - name: Health
     description: Server health and readiness probes.
   - name: Auth
     description: Authentication — login, logout, OIDC, password management.
+  - name: Observability
+    description: Real-time system metrics, API call recording, and configurable thresholds.
   - name: Overview
     description: Pre-aggregated dashboard summary and SSE stream.
   - name: Cluster
