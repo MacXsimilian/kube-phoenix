@@ -27,10 +27,9 @@ Seven panels, each showing a live value, delta percentage, chart, threshold indi
 | Panel | Description |
 | :---- | :---------- |
 | HTTP Request Rate | Inbound requests per second |
-| HTTP Latency | Response time distribution |
-| K8s API Calls | Calls to the Kubernetes API per minute |
+| HTTP Latency | Response time distribution (P50, P95, P99) |
+| K8s API Calls | Calls to the Kubernetes API per minute (GET, PATCH, DELETE) |
 | WebSocket Connections | Active WebSocket connection count |
-| Cache Hit Rate | Percentage of cache hits vs misses |
 | Pod Scale Operations | Scale-up and scale-down events |
 | Error Rate | Errors per second across all components |
 
@@ -52,7 +51,6 @@ Each panel has configurable warn/crit thresholds stored in the database. Default
 | P99 Latency | 500 ms | 1000 ms |
 | K8s API Calls | 100 /min | 120 /min |
 | WS Connections | 50 | 80 |
-| Cache Hit Rate | < 90% | < 70% |
 | Error Rate | 5 /s | 15 /s |
 | Scheduler Health | 200 ms | 500 ms |
 
@@ -115,6 +113,10 @@ A background goroutine self-scrapes the Prometheus default registry every 2 seco
 ### History Endpoint
 
 `GET /api/observability/history?range=1h` queries historical snapshots with SQL-level downsampling using `ROW_NUMBER() OVER (ORDER BY timestamp)` to select every Nth row, avoiding loading all rows into application memory for long time ranges.
+
+### Call Recorder
+
+A Chi middleware captures every HTTP request flowing through the router: method, route pattern, status code, and duration. Each call is mapped to a component and Go function name via a static lookup table (20 route patterns). Calls are stored in a thread-safe ring buffer (last 100 entries, `sync.Mutex` with microsecond-level critical sections). The collector includes the latest 50 calls in each SSE payload as `recentCalls`. Overhead is ~1-2 microseconds per request.
 
 ### Runtime Config
 
