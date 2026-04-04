@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.23](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.22...v0.5.23) (2026-04-04)
+
+
+### Features
+
+* **settings:** redesign Settings page and fix 48 documentation audit findings ([#317](https://github.com/MacXsimilian/kube-phoenix/issues/317)) ([72cec15](https://github.com/MacXsimilian/kube-phoenix/commit/72cec159ae72f10fd07b62943f024d7c72f4f026))
+
 ## [0.5.22](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.21...v0.5.22) (2026-04-04)
 
 
