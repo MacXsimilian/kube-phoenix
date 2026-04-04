@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.20](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.19...v0.5.20) (2026-04-04)
+
+
+### Features
+
+* **frontend:** add animation prototype system and 102 prototype pages ([#310](https://github.com/MacXsimilian/kube-phoenix/issues/310)) ([e25e924](https://github.com/MacXsimilian/kube-phoenix/commit/e25e9241b528fc430fb4ee2c756413d04effc082))
+
 ## [0.5.19](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.18...v0.5.19) (2026-04-03)
 
 
