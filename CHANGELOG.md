@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.21](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.20...v0.5.21) (2026-04-04)
+
+
+### Features
+
+* **frontend:** add cinematic duration tokens, easing curves, and flagship color palette ([439eafe](https://github.com/MacXsimilian/kube-phoenix/commit/439eafe7ef013699fda00a7aeda51f3f83f1b435))
+
+
+### Bug Fixes
+
+* **frontend:** add missed motion design tokens and flagship color palette ([#313](https://github.com/MacXsimilian/kube-phoenix/issues/313)) ([439eafe](https://github.com/MacXsimilian/kube-phoenix/commit/439eafe7ef013699fda00a7aeda51f3f83f1b435))
+
 ## [0.5.20](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.19...v0.5.20) (2026-04-04)
 
 
