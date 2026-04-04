@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.22](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.21...v0.5.22) (2026-04-04)
+
+
+### Features
+
+* **observability:** add Observability Center with Metrics Dashboard and API Rivers ([#315](https://github.com/MacXsimilian/kube-phoenix/issues/315)) ([e267ec7](https://github.com/MacXsimilian/kube-phoenix/commit/e267ec7e4d7d7a8a525ba95786f5ba75972704a9))
+
 ## [0.5.21](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.20...v0.5.21) (2026-04-04)
 
 
