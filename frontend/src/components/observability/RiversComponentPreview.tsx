@@ -36,7 +36,6 @@ interface RiversComponentPreviewProps {
   limits?: { label: string; value: string }[]
   incomingLinks: LinkEntry[]
   outgoingLinks: LinkEntry[]
-  depthFromEntry: number
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -185,24 +184,6 @@ function LimitsSection({ limits }: { limits: { label: string; value: string }[] 
   )
 }
 
-function DepthBadge({ depth }: { depth: number }) {
-  const theme = useTheme()
-  return (
-    <Chip
-      label={`${depth} hop${depth !== 1 ? 's' : ''} from entry`}
-      size="small"
-      sx={{
-        height: 16,
-        fontSize: '0.44rem',
-        fontWeight: 600,
-        bgcolor: alpha(theme.palette.text.secondary, 0.08),
-        color: 'text.secondary',
-        mb: 0.4,
-      }}
-    />
-  )
-}
-
 function GoFileTag({ goFile }: { goFile: string }) {
   return (
     <Box sx={{ bgcolor: 'action.hover', borderRadius: 0.5, px: 0.5, py: 0.15, mb: 0.4, display: 'inline-block' }}>
@@ -253,7 +234,6 @@ export default function RiversComponentPreview({
   limits,
   incomingLinks,
   outgoingLinks,
-  depthFromEntry,
 }: RiversComponentPreviewProps) {
   const { above } = position
 
@@ -288,7 +268,6 @@ export default function RiversComponentPreview({
         <Header label={component.label} sublabel={component.sublabel} status={liveMetrics?.status} />
         {liveMetrics && <LiveMetricsSection metrics={liveMetrics} />}
         {limits && limits.length > 0 && <LimitsSection limits={limits} />}
-        <DepthBadge depth={depthFromEntry} />
         {component.goFile && <GoFileTag goFile={component.goFile} />}
         <ConnectionList title="← Incoming" links={incomingLinks} direction="in" />
         <ConnectionList title="→ Outgoing" links={outgoingLinks} direction="out" />

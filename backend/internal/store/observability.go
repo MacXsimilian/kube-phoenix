@@ -78,6 +78,25 @@ func (s *Store) QueryMetricSnapshots(from, to time.Time, limit int) ([]MetricSna
 	return rows, nil
 }
 
+// QueryMetricSnapshotsDownsampled returns at most maxPoints snapshots within
+// [from, to], using SQL-level row selection to avoid loading all rows.
+func (s *Store) QueryMetricSnapshotsDownsampled(from, to time.Time, maxPoints int) ([]MetricSnapshot, error) {
+	var total int64
+	if err := s.db.Model(&MetricSnapshot{}).Where("timestamp BETWEEN ? AND ?", from, to).Count(&total).Error; err != nil {
+		return nil, err
+	}
+	if total <= int64(maxPoints) {
+		return s.QueryMetricSnapshots(from, to, 0)
+	}
+	step := int(total) / maxPoints
+	var rows []MetricSnapshot
+	err := s.db.Raw(`SELECT * FROM (
+		SELECT *, ROW_NUMBER() OVER (ORDER BY timestamp) as rn
+		FROM metric_snapshots WHERE timestamp BETWEEN ? AND ?
+	) sub WHERE sub.rn % ? = 0 ORDER BY timestamp`, from, to, step).Scan(&rows).Error
+	return rows, err
+}
+
 // PruneMetricSnapshots deletes snapshots older than the given cutoff.
 func (s *Store) PruneMetricSnapshots(before time.Time) (int64, error) {
 	tx := s.db.Where("timestamp < ?", before).Delete(&MetricSnapshot{})
@@ -149,54 +168,51 @@ func DownsampleSnapshots(rows []MetricSnapshot, targetCount int) []MetricSnapsho
 
 func averageBucket(bucket []MetricSnapshot) MetricSnapshot {
 	n := float64(len(bucket))
-	avg := MetricSnapshot{
+	result := MetricSnapshot{
 		Timestamp: bucket[len(bucket)/2].Timestamp,
 	}
 	for _, s := range bucket {
-		avg.HTTPRequestRate += s.HTTPRequestRate
-		avg.HTTPLatencyP50Ms += s.HTTPLatencyP50Ms
-		avg.HTTPLatencyP95Ms += s.HTTPLatencyP95Ms
-		avg.HTTPLatencyP99Ms += s.HTTPLatencyP99Ms
-		avg.HTTPErrorRate += s.HTTPErrorRate
-		avg.K8sGetRate += s.K8sGetRate
-		avg.K8sPatchRate += s.K8sPatchRate
-		avg.K8sDeleteRate += s.K8sDeleteRate
-		avg.PolicySuccessCount += s.PolicySuccessCount
-		avg.PolicyFailedCount += s.PolicyFailedCount
-		avg.PolicySkippedCount += s.PolicySkippedCount
-		avg.WSActiveConnections += s.WSActiveConnections
-		avg.CacheHitRate += s.CacheHitRate
-		avg.SchedulerEvalRate += s.SchedulerEvalRate
-		avg.SchedulerEvalDurationMs += s.SchedulerEvalDurationMs
-		avg.WorkloadsScaledCount += s.WorkloadsScaledCount
-		avg.ScaleOperationDurationMs += s.ScaleOperationDurationMs
-		avg.SchedulerPanics += s.SchedulerPanics
-		avg.AuditDrops += s.AuditDrops
-		avg.RateLimitHits += s.RateLimitHits
-		avg.TotalErrorRate += s.TotalErrorRate
+		result.HTTPRequestRate += s.HTTPRequestRate
+		result.HTTPLatencyP50Ms += s.HTTPLatencyP50Ms
+		result.HTTPLatencyP95Ms += s.HTTPLatencyP95Ms
+		result.HTTPLatencyP99Ms += s.HTTPLatencyP99Ms
+		result.HTTPErrorRate += s.HTTPErrorRate
+		result.K8sGetRate += s.K8sGetRate
+		result.K8sPatchRate += s.K8sPatchRate
+		result.K8sDeleteRate += s.K8sDeleteRate
+		result.CacheHitRate += s.CacheHitRate
+		result.SchedulerEvalRate += s.SchedulerEvalRate
+		result.SchedulerEvalDurationMs += s.SchedulerEvalDurationMs
+		result.ScaleOperationDurationMs += s.ScaleOperationDurationMs
+		result.TotalErrorRate += s.TotalErrorRate
+		result.PolicySuccessCount += s.PolicySuccessCount
+		result.PolicyFailedCount += s.PolicyFailedCount
+		result.PolicySkippedCount += s.PolicySkippedCount
+		result.WorkloadsScaledCount += s.WorkloadsScaledCount
+		result.WSActiveConnections += s.WSActiveConnections
+		result.SchedulerPanics += s.SchedulerPanics
+		result.AuditDrops += s.AuditDrops
+		result.RateLimitHits += s.RateLimitHits
 	}
-	avg.HTTPRequestRate /= n
-	avg.HTTPLatencyP50Ms /= n
-	avg.HTTPLatencyP95Ms /= n
-	avg.HTTPLatencyP99Ms /= n
-	avg.HTTPErrorRate /= n
-	avg.K8sGetRate /= n
-	avg.K8sPatchRate /= n
-	avg.K8sDeleteRate /= n
-	avg.PolicySuccessCount = int(float64(avg.PolicySuccessCount) / n)
-	avg.PolicyFailedCount = int(float64(avg.PolicyFailedCount) / n)
-	avg.PolicySkippedCount = int(float64(avg.PolicySkippedCount) / n)
-	avg.WSActiveConnections = int(float64(avg.WSActiveConnections) / n)
-	avg.CacheHitRate /= n
-	avg.SchedulerEvalRate /= n
-	avg.SchedulerEvalDurationMs /= n
-	avg.WorkloadsScaledCount = int(float64(avg.WorkloadsScaledCount) / n)
-	avg.ScaleOperationDurationMs /= n
-	avg.SchedulerPanics = int(float64(avg.SchedulerPanics) / n)
-	avg.AuditDrops = int(float64(avg.AuditDrops) / n)
-	avg.RateLimitHits = int(float64(avg.RateLimitHits) / n)
-	avg.TotalErrorRate /= n
-	return avg
+	averageRateFields(&result, n)
+	return result
+}
+
+func averageRateFields(s *MetricSnapshot, n float64) {
+	s.HTTPRequestRate /= n
+	s.HTTPLatencyP50Ms /= n
+	s.HTTPLatencyP95Ms /= n
+	s.HTTPLatencyP99Ms /= n
+	s.HTTPErrorRate /= n
+	s.K8sGetRate /= n
+	s.K8sPatchRate /= n
+	s.K8sDeleteRate /= n
+	s.CacheHitRate /= n
+	s.SchedulerEvalRate /= n
+	s.SchedulerEvalDurationMs /= n
+	s.ScaleOperationDurationMs /= n
+	s.TotalErrorRate /= n
+	s.WSActiveConnections = int(float64(s.WSActiveConnections) / n)
 }
 
 // maxPointsForRange returns the target number of data points for a time range.

@@ -160,22 +160,23 @@ const COMPONENT_INFO: Record<string, ComponentInfo> = {
 
 // ── Lazy eCharts ────────────────────────────────────────────────────────────
 
-let echarts: typeof import('echarts/core') | null = null
-let echartsLoaded = false
+let echartsPromise: Promise<typeof import('echarts/core')> | null = null
 
 async function loadECharts() {
-  if (echartsLoaded) return echarts!
-  const [core, { LineChart }, { GridComponent, TooltipComponent, MarkLineComponent }, { CanvasRenderer }] =
-    await Promise.all([
-      import('echarts/core'),
-      import('echarts/charts'),
-      import('echarts/components'),
-      import('echarts/renderers'),
-    ])
-  core.use([LineChart, GridComponent, TooltipComponent, MarkLineComponent, CanvasRenderer])
-  echarts = core
-  echartsLoaded = true
-  return core
+  if (!echartsPromise) {
+    echartsPromise = (async () => {
+      const [core, { LineChart }, { GridComponent, TooltipComponent, MarkLineComponent }, { CanvasRenderer }] =
+        await Promise.all([
+          import('echarts/core'),
+          import('echarts/charts'),
+          import('echarts/components'),
+          import('echarts/renderers'),
+        ])
+      core.use([LineChart, GridComponent, TooltipComponent, MarkLineComponent, CanvasRenderer])
+      return core
+    })()
+  }
+  return echartsPromise
 }
 
 // ── Page ────────────────────────────────────────────────────────────────────
@@ -274,6 +275,7 @@ function MetricChart({ label, unit, getValue, history }: { label: string; unit: 
   const chartRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chartInstance = useRef<any>(null)
+  const roRef = useRef<ResizeObserver | null>(null)
 
   useEffect(() => {
     if (!chartRef.current || history.length < 2) return
@@ -285,6 +287,7 @@ function MetricChart({ label, unit, getValue, history }: { label: string; unit: 
         chartInstance.current = ec.init(chartRef.current, undefined, { renderer: 'canvas' })
         const ro = new ResizeObserver(() => chartInstance.current?.resize())
         ro.observe(chartRef.current)
+        roRef.current = ro
       }
 
       const labels = history.map((s) => new Date(s.timestamp).toLocaleTimeString())
@@ -308,7 +311,13 @@ function MetricChart({ label, unit, getValue, history }: { label: string; unit: 
       }, { notMerge: false })
     })
 
-    return () => { disposed = true }
+    return () => {
+      disposed = true
+      chartInstance.current?.dispose()
+      chartInstance.current = null
+      roRef.current?.disconnect()
+      roRef.current = null
+    }
   }, [history, getValue, label, unit, theme])
 
   return (

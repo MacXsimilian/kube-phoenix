@@ -18,6 +18,7 @@ import BubbleChartIcon from '@mui/icons-material/BubbleChart'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme, alpha } from '@mui/material/styles'
 import { useRouter } from 'next/navigation'
+// gsap is imported eagerly because it powers the animation loop that starts on mount
 import gsap from 'gsap'
 import type { ObservabilityStreamState } from '@/lib/useObservabilityStream'
 import RiversMinimap from '@/components/observability/RiversMinimap'
@@ -514,6 +515,12 @@ export default function ApiRivers({ stream }: Props) {
     return map
   }, [stream.latest])
 
+  const liveRpsMapRef = useRef(liveRpsMap)
+  useEffect(() => { liveRpsMapRef.current = liveRpsMap }, [liveRpsMap])
+
+  const componentStatusMapRef = useRef(componentStatusMap)
+  useEffect(() => { componentStatusMapRef.current = componentStatusMap }, [componentStatusMap])
+
   const litLinks = useMemo(() => new Set(SCENARIO_FLAT[scenario]), [scenario])
 
   const tracedLinks = useMemo(() => {
@@ -648,16 +655,20 @@ export default function ApiRivers({ stream }: Props) {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    canvas.width = canvasW
-    canvas.height = canvasH
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = canvasW * dpr
+    canvas.height = canvasH * dpr
+    canvas.style.width = `${canvasW}px`
+    canvas.style.height = `${canvasH}px`
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    ctx.scale(dpr, dpr)
 
     let spawnAcc = 0
 
     const spawn = (li: number, isAmbient: boolean): RiverParticle => {
       const link = ALL_LINKS[li]
-      const liveRps = liveRpsMap[link.id]?.rps ?? link.rps
+      const liveRps = liveRpsMapRef.current[link.id]?.rps ?? link.rps
       if (isAmbient) {
         return {
           linkIndex: li, progress: 0,
@@ -685,7 +696,7 @@ export default function ApiRivers({ stream }: Props) {
         spawnAcc = 0
         ALL_LINKS.forEach((link, i) => {
           const isActive = effectiveLinks.has(link.id)
-          const liveRps = liveRpsMap[link.id]?.rps ?? link.rps
+          const liveRps = liveRpsMapRef.current[link.id]?.rps ?? link.rps
           if (isActive) {
             const d = liveRps / 120
             if (Math.random() < d * 0.2 * density && particlesRef.current.length < MAX_PARTICLES) {
@@ -772,7 +783,7 @@ export default function ApiRivers({ stream }: Props) {
 
     animFrameRef.current = requestAnimationFrame(animate)
     return () => { cancelAnimationFrame(animFrameRef.current) }
-  }, [effectiveLinks, speed, density, canvasW, canvasH, liveRpsMap])
+  }, [effectiveLinks, speed, density, canvasW, canvasH])
 
   // G: Spawn burst particles on scenario change
   const spawnBurstParticles = useCallback(() => {
@@ -1254,7 +1265,6 @@ export default function ApiRivers({ stream }: Props) {
                   limits={limits}
                   incomingLinks={incoming}
                   outgoingLinks={outgoing}
-                  depthFromEntry={0}
                 />
               )
             })()}

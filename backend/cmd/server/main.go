@@ -105,14 +105,18 @@ func main() {
 	}
 
 	// ── Observability collector ───────────────────────────────────────────
-	obsCollector := observability.NewCollector(st)
+	obsCollector, err := observability.NewCollector(st)
+	if err != nil {
+		slog.Error("observability collector init failed", "err", err)
+		os.Exit(1)
+	}
 	go obsCollector.Start(ctx)
 
 	retentionDays := parseIntEnv("AUDIT_RETENTION_DAYS", 90)
 	startMaintenanceTickers(ctx, st, retentionDays, &tickerWg)
 
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(ctx, st, k8s, policySched, cache)
+	router := api.NewRouter(ctx, st, k8s, policySched, cache, obsCollector)
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
 		Handler:      router,

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/macxsimilian/kube-phoenix/backend/internal/observability"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
@@ -109,17 +108,10 @@ func (h *Handler) streamObservability(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) writeSSEObservability(w http.ResponseWriter, flusher http.Flusher) bool {
-	now := time.Now()
-	from := now.Add(-5 * time.Second)
-	snapshots, err := h.store.QueryMetricSnapshots(from, now, 1)
-	if err != nil || len(snapshots) == 0 {
-		return true // skip this tick
+	payload := h.obsCollector.LatestPayload()
+	if payload == nil {
+		return true
 	}
-
-	thresholds, _ := h.store.ListObservabilityThresholds()
-	collector := observability.NewCollector(h.store)
-	payload := collector.BuildStreamPayload(&snapshots[len(snapshots)-1], thresholds)
-
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return false
@@ -159,17 +151,15 @@ func (h *Handler) getObservabilityHistory(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	duration := to.Sub(from)
-	maxPoints := store.MaxPointsForRange(duration)
+	maxPoints := store.MaxPointsForRange(to.Sub(from))
 
-	snapshots, err := h.store.QueryMetricSnapshots(from, to, 0)
+	snapshots, err := h.store.QueryMetricSnapshotsDownsampled(from, to, maxPoints)
 	if err != nil {
 		jsonError(w, "query failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	downsampled := store.DownsampleSnapshots(snapshots, maxPoints)
-	jsonOK(w, downsampled)
+	jsonOK(w, snapshots)
 }
 
 // getObservabilityThresholds returns all configured thresholds.
@@ -202,12 +192,22 @@ func (h *Handler) updateObservabilityThreshold(w http.ResponseWriter, r *http.Re
 
 // parseDurationExtended extends time.ParseDuration with "d" (day) support.
 func parseDurationExtended(s string) (time.Duration, error) {
+	var d time.Duration
 	if len(s) > 1 && s[len(s)-1] == 'd' {
 		var days int
 		if _, err := fmt.Sscanf(s, "%dd", &days); err != nil {
 			return 0, fmt.Errorf("invalid day duration: %s", s)
 		}
-		return time.Duration(days) * 24 * time.Hour, nil
+		d = time.Duration(days) * 24 * time.Hour
+	} else {
+		var err error
+		d, err = time.ParseDuration(s)
+		if err != nil {
+			return 0, err
+		}
 	}
-	return time.ParseDuration(s)
+	if d <= 0 {
+		return 0, fmt.Errorf("duration must be positive: %s", s)
+	}
+	return d, nil
 }

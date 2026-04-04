@@ -177,6 +177,7 @@ function computeTrafficSegments(
   if (!snapshot) return []
   const http = snapshot.httpRequestRate
   const k8s = snapshot.k8sGetRate + snapshot.k8sPatchRate + snapshot.k8sDeleteRate
+  // Store traffic is estimated as 60% of HTTP rate (no direct metric available)
   const store = snapshot.httpRequestRate * 0.6
   const ws = snapshot.wsActiveConnections
   return [

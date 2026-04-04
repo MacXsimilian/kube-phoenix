@@ -26,22 +26,23 @@ import ErrorTimeline from '@/components/observability/ErrorTimeline'
 
 // ── Lazy eCharts import ─────────────────────────────────────────────────────
 
-let echarts: typeof import('echarts/core') | null = null
-let echartsLoaded = false
+let echartsPromise: Promise<typeof import('echarts/core')> | null = null
 
 async function loadECharts() {
-  if (echartsLoaded) return echarts!
-  const [core, { LineChart, BarChart, ScatterChart, GaugeChart }, { GridComponent, TooltipComponent, LegendComponent, MarkLineComponent }, { CanvasRenderer }] =
-    await Promise.all([
-      import('echarts/core'),
-      import('echarts/charts'),
-      import('echarts/components'),
-      import('echarts/renderers'),
-    ])
-  core.use([LineChart, BarChart, ScatterChart, GaugeChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, CanvasRenderer])
-  echarts = core
-  echartsLoaded = true
-  return core
+  if (!echartsPromise) {
+    echartsPromise = (async () => {
+      const [core, { LineChart, BarChart, ScatterChart, GaugeChart }, { GridComponent, TooltipComponent, LegendComponent, MarkLineComponent }, { CanvasRenderer }] =
+        await Promise.all([
+          import('echarts/core'),
+          import('echarts/charts'),
+          import('echarts/components'),
+          import('echarts/renderers'),
+        ])
+      core.use([LineChart, BarChart, ScatterChart, GaugeChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, CanvasRenderer])
+      return core
+    })()
+  }
+  return echartsPromise
 }
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -224,6 +225,7 @@ function MetricPanel({ config, snapshot, history, threshold, onClick }: MetricPa
   const chartRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chartInstance = useRef<any>(null)
+  const roRef = useRef<ResizeObserver | null>(null)
 
   const value = snapshot ? config.getValue(snapshot) : 0
   const prevValue = history.length >= 2 ? config.getValue(history[history.length - 2]) : value
@@ -248,12 +250,19 @@ function MetricPanel({ config, snapshot, history, threshold, onClick }: MetricPa
         chartInstance.current = ec.init(chartRef.current, undefined, { renderer: 'canvas' })
         const ro = new ResizeObserver(() => chartInstance.current?.resize())
         ro.observe(chartRef.current)
+        roRef.current = ro
       }
       const option = buildChartOption(config, history, threshold, theme)
       chartInstance.current!.setOption(option, { notMerge: false })
     })
 
-    return () => { disposed = true }
+    return () => {
+      disposed = true
+      chartInstance.current?.dispose()
+      chartInstance.current = null
+      roRef.current?.disconnect()
+      roRef.current = null
+    }
   }, [config, history, threshold, theme])
 
   return (
@@ -447,6 +456,7 @@ function ExpandedChart({ config, history, threshold }: { config: PanelConfig; hi
   const chartRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chartInstance = useRef<any>(null)
+  const roRef = useRef<ResizeObserver | null>(null)
 
   useEffect(() => {
     if (!chartRef.current || history.length < 2) return
@@ -457,11 +467,18 @@ function ExpandedChart({ config, history, threshold }: { config: PanelConfig; hi
         chartInstance.current = ec.init(chartRef.current, undefined, { renderer: 'canvas' })
         const ro = new ResizeObserver(() => chartInstance.current?.resize())
         ro.observe(chartRef.current)
+        roRef.current = ro
       }
       const option = buildChartOption(config, history, threshold, theme)
       chartInstance.current!.setOption(option, { notMerge: false })
     })
-    return () => { disposed = true }
+    return () => {
+      disposed = true
+      chartInstance.current?.dispose()
+      chartInstance.current = null
+      roRef.current?.disconnect()
+      roRef.current = null
+    }
   }, [config, history, threshold, theme])
 
   return <Box ref={chartRef} sx={{ width: '100%', height: 400 }} />

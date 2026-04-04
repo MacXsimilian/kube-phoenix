@@ -41,6 +41,7 @@ const SCROLL_NEAR_BOTTOM_PX = 40
 const SKELETON_ROW_COUNT = 8
 const COPY_FEEDBACK_MS = 1_500
 const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
+const ANIMATED_ROW_COUNT = 5
 const SPARKLINE_BAR_WIDTH = 4
 const SPARKLINE_MAX_HEIGHT = 16
 
@@ -265,14 +266,15 @@ interface CallListProps {
 }
 
 function CallList({ scrollRef, calls, filtered, now, expandedId, onToggleExpanded, isScrollPaused, scrollToBottom }: CallListProps) {
+  const animatedCutoff = filtered.length - ANIMATED_ROW_COUNT
   return (
     <Box ref={scrollRef} sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
       {calls.length === 0 ? (
         <SkeletonRows />
       ) : (
-        <AnimatePresence initial={false}>
-          {filtered.map((call, index) => (
-            <CallRow
+        <>
+          {filtered.slice(0, Math.max(0, animatedCutoff)).map((call, index) => (
+            <StaticCallRow
               key={call.id}
               call={call}
               now={now}
@@ -281,7 +283,19 @@ function CallList({ scrollRef, calls, filtered, now, expandedId, onToggleExpande
               onToggle={() => onToggleExpanded(call.id)}
             />
           ))}
-        </AnimatePresence>
+          <AnimatePresence initial={false}>
+            {filtered.slice(Math.max(0, animatedCutoff)).map((call, index) => (
+              <CallRow
+                key={call.id}
+                call={call}
+                now={now}
+                isEven={(animatedCutoff + index) % 2 === 0}
+                isExpanded={expandedId === call.id}
+                onToggle={() => onToggleExpanded(call.id)}
+              />
+            ))}
+          </AnimatePresence>
+        </>
       )}
       {isScrollPaused && <NewCallsBanner onClick={scrollToBottom} />}
     </Box>
@@ -510,12 +524,12 @@ interface CallRowProps {
   onToggle: () => void
 }
 
-function CallRow({ call, now, isEven, isExpanded, onToggle }: CallRowProps) {
+function CallRowContent({ call, now, isEven, isExpanded, onToggle }: CallRowProps) {
   const theme = useTheme()
   const isError = call.statusCode >= 400
 
   return (
-    <motion.div initial={rowEntrance.initial} animate={rowEntrance.animate} exit={rowEntrance.exit} transition={rowEntrance.transition} layout>
+    <>
       <Box
         onClick={onToggle}
         sx={{
@@ -538,6 +552,22 @@ function CallRow({ call, now, isEven, isExpanded, onToggle }: CallRowProps) {
       <AnimatePresence>
         {isExpanded && <CallDetailPanel call={call} />}
       </AnimatePresence>
+    </>
+  )
+}
+
+function StaticCallRow(props: CallRowProps) {
+  return (
+    <div>
+      <CallRowContent {...props} />
+    </div>
+  )
+}
+
+function CallRow(props: CallRowProps) {
+  return (
+    <motion.div initial={rowEntrance.initial} animate={rowEntrance.animate} exit={rowEntrance.exit} transition={rowEntrance.transition} layout>
+      <CallRowContent {...props} />
     </motion.div>
   )
 }
@@ -591,8 +621,9 @@ function CallDetailPanel({ call }: { call: ApiCall }) {
 // ── CopyCurlButton ───────────────────────────────────────────────────────
 
 function buildCurlCommand(call: ApiCall): string {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
   const escapedPath = call.path.replace(/'/g, "'\\''")
-  return `curl -X ${call.method} 'http://localhost:8080${escapedPath}'`
+  return `curl -X ${call.method} '${baseUrl}${escapedPath}'`
 }
 
 function CopyCurlButton({ call }: { call: ApiCall }) {

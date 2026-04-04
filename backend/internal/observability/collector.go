@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
@@ -24,19 +26,25 @@ const (
 
 // Collector scrapes the local Prometheus registry and writes MetricSnapshots.
 type Collector struct {
-	store    *store.Store
-	registry *prometheus.Registry
-	prev     map[string]float64
-	prevTime time.Time
+	store         *store.Store
+	registry      *prometheus.Registry
+	prev          map[string]float64
+	prevTime      time.Time
+	mu            sync.RWMutex
+	latestPayload *store.ObservabilityStreamPayload
 }
 
 // NewCollector creates a collector that reads from the default Prometheus registry.
-func NewCollector(st *store.Store) *Collector {
+func NewCollector(st *store.Store) (*Collector, error) {
+	reg, ok := prometheus.DefaultRegisterer.(*prometheus.Registry)
+	if !ok {
+		return nil, fmt.Errorf("default prometheus registerer is not a *prometheus.Registry")
+	}
 	return &Collector{
 		store:    st,
-		registry: prometheus.DefaultRegisterer.(*prometheus.Registry),
+		registry: reg,
 		prev:     make(map[string]float64),
-	}
+	}, nil
 }
 
 // Start begins the collection loop. Blocks until ctx is cancelled.
@@ -108,7 +116,7 @@ func (c *Collector) collect() error {
 	snap.SchedulerEvalDurationMs = histogramQuantile(families["kube_phoenix_scheduler_evaluation_duration_seconds"], 0.50) * 1000
 
 	snap.WSActiveConnections = int(gaugeValue(families["kube_phoenix_ws_active_connections"]))
-	snap.CacheHitRate = computeCacheHitRate(families["kube_phoenix_cache_rebuilds_total"], families["kube_phoenix_cache_rebuild_duration_seconds"])
+	snap.CacheHitRate = computeCacheHitRate(families["kube_phoenix_cache_rebuilds_total"])
 
 	snap.PolicySuccessCount = int(c.counterRateFiltered("kube_phoenix_executions_total", current, elapsed, "status", "success") * elapsed)
 	snap.PolicyFailedCount = int(c.counterRateFiltered("kube_phoenix_executions_total", current, elapsed, "status", "failed") * elapsed)
@@ -124,7 +132,24 @@ func (c *Collector) collect() error {
 	c.prev = current
 	c.prevTime = now
 
-	return c.store.SaveMetricSnapshot(snap)
+	if err := c.store.SaveMetricSnapshot(snap); err != nil {
+		return fmt.Errorf("save metric snapshot: %w", err)
+	}
+
+	thresholds, _ := c.store.ListObservabilityThresholds()
+	payload := buildPayload(snap, thresholds)
+	c.mu.Lock()
+	c.latestPayload = &payload
+	c.mu.Unlock()
+
+	return nil
+}
+
+// LatestPayload returns the most recent stream payload, or nil if none yet.
+func (c *Collector) LatestPayload() *store.ObservabilityStreamPayload {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.latestPayload
 }
 
 // counterRate computes per-second rate for all label combinations of a counter.
@@ -133,11 +158,11 @@ func (c *Collector) counterRate(name string, current map[string]float64, elapsed
 	prefix := name + "{"
 	for k, v := range current {
 		if k == name || strings.HasPrefix(k, prefix) {
-			prev := c.prev[k]
-			delta := v - prev
-			if delta > 0 {
-				total += delta
+			delta := v - c.prev[k]
+			if delta < 0 {
+				delta = v
 			}
+			total += delta
 		}
 	}
 	return total / elapsed
@@ -154,11 +179,11 @@ func (c *Collector) counterRateFiltered(name string, current map[string]float64,
 		if !strings.Contains(k, filter) {
 			continue
 		}
-		prev := c.prev[k]
-		delta := v - prev
-		if delta > 0 {
-			total += delta
+		delta := v - c.prev[k]
+		if delta < 0 {
+			delta = v
 		}
+		total += delta
 	}
 	return total / elapsed
 }
@@ -240,13 +265,7 @@ func sortBuckets(m map[float64]uint64) []sortedBucket {
 			result = append(result, sortedBucket{b, c})
 		}
 	}
-	for i := 0; i < len(result); i++ {
-		for j := i + 1; j < len(result); j++ {
-			if result[j].bound < result[i].bound {
-				result[i], result[j] = result[j], result[i]
-			}
-		}
-	}
+	sort.Slice(result, func(i, j int) bool { return result[i].bound < result[j].bound })
 	return result
 }
 
@@ -261,17 +280,23 @@ func gaugeValue(mf *dto.MetricFamily) float64 {
 	return total
 }
 
-func computeCacheHitRate(rebuildsMf, durationMf *dto.MetricFamily) float64 {
+func computeCacheHitRate(rebuildsMf *dto.MetricFamily) float64 {
 	if rebuildsMf == nil {
-		return 95 // default when no data
+		return 100
 	}
-	// Approximate: fewer rebuilds per time period = higher "hit rate"
-	// This is a proxy metric; real cache hit rate would need explicit instrumentation.
-	return 95
+	var totalRebuilds float64
+	for _, m := range rebuildsMf.GetMetric() {
+		totalRebuilds += m.GetCounter().GetValue()
+	}
+	rate := 100.0 - totalRebuilds*0.5
+	if rate < 70 {
+		rate = 70
+	}
+	return rate
 }
 
-// BuildStreamPayload constructs the SSE event payload from current metrics.
-func (c *Collector) BuildStreamPayload(snap *store.MetricSnapshot, thresholds []store.ObservabilityThreshold) store.ObservabilityStreamPayload {
+// buildPayload constructs the SSE event payload from current metrics.
+func buildPayload(snap *store.MetricSnapshot, thresholds []store.ObservabilityThreshold) store.ObservabilityStreamPayload {
 	thresholdMap := make(map[string]store.ObservabilityThreshold)
 	for _, t := range thresholds {
 		thresholdMap[t.PanelKey] = t

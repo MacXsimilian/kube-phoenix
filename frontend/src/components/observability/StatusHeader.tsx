@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
@@ -49,6 +49,10 @@ const TREND_THRESHOLD_PERCENT = 5
 const STALE_AMBER_SECONDS = 10
 const STALE_RED_SECONDS = 30
 
+const getHttpRate = (s: MetricSnapshot) => s.httpRequestRate
+const getLatencyP99 = (s: MetricSnapshot) => s.httpLatencyP99Ms
+const getErrorRate = (s: MetricSnapshot) => s.totalErrorRate
+
 // -- Main Component ----------------------------------------------------------
 
 export default function StatusHeader({
@@ -95,6 +99,19 @@ export default function StatusHeader({
   )
 }
 
+// -- Shared Clock Hook -------------------------------------------------------
+
+function useSharedClock(): number {
+  const [tick, setTick] = useState(0)
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), CLOCK_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [])
+
+  return tick
+}
+
 // -- Health Section ----------------------------------------------------------
 
 function HealthSection({
@@ -108,15 +125,17 @@ function HealthSection({
   isCritical: boolean
   snapshot: MetricSnapshot | undefined
 }) {
+  const tick = useSharedClock()
+
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
       <StatusDot color={statusColor} pulse={isCritical} />
       <Typography variant="body2" fontWeight={600} sx={{ minWidth: 52 }}>
         {statusLabel}
       </Typography>
-      <LiveClock />
-      <LastUpdatedIndicator snapshot={snapshot} />
-      <UptimeCounter snapshot={snapshot} />
+      <LiveClock tick={tick} />
+      <LastUpdatedIndicator snapshot={snapshot} tick={tick} />
+      <UptimeCounter snapshot={snapshot} tick={tick} />
     </Box>
   )
 }
@@ -141,48 +160,34 @@ function StatusDot({ color, pulse }: { color: string; pulse: boolean }) {
 
 // -- Live Clock --------------------------------------------------------------
 
-function LiveClock() {
-  const [now, setNow] = useState(() => new Date())
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), CLOCK_INTERVAL_MS)
-    return () => clearInterval(id)
-  }, [])
-
+function LiveClock({ tick }: { tick: number }) {
+  void tick
   return (
     <Typography
       variant="caption"
       sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 11, color: 'text.secondary' }}
     >
-      {formatTime(now)}
+      {formatTime(new Date())}
     </Typography>
   )
 }
 
 // -- Last Updated Indicator --------------------------------------------------
 
-function LastUpdatedIndicator({ snapshot }: { snapshot: MetricSnapshot | undefined }) {
+function LastUpdatedIndicator({ snapshot, tick }: { snapshot: MetricSnapshot | undefined; tick: number }) {
   const theme = useTheme()
-  const [secondsAgo, setSecondsAgo] = useState(0)
   const lastTimestampRef = useRef<string | undefined>(undefined)
 
   useEffect(() => {
     lastTimestampRef.current = snapshot?.timestamp
   }, [snapshot?.timestamp])
 
-  useEffect(() => {
-    const tick = () => {
-      if (!lastTimestampRef.current) return
-      const elapsed = Math.floor((Date.now() - new Date(lastTimestampRef.current).getTime()) / 1000)
-      setSecondsAgo(Math.max(0, elapsed))
-    }
-    tick()
-    const id = setInterval(tick, CLOCK_INTERVAL_MS)
-    return () => clearInterval(id)
-  }, [])
-
   if (!snapshot) return null
 
+  void tick
+  const secondsAgo = lastTimestampRef.current
+    ? Math.max(0, Math.floor((Date.now() - new Date(lastTimestampRef.current).getTime()) / 1000))
+    : 0
   const freshnessColor = resolveFreshnessColor(secondsAgo, theme)
 
   return (
@@ -203,15 +208,8 @@ function resolveFreshnessColor(seconds: number, theme: Theme): string {
 
 // -- Uptime Counter ----------------------------------------------------------
 
-function UptimeCounter({ snapshot }: { snapshot: MetricSnapshot | undefined }) {
-  const [, setTick] = useState(0)
-
-  useEffect(() => {
-    if (!snapshot) return
-    const id = setInterval(() => setTick((t) => t + 1), CLOCK_INTERVAL_MS)
-    return () => clearInterval(id)
-  }, [snapshot])
-
+function UptimeCounter({ snapshot, tick }: { snapshot: MetricSnapshot | undefined; tick: number }) {
+  void tick
   const label = snapshot ? formatUptime(snapshot.timestamp) : '--'
 
   return (
@@ -234,7 +232,7 @@ function KpiSection({
   history: MetricSnapshot[]
 }) {
   const theme = useTheme()
-  const throughputValues = useLast20Values(history, (s) => s.httpRequestRate)
+  const throughputValues = useLast20Values(history, getHttpRate)
   const latencyP99 = snapshot?.httpLatencyP99Ms ?? 0
   const dbActive = snapshot ? deriveDbPoolActive(snapshot.httpRequestRate) : 0
   const errorRate = snapshot?.totalErrorRate ?? 0
@@ -242,9 +240,9 @@ function KpiSection({
   const latencyColor = resolveLatencyColor(latencyP99, theme)
   const errorHighlight = errorRate > 0
 
-  const throughputTrend = useTrend(history, (s) => s.httpRequestRate, false)
-  const latencyTrend = useTrend(history, (s) => s.httpLatencyP99Ms, true)
-  const errorTrend = useTrend(history, (s) => s.totalErrorRate, true)
+  const throughputTrend = useTrend(history, getHttpRate, false)
+  const latencyTrend = useTrend(history, getLatencyP99, true)
+  const errorTrend = useTrend(history, getErrorRate, true)
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -263,7 +261,8 @@ function KpiSection({
         trend={latencyTrend}
       />
       <MiniStatCard
-        label="DB POOL"
+        label="DB POOL (est.)"
+        title="Estimated from request rate"
         value={snapshot ? `${dbActive}/${DB_POOL_MAX}` : '--'}
         currentRaw={dbActive}
       />
@@ -287,6 +286,7 @@ function MiniStatCard({
   sparkline,
   currentRaw,
   trend,
+  title,
 }: {
   label: string
   value: string
@@ -294,6 +294,7 @@ function MiniStatCard({
   sparkline?: number[]
   currentRaw?: number
   trend?: TrendInfo | null
+  title?: string
 }) {
   const theme = useTheme()
   const flashColor = useValueFlash(currentRaw)
@@ -303,6 +304,7 @@ function MiniStatCard({
 
   return (
     <Box
+      title={title}
       sx={{
         display: 'flex',
         flexDirection: 'column',
