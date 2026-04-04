@@ -259,17 +259,22 @@ Prototype pages use the `.proto.tsx` file extension (e.g., `page.proto.tsx`). Ne
 frontend/src/app/prototypes/
   page.proto.tsx              # Index page with card grid of all prototypes
   layout.proto.tsx            # Shared layout wrapper
-  phoenix-rise/page.proto.tsx # A1: Skeleton screen → staggered reveal
-  staggered-reveal/...        # A3: Dashboard card cascade
-  heartbeat-pulse/...         # B1: Cluster status pulse with health states
-  stream-glow/...             # B2: Real-time metric bar updates
-  log-waterfall/...           # B4: Log stream with slide-in and error highlighting
-  phoenix-lifecycle/...       # C1: Pod state machine (Pending, Running, CrashLoopBackOff, ...)
-  rollout-wave/...            # C3: Execution progress bar with barberpole and glow tip
-  sleep-wake-morph/...        # C4: Policy state transitions with shimmer
-  drawer-slide/...            # D4: Spring physics drawer with staggered content
-  sidebar-morph/...           # D5: Collapsible sidebar with label fade
+  <name>/page.proto.tsx       # One directory per prototype
 ```
+
+The gallery currently contains 102 prototypes across the following categories:
+
+| Category | Count | Examples |
+| :------- | :---: | :------- |
+| Flagship | 20 | 3D Cluster Topology, Execution Theater, Multi-Region Globe, Policy DNA Sequencer, Workload Symphony, Cluster Nervous System, Incident Cinema, Carbon Footprint, Physics Pod Collider, Cytoscape Topology |
+| Data Viz | 47 | Prometheus Dashboard, Namespace Sankey, Execution Heatmap Calendar, Chord Dependency Map, Voronoi Namespaces, Polar Timeline, Sigma Mega Cluster, Observable Stream, Recharts Sparkboard, Internal API Rivers |
+| Micro-Interactions | 24 | Magnetic Nav Icons, Liquid Toggle, Particle Search, Replica Slot Machine, Glitch Error State, Morphing Status Badge, Floating Metric Bubbles, Confetti Success, Haptic Buttons, Data Flow Rivers |
+| Onboarding | 3 | Phoenix Rise, Staggered Reveal, Skeleton Loading |
+| Real-Time | 3 | Heartbeat Pulse, Stream Glow, Log Waterfall |
+| State Transitions | 3 | Phoenix Lifecycle, Rollout Wave, Sleep/Wake Morph |
+| Delight | 5 | Phoenix Moment, Danger Zone, Empty State Egg, Guardrails Shield, Wake Ripple |
+
+Technologies used across prototypes: Three.js / React Three Fiber, GSAP, Framer Motion, eCharts, Canvas 2D, SVG, Web Audio API, CSS 3D transforms.
 
 To add a new prototype, create a directory under `prototypes/` with a `page.proto.tsx` file and add an entry to the `PROTOTYPES` array in `page.proto.tsx`.
 
