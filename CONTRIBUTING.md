@@ -105,9 +105,9 @@ kube-phoenix/
   frontend/mock-api/                # Modular mock API server with route files
   frontend/src/
     app/                          # Next.js pages
-    components/                   # UI components by domain (audit, cluster, common, guardrails,
-                                  #   history, policies, settings, shared)
-    lib/                          # API client (apiFetch), auth context, types, shared hooks, utilities
+    components/                   # UI components by domain (audit, auth, cluster, common, guardrails,
+                                  #   history, layout, observability, overview, policies, settings, shared)
+    lib/                          # API client (apiFetch), auth context, types, rbac, observability-types, motion/, shared hooks, utilities
     theme/                        # MUI theme (dark + light)
   helm/kube-phoenix/              # Helm chart
   examples/                       # Example Helm value overlays
@@ -245,8 +245,8 @@ Never create Git tags manually -- release-please owns all tags and releases.
 ## Code of Conduct
 
 All participants are expected to treat each other with respect. Constructive criticism
-of code and ideas is welcome; personal attacks are not. See
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for the full policy.
+of code and ideas is welcome; personal attacks are not. This project follows standard
+open-source conduct guidelines.
 
 ---
 

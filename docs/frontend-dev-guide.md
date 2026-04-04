@@ -55,10 +55,12 @@ The dev server proxies API requests to the Go backend (default `http://localhost
 frontend/
   mock-api/                     # Standalone mock API server for Mode 3 (frontend-only) development
     data.mjs                    # Seed data (policies, workloads, users, etc.)
+    dev.mjs                     # Dev launcher script
     server.mjs                  # HTTP server entry point (port 4444)
     routes/                     # Route handler modules (*.mjs)
   src/
     app/                        # Next.js App Router pages
+      page.tsx                  # Root redirect
       layout.tsx                # Root layout: Inter font, <Providers> wrapper
       providers.tsx             # Provider stack (QueryClient, Theme, Auth)
       overview/page.tsx         # /overview -- dashboard
@@ -71,10 +73,12 @@ frontend/
       users/page.tsx            # /users -- user management (admin)
       settings/page.tsx         # /settings -- two-column grid: account, appearance, OIDC, sessions, cluster, DB reset, about
       guardrails/page.tsx       # /guardrails -- guardrails editor
+      observability/page.tsx    # /observability -- observability center
+      observability/[component]/page.tsx  # /observability/{component} -- component drill-down
       prototypes/              # Animation prototypes (dev-mock only, uses .proto.tsx extension)
         page.proto.tsx         # Index page with prototype card grid
         layout.proto.tsx       # Shared layout
-        */page.proto.tsx       # Individual prototype demos (10 total)
+        */page.proto.tsx       # Individual prototype demos (77 total)
     components/
       layout/
         Sidebar.tsx             # Navigation sidebar (permanent on desktop, temporary on mobile)
@@ -133,6 +137,7 @@ frontend/
         LabeledSwitch.tsx       # Shared labeled toggle: Switch + bold title + caption description
         ConfirmDialog.tsx       # Shared confirmation dialog (title, message, confirm/cancel buttons)
         CenteredSpinner.tsx     # Centered CircularProgress spinner for loading states
+        TriggerModeDialog.tsx   # Plan/apply mode selection dialog for policy triggers
       shared/
         StatusChip.tsx          # Reusable status chip with color mapping
         TriggerChip.tsx         # Reusable chip displaying execution trigger type with icon and color
@@ -153,6 +158,7 @@ frontend/
         ActiveSessionsCard.tsx  # Active sessions list (fetches from GET /api/auth/sessions)
         ClusterConnectionCard.tsx # Kubernetes cluster connection details
         AboutBar.tsx            # Version and uptime footer bar
+      observability/              # Observability center components
       ErrorBoundary.tsx         # React error boundary
     lib/
       api.ts                    # Centralized fetch wrapper + all API functions
@@ -166,6 +172,12 @@ frontend/
       windowUtils.ts            # Sleep window evaluation, timezone handling, timeline math
       timelineUtils.ts          # Day labels and time-range-to-segment conversion for timelines
       rbac.ts                   # Permission checking helpers
+      observability-types.ts    # TypeScript interfaces for observability metrics and streams
+      useObservabilityStream.ts # SSE hook for observability data streams
+      motion/                   # Motion design tokens and animation utilities
+        echartsTheme.ts         # ECharts theme configuration
+        gsapAnimations.ts       # GSAP animation presets
+        variants.ts             # Framer Motion variant definitions
       themeMode.tsx             # ThemeModeProvider context (light/dark/system + localStorage)
       queryClient.ts            # TanStack QueryClient singleton with default options
       useClusterStream.ts       # SSE hook: cluster/stream subscription with reconnect + TanStack cache injection
@@ -290,6 +302,7 @@ interface AuthState {
   oidcEnabled: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  refreshUser: () => Promise<void>
 }
 ```
 
@@ -329,13 +342,13 @@ The backend returns a `permissions` string array on the user object. The fronten
 
 ```typescript
 // lib/rbac.ts
-export const canEditSchedules    = (p?: string[]) => hasPerm(p, 'schedule.edit')
-export const canTriggerSchedules = (p?: string[]) => hasPerm(p, 'schedule.trigger')
-export const canEditGuardrails   = (p?: string[]) => hasPerm(p, 'guardrail.edit')
-export const canManageUsers      = (p?: string[]) => hasPerm(p, 'user.manage')
-export const canResetDB          = (p?: string[]) => hasPerm(p, 'admin.reset_db')
-export const canEmergencyScale   = (p?: string[]) => hasPerm(p, 'admin.emergency_scale')
-export const canViewAudit        = (p?: string[]) => hasPerm(p, 'audit.view')
+export const canEditSchedules    = (permissions?: string[]) => hasPerm(permissions, 'schedule.edit')
+export const canTriggerSchedules = (permissions?: string[]) => hasPerm(permissions, 'schedule.trigger')
+export const canEditGuardrails   = (permissions?: string[]) => hasPerm(permissions, 'guardrail.edit')
+export const canManageUsers      = (permissions?: string[]) => hasPerm(permissions, 'user.manage')
+export const canResetDB          = (permissions?: string[]) => hasPerm(permissions, 'admin.reset_db')
+export const canEmergencyScale   = (permissions?: string[]) => hasPerm(permissions, 'admin.emergency_scale')
+export const canViewAudit        = (permissions?: string[]) => hasPerm(permissions, 'audit.view')
 ```
 
 Usage pattern: pages call `useAuth()` to get the user, then pass boolean `canEdit`/`canTrigger` props to child components that disable buttons or hide sections. Pages requiring specific permissions (Audit, Users) also perform a navigation guard: `if (user && !canViewAudit(user.permissions)) router.replace('/overview')`.
@@ -387,6 +400,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T>
 
 | Function | Method | Endpoint |
 |:---------|:-------|:---------|
+| `getClusterInfo()` | GET | `/api/cluster/info` |
 | `getWorkloads()` | GET | `/api/cluster/workloads` |
 | `getNodes()` | GET | `/api/cluster/nodes` |
 | `getNodePods(nodeName)` | GET | `/api/cluster/nodes/{nodeName}/pods` |
@@ -394,6 +408,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T>
 | `getWorkloadPods(ns, kind, name)` | GET | `/api/cluster/workloads/{ns}/{kind}/{name}/pods` |
 | `getPodLogs(ns, pod, container?, tail?, prev?)` | GET | `/api/cluster/pods/{ns}/{pod}/logs` |
 | `streamPodLogs(ns, pod, container?, tail?, signal?)` | GET | `/api/cluster/pods/{ns}/{pod}/logs?follow=true` |
+| `getVersionInfo()` | GET | `/api/version` |
 
 **Policies:**
 
@@ -404,8 +419,8 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T>
 | `createPolicy(data)` | POST | `/api/policies` |
 | `updatePolicy(id, data)` | PUT | `/api/policies/{id}` |
 | `deletePolicy(id)` | DELETE | `/api/policies/{id}` |
-| `triggerPolicySleep(id)` | POST | `/api/policies/{id}/sleep` |
-| `triggerPolicyWake(id)` | POST | `/api/policies/{id}/wake` |
+| `triggerPolicySleep(id, mode?: 'plan' \| 'apply')` | POST | `/api/policies/{id}/sleep` |
+| `triggerPolicyWake(id, mode?: 'plan' \| 'apply')` | POST | `/api/policies/{id}/wake` |
 
 **Policy Executions:**
 
@@ -437,6 +452,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T>
 | Function | Method | Endpoint |
 |:---------|:-------|:---------|
 | `getOIDCConfig()` | GET | `/api/auth/oidc/config` |
+| `getSessions()` | GET | `/api/auth/sessions` |
 
 **Audit:**
 
@@ -832,7 +848,7 @@ A summary line above the panel shows the count of changed fields.
 
 **Page:** `src/app/settings/page.tsx`
 
-Full-width two-column Grid layout composing: `AccountSettings`, `AppearanceSettings`, `OIDCStatusCard`, `ActiveSessionsCard`, `ClusterConnectionCard`, `DatabaseSettings`, and `AboutBar`.
+Uses inline collapsible Section components with real API data. Imports only `DatabaseSettings` (with `bare` prop). Sections: Profile & Identity, Cluster & Connection, Appearance & Preferences, Security & Sessions, System Pulse, Danger Zone, About.
 
 #### AccountSettings
 
@@ -1275,7 +1291,7 @@ Animation prototypes are interactive demos for evaluating proposed UI animations
 
 Prototype pages use a `.proto.tsx` file extension instead of `.tsx`. The `next.config.mjs` conditionally includes `proto.tsx` in `pageExtensions` only when `NEXT_PUBLIC_PROTOTYPES=1` is set. The `dev-mock` launcher sets this automatically. In production builds, Next.js ignores `.proto.tsx` files entirely -- no routes, no HTML, no JS bundles are generated.
 
-The `prototypes/` directory is also gitignored (`**/prototypes/` in the root `.gitignore`), so prototype files are not committed to the repository.
+Prototypes use the `.proto.tsx` extension which is conditionally included in Next.js page extensions only when `NEXT_PUBLIC_PROTOTYPES=1`. Prototype files are committed to the repository.
 
 ### Adding a new prototype
 

@@ -205,7 +205,10 @@ The `range` parameter supports: `1m`, `5m`, `15m`, `1h`, `6h`, `1d`, `3d`. Respo
 | Range | Resolution |
 | :---- | :--------- |
 | 1m | 1s (60 points) |
+| 5m | 1s (300 points) |
+| 15m | 3s (300 points) |
 | 1h | 15s (240 points) |
+| 6h | 1m (360 points) |
 | 1d | 1m (1440 points) |
 | 3d | 5m (864 points) |
 

@@ -7,13 +7,13 @@
 | Variable | Default | Required | Description |
 | :------- | :------ | :------- | :---------- |
 | `DATABASE_URL` | -- | Yes | PostgreSQL DSN (e.g., `host=localhost user=kube_phoenix password=secret dbname=kube_phoenix port=5432 sslmode=disable`) |
-| `ADMIN_USER` | -- | No | Username for the seeded admin account (first startup only). When unset, authentication is disabled (dev mode). |
+| `ADMIN_USER` | -- | No | Username for the seeded admin account (first startup only). When unset, no admin user is seeded and CORS allows all origins. |
 | `ADMIN_PASSWORD` | -- | No | Password for the seeded admin account (first startup only) |
 | `SESSION_IDLE_TIMEOUT` | `8h` | No | Sliding-window session timeout, extended on each request |
 | `SESSION_MAX_LIFETIME` | `24h` | No | Absolute session hard cap, regardless of activity |
 | `AUDIT_RETENTION_DAYS` | `90` | No | Auto-delete audit entries older than this many days (`0` = keep forever) |
 | `COOKIE_SECURE` | `true` | No | Set to `false` for HTTP-only dev environments |
-| `CORS_ALLOWED_ORIGIN` | -- | No | Allowed CORS origin (e.g., `https://kube-phoenix.example.com`). Unset = same-origin only. In dev mode, CORS allows all origins. |
+| `CORS_ALLOWED_ORIGIN` | -- | No | Allowed CORS origin (e.g., `https://kube-phoenix.example.com`). Unset = same-origin only. When `ADMIN_USER` is unset, CORS allows all origins regardless of this value. |
 | `KUBECONFIG` | -- | No | Path to kubeconfig file. Fallback when in-cluster config is unavailable. |
 | `CLUSTER_NAME` | -- | No | Human-readable cluster name returned by `GET /api/cluster/info`. When unset, the endpoint omits the field. |
 | `K8S_QPS` | `100` | No | Sustained K8s API requests per second (client-go default: 5). Higher values speed up large scaling events but increase control plane load. |
@@ -58,7 +58,7 @@ kube-phoenix uses session-based authentication with HTTP-only cookies. Sessions 
 
 **Keycloak OIDC.** Set `OIDC_ISSUER_URL` to enable SSO. Uses Authorization Code flow with PKCE (S256). AD groups from the ID token are mapped to application roles via `OIDC_ROLE_ADMIN_GROUPS` and `OIDC_ROLE_OPERATOR_GROUPS`. Unmatched users default to `viewer`. OIDC users are auto-provisioned on first login.
 
-When neither `ADMIN_USER` nor `ADMIN_PASSWORD` is set, the application runs without authentication (dev mode).
+When neither `ADMIN_USER` nor `ADMIN_PASSWORD` is set, no admin user is seeded (log in is not possible via local auth) and CORS allows all origins.
 
 ### Keycloak Client Setup
 

@@ -63,7 +63,7 @@ type ScheduledException struct {
     EndsAt          time.Time
     TicketRef       string     // JIRA-123, GH-456, etc.
     Reason          string
-    SleepOnEnd      bool       // return to policy state when exception ends
+    SleepOnEnd      *bool      // return to policy state when exception ends
     NamespaceFilter string
     LabelSelector   string
     WorkloadTargets string     // JSON array of WorkloadTarget
@@ -228,7 +228,7 @@ The `IntendedState()` function in `policy_engine.go` resolves the intended state
 
 For each enabled policy, `evaluatePolicy()` loads active exceptions from the database, computes `IntendedState()`, and routes to one of three sub-functions:
 
-- **`reconcilePolicy`** — current state matches intended. When `reconcileWhileAwake` is enabled and the policy is awake, delegates to `reconcileAwakePolicy` which detects drift (open snapshots needing restore) and runs a corrective wake if needed. When `enforceSleep` is enabled and the policy is sleeping, delegates to `reconcileSleepingPolicy` which detects external scale-ups during the sleep window (via targeted K8s GETs against open snapshots) and runs a corrective sleep to re-scale drifted workloads back to zero.
+- **`reconcilePolicy`** — current state matches intended. When `reconcileWhileAwake` is enabled and the policy is awake, delegates to `reconcileAwakePolicy` which detects drift (open snapshots needing restore) and runs a corrective wake if needed. When `enforceSleep` is enabled and the policy is sleeping, delegates to `enforceSleepPolicy` which detects external scale-ups during the sleep window (via targeted K8s GETs against open snapshots) and runs a corrective sleep to re-scale drifted workloads back to zero.
 - **`resetStuckTransition`** — `CurrentState == "transitioning"` for longer than the policy's execution timeout plus a 5-minute grace period (minimum 15 minutes). Resets to `unknown`.
 - **`executeTransition`** — state mismatch. Respects the `autoWake` gate and triggers a sleep or wake execution.
 
@@ -300,13 +300,14 @@ sequenceDiagram
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/policies` | List all policies |
-| `GET` | `/api/policies/:id` | Get a single policy |
+| `GET` | `/api/policies/{id}` | Get a single policy |
 | `POST` | `/api/policies` | Create a policy |
 | `PUT` | `/api/policies/{id}` | Update a policy (partial) |
-| `DELETE` | `/api/policies/:id` | Delete a policy |
-| `POST` | `/api/policies/:id/sleep` | Trigger immediate sleep |
-| `POST` | `/api/policies/:id/wake` | Trigger immediate wake |
-| `POST` | `/api/policies/:id/cancel` | Cancel a running execution |
+| `DELETE` | `/api/policies/{id}` | Delete a policy |
+| `POST` | `/api/policies/{id}/sleep` | Trigger immediate sleep |
+| `POST` | `/api/policies/{id}/wake` | Trigger immediate wake |
+| `POST` | `/api/policies/{id}/cancel` | Cancel a running execution |
+| `GET` | `/api/policies/{id}/snapshots` | List workload snapshots for a policy |
 
 ### Create Policy Request
 

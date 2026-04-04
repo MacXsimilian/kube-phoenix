@@ -64,7 +64,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 **Purpose:** Define all HTTP endpoints, the middleware stack, request parsing, validation, and JSON response formatting.
 
 **Key types:**
-- `Handler` -- central struct holding `*store.Store`, `*k8s.Client`, `*scheduler.PolicyScheduler`, `*k8s.ClusterCache`, rate limiters, session timeouts, `*AuditWriter`, OIDC config, and `cookieSecure` (derived from `COOKIE_SECURE` env var, defaults to true). Every handler method is a method on `Handler`.
+- `Handler` -- central struct holding `*store.Store`, `*k8s.Client`, `*scheduler.PolicyScheduler`, `*k8s.ClusterCache`, `*observability.Collector`, rate limiters, session timeouts (`idleTimeout`, `maxLifetime`), `*AuditWriter`, OIDC config, and `cookieSecure` (derived from `COOKIE_SECURE` env var, defaults to true). Every handler method is a method on `Handler`.
 - `AuditWriter` -- async buffered writer that drains a 4096-entry channel and persists `store.AuditLog` records in the background. Security-critical actions (`auth.*`, `user.*`, `admin.*`) bypass the channel and write synchronously via `WriteSync` to guarantee delivery.
 - `policyResponse` -- wraps `store.Policy` with computed `NextTransitionAt` and deserialized `SleepWindows`.
 - `WorkloadResponse` -- typed JSON response shape for cluster workloads (in `cluster.go`).
@@ -75,7 +75,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 | File | Handlers |
 |:-----|:---------|
-| `router.go` | `NewRouter()` -- builds the full Chi router with middleware stack; delegates to `registerAuthRoutes`, `registerPolicyRoutes`, `registerClusterRoutes`, `registerAdminRoutes` |
+| `router.go` | `NewRouter()` -- builds the full Chi router with middleware stack; delegates to `registerAuthRoutes`, `registerPolicyRoutes`, `registerClusterRoutes`, `registerAdminRoutes`, `registerObservabilityRoutes` |
 | `auth.go` | `login` (delegates to `loginRateLimited`, `verifyCredentials`, `completeLogin`), `logout`, `me`, `listSessions`, `changePassword`, `updateUserSettings`, `createSessionCookies`, `clearSessionCookies` |
 | `oidc.go` | `oidcConfig`, `oidcLogin`, `oidcCallback`, `oidcExchangeAndVerify`, `oidcExtractClaims` |
 | `policies.go` | `listPolicies`, `getPolicy`, `createPolicy`, `updatePolicy`, `deletePolicy`, `triggerPolicySleep`, `triggerPolicyWake`, `cancelPolicyExecution`, `requirePolicy`, `triggerPolicyAction` (shared helper for manual sleep/wake triggers) |
@@ -93,11 +93,12 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `helpers.go` | `jsonOK`, `jsonCreated`, `jsonError`, `jsonInternalError`, `parseID`, `parsePageSize`, `reloadScheduler`, `handleStoreError`, `requireUser`, `nonNilMap` |
 | `cluster_info.go` | `getClusterInfo` -- returns Kubernetes API server URL, version, auth mode, and cluster name |
 | `version.go` | `getVersion` -- returns build version (set via `-ldflags`), Go version, and server uptime. No auth required. |
+| `observability.go` | `registerObservabilityRoutes` -- SSE stream, history, threshold CRUD |
 | `errmsg.go` | Error message constants (`ErrInvalidID`, `ErrNotFound`, `ErrInvalidBody`), field length limits (`maxNameLen`, `maxDescriptionLen`, `maxReasonLen`, `maxTicketRefLen`, `maxLabelSelectorLen`), and valid enum sets (`validExecStatuses`, `validExceptionStatuses`, `validExceptionTypes`) |
 
 **Validation helpers:** `validatePolicyMode` and `validatePolicyTimezone` are shared functions used by both `createPolicy` and `updatePolicy` to enforce valid mode and timezone values.
 
-**Dependencies:** `store`, `k8s`, `scheduler`, `auth`, `middleware`, `metrics`, `policy`, `nodeutil`, `stringutil`, `web`, `docs`.
+**Dependencies:** `store`, `k8s`, `scheduler`, `auth`, `middleware`, `metrics`, `policy`, `nodeutil`, `stringutil`, `web`, `docs`, `observability`.
 
 ---
 
@@ -111,7 +112,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `PolicyState` -- string enum: `"sleeping"`, `"awake"`, `"unknown"`.
 - `evalContext` -- per-tick configuration passed through evaluation functions: `now`, `autoWake`, `reconcileWhileAwake`, `exceptionsByPolicy`.
 - `Broker` -- in-process pub/sub for execution log lines (see `broker.go`).
-- `SchedulerConfig` -- groups the three runtime-tunable settings: `TickInterval`, `AutoWake`, `ReconcileWhileAwake`.
+- `SchedulerConfig` -- groups the four runtime-tunable settings: `TickInterval`, `AutoWake`, `ReconcileWhileAwake`, `EnforceSleep`.
 
 **Key functions:**
 - `NewPolicyScheduler(st, k8sClient, cfg SchedulerConfig)` -- constructor.
@@ -128,13 +129,13 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `executeAndFinalize(ctx, policy, direction, execID, startedAt)` -- extracted goroutine body: creates a timeout context, stores the cancel function in `inflightCancels`, creates the log channel, and delegates to `executeScaler` (sleep/wake dispatch) and `drainLogChannel` (batched log persistence + real-time WebSocket publish). Post-execution cleanup is delegated to `finalizeExecution` (determines final status -- `success`, `failed`, or `interrupted` when the context was cancelled -- calls `FinishPolicyExecution`), `recordExecutionMetrics` (Prometheus counters and histograms), and `updatePolicyState` (sets `sleeping`, `awake`, or `unknown` in both DB and cache).
 - `evaluateAll()` -- snapshots the cached policy map, batch-fetches active exceptions (`ListActiveExceptionsForPolicies`) for all enabled policies, builds an `evalContext`, and calls `evaluatePolicy` for each.
 - `evaluatePolicy(cp, ctx)` -- computes `IntendedState` and routes to one of three paths: `reconcilePolicy` (current matches intended), `resetStuckTransition` (stuck in transitioning), or `executeTransition` (state change needed).
-- `reconcilePolicy(p, ctx)` -- called when a policy is already in its intended state. When `reconcileWhileAwake` is enabled and the policy is awake, delegates to `reconcileAwakePolicy`.
+- `reconcilePolicy(p, ctx)` -- called when a policy is already in its intended state. When `reconcileWhileAwake` is enabled and the policy is awake, delegates to `reconcileAwakePolicy`. When `enforceSleep` is enabled and the policy is sleeping, delegates to `enforceSleepPolicy`.
 - `reconcileAwakePolicy(p, now)` -- detects drift from failed wakes by counting open snapshots that need restoring (`CountOpenSnapshotsForRestore`). If drift is found and the per-policy backoff (5 minutes) has elapsed, runs a corrective wake with trigger `"reconcile"`. Bypasses the `autoWake` gate.
-- `reconcileSleepingPolicy(p, now)` -- enforce sleep drift detection. When `enforceSleep` is enabled and the policy is sleeping, uses targeted K8s GETs against open snapshots (`HasDriftedFromSleep`) to detect workloads that were externally scaled up during a sleep window. If drift is found and the per-policy backoff (5 minutes) has elapsed, runs a corrective sleep with trigger `"enforce_sleep"`. Respects system namespace guardrails and active `stay_awake` exceptions.
+- `enforceSleepPolicy(p, now)` -- enforce sleep drift detection. When `enforceSleep` is enabled and the policy is sleeping, uses targeted K8s GETs against open snapshots (`HasDriftedFromSleep`) to detect workloads that were externally scaled up during a sleep window. If drift is found and the per-policy backoff (5 minutes) has elapsed, runs a corrective sleep with trigger `"enforce_sleep"`. Respects system namespace guardrails and active `stay_awake` exceptions.
 - `executeTransition(p, intended, ctx)` -- handles scheduled sleep/wake transitions, respecting the `autoWake` gate and the failed-transition backoff (5 minutes between retries after a failure).
 - `stuckTimeout(p)` -- computes the stuck-transition timeout for a policy from its `TimeoutMinutes` plus a 5-minute grace period, floored at 15 minutes. Prevents legitimate long drains from being falsely reset.
 - `resetStuckTransition(p, now)` -- resets policies stuck in `transitioning` for longer than `stuckTimeout(p)` back to `unknown`.
-- `UpdateSettings(cfg SchedulerConfig) error` -- apply new eval interval, auto-wake, and reconcile-while-awake at runtime; restarts the ticker goroutine only if the interval changed.
+- `UpdateSettings(cfg SchedulerConfig) error` -- apply new eval interval, auto-wake, reconcile-while-awake, and enforce-sleep at runtime; restarts the ticker goroutine only if the interval changed.
 
 **Policy Engine (`policy_engine.go`):**
 - `StateInput` -- struct grouping windows, timezone, exceptions, and time for `IntendedState` evaluation.
@@ -260,6 +261,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `users.go` | `OIDCUserInfo` struct (bundles OIDC claims for `GetOrCreateOIDCUser`), `CreateUser`, `GetUserByID`, `GetUserByUsername` (scoped to `source=local`), `ListUsers`, `UpdateUser`, `DeleteUser` (relies on FK CASCADE for session cleanup), `UpdateLastLogin`, `ChangePassword`, `UpdateUserTimezone`, `GetOrCreateOIDCUser(OIDCUserInfo)`, `HashPassword`, `CheckPassword`, `DeleteUserSessions`. |
 | `sessions.go` | `GenerateToken`, `CreateSession`, `GetSessionByToken` (with expiry check), `ExtendSession` (sliding window capped at `max_expires_at`), `DeleteSession`, `DeleteUserSessions`, `CleanExpiredSessions`, `CountActiveSessions`. |
 | `audit.go` | `CreateAuditLog`, `ListAuditLogs` (filtered, paginated), `CleanOldAuditLogs`. |
+| `observability.go` | Metric snapshots, downsampling, threshold CRUD, pruning. |
 
 **Dependencies:** `gorm.io/gorm`, `gorm.io/driver/postgres`, `golang.org/x/crypto/bcrypt`, `policy` (for migration helper).
 
@@ -336,6 +338,18 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 ---
 
+### `internal/observability` -- Metrics Collector and Call Recorder
+
+**Purpose:** Application-level observability primitives that sit above Prometheus metrics.
+
+**Key files:**
+- `collector.go` -- metrics collector that samples system metrics on a configurable interval, maintains a ring buffer of historical snapshots, and exposes an SSE stream for real-time dashboard consumption.
+- `call_recorder.go` -- API call recorder that tracks route-level request latency, providing per-endpoint timing data for the observability dashboard.
+
+**Dependencies:** `store`, `metrics`.
+
+---
+
 ### `internal/metrics` -- Prometheus Metrics
 
 **File:** `backend/internal/metrics/metrics.go`
@@ -409,6 +423,7 @@ type Guardrails struct {
     SchedulerEvalInterval        string    // parsed by ParseSchedulerEvalInterval(); default "30s"
     SchedulerAutoWake            bool      // default true
     SchedulerReconcileWhileAwake bool      // default true
+    SchedulerEnforceSleep        bool      // default false; re-enforce sleep on drifted workloads
     ScalingConcurrency           int       // default 10; max concurrent workload scale operations
     ProtectCriticalPodNodes      bool      // default true; protect nodes running system-node-critical / system-cluster-critical pods
     UpdatedAt                   time.Time
@@ -523,7 +538,7 @@ type PolicyExecution struct {
     ID         uint
     PolicyID   uint       // FK -> policies (CASCADE)
     Direction  string     // "sleep" | "wake"
-    Trigger    string     // "scheduled" | "manual_sleep" | "manual_wake" | "recovery" | "reconcile" | "exception_start" | "exception_end"
+    Trigger    string     // "scheduled" | "manual_sleep" | "manual_wake" | "recovery" | "reconcile" | "enforce_sleep" | "exception_start" | "exception_end"
     StartedAt  time.Time
     FinishedAt *time.Time
     Status     string     // "running" | "success" | "failed" | "interrupted" | "skipped"

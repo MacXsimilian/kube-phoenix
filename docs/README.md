@@ -12,6 +12,7 @@
 | Document | Description |
 | :------- | :---------- |
 | [Troubleshooting](troubleshooting.md) | Diagnose common issues organized by symptom |
+| [Observability Center](observability.md) | Real-time metrics dashboard and API Rivers topology |
 
 ## Reference
 
