@@ -69,8 +69,8 @@ const PANELS: PanelConfig[] = [
   { key: 'latency', title: 'HTTP Latency', unit: 'ms', panelKey: 'latency_p99', getValue: (s) => s.httpLatencyP99Ms, chartType: 'multiline' },
   { key: 'k8s-api', title: 'K8s API Calls', unit: '/min', panelKey: 'k8s_api', getValue: (s) => s.k8sGetRate + s.k8sPatchRate + s.k8sDeleteRate, chartType: 'multiline' },
   { key: 'ws-conns', title: 'WebSocket Connections', unit: '', panelKey: 'ws_connections', getValue: (s) => s.wsActiveConnections, chartType: 'line' },
-  { key: 'scale-ops', title: 'Pod Scale Operations', unit: '', panelKey: 'scheduler_health', getValue: (s) => s.workloadsScaledCount, chartType: 'scatter' },
   { key: 'error-rate', title: 'Error Rate', unit: '/s', panelKey: 'error_rate', getValue: (s) => s.totalErrorRate, chartType: 'errorline' },
+  { key: 'scale-ops', title: 'Pod Scale Operations', unit: '', panelKey: 'scheduler_health', getValue: (s) => s.workloadsScaledCount, chartType: 'scatter' },
 ]
 
 // ── Dashboard ───────────────────────────────────────────────────────────────

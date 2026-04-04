@@ -111,6 +111,7 @@ Prometheus metrics from a single HTTP listener on port 8080.
 - Cache the latest SSE payload in memory under a `sync.RWMutex`. The SSE handler reads from this buffer, never from the database, so multiple concurrent dashboard clients do not increase DB load.
 - Serve component runtime configuration (DB pool sizes, rate limits, K8s QPS, scheduler interval) from actual runtime values.
 - Provide configurable warn/crit thresholds per metric panel with default seeding.
+- Record API calls via a Chi middleware into a 100-entry ring buffer (Call Recorder). Each call is mapped to a component and Go function name via a static lookup table of 49 route patterns. The latest 50 calls are included in each SSE payload for the Live API Call Feed.
 
 **Key interfaces:**
 - `GET /api/observability/stream` -- SSE stream reading from in-memory buffer, pushing every 2 seconds.

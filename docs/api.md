@@ -171,9 +171,16 @@ The `/api/observability/stream` endpoint pushes JSON events in SSE format (`data
     "k8sPatchRate": 12.0,
     "k8sDeleteRate": 3.0,
     "wsActiveConnections": 8,
-    "cacheHitRate": 95.0,
     "schedulerEvalRate": 2.0,
     "schedulerEvalDurationMs": 15.0,
+    "policySuccessCount": 0,
+    "policyFailedCount": 0,
+    "policySkippedCount": 0,
+    "workloadsScaledCount": 0,
+    "scaleOperationDurationMs": 0.0,
+    "schedulerPanics": 0,
+    "auditDrops": 0,
+    "rateLimitHits": 0,
     "totalErrorRate": 1.2
   },
   "components": [
