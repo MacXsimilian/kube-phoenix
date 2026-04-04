@@ -308,7 +308,7 @@ func callRecorderMiddleware(recorder *observability.CallRecorder) func(http.Hand
 			next.ServeHTTP(ww, r)
 
 			routePattern := chi.RouteContext(r.Context()).RoutePattern()
-			if routePattern == "" || observability.IsStreamingRoute(routePattern) {
+			if routePattern == "" || observability.IsSkippedRoute(routePattern) {
 				return
 			}
 			durationMs := float64(time.Since(start).Nanoseconds()) / 1e6

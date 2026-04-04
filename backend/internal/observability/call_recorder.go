@@ -72,44 +72,82 @@ type routeInfo struct {
 }
 
 var routeComponentMap = map[string]routeInfo{
-	"GET /api/policies":                  {"handlers", "h.listPolicies", "http"},
-	"GET /api/policies/{id}":             {"handlers", "h.getPolicy", "http"},
-	"GET /api/overview":                  {"handlers", "h.getOverview", "http"},
-	"GET /api/cluster/workloads":         {"handlers", "h.getWorkloads", "http"},
-	"GET /api/cluster/nodes":             {"handlers", "h.getNodes", "http"},
-	"GET /api/cluster/info":              {"handlers", "h.getClusterInfo", "http"},
-	"GET /api/cluster/nodes/{name}/pods": {"handlers", "h.getNodePods", "http"},
-	"GET /api/audit-logs":                {"handlers", "h.listAuditLogs", "http"},
-	"GET /api/policy-executions":         {"handlers", "h.listPolicyExecutions", "http"},
-	"GET /api/policy-executions/{id}":    {"handlers", "h.getPolicyExecution", "http"},
-	"GET /api/exceptions":                {"handlers", "h.listExceptions", "http"},
-	"GET /api/exceptions/{id}":           {"handlers", "h.getException", "http"},
-	"GET /api/guardrails":                {"handlers", "h.getGuardrails", "http"},
-	"GET /api/auth/me":                   {"auth", "h.me", "http"},
-	"POST /api/auth/login":               {"auth", "h.login", "http"},
-	"POST /api/auth/logout":              {"auth", "h.logout", "http"},
-	"POST /api/policies/{id}/sleep":      {"handlers", "h.triggerPolicySleep", "http"},
-	"POST /api/policies/{id}/wake":       {"handlers", "h.triggerPolicyWake", "http"},
-	"PUT /api/guardrails":                {"handlers", "h.updateGuardrails", "http"},
-	"GET /api/cluster/stream":            {"handlers", "h.streamCluster", "http"},
-	"GET /api/observability/stream":      {"handlers", "h.streamObservability", "http"},
-	"GET /api/observability/history":     {"handlers", "h.getObservabilityHistory", "http"},
-	"GET /api/observability/thresholds":  {"handlers", "h.getObservabilityThresholds", "http"},
-	"PUT /api/observability/thresholds":  {"handlers", "h.updateObservabilityThreshold", "http"},
-	"GET /api/observability/config":      {"handlers", "h.getObservabilityConfig", "http"},
+	// Auth
+	"GET /api/auth/me":                              {"auth", "h.me", "http"},
+	"GET /api/auth/sessions":                        {"auth", "h.listSessions", "http"},
+	"POST /api/auth/login":                          {"auth", "h.login", "http"},
+	"POST /api/auth/logout":                         {"auth", "h.logout", "http"},
+	"PUT /api/auth/password":                        {"auth", "h.changePassword", "http"},
+	"PUT /api/auth/settings":                        {"auth", "h.updateUserSettings", "http"},
+	"GET /api/auth/oidc/config":                     {"auth", "h.oidcConfig", "http"},
+	"GET /api/auth/oidc/login":                      {"auth", "h.oidcLogin", "http"},
+	"GET /api/auth/oidc/callback":                   {"auth", "h.oidcCallback", "http"},
+	// Cluster
+	"GET /api/overview":                             {"handlers", "h.getOverview", "http"},
+	"GET /api/cluster/workloads":                    {"handlers", "h.getWorkloads", "http"},
+	"GET /api/cluster/nodes":                        {"handlers", "h.getNodes", "http"},
+	"GET /api/cluster/info":                         {"handlers", "h.getClusterInfo", "http"},
+	"GET /api/cluster/nodes/{name}/pods":            {"handlers", "h.getNodePods", "http"},
+	"GET /api/cluster/pods/{namespace}/{name}":      {"handlers", "h.getPodDetail", "http"},
+	"GET /api/cluster/pods/{namespace}/{name}/logs": {"handlers", "h.getPodLogs", "http"},
+	"GET /api/cluster/workloads/{namespace}/{kind}/{name}/pods": {"handlers", "h.getWorkloadPods", "http"},
+	// Guardrails
+	"GET /api/guardrails":                           {"handlers", "h.getGuardrails", "http"},
+	"PUT /api/guardrails":                           {"handlers", "h.updateGuardrails", "http"},
+	// Policies
+	"GET /api/policies":                             {"handlers", "h.listPolicies", "http"},
+	"GET /api/policies/{id}":                        {"handlers", "h.getPolicy", "http"},
+	"POST /api/policies":                            {"handlers", "h.createPolicy", "http"},
+	"PUT /api/policies/{id}":                        {"handlers", "h.updatePolicy", "http"},
+	"DELETE /api/policies/{id}":                     {"handlers", "h.deletePolicy", "http"},
+	"GET /api/policies/{id}/snapshots":              {"handlers", "h.getPolicySnapshots", "http"},
+	"POST /api/policies/{id}/sleep":                 {"handlers", "h.triggerPolicySleep", "http"},
+	"POST /api/policies/{id}/wake":                  {"handlers", "h.triggerPolicyWake", "http"},
+	"POST /api/policies/{id}/cancel":                {"handlers", "h.cancelPolicyExecution", "http"},
+	// Executions
+	"GET /api/policy-executions":                    {"handlers", "h.listPolicyExecutions", "http"},
+	"GET /api/policy-executions/{id}":               {"handlers", "h.getPolicyExecution", "http"},
+	"GET /api/policy-executions/{id}/logs":          {"handlers", "h.getPolicyExecutionLogs", "http"},
+	"GET /api/policy-executions/{id}/snapshots":     {"handlers", "h.getPolicyExecutionSnapshots", "http"},
+	// Exceptions
+	"GET /api/exceptions":                           {"handlers", "h.listExceptions", "http"},
+	"GET /api/exceptions/{id}":                      {"handlers", "h.getException", "http"},
+	"POST /api/exceptions":                          {"handlers", "h.createException", "http"},
+	"PUT /api/exceptions/{id}":                      {"handlers", "h.updateException", "http"},
+	"DELETE /api/exceptions/{id}":                   {"handlers", "h.deleteException", "http"},
+	// Audit
+	"GET /api/audit-logs":                           {"handlers", "h.listAuditLogs", "http"},
+	// Users
+	"GET /api/users":                                {"handlers", "h.listUsers", "http"},
+	"POST /api/users":                               {"handlers", "h.createUser", "http"},
+	"PUT /api/users/{id}":                           {"handlers", "h.updateUser", "http"},
+	"DELETE /api/users/{id}":                        {"handlers", "h.deleteUser", "http"},
+	// Admin
+	"POST /api/danger/reset-db":                     {"handlers", "h.resetDB", "http"},
+	"POST /api/danger/emergency-scale":              {"handlers", "h.emergencyScale", "http"},
+	// Observability
+	"GET /api/observability/history":                {"handlers", "h.getObservabilityHistory", "http"},
+	"GET /api/observability/thresholds":             {"handlers", "h.getObservabilityThresholds", "http"},
+	"PUT /api/observability/thresholds":             {"handlers", "h.updateObservabilityThreshold", "http"},
+	"GET /api/observability/config":                 {"handlers", "h.getObservabilityConfig", "http"},
+	// Version
+	"GET /api/version":                              {"handlers", "h.getVersion", "http"},
 }
 
-// streamingRoutes are long-lived SSE/WS connections that should not be
-// recorded as completed requests (their duration grows indefinitely).
-var streamingRoutes = map[string]bool{
-	"/api/cluster/stream":      true,
+// skipRoutes are routes that should not be recorded: streaming endpoints
+// (duration grows indefinitely) and non-API infrastructure routes.
+var skipRoutes = map[string]bool{
+	"/api/cluster/stream":       true,
 	"/api/observability/stream": true,
+	"/healthz":                  true,
+	"/metrics":                  true,
+	"/*":                        true,
 }
 
-// IsStreamingRoute returns true for SSE/WebSocket endpoints that should
-// be excluded from call recording.
-func IsStreamingRoute(routePattern string) bool {
-	return streamingRoutes[routePattern]
+// IsSkippedRoute returns true for routes that should not be recorded:
+// streaming endpoints and non-API infrastructure routes.
+func IsSkippedRoute(routePattern string) bool {
+	return skipRoutes[routePattern]
 }
 
 var defaultRouteInfo = routeInfo{
