@@ -59,7 +59,7 @@ If you need to resolve it immediately:
 
 ```bash
 kubectl get deployments -A -o json | \
-  jq '.items[] | select(.metadata.annotations["kube-phoenix/previous-replicas"]) | .metadata.namespace + "/" + .metadata.name'
+  jq '.items[] | select(.metadata.annotations["previous-replicas"]) | .metadata.namespace + "/" + .metadata.name'
 ```
 
 ## Workload stuck with `previous-replicas` annotation
@@ -75,7 +75,7 @@ kubectl get deployments -A -o json | \
 kubectl scale deployment <name> -n <namespace> --replicas=<n>
 
 # Remove the annotation
-kubectl annotate deployment <name> -n <namespace> kube-phoenix/previous-replicas-
+kubectl annotate deployment <name> -n <namespace> previous-replicas-
 ```
 
 Then review the failed execution log to understand the root cause.
@@ -108,7 +108,7 @@ If none of the above apply, check whether a guardrail is excluding the workload'
 2. Check pod logs for exception tick errors:
 
 ```bash
-kubectl logs -n kube-phoenix deployment/kube-phoenix | grep exception-tick
+kubectl logs -n kube-phoenix deployment/kube-phoenix | grep "exception"
 ```
 
 3. Verify the exception's `policyId` points to an existing, enabled policy.
@@ -163,7 +163,7 @@ kubectl logs -n kube-phoenix deployment/kube-phoenix
 
 **Solution:** Set `CORS_ALLOWED_ORIGIN=http://localhost:3000` on the backend process when running the frontend dev server separately.
 
-> **Tip:** In dev mode (auth disabled), CORS allows all origins automatically.
+> **Tip:** When `ADMIN_USER` is unset, CORS allows all origins automatically. Authentication is always enforced — only the CORS behavior changes.
 
 ## Image pull errors (ImagePullBackOff)
 

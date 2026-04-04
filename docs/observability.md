@@ -91,6 +91,7 @@ Each metric panel has configurable warn/crit thresholds stored in the database v
 | `ws_connections` | WS Connections | 50 | 80 |
 | `error_rate` | Error Rate | 5 /s | 15 /s |
 | `scheduler_health` | Scheduler Health | 200 ms | 500 ms |
+| `cache_hit` | Cache Hit Rate (%) | 90 | 70 |
 | `policy_executions` | Policy Executions | 5 | 10 |
 
 ---
@@ -298,7 +299,7 @@ Example: `/observability?tab=rivers&range=1h`
 
 ## Mock Server
 
-For frontend development without a backend, the mock server at `mock-api/routes/observability.mjs` provides:
+For frontend development without a backend, the mock server at `frontend/mock-api/routes/observability.mjs` provides:
 
 - SSE stream with random-walk metric data
 - Historical snapshot buffer (pre-seeded with 60 seconds)

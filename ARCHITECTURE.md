@@ -86,8 +86,8 @@ Prometheus metrics from a single HTTP listener on port 8080.
 **Key responsibilities:**
 - Route requests through a middleware stack: request ID, structured logging,
   panic recovery, CORS, body size limit, session auth, CSRF protection, RBAC.
-- Expose 30+ REST endpoints under `/api/*` for policies, executions, cluster
-  state, guardrails, users, audit logs, exceptions, and system info.
+- Expose 45+ REST endpoints under `/api/*` for policies, executions, cluster
+  state, guardrails, users, audit logs, exceptions, observability, and system info.
 - Serve the embedded Next.js SPA for all non-API paths (SPA fallback to
   `index.html` for client-side routing).
 - Expose `/healthz` (liveness probe) and `/metrics` (Prometheus) without
@@ -480,6 +480,7 @@ kube-phoenix/
 │   │   │   ├── cluster_info.go       # Cluster metadata (API server, K8s version, auth mode, name)
 │   │   │   ├── version.go           # Build version, Go version, server uptime (no auth)
 │   │   │   ├── admin.go             # DB reset (streaming NDJSON)
+│   │   │   ├── observability.go      # SSE stream, history queries, threshold CRUD
 │   │   │   ├── errmsg.go            # Error constants, field length limits, valid enum sets
 │   │   │   ├── ws.go                # WebSocket helpers
 │   │   │   └── helpers.go           # JSON response utilities, handleStoreError, requirePolicy
@@ -509,6 +510,7 @@ kube-phoenix/
 │   │   │   ├── sessions.go          # Session CRUD, sliding window, cleanup
 │   │   │   ├── users.go             # User CRUD, OIDC provisioning (OIDCUserInfo struct), password hashing, timezone updates
 │   │   │   ├── audit.go             # Audit log CRUD, retention cleanup
+│   │   │   ├── observability.go     # Metric snapshot persistence, downsampling, threshold CRUD, pruning
 │   │   │   └── status.go            # String constants for policy/execution/exception states (includes `interrupted`)
 │   │   ├── auth/
 │   │   │   ├── oidc.go              # OIDC provider discovery, token exchange, claim mapping
@@ -518,6 +520,9 @@ kube-phoenix/
 │   │   │   └── auth.go              # Session auth, CSRF double-submit
 │   │   ├── metrics/
 │   │   │   └── metrics.go           # Prometheus metrics (promauto registration)
+│   │   ├── observability/
+│   │   │   ├── collector.go         # SSE metric streaming, ring buffer history, threshold evaluation
+│   │   │   └── call_recorder.go     # Route-level API call latency tracking (100-entry ring buffer)
 │   │   ├── nodeutil/
 │   │   │   └── protection.go        # Shared node protection helpers (label/taint matching, critical pod detection)
 │   │   ├── stringutil/
@@ -534,15 +539,19 @@ kube-phoenix/
 │   │   ├── app/                     # Next.js pages (overview, cluster, policies, ...)
 │   │   ├── components/              # React components by domain
 │   │   │   ├── audit/               # AuditRow, DiffLineRow, JsonDiffView, auditDiff helpers, auditFormatters
+│   │   │   ├── auth/                # Auth-related components
 │   │   │   ├── cluster/             # Tables, drawers, DetailDrawer, extracted subcomponents (MiniBar, LabelChip, etc.), statusColors
 │   │   │   ├── common/              # ChipInput, LabeledSwitch, ConfirmDialog, CenteredSpinner
 │   │   │   ├── exceptions/           # ExceptionsCalendarStrip, ExceptionDetailPanel, ExceptionChips, ExceptionActions
 │   │   │   ├── guardrails/          # GuardrailsForm (useReducer + CategoryCard), CategoryCard, ProtectedChipInput
 │   │   │   ├── history/             # ExecutionTable, LogViewer, ExecutionSummary, parseSummary, useExecutionLogs
+│   │   │   ├── layout/              # Layout shell and navigation components
+│   │   │   ├── observability/       # Metrics Dashboard and API Rivers components
+│   │   │   ├── overview/            # Overview/dashboard page components
 │   │   │   ├── policies/            # PolicyCard, timelines, WindowPicker, PolicyHeroBand, TimelineLegend, timelineSegments
 │   │   │   ├── settings/            # AccountSettings, AppearanceSettings, DatabaseSettings, OIDCStatusCard, ActiveSessionsCard (live data), ClusterConnectionCard, AboutBar
 │   │   │   └── shared/              # StatusChip, TriggerChip
-│   │   ├── lib/                     # API client (apiFetch), auth, types, query client, formatters, statusColors, SortHeader, tableStyles, shared hooks (useSnackbar, useIsDark, useTriStateSort, usePolicyTriggers, useUnsavedChanges, layoutConstants)
+│   │   ├── lib/                     # API client (apiFetch), auth, types, query client, formatters, statusColors, SortHeader, tableStyles, shared hooks (useSnackbar, useIsDark, useTriStateSort, usePolicyTriggers, useUnsavedChanges, useObservabilityStream, useClusterStream, useDebouncedValue, layoutConstants), rbac, colors, constants, motion/, observability-types
 │   │   └── theme/                   # MUI theme (dark + light mode)
 │   ├── next.config.mjs              # Static export, trailing slash
 │   └── package.json

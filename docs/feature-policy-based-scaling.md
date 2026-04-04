@@ -73,34 +73,34 @@ During a critical incident, an admin needs to immediately disable all policies, 
 | R3.4 | An exception may optionally trigger the inverse action on end (e.g., re-sleep after a stay_awake window)                             |
 | R3.5 | Only pending exceptions can be edited                                                                                                |
 
-### R5 — Guardrails & Protection
+### R4 — Guardrails & Protection
 
 | #    | Requirement                                                                                                                          |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| R5.1 | A global list of **system namespaces** that are never scaled (e.g., `kube-system`)                                                   |
-| R5.2 | Nodes can be **protected** by label or taint — protected nodes are never drained                                                     |
-| R5.3 | **Priority namespaces** are processed first during both sleep and wake                                                               |
-| R5.4 | Two `apply`-mode policies must not target overlapping workloads — overlap detection at creation time                                 |
+| R4.1 | A global list of **system namespaces** that are never scaled (e.g., `kube-system`)                                                   |
+| R4.2 | Nodes can be **protected** by label or taint — protected nodes are never drained                                                     |
+| R4.3 | **Priority namespaces** are processed first during both sleep and wake                                                               |
+| R4.4 | Two `apply`-mode policies must not target overlapping workloads — overlap detection at creation time                                 |
 
-### R6 — Evaluation Loop
-
-| #    | Requirement                                                                                                                          |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| R6.1 | A background scheduler evaluates all enabled policies on a configurable tick interval (default 30s)                                  |
-| R6.2 | Each tick computes the **intended state** (sleeping/awake) and compares to **current state**                                         |
-| R6.3 | State transitions are **atomically claimed** to prevent concurrent executions of the same policy                                     |
-| R6.4 | Stuck transitions (no completion within policy timeout + grace period) are automatically reset                                        |
-| R6.5 | On startup, the scheduler must run **recovery** — detect mismatches and self-correct                                                |
-| R6.6 | While a policy is awake, **reconciliation** should detect open snapshots (drift) and attempt corrective wakes with backoff           |
-
-### R7 — Observability
+### R5 — Evaluation Loop
 
 | #    | Requirement                                                                                                                          |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| R7.1 | Every execution is recorded with status (`running`, `success`, `failed`, `interrupted`, `skipped`), trigger type, and aggregate counters |
-| R7.2 | Structured log lines per execution, streamable via WebSocket                                                                         |
-| R7.3 | Prometheus metrics for scaling events                                                                                                |
-| R7.4 | Policy state fields: `CurrentState`, `StateSince`, `LastSleepAt`, `LastWakeAt`, `NextTransitionAt`                                   |
+| R5.1 | A background scheduler evaluates all enabled policies on a configurable tick interval (default 30s)                                  |
+| R5.2 | Each tick computes the **intended state** (sleeping/awake) and compares to **current state**                                         |
+| R5.3 | State transitions are **atomically claimed** to prevent concurrent executions of the same policy                                     |
+| R5.4 | Stuck transitions (no completion within policy timeout + grace period) are automatically reset                                        |
+| R5.5 | On startup, the scheduler must run **recovery** — detect mismatches and self-correct                                                |
+| R5.6 | While a policy is awake, **reconciliation** should detect open snapshots (drift) and attempt corrective wakes with backoff           |
+
+### R6 — Observability
+
+| #    | Requirement                                                                                                                          |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| R6.1 | Every execution is recorded with status (`running`, `success`, `failed`, `interrupted`, `skipped`), trigger type, and aggregate counters |
+| R6.2 | Structured log lines per execution, streamable via WebSocket                                                                         |
+| R6.3 | Prometheus metrics for scaling events                                                                                                |
+| R6.4 | Policy state fields: `CurrentState`, `StateSince`, `LastSleepAt`, `LastWakeAt`, `NextTransitionAt`                                   |
 
 ---
 

@@ -262,17 +262,17 @@ frontend/src/app/prototypes/
   <name>/page.proto.tsx       # One directory per prototype
 ```
 
-The gallery currently contains 102 prototypes across the following categories:
+The gallery currently contains 77 prototypes across the following categories:
 
 | Category | Count | Examples |
 | :------- | :---: | :------- |
-| Flagship | 20 | 3D Cluster Topology, Execution Theater, Multi-Region Globe, Policy DNA Sequencer, Workload Symphony, Cluster Nervous System, Incident Cinema, Carbon Footprint, Physics Pod Collider, Cytoscape Topology |
-| Data Viz | 47 | Prometheus Dashboard, Namespace Sankey, Execution Heatmap Calendar, Chord Dependency Map, Voronoi Namespaces, Polar Timeline, Sigma Mega Cluster, Observable Stream, Recharts Sparkboard, Internal API Rivers |
-| Micro-Interactions | 24 | Magnetic Nav Icons, Liquid Toggle, Particle Search, Replica Slot Machine, Glitch Error State, Morphing Status Badge, Floating Metric Bubbles, Confetti Success, Haptic Buttons, Data Flow Rivers |
+| Flagship | 8 | 3D Cluster Topology, Execution Theater, Multi-Region Globe, Policy DNA Sequencer, Workload Symphony, Cluster Nervous System, Incident Cinema, Carbon Footprint, Physics Pod Collider, Cytoscape Topology |
+| Data Viz | 40 | Prometheus Dashboard, Namespace Sankey, Execution Heatmap Calendar, Chord Dependency Map, Voronoi Namespaces, Polar Timeline, Sigma Mega Cluster, Observable Stream, Recharts Sparkboard, Internal API Rivers |
+| Micro-Interactions | 15 | Magnetic Nav Icons, Liquid Toggle, Particle Search, Replica Slot Machine, Glitch Error State, Morphing Status Badge, Floating Metric Bubbles, Confetti Success, Haptic Buttons, Data Flow Rivers |
+| Delight | 5 | Phoenix Moment, Danger Zone, Empty State Egg, Guardrails Shield, Wake Ripple |
 | Onboarding | 3 | Phoenix Rise, Staggered Reveal, Skeleton Loading |
 | Real-Time | 3 | Heartbeat Pulse, Stream Glow, Log Waterfall |
 | State Transitions | 3 | Phoenix Lifecycle, Rollout Wave, Sleep/Wake Morph |
-| Delight | 5 | Phoenix Moment, Danger Zone, Empty State Egg, Guardrails Shield, Wake Ripple |
 
 Technologies used across prototypes: Three.js / React Three Fiber, GSAP, Framer Motion, eCharts, Canvas 2D, SVG, Web Audio API, CSS 3D transforms.
 
@@ -358,7 +358,7 @@ What works in each local setup:
 | `ADMIN_PASSWORD` | _(empty)_ | Admin password (minimum 8 characters) |
 | `CORS_ALLOWED_ORIGIN` | _(empty)_ | Allowed origin for CORS (required in Mode 2) |
 | `CLUSTER_NAME` | _(empty)_ | Human-readable cluster name shown in `GET /api/cluster/info` |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | Backend URL for the frontend dev server (build-time, Mode 2 only) |
+| `NEXT_PUBLIC_API_URL` | `''` (empty string, same-origin) | Backend URL for the frontend dev server (build-time, Mode 2 only). `make dev-mock` sets this to `http://localhost:4444`. |
 | `NEXT_PUBLIC_APP_VERSION` | `dev` | Version string shown in the About modal |
 | `NEXT_PUBLIC_PROTOTYPES` | _(empty)_ | Set to `1` to enable `/prototypes` route (auto-set by `make dev-mock`) |
 
@@ -528,7 +528,7 @@ kubectl delete namespace kube-phoenix
 ### Remove sample workloads
 
 ```bash
-kubectl delete namespace team-backend team-web team-data team-qa
+kubectl delete namespace team-backend team-web team-data team-qa team-platform team-ml team-mobile team-payments team-infra
 ```
 
 ### Stop minikube
