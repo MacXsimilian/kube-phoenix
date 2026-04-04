@@ -1,11 +1,15 @@
 'use client'
 
+import { useState, useMemo } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import CardActionArea from '@mui/material/CardActionArea'
 import Chip from '@mui/material/Chip'
+import TextField from '@mui/material/TextField'
+import InputAdornment from '@mui/material/InputAdornment'
+import SearchIcon from '@mui/icons-material/Search'
 import { useRouter } from 'next/navigation'
 
 interface Prototype {
@@ -987,8 +991,27 @@ const PROTOTYPES: Prototype[] = [
   },
 ]
 
+const CATEGORIES = [...new Set(PROTOTYPES.map((p) => p.category))]
+
 export default function PrototypesIndex() {
   const router = useRouter()
+  const [search, setSearch] = useState('')
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+
+  const filtered = useMemo(() => {
+    const query = search.toLowerCase().trim()
+    return PROTOTYPES.filter((p) => {
+      if (activeCategory && p.category !== activeCategory) return false
+      if (!query) return true
+      return (
+        p.title.toLowerCase().includes(query) ||
+        p.code.toLowerCase().includes(query) ||
+        p.description.toLowerCase().includes(query) ||
+        p.category.toLowerCase().includes(query) ||
+        p.libraries.some((lib) => lib.toLowerCase().includes(query))
+      )
+    })
+  }, [search, activeCategory])
 
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', py: 4, px: 2 }}>
@@ -1002,6 +1025,58 @@ export default function PrototypesIndex() {
         </Typography>
       </Box>
 
+      <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <TextField
+          placeholder="Search prototypes..."
+          size="small"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+                </InputAdornment>
+              ),
+            },
+          }}
+          sx={{ maxWidth: 400 }}
+        />
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Chip
+            label="All"
+            size="small"
+            onClick={() => setActiveCategory(null)}
+            sx={{
+              fontWeight: 600,
+              bgcolor: !activeCategory ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)',
+              color: !activeCategory ? 'text.primary' : 'text.secondary',
+            }}
+          />
+          {CATEGORIES.map((cat) => {
+            const color = PROTOTYPES.find((p) => p.category === cat)!.categoryColor
+            const isActive = activeCategory === cat
+            return (
+              <Chip
+                key={cat}
+                label={cat}
+                size="small"
+                onClick={() => setActiveCategory(isActive ? null : cat)}
+                sx={{
+                  fontWeight: 600,
+                  bgcolor: isActive ? `${color}25` : 'rgba(255,255,255,0.04)',
+                  color: isActive ? color : 'text.secondary',
+                  border: isActive ? `1px solid ${color}40` : '1px solid transparent',
+                }}
+              />
+            )
+          })}
+        </Box>
+        <Typography variant="caption" color="text.secondary">
+          {filtered.length} of {PROTOTYPES.length} prototypes
+        </Typography>
+      </Box>
+
       <Box
         sx={{
           display: 'grid',
@@ -1009,7 +1084,7 @@ export default function PrototypesIndex() {
           gap: 2.5,
         }}
       >
-        {PROTOTYPES.map((p) => (
+        {filtered.map((p) => (
           <Card
             key={p.id}
             sx={{

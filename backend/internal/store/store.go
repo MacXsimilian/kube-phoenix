@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	dbMaxOpenConns    = 10
-	dbMaxIdleConns    = 5
-	dbConnMaxLifetime = 5 * time.Minute
+	DBMaxOpenConns    = 10
+	DBMaxIdleConns    = 5
+	DBConnMaxLifetime = 5 * time.Minute
 )
 
 var allModels = []interface{}{
@@ -25,6 +25,7 @@ var allModels = []interface{}{
 	&User{}, &Session{}, &AuditLog{},
 	&Policy{}, &PolicyExecution{}, &PolicyLogLine{},
 	&WorkloadSnapshot{}, &ScheduledException{},
+	&MetricSnapshot{}, &ObservabilityThreshold{},
 }
 
 type Store struct {
@@ -47,9 +48,9 @@ func New(dsn string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	sqlDB.SetMaxOpenConns(dbMaxOpenConns)
-	sqlDB.SetMaxIdleConns(dbMaxIdleConns)
-	sqlDB.SetConnMaxLifetime(dbConnMaxLifetime)
+	sqlDB.SetMaxOpenConns(DBMaxOpenConns)
+	sqlDB.SetMaxIdleConns(DBMaxIdleConns)
+	sqlDB.SetConnMaxLifetime(DBConnMaxLifetime)
 	sqlDB.SetConnMaxIdleTime(2 * time.Minute)
 
 	if err := runMigrations(db); err != nil {
@@ -103,6 +104,12 @@ func runMigrations(db *gorm.DB) error {
 	addEnumCheckConstraints(db)
 
 	slog.Info("store: schema migration complete")
+
+	// Seed default observability thresholds.
+	st := &Store{db: db}
+	if err := st.SeedDefaultThresholds(); err != nil {
+		slog.Warn("migration: seed observability thresholds failed (non-fatal)", "err", err)
+	}
 
 	// Migrate legacy cron-only policies to window format.
 	migrateWindowsFromCrons(db)

@@ -14,12 +14,17 @@ import Button from '@mui/material/Button'
 import Slider from '@mui/material/Slider'
 import Chip from '@mui/material/Chip'
 import IconButton from '@mui/material/IconButton'
-import Switch from '@mui/material/Switch'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SkipNextIcon from '@mui/icons-material/SkipNext'
 import ReplayIcon from '@mui/icons-material/Replay'
 import BugReportIcon from '@mui/icons-material/BugReport'
 import RouteIcon from '@mui/icons-material/Route'
+import ViewStreamIcon from '@mui/icons-material/ViewStream'
+import ViewWeekIcon from '@mui/icons-material/ViewWeek'
+import SpeedIcon from '@mui/icons-material/Speed'
+import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme, alpha } from '@mui/material/styles'
 import gsap from 'gsap'
@@ -165,8 +170,8 @@ const COMPONENTS: SystemComponent[] = [
   { id: 'chi',          label: 'Chi Router',    sublabel: 'RequestID · Logger · Recover', kind: 'middleware', goFile: 'internal/api/router.go',               col: 0, row: 1, hCol: 1, hRow: 1.0, metricsLabel: 'http_requests_total' },
   { id: 'auth',         label: 'Auth MW',       sublabel: 'Session · CSRF · RBAC',        kind: 'middleware', goFile: 'internal/middleware/auth.go',           col: 1, row: 1, hCol: 1, hRow: 2.6 },
   { id: 'api-handlers', label: 'API Handlers',  sublabel: 'Policy · Cluster · User',      kind: 'handler',    goFile: 'internal/api/',                        col: 0, row: 2, hCol: 2, hRow: 0.5 },
-  { id: 'ws-handler',   label: 'WS Handler',    sublabel: '/ws/.../logs',                  kind: 'handler',    goFile: 'internal/api/ws.go',                   col: 1, row: 2, hCol: 2, hRow: 2.0 },
-  { id: 'sse-handler',  label: 'SSE Stream',    sublabel: '/api/cluster/stream',           kind: 'handler',    goFile: 'internal/api/cluster.go',              col: 2, row: 2, hCol: 2, hRow: 3.4 },
+  { id: 'ws-handler',   label: 'WS Handler',    sublabel: 'Live log streaming',            kind: 'handler',    goFile: 'internal/api/ws.go',                   col: 1, row: 2, hCol: 2, hRow: 2.0 },
+  { id: 'sse-handler',  label: 'SSE Stream',    sublabel: 'Cluster state push',            kind: 'handler',    goFile: 'internal/api/cluster.go',              col: 2, row: 2, hCol: 2, hRow: 3.4 },
   { id: 'scheduler',    label: 'Scheduler',     sublabel: 'Eval loop · 30s tick',          kind: 'core',       goFile: 'internal/scheduler/policy_scheduler.go', col: 0, row: 3, hCol: 3, hRow: 0.0, metricsLabel: 'scheduler_evals_total' },
   { id: 'scaler',       label: 'Scaler',        sublabel: 'Sleep · Wake · Reconcile',      kind: 'core',       goFile: 'internal/scaler/',                     col: 1, row: 3, hCol: 3, hRow: 1.5 },
   { id: 'broker',       label: 'WS Broker',     sublabel: 'Pub/Sub · 256 buf',             kind: 'core',       goFile: 'internal/scheduler/broker.go',         col: 2, row: 3, hCol: 3, hRow: 2.8 },
@@ -175,7 +180,7 @@ const COMPONENTS: SystemComponent[] = [
   { id: 'store',        label: 'Store',          sublabel: 'GORM · 10 conns',              kind: 'infra',      goFile: 'internal/store/',                      col: 1, row: 4, hCol: 4, hRow: 2.2 },
   { id: 'cache',        label: 'Cluster Cache', sublabel: 'Informers · 5m resync',         kind: 'infra',      goFile: 'internal/k8s/cache.go',                col: 2, row: 4, hCol: 4, hRow: 3.6 },
   { id: 'k8s-api',      label: 'K8s API',       sublabel: 'Deployments · Pods · Nodes',    kind: 'external',   goFile: '',                                    col: 0, row: 5, hCol: 5, hRow: 0.5 },
-  { id: 'postgres',     label: 'PostgreSQL',    sublabel: '9 tables',                      kind: 'external',   goFile: '',                                    col: 1, row: 5, hCol: 5, hRow: 2.2 },
+  { id: 'postgres',     label: 'PostgreSQL',    sublabel: '11 tables',                     kind: 'external',   goFile: '',                                    col: 1, row: 5, hCol: 5, hRow: 2.2 },
 ]
 
 const COMP_MAP = new Map(COMPONENTS.map((c) => [c.id, c]))
@@ -254,23 +259,23 @@ function buildPathWithOffsets(link: InternalLink, offsets: DragOffsets, mode: La
 
 // sourcePort/targetPort = vertical layout, hSourcePort/hTargetPort = horizontal layout
 const ALL_LINKS: InternalLink[] = [
-  { id: 'browser-chi',      source: 'browser',      sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'chi',          label: 'HTTP / WS',        goSignature: 'http.ListenAndServe(":8080", router)',              rps: 120, latencyMs: 2,  category: 'http' },
-  { id: 'chi-auth',         source: 'chi',           sourcePort: 'right',  targetPort: 'left',   hSourcePort: 'bottom', hTargetPort: 'top',    target: 'auth',         label: 'Middleware chain',  goSignature: 'r.Use(SessionAuth, CSRFProtect)',                   rps: 120, latencyMs: 1,  category: 'internal' },
-  { id: 'auth-api',         source: 'auth',          sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'api-handlers', label: 'REST handlers',    goSignature: 'r.Route("/api/policies", policyRoutes)',            rps: 80,  latencyMs: 1,  category: 'http' },
+  { id: 'browser-chi',      source: 'browser',      sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'chi',          label: 'HTTP / WS',        goSignature: 'srv.ListenAndServe() // &http.Server{Handler: router}', rps: 120, latencyMs: 2,  category: 'http' },
+  { id: 'chi-auth',         source: 'chi',           sourcePort: 'right',  targetPort: 'left',   hSourcePort: 'bottom', hTargetPort: 'top',    target: 'auth',         label: 'Middleware chain',  goSignature: 'r.Use(SessionAuth, CSRFProtect)',        rps: 120, latencyMs: 1,  category: 'internal' },
+  { id: 'auth-api',         source: 'auth',          sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'api-handlers', label: 'REST handlers',    goSignature: 'r.Get("/policies", h.listPolicies)',                rps: 80,  latencyMs: 1,  category: 'http' },
   { id: 'auth-ws',          source: 'auth',          sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'ws-handler',   label: 'WS upgrade',       goSignature: 'upgrader.Upgrade(w, r, nil)',                       rps: 5,   latencyMs: 1,  category: 'ws' },
   { id: 'auth-sse',         source: 'auth',          sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'sse-handler',  label: 'SSE subscribe',    goSignature: 'w.Header().Set("Content-Type", "text/event-stream")', rps: 8, latencyMs: 1,  category: 'http' },
-  { id: 'api-scheduler',    source: 'api-handlers',  sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'scheduler',    label: 'Trigger exec',     goSignature: 'scheduler.RunSleepNow(id, "manual", "")',           rps: 2,   latencyMs: 1,  category: 'internal' },
+  { id: 'api-scheduler',    source: 'api-handlers',  sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'scheduler',    label: 'Trigger exec',     goSignature: 'scheduler.RunSleepNow(id, "manual_sleep", "")',     rps: 2,   latencyMs: 1,  category: 'internal' },
   { id: 'api-audit',        source: 'api-handlers',  sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'bottom', hTargetPort: 'left',   target: 'audit',        label: 'Audit log',        goSignature: 'auditWriter.ch <- &AuditLog{Action: "policy.create"}', rps: 15, latencyMs: 0, category: 'internal' },
   { id: 'api-k8s',          source: 'api-handlers',  sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'k8s-client',   label: 'Cluster reads',    goSignature: 'k8s.ListPods(ns) · GetDeployment(ns, name)',        rps: 25,  latencyMs: 12, category: 'k8s' },
   { id: 'api-store',        source: 'api-handlers',  sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'bottom', hTargetPort: 'left',   target: 'store',        label: 'CRUD',             goSignature: 'store.ListPolicies() · GetPolicy(id)',              rps: 60,  latencyMs: 4,  category: 'store' },
   { id: 'scheduler-scaler', source: 'scheduler',     sourcePort: 'right',  targetPort: 'left',   hSourcePort: 'bottom', hTargetPort: 'top',    target: 'scaler',       label: 'Execute',          goSignature: 'runner.RunPolicySleep(ctx, policy, execID, logCh)', rps: 1,   latencyMs: 2,  category: 'internal' },
-  { id: 'scheduler-broker', source: 'scheduler',     sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'bottom', hTargetPort: 'top',    target: 'broker',       label: 'Publish logs',     goSignature: 'broker.Publish(execID, PolicyLogLine{Level: "info"})', rps: 30, latencyMs: 0, category: 'internal' },
-  { id: 'scheduler-store',  source: 'scheduler',     sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'store',        label: 'Policies + Exec',  goSignature: 'store.ListEnabledPolicies() · CreateExecution()',   rps: 10,  latencyMs: 3,  category: 'store' },
+  { id: 'scheduler-broker', source: 'scheduler',     sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'bottom', hTargetPort: 'top',    target: 'broker',       label: 'Publish logs',     goSignature: 'broker.Publish(execID, store.PolicyLogLine{...})',  rps: 30, latencyMs: 0, category: 'internal' },
+  { id: 'scheduler-store',  source: 'scheduler',     sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'store',        label: 'Policies + Exec',  goSignature: 'store.ListEnabledPolicies() · CreatePolicyExecution()', rps: 10, latencyMs: 3, category: 'store' },
   { id: 'scaler-k8s',       source: 'scaler',        sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'k8s-client',   label: 'Scale ops',        goSignature: 'k8s.ScaleDeployment(ns, name, 0) · Annotate()',     rps: 40,  latencyMs: 18, category: 'k8s' },
-  { id: 'scaler-store',     source: 'scaler',        sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'store',        label: 'Snapshots',        goSignature: 'store.CreateWorkloadSnapshot() · AppendLogLines()', rps: 20,  latencyMs: 3,  category: 'store' },
+  { id: 'scaler-store',     source: 'scaler',        sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'store',        label: 'Snapshots',        goSignature: 'store.CreateWorkloadSnapshot() · AppendPolicyLogLines()', rps: 20, latencyMs: 3, category: 'store' },
   { id: 'ws-broker',        source: 'ws-handler',    sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'broker',       label: 'Sub/Unsub',        goSignature: 'broker.Subscribe(execID) → chan PolicyLogLine',     rps: 5,   latencyMs: 0,  category: 'ws' },
-  { id: 'sse-cache',        source: 'sse-handler',   sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'cache',        label: 'Snapshot sub',     goSignature: 'cache.Subscribe() → chan CachedSnapshot',           rps: 8,   latencyMs: 0,  category: 'internal' },
-  { id: 'audit-store',      source: 'audit',         sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'bottom', target: 'store',        label: 'Batch insert',     goSignature: 'db.Create(&AuditLog{}) // drain from ch',           rps: 15,  latencyMs: 2,  category: 'store' },
+  { id: 'sse-cache',        source: 'sse-handler',   sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'cache',        label: 'Snapshot sub',     goSignature: 'cache.Subscribe() → chan struct{}',                 rps: 8,   latencyMs: 0,  category: 'internal' },
+  { id: 'audit-store',      source: 'audit',         sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'bottom', target: 'store',        label: 'Batch insert',     goSignature: 'store.CreateAuditLog(entry) // drain from ch',           rps: 15,  latencyMs: 2,  category: 'store' },
   { id: 'k8s-api-call',     source: 'k8s-client',    sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'k8s-api',      label: 'REST calls',       goSignature: 'clientset.AppsV1().Deployments(ns).UpdateScale()',   rps: 65,  latencyMs: 35, category: 'k8s' },
   { id: 'cache-k8s',        source: 'cache',         sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'k8s-api',      label: 'Informer WATCH',   goSignature: 'informerFactory.Apps().V1().Deployments().Informer()', rps: 12, latencyMs: 50, category: 'k8s' },
   { id: 'store-pg',         source: 'store',         sourcePort: 'bottom', targetPort: 'top',    hSourcePort: 'right',  hTargetPort: 'left',   target: 'postgres',     label: 'SQL',              goSignature: 'db.Where("id = ?", id).First(&policy)',             rps: 90,  latencyMs: 2,  category: 'store' },
@@ -363,6 +368,33 @@ function kindBorder(kind: ComponentKind): string {
 
 const MAX_PARTICLES = 800
 const TRAIL_LEN = 7
+
+// ── Control section wrappers ─────────────────────────────────────────────────
+
+function ControlSection({ label, children, flex }: { label: string; children: React.ReactNode; flex?: string }) {
+  return (
+    <Box sx={{
+      display: 'flex', flexDirection: 'column', gap: 0.5, flex: flex ?? '0 0 auto',
+    }}>
+      <Typography variant="caption" sx={{ fontSize: '0.6rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'text.disabled', lineHeight: 1 }}>
+        {label}
+      </Typography>
+      {children}
+    </Box>
+  )
+}
+
+function ToolbarSection({ label, icon, children }: { label: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+      {icon}
+      <Typography variant="caption" sx={{ fontSize: '0.6rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'text.disabled' }}>
+        {label}
+      </Typography>
+      {children}
+    </Box>
+  )
+}
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -638,53 +670,126 @@ export default function InternalRiversV3Prototype() {
       </Box>
 
       {/* Controls */}
-      <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', px: 2 }}>
+      <Box sx={{
+        width: '100%', maxWidth: canvasW + 220, px: 2, mb: 1.5,
+        display: 'flex', alignItems: 'stretch', gap: 1.5, flexWrap: 'wrap',
+      }}>
+        {/* Scenario selector — primary control */}
+        <ControlSection label="Scenario" flex="1 1 auto">
+          <ToggleButtonGroup
+            value={scenario} exclusive size="small"
+            onChange={(_, v) => { if (v) handleScenarioChange(v) }}
+            sx={{
+              '& .MuiToggleButton-root': {
+                textTransform: 'none', fontSize: '0.7rem', fontWeight: 600, px: 1.5, py: 0.5,
+                borderColor: alpha(isDark ? '#fff' : '#000', 0.1),
+                color: 'text.secondary',
+                '&.Mui-selected': {
+                  bgcolor: alpha('#A855F7', isDark ? 0.2 : 0.1),
+                  color: '#A855F7',
+                  borderColor: alpha('#A855F7', 0.3),
+                  '&:hover': { bgcolor: alpha('#A855F7', isDark ? 0.28 : 0.16) },
+                },
+              },
+            }}
+          >
+            {(Object.keys(SCENARIO_LABELS) as FlowScenario[]).map((s) => (
+              <ToggleButton key={s} value={s}>{SCENARIO_LABELS[s]}</ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        </ControlSection>
+
         {/* Layout toggle */}
-        <Button size="small" variant="outlined"
-          onClick={() => { setLayoutMode((m) => m === 'vertical' ? 'horizontal' : 'vertical'); setDragOffsets({}); particlesRef.current = [] }}
-          sx={{ textTransform: 'none', fontSize: '0.65rem', minWidth: 0, px: 1.2, py: 0.3, borderColor: 'divider', color: 'text.secondary' }}>
-          {layoutMode === 'vertical' ? '→ Horizontal' : '↓ Vertical'}
-        </Button>
+        <ControlSection label="Layout">
+          <ToggleButtonGroup
+            value={layoutMode} exclusive size="small"
+            onChange={(_, v) => { if (v) { setLayoutMode(v); setDragOffsets({}); particlesRef.current = [] } }}
+            sx={{
+              '& .MuiToggleButton-root': {
+                px: 1.2, py: 0.5, borderColor: alpha(isDark ? '#fff' : '#000', 0.1),
+                '&.Mui-selected': { bgcolor: alpha('#60A5FA', isDark ? 0.18 : 0.1), color: '#60A5FA', borderColor: alpha('#60A5FA', 0.3) },
+              },
+            }}
+          >
+            <ToggleButton value="vertical"><ViewStreamIcon sx={{ fontSize: 15, mr: 0.5 }} />Vertical</ToggleButton>
+            <ToggleButton value="horizontal"><ViewWeekIcon sx={{ fontSize: 15, mr: 0.5 }} />Horizontal</ToggleButton>
+          </ToggleButtonGroup>
+        </ControlSection>
 
-        <Box sx={{ width: 1, height: 22, bgcolor: 'divider', mx: 0.3 }} />
-
-        {(Object.keys(SCENARIO_LABELS) as FlowScenario[]).map((s) => (
-          <Button key={s} size="small" variant={scenario === s ? 'contained' : 'outlined'} onClick={() => handleScenarioChange(s)}
-            sx={{ textTransform: 'none', fontSize: '0.65rem', minWidth: 0, px: 1.2, py: 0.3, borderColor: 'divider', color: scenario === s ? undefined : 'text.secondary' }}>
-            {SCENARIO_LABELS[s]}
-          </Button>
-        ))}
-        <Box sx={{ width: 1, height: 22, bgcolor: 'divider', mx: 0.3 }} />
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>Step</Typography>
-          <Switch size="small" checked={stepMode} onChange={(_, v) => { setStepMode(v); setCurrentStep(-1) }}
-            sx={{ '& .MuiSwitch-thumb': { width: 14, height: 14 }, '& .MuiSwitch-switchBase': { padding: '4px' } }} />
-        </Box>
-        {stepMode && (
-          <>
-            <IconButton size="small" onClick={() => { setCurrentStep(-1); particlesRef.current = [] }}><ReplayIcon sx={{ fontSize: 15 }} /></IconButton>
-            <IconButton size="small" onClick={stepForward} disabled={scenario === 'all' || scenario === 'idle'}><SkipNextIcon sx={{ fontSize: 15 }} /></IconButton>
-            <Chip label={`${currentStep + 1}/${stepSteps.length}`} size="small" sx={{ height: 18, fontSize: 9 }} />
-          </>
-        )}
-        <Box sx={{ width: 1, height: 22, bgcolor: 'divider', mx: 0.3 }} />
-        <RouteIcon sx={{ fontSize: 14, color: traceMode ? '#A855F7' : 'text.disabled' }} />
-        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>Trace</Typography>
-        <Switch size="small" checked={traceMode} onChange={(_, v) => { setTraceMode(v); setTraceCompId(null) }}
-          sx={{ '& .MuiSwitch-thumb': { width: 14, height: 14 }, '& .MuiSwitch-switchBase': { padding: '4px' } }} />
-        {traceMode && traceCompId && (
-          <Chip label={COMP_MAP.get(traceCompId)?.label ?? ''} size="small" onDelete={() => setTraceCompId(null)} sx={{ height: 18, fontSize: 9 }} color="secondary" />
-        )}
-      </Box>
-
-      {/* Legend */}
-      <Box sx={{ display: 'flex', gap: 1.5, mb: 1, justifyContent: 'center' }}>
-        {(Object.entries(CATEGORY_COLORS) as [LinkCategory, string][]).map(([cat, c]) => (
-          <Box key={cat} sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
-            <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: c }} />
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>{cat}</Typography>
+        {/* Step mode */}
+        <ControlSection label="Playback">
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Chip
+              label="Step"
+              size="small"
+              onClick={() => { setStepMode((v) => !v); setCurrentStep(-1) }}
+              sx={{
+                height: 26, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer',
+                bgcolor: stepMode ? alpha('#F59E0B', isDark ? 0.2 : 0.12) : 'transparent',
+                color: stepMode ? '#F59E0B' : 'text.secondary',
+                border: '1px solid', borderColor: stepMode ? alpha('#F59E0B', 0.35) : 'divider',
+              }}
+            />
+            {stepMode && (
+              <>
+                <IconButton size="small" onClick={() => { setCurrentStep(-1); particlesRef.current = [] }}
+                  sx={{ width: 26, height: 26, bgcolor: alpha(isDark ? '#fff' : '#000', 0.05) }}>
+                  <ReplayIcon sx={{ fontSize: 14 }} />
+                </IconButton>
+                <IconButton size="small" onClick={stepForward} disabled={scenario === 'all' || scenario === 'idle'}
+                  sx={{ width: 26, height: 26, bgcolor: alpha(isDark ? '#fff' : '#000', 0.05) }}>
+                  <SkipNextIcon sx={{ fontSize: 14 }} />
+                </IconButton>
+                <Chip
+                  label={`${currentStep + 1} / ${stepSteps.length}`}
+                  size="small"
+                  sx={{ height: 22, fontSize: '0.65rem', fontWeight: 600, fontFamily: 'monospace', bgcolor: alpha(isDark ? '#fff' : '#000', 0.05) }}
+                />
+              </>
+            )}
           </Box>
-        ))}
+        </ControlSection>
+
+        {/* Trace mode */}
+        <ControlSection label="Trace">
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Chip
+              icon={<RouteIcon sx={{ fontSize: 14 }} />}
+              label="Trace"
+              size="small"
+              onClick={() => { setTraceMode((v) => !v); setTraceCompId(null) }}
+              sx={{
+                height: 26, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer',
+                bgcolor: traceMode ? alpha('#A855F7', isDark ? 0.2 : 0.12) : 'transparent',
+                color: traceMode ? '#A855F7' : 'text.secondary',
+                border: '1px solid', borderColor: traceMode ? alpha('#A855F7', 0.35) : 'divider',
+                '& .MuiChip-icon': { color: traceMode ? '#A855F7' : 'text.disabled' },
+              }}
+            />
+            {traceMode && traceCompId && (
+              <Chip
+                label={COMP_MAP.get(traceCompId)?.label ?? ''}
+                size="small"
+                onDelete={() => setTraceCompId(null)}
+                sx={{ height: 22, fontSize: '0.65rem', fontWeight: 600, bgcolor: alpha('#A855F7', 0.15), color: '#A855F7' }}
+              />
+            )}
+          </Box>
+        </ControlSection>
+
+        {/* Category legend */}
+        <ControlSection label="Categories">
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {(Object.entries(CATEGORY_COLORS) as [LinkCategory, string][]).map(([cat, c]) => (
+              <Box key={cat} sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c, boxShadow: `0 0 4px ${alpha(c, 0.4)}` }} />
+                <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 500, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                  {cat}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </ControlSection>
       </Box>
 
       {/* Diagram + sparklines */}
@@ -789,11 +894,6 @@ export default function InternalRiversV3Prototype() {
                   <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.5rem', lineHeight: 1.2, textAlign: 'center', pointerEvents: 'none' }}>
                     {comp.sublabel}
                   </Typography>
-                  {comp.metricsLabel && (
-                    <Typography variant="caption" sx={{ color: alpha('#F87171', 0.7), fontSize: '0.42rem', lineHeight: 1, mt: 0.2, fontFamily: 'monospace', pointerEvents: 'none' }}>
-                      ▪ {comp.metricsLabel}
-                    </Typography>
-                  )}
                 </Box>
               </motion.div>
             )
@@ -824,49 +924,83 @@ export default function InternalRiversV3Prototype() {
       {/* Toolbar */}
       <Box sx={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 9999,
-        bgcolor: isDark ? 'rgba(0,0,0,0.92)' : 'rgba(255,255,255,0.95)',
-        borderTop: '1px solid', borderColor: 'divider', px: 2, py: 1,
-        display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', backdropFilter: 'blur(8px)',
+        bgcolor: isDark ? alpha('#0A0A0A', 0.94) : alpha('#FAFAFA', 0.96),
+        borderTop: '1px solid', borderColor: alpha(isDark ? '#fff' : '#000', 0.08),
+        px: 2.5, py: 1,
+        display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap', backdropFilter: 'blur(12px)',
       }}>
-        <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ fontSize: '0.65rem' }}>K15-v3</Typography>
-        <Chip label={SCENARIO_LABELS[scenario]} size="small" sx={{ height: 18, fontSize: 9, fontWeight: 600 }} color="primary" />
+        <Chip
+          label={SCENARIO_LABELS[scenario]}
+          size="small"
+          sx={{ height: 24, fontSize: '0.7rem', fontWeight: 700, bgcolor: alpha('#A855F7', isDark ? 0.2 : 0.1), color: '#A855F7', border: '1px solid', borderColor: alpha('#A855F7', 0.25) }}
+        />
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 130 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>Speed</Typography>
-          <Slider value={speed} onChange={(_, v) => setSpeed(v as number)} min={0.25} max={5} step={0.25} size="small"
-            sx={{ width: 70, '& .MuiSlider-thumb': { width: 10, height: 10 } }} />
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>{speed}x</Typography>
-        </Box>
+        <ToolbarSection label="Speed" icon={<SpeedIcon sx={{ fontSize: 13 }} />}>
+          <Slider
+            value={speed} onChange={(_, v) => setSpeed(v as number)}
+            min={0.25} max={5} step={0.25} size="small"
+            sx={{
+              width: 80,
+              color: '#60A5FA',
+              '& .MuiSlider-thumb': { width: 12, height: 12 },
+              '& .MuiSlider-rail': { opacity: 0.2 },
+            }}
+          />
+          <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 600, fontFamily: 'monospace', color: 'text.secondary', minWidth: 28, textAlign: 'right' }}>
+            {speed}x
+          </Typography>
+        </ToolbarSection>
 
-        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>
+        <Typography variant="caption" sx={{ fontSize: '0.65rem', fontFamily: 'monospace', color: 'text.disabled' }}>
           {particleCount}p · {effectiveLinks.size}/{ALL_LINKS.length}
         </Typography>
 
-        <Box sx={{ width: 1, height: 18, bgcolor: 'divider' }} />
+        <Box sx={{ width: 1, height: 20, bgcolor: alpha(isDark ? '#fff' : '#000', 0.06) }} />
 
-        <BugReportIcon sx={{ fontSize: 13, color: errors.some((e) => e.active) ? '#EF4444' : 'text.disabled' }} />
-        {errors.map((err, idx) => (
-          <Button key={err.type} size="small" variant={err.active ? 'contained' : 'outlined'} color={err.active ? 'error' : 'inherit'}
-            onClick={() => toggleError(idx)} sx={{ textTransform: 'none', fontSize: '0.55rem', minWidth: 0, px: 0.7, py: 0.15, lineHeight: 1.1 }}>
-            {err.label}
+        <ToolbarSection label="Faults" icon={<BugReportIcon sx={{ fontSize: 13, color: errors.some((e) => e.active) ? '#EF4444' : 'text.disabled' }} />}>
+          {errors.map((err, idx) => (
+            <Chip
+              key={err.type} label={err.label} size="small"
+              onClick={() => toggleError(idx)}
+              sx={{
+                height: 24, fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer',
+                bgcolor: err.active ? alpha('#EF4444', isDark ? 0.2 : 0.12) : 'transparent',
+                color: err.active ? '#EF4444' : 'text.secondary',
+                border: '1px solid', borderColor: err.active ? alpha('#EF4444', 0.35) : 'divider',
+              }}
+            />
+          ))}
+        </ToolbarSection>
+
+        <Box sx={{ width: 1, height: 20, bgcolor: alpha(isDark ? '#fff' : '#000', 0.06) }} />
+
+        <Chip
+          label="Charts"
+          size="small"
+          onClick={() => setShowSparklines((v) => !v)}
+          sx={{
+            height: 24, fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer',
+            bgcolor: showSparklines ? alpha('#34D399', isDark ? 0.18 : 0.1) : 'transparent',
+            color: showSparklines ? '#34D399' : 'text.secondary',
+            border: '1px solid', borderColor: showSparklines ? alpha('#34D399', 0.3) : 'divider',
+          }}
+        />
+
+        <Box sx={{ ml: 'auto', display: 'flex', gap: 0.75 }}>
+          <Button size="small" variant="outlined" startIcon={<RestartAltIcon sx={{ fontSize: 14 }} />}
+            onClick={() => setDragOffsets({})}
+            sx={{ textTransform: 'none', fontSize: '0.65rem', fontWeight: 600, borderColor: 'divider', color: 'text.secondary', py: 0.3 }}>
+            Layout
           </Button>
-        ))}
-
-        <Box sx={{ width: 1, height: 18, bgcolor: 'divider' }} />
-        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>Charts</Typography>
-        <Switch size="small" checked={showSparklines} onChange={(_, v) => setShowSparklines(v)}
-          sx={{ '& .MuiSwitch-thumb': { width: 12, height: 12 }, '& .MuiSwitch-switchBase': { padding: '4px' } }} />
-
-        <Button size="small" variant="outlined" onClick={() => setDragOffsets({})}
-          sx={{ textTransform: 'none', fontSize: '0.6rem', ml: 'auto' }}>
-          Reset Layout
-        </Button>
-        <Button size="small" variant="outlined" onClick={() => {
-          particlesRef.current = []; handleScenarioChange('all'); setSpeed(1)
-          setErrors(ERROR_PRESETS); setTraceMode(false); setStepMode(false); setDragOffsets({})
-        }} sx={{ textTransform: 'none', fontSize: '0.6rem' }}>
-          Reset All
-        </Button>
+          <Button size="small" variant="outlined" startIcon={<RestartAltIcon sx={{ fontSize: 14 }} />}
+            onClick={() => {
+              particlesRef.current = []; handleScenarioChange('all'); setSpeed(1)
+              setErrors(ERROR_PRESETS); setTraceMode(false); setStepMode(false); setDragOffsets({})
+            }}
+            sx={{ textTransform: 'none', fontSize: '0.65rem', fontWeight: 600, borderColor: 'divider', color: 'text.secondary', py: 0.3 }}>
+            All
+          </Button>
+        </Box>
       </Box>
     </Box>
   )
@@ -919,6 +1053,18 @@ function LinkTooltip({ linkId, isError, isDark, offsets, mode }: { linkId: strin
 
 // ── Component tooltip ─────────────────────────────────────────────────────────
 
+const COMPONENT_LIMITS: Record<string, { label: string; value: string }[]> = {
+  chi:          [{ label: 'Max body', value: '1 MB' }],
+  auth:         [{ label: 'Rate limit (IP)', value: '10 req / 15 min' }, { label: 'Rate limit (user)', value: '5 req / 15 min' }],
+  'k8s-client': [{ label: 'QPS', value: '100' }, { label: 'Burst', value: '200' }],
+  store:        [{ label: 'Pool size', value: '10 conns' }, { label: 'Idle conns', value: '5' }, { label: 'Conn lifetime', value: '5 min' }],
+  cache:        [{ label: 'Resync', value: '5 min' }, { label: 'Max subscribers', value: '100' }],
+  broker:       [{ label: 'Channel buffer', value: '256' }],
+  audit:        [{ label: 'Write buffer', value: '4096' }],
+  scheduler:    [{ label: 'Tick interval', value: '30s' }],
+  postgres:     [{ label: 'Tables', value: '11' }],
+}
+
 function CompTooltip({ compId, effectiveLinks, offsets, mode }: { compId: string; effectiveLinks: Set<string>; offsets: DragOffsets; mode: LayoutMode }) {
   const comp = COMP_MAP.get(compId)
   if (!comp) return null
@@ -927,6 +1073,7 @@ function CompTooltip({ compId, effectiveLinks, offsets, mode }: { compId: string
   const outgoing = ALL_LINKS.filter((l) => l.source === compId && effectiveLinks.has(l.id))
   const totalIn = incoming.reduce((s, l) => s + l.rps, 0)
   const totalOut = outgoing.reduce((s, l) => s + l.rps, 0)
+  const limits = COMPONENT_LIMITS[compId]
 
   const r = compRectWithOffset(comp, offsets, mode)
   const above = r.y > 180
@@ -937,7 +1084,7 @@ function CompTooltip({ compId, effectiveLinks, offsets, mode }: { compId: string
     <motion.div initial={{ opacity: 0, y: above ? 5 : -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
       transition={{ duration: 0.1 }}
       style={{ position: 'absolute', left: tx, top: ty, transform: above ? 'translate(-50%, -100%)' : 'translate(-50%, 0)', zIndex: 15, pointerEvents: 'none' }}>
-      <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1.5, px: 1.5, py: 1, minWidth: 200, maxWidth: 320, boxShadow: 5 }}>
+      <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1.5, px: 1.5, py: 1, minWidth: 210, maxWidth: 340, boxShadow: 5 }}>
         <Typography variant="caption" fontWeight={700} color="text.primary" sx={{ display: 'block', fontSize: '0.68rem' }}>
           {comp.label}
         </Typography>
@@ -951,12 +1098,35 @@ function CompTooltip({ compId, effectiveLinks, offsets, mode }: { compId: string
             </Typography>
           </Box>
         )}
+
+        {/* Live throughput */}
         {(totalIn > 0 || totalOut > 0) && (
-          <Box sx={{ display: 'flex', gap: 1.5, mb: 0.3 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.5rem' }}>↓ {totalIn} in</Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.5rem' }}>↑ {totalOut} out</Typography>
+          <Box sx={{ display: 'flex', gap: 1.5, mb: 0.4, mt: 0.2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
+              <Typography variant="caption" sx={{ fontSize: '0.5rem', color: 'text.secondary' }}>↓</Typography>
+              <Typography variant="caption" sx={{ fontSize: '0.56rem', fontWeight: 700, fontFamily: 'monospace', color: 'text.primary' }}>{totalIn}</Typography>
+              <Typography variant="caption" sx={{ fontSize: '0.44rem', color: 'text.secondary' }}>req/s in</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
+              <Typography variant="caption" sx={{ fontSize: '0.5rem', color: 'text.secondary' }}>↑</Typography>
+              <Typography variant="caption" sx={{ fontSize: '0.56rem', fontWeight: 700, fontFamily: 'monospace', color: 'text.primary' }}>{totalOut}</Typography>
+              <Typography variant="caption" sx={{ fontSize: '0.44rem', color: 'text.secondary' }}>req/s out</Typography>
+            </Box>
           </Box>
         )}
+
+        {/* Limits */}
+        {limits && limits.length > 0 && (
+          <Box sx={{ bgcolor: 'action.hover', borderRadius: 0.5, px: 0.7, py: 0.4, mb: 0.4 }}>
+            {limits.map((lim) => (
+              <Box key={lim.label} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+                <Typography variant="caption" sx={{ fontSize: '0.48rem', color: 'text.secondary' }}>{lim.label}</Typography>
+                <Typography variant="caption" sx={{ fontSize: '0.48rem', fontWeight: 600, fontFamily: 'monospace', color: 'text.primary' }}>{lim.value}</Typography>
+              </Box>
+            ))}
+          </Box>
+        )}
+
         {incoming.length > 0 && (
           <Box sx={{ mb: 0.2 }}>
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.48rem', fontWeight: 600 }}>← Incoming</Typography>
@@ -964,7 +1134,7 @@ function CompTooltip({ compId, effectiveLinks, offsets, mode }: { compId: string
               <Box key={l.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.3, ml: 0.4 }}>
                 <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: CATEGORY_COLORS[l.category], flexShrink: 0 }} />
                 <Typography variant="caption" sx={{ fontSize: '0.48rem', color: 'text.secondary' }}>
-                  {COMP_MAP.get(l.source)?.label} ({l.rps} RPS)
+                  {COMP_MAP.get(l.source)?.label} ({l.rps} req/s)
                 </Typography>
               </Box>
             ))}
@@ -977,7 +1147,7 @@ function CompTooltip({ compId, effectiveLinks, offsets, mode }: { compId: string
               <Box key={l.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.3, ml: 0.4 }}>
                 <Box sx={{ width: 4, height: 4, borderRadius: '50%', bgcolor: CATEGORY_COLORS[l.category], flexShrink: 0 }} />
                 <Typography variant="caption" sx={{ fontSize: '0.48rem', color: 'text.secondary' }}>
-                  → {COMP_MAP.get(l.target)?.label} ({l.rps} RPS)
+                  → {COMP_MAP.get(l.target)?.label} ({l.rps} req/s)
                 </Typography>
               </Box>
             ))}

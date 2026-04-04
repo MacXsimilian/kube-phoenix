@@ -143,6 +143,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 		r.Route("/api", func(r chi.Router) {
 			h.registerClusterRoutes(r)
 			h.registerPolicyRoutes(r)
+			h.registerObservabilityRoutes(r)
 			h.registerAdminRoutes(r)
 		})
 

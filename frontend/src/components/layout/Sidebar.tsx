@@ -20,6 +20,7 @@ import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined'
 import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined'
 import PeopleOutlinedIcon from '@mui/icons-material/PeopleOutlined'
 import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined'
+import MonitorHeartOutlinedIcon from '@mui/icons-material/MonitorHeartOutlined'
 import EventRepeatOutlinedIcon from '@mui/icons-material/EventRepeatOutlined'
 import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined'
 import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined'
@@ -43,6 +44,7 @@ const NAV: NavItem[] = [
   { label: 'History', href: '/history', icon: <HistoryOutlinedIcon fontSize="small" /> },
   { label: 'Users', href: '/users', icon: <PeopleOutlinedIcon fontSize="small" />, requirePerm: canManageUsers },
   { label: 'Audit Log', href: '/audit', icon: <AssignmentOutlinedIcon fontSize="small" />, requirePerm: canViewAudit },
+  { label: 'Observability', href: '/observability', icon: <MonitorHeartOutlinedIcon fontSize="small" /> },
   { label: 'Settings', href: '/settings', icon: <SettingsOutlinedIcon fontSize="small" /> },
   ...(process.env.NEXT_PUBLIC_PROTOTYPES === '1' ? [
     { label: 'Prototypes', href: '/prototypes', icon: <ScienceOutlinedIcon fontSize="small" /> },

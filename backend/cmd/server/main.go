@@ -16,6 +16,7 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/api"
 	k8sclient "github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/observability"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
@@ -102,6 +103,10 @@ func main() {
 		}
 		defer policySched.Stop()
 	}
+
+	// ── Observability collector ───────────────────────────────────────────
+	obsCollector := observability.NewCollector(st)
+	go obsCollector.Start(ctx)
 
 	retentionDays := parseIntEnv("AUDIT_RETENTION_DAYS", 90)
 	startMaintenanceTickers(ctx, st, retentionDays, &tickerWg)
