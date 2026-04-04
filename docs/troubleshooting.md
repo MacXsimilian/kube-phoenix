@@ -257,3 +257,90 @@ kubectl exec -n kube-phoenix <pod> -- /bin/sh -c "nc -zv <db-host> 5432"
 > **Tip:** This only works with non-distroless images.
 
 3. The application auto-recovers when the database becomes available again. GORM reconnects automatically, and the pod becomes ready once `/healthz` succeeds.
+
+---
+
+## Observability Dashboard
+
+### SSE stream not updating / "Updated Xs ago" shows stale data
+
+**Problem:** The observability dashboard stops receiving live updates and the "Updated Xs ago" indicator grows stale.
+
+**Cause:** The collector is not running, cannot write to the database, or a reverse proxy is buffering SSE responses.
+
+**Solution:**
+
+1. Check the collector is running. Look for `observability: collector started` in pod logs.
+2. Verify database connectivity. The collector writes snapshots every 2s to the `metric_snapshots` table. If writes fail, the SSE stream has nothing new to deliver.
+3. Check if too many SSE clients are connected. Each client reads from an in-memory buffer, but the collector still needs DB write access to persist snapshots.
+4. If using a reverse proxy (nginx, Envoy), ensure SSE responses are not buffered. The backend sets the `X-Accel-Buffering: no` header, but the proxy must respect it.
+
+### Metrics panels show 0.0 / no data
+
+**Problem:** Dashboard metrics panels display `0.0` or appear empty even though the collector is running.
+
+**Cause:** The collector has not yet accumulated enough ticks to compute rate deltas, or Prometheus metrics are not being collected.
+
+**Solution:**
+
+1. Wait at least 4 seconds after the collector starts. The first tick establishes a baseline; the second tick computes rates. Until then, all deltas are zero.
+2. Verify Prometheus metrics are being collected:
+
+```bash
+curl localhost:8080/metrics | grep kube_phoenix
+```
+
+3. Check pod logs for `observability: collection tick failed` warnings. These indicate the collector encountered an error during a tick.
+
+### Live API Call Feed is empty
+
+**Problem:** The API Call Feed panel shows no entries.
+
+**Cause:** Call recording is not active, or the SSE stream is not connected.
+
+**Solution:**
+
+1. Confirm the Chi middleware for call recording is in the middleware stack. Without it, no calls are captured.
+2. Note that only routes matching the 49-entry lookup table are recorded. Unmatched routes appear as "unknown".
+3. SSE streams, `/healthz`, `/metrics`, and static file routes are intentionally skipped and will never appear in the feed.
+4. Verify the SSE stream is connected by opening browser DevTools > Network and looking for an active connection to `/api/observability/stream`.
+
+### API Rivers particles not flowing
+
+**Problem:** The API Rivers visualization renders but particles are static or absent.
+
+**Cause:** The SSE stream is not delivering the required data, or the selected scenario does not produce particle flow.
+
+**Solution:**
+
+1. Ensure the SSE stream is connected and delivering `components` and `links` data.
+2. Check that a scenario other than "Idle" is selected. The Idle scenario intentionally shows no particles.
+3. If particles appear but do not follow paths, the SVG path elements may not be rendering correctly. Check the browser console for JavaScript errors.
+
+### Historical data gaps or missing time ranges
+
+**Problem:** Time-series charts show gaps, or a requested time range returns no data.
+
+**Cause:** Snapshots have been pruned, or the collector was not running during the missing period.
+
+**Solution:**
+
+1. Snapshots are pruned after 3 days. Data beyond the retention window is permanently deleted.
+2. The history endpoint downsamples server-side. Gaps in short time ranges suggest the collector was not running during that period.
+3. Verify the `metric_snapshots` table has data:
+
+```sql
+SELECT COUNT(*), MIN(timestamp), MAX(timestamp) FROM metric_snapshots;
+```
+
+### Threshold alerts not firing
+
+**Problem:** A metric exceeds its configured threshold but no alert is raised.
+
+**Cause:** Thresholds are evaluated client-side, not server-side, and alerts fire only on state transitions.
+
+**Solution:**
+
+1. Verify thresholds are configured: `GET /api/observability/thresholds`.
+2. Thresholds are checked client-side in the SSE hook, not server-side. If the browser tab is closed, no alerts fire.
+3. Alerts only fire on threshold *crossings* (the transition from ok to warn or crit), not continuously while above the threshold. If the metric was already above the threshold when the page loaded, no crossing event occurs until it dips below and rises again.

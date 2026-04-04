@@ -15,8 +15,9 @@
 7. [State Management](#7-state-management)
 8. [Styling Patterns](#8-styling-patterns)
 9. [Real-Time Data Flows](#9-real-time-data-flows)
-10. [Animation Prototypes](#10-animation-prototypes)
-11. [Adding New Features Guide](#11-adding-new-features-guide)
+10. [Observability](#10-observability)
+11. [Animation Prototypes](#11-animation-prototypes)
+12. [Adding New Features Guide](#12-adding-new-features-guide)
 
 ---
 
@@ -1204,7 +1205,69 @@ Components that do not use SSE or WebSocket rely on TanStack Query's `refetchInt
 
 ---
 
-## 10. Animation Prototypes
+## 10. Observability
+
+**Page:** `src/app/observability/page.tsx` (`/observability`)
+
+A two-tab layout (Metrics Dashboard / API Rivers) sharing a single SSE stream. Tab selection and time range are synced to URL query params: `?tab=metrics|rivers&range=1m|5m|...|3d`.
+
+### Data Flow
+
+```
+SSE /api/observability/stream
+  → useObservabilityStream hook
+    → ObservabilityPage (URL state, keyboard shortcuts)
+      → MetricsDashboard (panels, call feed, overview, timeline)
+      → ApiRivers (topology, particles, tooltips, minimap)
+```
+
+The SSE stream is the sole data source -- there is no TanStack Query polling fallback. `useObservabilityStream` manages the connection at page level and passes derived state down as props.
+
+### Key Components
+
+All components live under `src/components/observability/`.
+
+| Component | Purpose |
+|:----------|:--------|
+| MetricsDashboard.tsx | Main dashboard with 6 eCharts panels, fullscreen expand, comparison overlay |
+| ApiRivers.tsx | 15-node topology with canvas particle system, GSAP animations, drag, zoom |
+| StatusHeader.tsx | Live clock, KPI cards with sparklines, trend arrows, freshness indicator |
+| SystemOverview.tsx | Hero card with traffic bar, latency breakdown, health grid, error summary |
+| CallFeed.tsx | Live API call table with search, grouping, expandable rows, auto-scroll |
+| ErrorTimeline.tsx | SVG timeline plotting incidents over error rate area |
+| RiversMinimap.tsx | Thumbnail overview with viewport indicator and click-to-scroll |
+| RiversLinkPopover.tsx | Click-activated link detail card with Go signature and trace action |
+| RiversComponentPreview.tsx | Hover preview with live metrics, runtime limits, connections |
+| RiversControls.tsx | Zoom +/- buttons |
+
+### Key Hooks
+
+- **`useObservabilityStream`** -- SSE connection with automatic reconnect, history ring buffer (60 entries), threshold crossing detection, and runtime config polling (30s).
+- **Lazy eCharts loading** -- a Promise-based dedup pattern ensures only one `import('echarts')` call is in-flight at a time, shared across all chart panels.
+- **`useSharedClock`** (in `StatusHeader`) -- consolidates 3 timer intervals (clock, freshness, sparkline tick) into a single `setInterval`.
+
+### State Management
+
+| Concern | Approach |
+|:--------|:---------|
+| Stream data | Lifted to page level via `useObservabilityStream`; child components receive props |
+| Tab and time range | URL query params (`?tab=`, `?range=`) via `useSearchParams` |
+| Rivers drag offsets | Persisted to `localStorage` |
+| Keyboard shortcuts | Registered at page level (tab switching, time range cycling) |
+
+No TanStack Query is used on this page. All data arrives via SSE push rather than request/response polling.
+
+### Performance Considerations
+
+- eCharts instances are disposed on unmount with `ResizeObserver` cleanup to prevent memory leaks.
+- The particle animation in `ApiRivers` reads live data from refs (not effect dependencies) to avoid teardown and re-initialization on every SSE update.
+- `AnimatePresence` in `CallFeed` is limited to the newest 5 rows to cap layout animation cost.
+- The canvas renderer uses `devicePixelRatio` for crisp rendering on retina displays.
+- GSAP is imported eagerly (not lazy-loaded) because `ApiRivers` uses it immediately on mount.
+
+---
+
+## 11. Animation Prototypes
 
 Animation prototypes are interactive demos for evaluating proposed UI animations before implementing them in production code. They are only available in `dev-mock` mode.
 
@@ -1242,7 +1305,7 @@ Prototypes use [Framer Motion](https://www.framer.com/motion/) for spring physic
 
 ---
 
-## 11. Adding New Features Guide
+## 12. Adding New Features Guide
 
 ### Adding a New Page
 
