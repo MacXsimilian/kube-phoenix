@@ -245,10 +245,6 @@ func histogramQuantile(mf *dto.MetricFamily, q float64) float64 {
 	target := float64(totalCount) * q
 	prevBound := 0.0
 	prevCount := uint64(0)
-	type bucket struct {
-		bound float64
-		count uint64
-	}
 	sorted := sortBuckets(buckets)
 	for _, b := range sorted {
 		if float64(b.count) >= target {

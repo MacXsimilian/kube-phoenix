@@ -2,8 +2,6 @@ package store
 
 import (
 	"time"
-
-	"gorm.io/gorm"
 )
 
 // MetricSnapshot stores a point-in-time capture of all Prometheus metrics
@@ -275,9 +273,4 @@ type ObservabilityStreamPayload struct {
 	Links       []RiverLinkMetrics       `json:"links"`
 	Thresholds  []ObservabilityThreshold `json:"thresholds"`
 	RecentCalls []ApiCall                `json:"recentCalls"`
-}
-
-// migrateObservability is called from runMigrations to add observability tables.
-func migrateObservability(db *gorm.DB) error {
-	return db.AutoMigrate(&MetricSnapshot{}, &ObservabilityThreshold{})
 }
