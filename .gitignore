@@ -24,8 +24,6 @@ helm/kube-phoenix/charts/
 .claude/
 memory/
 mockups/
-prototypes/
-**/prototypes/
 **/mockups/
 
 # ── OS / editors ──────────────────────────────────────────────────────────────

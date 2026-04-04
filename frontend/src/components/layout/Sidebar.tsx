@@ -22,6 +22,7 @@ import PeopleOutlinedIcon from '@mui/icons-material/PeopleOutlined'
 import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined'
 import EventRepeatOutlinedIcon from '@mui/icons-material/EventRepeatOutlined'
 import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined'
+import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined'
 import { useAuth } from '@/lib/auth'
 import { canManageUsers, canViewAudit } from '@/lib/rbac'
 
@@ -43,6 +44,9 @@ const NAV: NavItem[] = [
   { label: 'Users', href: '/users', icon: <PeopleOutlinedIcon fontSize="small" />, requirePerm: canManageUsers },
   { label: 'Audit Log', href: '/audit', icon: <AssignmentOutlinedIcon fontSize="small" />, requirePerm: canViewAudit },
   { label: 'Settings', href: '/settings', icon: <SettingsOutlinedIcon fontSize="small" /> },
+  ...(process.env.NEXT_PUBLIC_PROTOTYPES === '1' ? [
+    { label: 'Prototypes', href: '/prototypes', icon: <ScienceOutlinedIcon fontSize="small" /> },
+  ] : []),
 ]
 
 interface Props {

@@ -5,6 +5,11 @@ const nextConfig = {
   images: {
     unoptimized: true,   // required for static export
   },
+  pageExtensions: [
+    'tsx', 'ts', 'jsx', 'js',
+    // .proto.tsx pages (prototypes) are only included during dev-mock
+    ...(process.env.NEXT_PUBLIC_PROTOTYPES === '1' ? ['proto.tsx'] : []),
+  ],
 }
 
 export default nextConfig
