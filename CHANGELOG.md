@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.26](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.25...v0.5.26) (2026-04-05)
+
+
+### Bug Fixes
+
+* **observability:** full-stack hardening, real metrics, and log streaming reliability ([#323](https://github.com/MacXsimilian/kube-phoenix/issues/323)) ([ba53cd1](https://github.com/MacXsimilian/kube-phoenix/commit/ba53cd111ba7cd7447762032198dcd0e36f4909e))
+
 ## [0.5.25](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.24...v0.5.25) (2026-04-05)
 
 
