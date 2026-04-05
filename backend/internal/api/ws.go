@@ -37,6 +37,7 @@ func wsReadPump(conn *websocket.Conn) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		conn.SetReadLimit(4096)
 		_ = conn.SetReadDeadline(time.Now().Add(wsPongTimeout))
 		conn.SetPongHandler(func(string) error {
 			return conn.SetReadDeadline(time.Now().Add(wsPongTimeout))
@@ -95,6 +96,8 @@ func wsStreamLoop(conn *websocket.Conn, done <-chan struct{}, sub <-chan store.P
 			return
 		case line, ok := <-sub:
 			if !ok {
+				_ = conn.WriteMessage(websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.CloseNormalClosure, "execution finished"))
 				return
 			}
 			if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
