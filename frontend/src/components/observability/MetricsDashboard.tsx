@@ -10,7 +10,13 @@ import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
+import Button from '@mui/material/Button'
 import IconButton from '@mui/material/IconButton'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
 import CloseIcon from '@mui/icons-material/Close'
 import { useTheme, alpha, type Theme } from '@mui/material/styles'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
@@ -18,7 +24,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { ObservabilityStreamState } from '@/lib/useObservabilityStream'
-import type { MetricSnapshot, TimeRange, ObservabilityThreshold } from '@/lib/observability-types'
+import type { MetricSnapshot, TimeRange, ObservabilityThreshold, ApiCall } from '@/lib/observability-types'
 import StatusHeader from '@/components/observability/StatusHeader'
 import SystemOverview from '@/components/observability/SystemOverview'
 import CallFeed from '@/components/observability/CallFeed'
@@ -60,16 +66,18 @@ interface PanelConfig {
   panelKey: string
   getValue: (s: MetricSnapshot) => number
   chartType: 'line' | 'multiline' | 'bar' | 'gauge' | 'scatter' | 'errorline'
+  upIsBad?: boolean
 }
 
 // ── Panel definitions ───────────────────────────────────────────────────────
 
 const PANELS: PanelConfig[] = [
   { key: 'http-rate', title: 'HTTP Request Rate', unit: 'req/s', panelKey: 'http_rate', getValue: (s) => s.httpRequestRate, chartType: 'line' },
-  { key: 'latency', title: 'HTTP Latency', unit: 'ms', panelKey: 'latency_p99', getValue: (s) => s.httpLatencyP99Ms, chartType: 'multiline' },
+  { key: 'latency', title: 'HTTP Latency', unit: 'ms', panelKey: 'latency_p99', getValue: (s) => s.httpLatencyP99Ms, chartType: 'multiline', upIsBad: true },
   { key: 'k8s-api', title: 'K8s API Calls', unit: '/min', panelKey: 'k8s_api', getValue: (s) => s.k8sGetRate + s.k8sPatchRate + s.k8sDeleteRate, chartType: 'multiline' },
+  { key: 'k8s-latency', title: 'K8s API Latency', unit: 'ms', panelKey: 'k8s_api', getValue: (s) => s.k8sLatencyP99Ms, chartType: 'multiline', upIsBad: true },
   { key: 'ws-conns', title: 'WebSocket Connections', unit: '', panelKey: 'ws_connections', getValue: (s) => s.wsActiveConnections, chartType: 'line' },
-  { key: 'error-rate', title: 'Error Rate', unit: '/s', panelKey: 'error_rate', getValue: (s) => s.totalErrorRate, chartType: 'errorline' },
+  { key: 'error-rate', title: 'Error Rate', unit: '/s', panelKey: 'error_rate', getValue: (s) => s.totalErrorRate, chartType: 'errorline', upIsBad: true },
   { key: 'scale-ops', title: 'Pod Scale Operations', unit: '', panelKey: 'scheduler_health', getValue: (s) => s.workloadsScaledCount, chartType: 'scatter' },
 ]
 
@@ -129,7 +137,7 @@ export default function MetricsDashboard({ stream, timeRange, onTimeRangeChange 
           }}
         >
           {!snap
-            ? Array.from({ length: 7 }, (_, i) => <PanelSkeleton key={i} />)
+            ? Array.from({ length: PANELS.length }, (_, i) => <PanelSkeleton key={i} />)
             : PANELS.map((panel) => (
                 <MetricPanel
                   key={panel.key}
@@ -149,6 +157,7 @@ export default function MetricsDashboard({ stream, timeRange, onTimeRangeChange 
           snapshot={snap}
           history={history}
           thresholdMap={thresholdMap}
+          recentCalls={recentCalls}
           onClose={() => setExpandedPanel(null)}
           onNavigate={(panelKey) => router.push(`/observability/${panelKey}`)}
         />
@@ -181,7 +190,8 @@ export default function MetricsDashboard({ stream, timeRange, onTimeRangeChange 
                 borderColor: 'divider',
                 overflowX: 'auto',
                 bgcolor: alpha(theme.palette.error.main, 0.03),
-                '&::-webkit-scrollbar': { display: 'none' },
+                '&::-webkit-scrollbar': { height: 4 },
+                '&::-webkit-scrollbar-thumb': { bgcolor: 'divider', borderRadius: 2 },
               }}
             >
               {events.map((evt) => (
@@ -230,7 +240,8 @@ function MetricPanel({ config, snapshot, history, threshold, onClick }: MetricPa
   const prevValue = history.length >= 2 ? config.getValue(history[history.length - 2]) : value
 
   const delta = prevValue !== 0 ? ((value - prevValue) / prevValue) * 100 : 0
-  const deltaColor = Math.abs(delta) < 1 ? theme.palette.text.secondary : delta > 0 ? theme.palette.warning.main : theme.palette.success.main
+  const deltaPositive = config.upIsBad ? delta < 0 : delta > 0
+  const deltaColor = Math.abs(delta) < 1 ? theme.palette.text.secondary : deltaPositive ? theme.palette.success.main : theme.palette.warning.main
 
   const thresholdStatus = getThresholdStatus(value, config.panelKey, threshold)
   const statusColor =
@@ -240,8 +251,7 @@ function MetricPanel({ config, snapshot, history, threshold, onClick }: MetricPa
   const legendEntries = useLegendEntries(config, theme)
 
   useEffect(() => {
-    if (!chartRef.current || history.length < 2) return
-
+    if (!chartRef.current) return
     let disposed = false
     loadECharts().then((ec) => {
       if (disposed || !chartRef.current) return
@@ -251,10 +261,7 @@ function MetricPanel({ config, snapshot, history, threshold, onClick }: MetricPa
         ro.observe(chartRef.current)
         roRef.current = ro
       }
-      const option = buildChartOption(config, history, threshold, theme)
-      chartInstance.current!.setOption(option, { notMerge: false })
     })
-
     return () => {
       disposed = true
       chartInstance.current?.dispose()
@@ -262,6 +269,13 @@ function MetricPanel({ config, snapshot, history, threshold, onClick }: MetricPa
       roRef.current?.disconnect()
       roRef.current = null
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!chartInstance.current || history.length < 2) return
+    const option = buildChartOption(config, history, threshold, theme)
+    chartInstance.current.setOption(option, { notMerge: false })
   }, [config, history, threshold, theme])
 
   return (
@@ -302,7 +316,7 @@ function MetricPanel({ config, snapshot, history, threshold, onClick }: MetricPa
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75 }}>
-          <Typography sx={{ fontSize: 24, fontWeight: 700, fontFamily: 'monospace', lineHeight: 1 }}>
+          <Typography aria-live="polite" sx={{ fontSize: 24, fontWeight: 700, fontFamily: 'monospace', lineHeight: 1 }}>
             <span style={{ transition: 'all 300ms ease' }}>
               {config.chartType === 'gauge' ? value.toFixed(1) : value.toFixed(config.unit === 'ms' ? 0 : 1)}
             </span>
@@ -367,6 +381,12 @@ function useLegendEntries(config: PanelConfig, theme: Theme): LegendEntry[] {
         { name: 'P99', color: theme.palette.error.main },
       ]
     }
+    if (config.key === 'k8s-latency') {
+      return [
+        { name: 'P50', color: theme.palette.success.main },
+        { name: 'P99', color: theme.palette.error.main },
+      ]
+    }
     if (config.key === 'k8s-api') {
       return [
         { name: 'GET', color: theme.palette.info.main },
@@ -407,11 +427,15 @@ interface PanelExpandDialogProps {
   snapshot: MetricSnapshot | undefined
   history: MetricSnapshot[]
   thresholdMap: Record<string, ObservabilityThreshold>
+  recentCalls: ApiCall[]
   onClose: () => void
   onNavigate: (panelKey: string) => void
 }
 
-function PanelExpandDialog({ panels, expandedPanel, snapshot, history, thresholdMap, onClose, onNavigate }: PanelExpandDialogProps) {
+const LATENCY_PANEL_KEYS = new Set(['latency', 'k8s-latency', 'http-rate', 'error-rate'])
+const SLOWEST_CALLS_COUNT = 15
+
+function PanelExpandDialog({ panels, expandedPanel, snapshot, history, thresholdMap, recentCalls, onClose, onNavigate }: PanelExpandDialogProps) {
   const theme = useTheme()
   const config = panels.find((p) => p.key === expandedPanel)
   if (!config) return null
@@ -419,6 +443,7 @@ function PanelExpandDialog({ panels, expandedPanel, snapshot, history, threshold
   const value = snapshot ? config.getValue(snapshot) : 0
   const threshold = thresholdMap[config.panelKey]
   const stats = computePanelStats(config, history)
+  const showSlowestCalls = LATENCY_PANEL_KEYS.has(config.key)
 
   return (
     <Dialog open={!!expandedPanel} onClose={onClose} maxWidth="md" fullWidth>
@@ -429,24 +454,70 @@ function PanelExpandDialog({ panels, expandedPanel, snapshot, history, threshold
             {value.toFixed(config.unit === 'ms' ? 0 : 1)} {config.unit}
           </Typography>
         </Box>
-        <IconButton onClick={onClose} sx={{ position: 'absolute', right: 8, top: 8 }}>
+        <IconButton onClick={onClose} aria-label="Close" sx={{ position: 'absolute', right: 8, top: 8 }}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>
       <DialogContent dividers>
         <ExpandedChart config={config} history={history} threshold={threshold} />
         <ExpandedDetails stats={stats} threshold={threshold} unit={config.unit} theme={theme} />
+        {showSlowestCalls && <SlowestCallsTable calls={recentCalls} theme={theme} />}
       </DialogContent>
       <DialogActions>
-        <Typography
-          component="a"
+        <Button
+          variant="text"
+          size="small"
           onClick={() => { onClose(); onNavigate(config.panelKey) }}
-          sx={{ cursor: 'pointer', fontSize: 13, color: 'primary.main', fontWeight: 600, px: 2, py: 1 }}
+          sx={{ fontSize: 13, fontWeight: 600 }}
         >
           View Details
-        </Typography>
+        </Button>
       </DialogActions>
     </Dialog>
+  )
+}
+
+function SlowestCallsTable({ calls, theme }: { calls: ApiCall[]; theme: Theme }) {
+  const sorted = useMemo(
+    () => [...calls].sort((a, b) => b.durationMs - a.durationMs).slice(0, SLOWEST_CALLS_COUNT),
+    [calls],
+  )
+
+  if (sorted.length === 0) return null
+
+  return (
+    <Box sx={{ mt: 3 }}>
+      <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: '0.04em', mb: 1, display: 'block' }}>
+        Slowest Requests
+      </Typography>
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell sx={{ fontWeight: 600, fontSize: 11 }}>Method</TableCell>
+            <TableCell sx={{ fontWeight: 600, fontSize: 11 }}>Path</TableCell>
+            <TableCell sx={{ fontWeight: 600, fontSize: 11 }}>Function</TableCell>
+            <TableCell sx={{ fontWeight: 600, fontSize: 11 }} align="right">Status</TableCell>
+            <TableCell sx={{ fontWeight: 600, fontSize: 11 }} align="right">Duration</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {sorted.map((call) => {
+            const isError = call.statusCode >= 400
+            return (
+              <TableRow key={call.id}>
+                <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>{call.method}</TableCell>
+                <TableCell sx={{ fontFamily: 'monospace', fontSize: 12, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{call.path}</TableCell>
+                <TableCell sx={{ fontSize: 12, color: 'text.secondary' }}>{call.goFunc}</TableCell>
+                <TableCell align="right" sx={{ fontFamily: 'monospace', fontSize: 12, color: isError ? theme.palette.error.main : 'text.primary' }}>{call.statusCode}</TableCell>
+                <TableCell align="right" sx={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: call.durationMs > 500 ? theme.palette.warning.main : call.durationMs > 1000 ? theme.palette.error.main : 'text.primary' }}>
+                  {call.durationMs.toFixed(1)} ms
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+    </Box>
   )
 }
 
@@ -458,7 +529,7 @@ function ExpandedChart({ config, history, threshold }: { config: PanelConfig; hi
   const roRef = useRef<ResizeObserver | null>(null)
 
   useEffect(() => {
-    if (!chartRef.current || history.length < 2) return
+    if (!chartRef.current) return
     let disposed = false
     loadECharts().then((ec) => {
       if (disposed || !chartRef.current) return
@@ -468,8 +539,6 @@ function ExpandedChart({ config, history, threshold }: { config: PanelConfig; hi
         ro.observe(chartRef.current)
         roRef.current = ro
       }
-      const option = buildChartOption(config, history, threshold, theme)
-      chartInstance.current!.setOption(option, { notMerge: false })
     })
     return () => {
       disposed = true
@@ -478,6 +547,13 @@ function ExpandedChart({ config, history, threshold }: { config: PanelConfig; hi
       roRef.current?.disconnect()
       roRef.current = null
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!chartInstance.current || history.length < 2) return
+    const option = buildChartOption(config, history, threshold, theme)
+    chartInstance.current.setOption(option, { notMerge: false })
   }, [config, history, threshold, theme])
 
   return <Box ref={chartRef} sx={{ width: '100%', height: 400 }} />
@@ -587,6 +663,19 @@ function buildChartOption(
           ],
         }
       }
+      if (config.key === 'k8s-latency') {
+        return {
+          animation: false,
+          tooltip: { ...baseTooltip, trigger: 'axis' as const },
+          grid: baseGrid,
+          xAxis: baseXAxis,
+          yAxis: baseYAxis,
+          series: [
+            { type: 'line', name: 'P50', data: history.map((s) => s.k8sLatencyP50Ms), smooth: true, showSymbol: false, lineStyle: { width: 1.5, color: theme.palette.success.main } },
+            { type: 'line', name: 'P99', data: history.map((s) => s.k8sLatencyP99Ms), smooth: true, showSymbol: false, lineStyle: { width: 2, color: theme.palette.error.main }, markLine: thresholdMarkLines.length > 0 ? { silent: true, symbol: 'none', data: thresholdMarkLines } : undefined },
+          ],
+        }
+      }
       return {
         animation: false,
         tooltip: { ...baseTooltip, trigger: 'axis' as const },
@@ -621,7 +710,7 @@ function buildChartOption(
       const failData: [number, number][] = []
       history.forEach((s, i) => {
         if (s.workloadsScaledCount > 0) successData.push([i, s.scaleOperationDurationMs])
-        if (s.policyFailedCount > 0) failData.push([i, s.scaleOperationDurationMs * 1.5])
+        if (s.policyFailedCount > 0) failData.push([i, s.scaleOperationDurationMs])
       })
       return {
         animation: false,
@@ -684,8 +773,15 @@ function formatScatterTooltip(params: any) {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function getThresholdStatus(value: number, _panelKey: string, threshold: ObservabilityThreshold | undefined): 'ok' | 'warn' | 'crit' {
+const INVERTED_PANELS = new Set(['cache_hit'])
+
+function getThresholdStatus(value: number, panelKey: string, threshold: ObservabilityThreshold | undefined): 'ok' | 'warn' | 'crit' {
   if (!threshold) return 'ok'
+  if (INVERTED_PANELS.has(panelKey)) {
+    if (value <= threshold.critVal) return 'crit'
+    if (value <= threshold.warnVal) return 'warn'
+    return 'ok'
+  }
   if (value >= threshold.critVal) return 'crit'
   if (value >= threshold.warnVal) return 'warn'
   return 'ok'
@@ -697,6 +793,5 @@ function formatAxisLabel(d: Date, spanMs: number): string {
   const ss = String(d.getSeconds()).padStart(2, '0')
   if (spanMs <= 5 * 60_000) return `${hh}:${mm}:${ss}`
   if (spanMs <= 60 * 60_000) return `${hh}:${mm}`
-  if (spanMs <= 24 * 60 * 60_000) return `${hh}:${mm}`
   return `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`
 }
