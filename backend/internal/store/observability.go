@@ -12,11 +12,11 @@ type MetricSnapshot struct {
 	Timestamp time.Time `gorm:"index:idx_ms_ts;not null" json:"timestamp"`
 
 	// HTTP
-	HTTPRequestRate     float64 `json:"httpRequestRate"`     // req/s since last tick
-	HTTPLatencyP50Ms    float64 `json:"httpLatencyP50Ms"`    // milliseconds
-	HTTPLatencyP95Ms    float64 `json:"httpLatencyP95Ms"`    // milliseconds
-	HTTPLatencyP99Ms    float64 `json:"httpLatencyP99Ms"`    // milliseconds
-	HTTPErrorRate       float64 `json:"httpErrorRate"`       // 5xx/s since last tick
+	HTTPRequestRate  float64 `json:"httpRequestRate"`  // req/s since last tick
+	HTTPLatencyP50Ms float64 `json:"httpLatencyP50Ms"` // milliseconds
+	HTTPLatencyP95Ms float64 `json:"httpLatencyP95Ms"` // milliseconds
+	HTTPLatencyP99Ms float64 `json:"httpLatencyP99Ms"` // milliseconds
+	HTTPErrorRate    float64 `json:"httpErrorRate"`    // 5xx/s since last tick
 
 	// Kubernetes API
 	K8sGetRate    float64 `json:"k8sGetRate"`    // calls/min
@@ -35,11 +35,11 @@ type MetricSnapshot struct {
 	CacheHitRate float64 `json:"cacheHitRate"` // percentage 0-100
 
 	// Scheduler
-	SchedulerEvalRate     float64 `json:"schedulerEvalRate"`     // evals/min
+	SchedulerEvalRate       float64 `json:"schedulerEvalRate"`       // evals/min
 	SchedulerEvalDurationMs float64 `json:"schedulerEvalDurationMs"` // avg ms per eval
 
 	// Pod scale operations
-	WorkloadsScaledCount int     `json:"workloadsScaledCount"` // in the tick window
+	WorkloadsScaledCount     int     `json:"workloadsScaledCount"` // in the tick window
 	ScaleOperationDurationMs float64 `json:"scaleOperationDurationMs"`
 
 	// Error aggregates
