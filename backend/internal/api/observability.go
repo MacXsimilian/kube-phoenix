@@ -96,12 +96,16 @@ func (h *Handler) streamObservability(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			rc.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if err := rc.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+				return
+			}
 			if !h.writeSSEObservability(w, flusher) {
 				return
 			}
 		case <-keepalive.C:
-			rc.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if err := rc.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+				return
+			}
 			if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
 				return
 			}
