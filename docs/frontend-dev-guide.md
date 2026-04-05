@@ -16,8 +16,7 @@
 8. [Styling Patterns](#8-styling-patterns)
 9. [Real-Time Data Flows](#9-real-time-data-flows)
 10. [Observability](#10-observability)
-11. [Animation Prototypes](#11-animation-prototypes)
-12. [Adding New Features Guide](#12-adding-new-features-guide)
+11. [Adding New Features Guide](#11-adding-new-features-guide)
 
 ---
 
@@ -34,7 +33,7 @@ The kube-phoenix frontend is the operator-facing UI for managing Kubernetes slee
 | MUI (Material UI) | v7 | |
 | TanStack Query | v5 | |
 | Emotion | v11 (MUI's styling engine) | |
-| Framer Motion | 12 | Used in animation prototypes only (dev-mock) |
+| Framer Motion | 12 | Sidebar morph, drawer slide, log animations |
 | TypeScript | 6 | |
 
 **Running locally:**
@@ -71,17 +70,13 @@ frontend/
       history/page.tsx          # /history -- execution history
       audit/page.tsx            # /audit -- audit log (viewer and above)
       users/page.tsx            # /users -- user management (admin)
-      settings/page.tsx         # /settings -- two-column grid: account, appearance, OIDC, sessions, cluster, DB reset, about
+      settings/page.tsx         # /settings -- Command Center layout with collapsible sections: Profile & Identity, Cluster & Connection, Appearance, Security & Sessions, System Pulse, Danger Zone, About
       guardrails/page.tsx       # /guardrails -- guardrails editor
       observability/page.tsx    # /observability -- observability center
       observability/[component]/page.tsx  # /observability/{component} -- component drill-down
-      prototypes/              # Animation prototypes (dev-mock only, uses .proto.tsx extension)
-        page.proto.tsx         # Index page with prototype card grid
-        layout.proto.tsx       # Shared layout
-        */page.proto.tsx       # Individual prototype demos (77 total)
     components/
       layout/
-        Sidebar.tsx             # Navigation sidebar (permanent on desktop, temporary on mobile)
+        Sidebar.tsx             # Navigation sidebar: collapsible/expandable with framer-motion, collapsed state persisted to localStorage, width 220px expanded / 64px collapsed
         AppShell.tsx            # Top-level layout wrapper with sidebar + content area
         AboutModal.tsx          # Version/about dialog
       auth/
@@ -161,6 +156,7 @@ frontend/
       observability/              # Observability center components
       ErrorBoundary.tsx         # React error boundary
     lib/
+      animations.ts              # Shared CSS-in-JS animation constants (LOG_WATERFALL_SX)
       api.ts                    # Centralized fetch wrapper + all API functions
       auth.tsx                  # AuthContext provider, login/logout, refreshUser, session management
       types.ts                  # TypeScript interfaces for all backend models + shared UI types (SnackMessage, ClusterInfo, VersionInfo)
@@ -519,7 +515,7 @@ The component displays:
 - Status indicator with pulsing dot (sleeping/partial/awake)
 - Namespace breakdown when workloads are partially sleeping
 - Stats chips (nodes, running workloads, sleeping workloads) -- each is clickable, navigating to the cluster page with the relevant filter
-- Sleep Now / Wake Now buttons gated by `canTriggerSchedules` permission
+- Sleep Now / Wake Now buttons gated by `canTriggerSchedules` permission -- clicking opens the LogViewer drawer inline on the overview page
 - Next scheduled run badge with countdown via `timeUntil()`
 
 The `useClusterStream()` hook implements automatic reconnection with exponential backoff. After 2 consecutive failures, it shows a "Live updates paused" chip. On successful reconnection, the indicator clears.
@@ -848,7 +844,7 @@ A summary line above the panel shows the count of changed fields.
 
 **Page:** `src/app/settings/page.tsx`
 
-Uses inline collapsible Section components with real API data. Imports only `DatabaseSettings` (with `bare` prop). Sections: Profile & Identity, Cluster & Connection, Appearance & Preferences, Security & Sessions, System Pulse, Danger Zone, About.
+Command Center layout with collapsible sections. Each section expands/collapses inline and fetches real API data. Sections: Profile & Identity, Cluster & Connection, Appearance, Security & Sessions, System Pulse, Danger Zone, About. Only `DatabaseSettings` is imported as a child component (with `bare` prop); all other sections are rendered directly in the page.
 
 #### AccountSettings
 
@@ -948,11 +944,11 @@ The Scheduler Behaviour section uses stacked label-left/control-right rows for E
 
 ### lib/colors.ts
 
-**`semanticColors(isDark)`** returns a flat object of 18 named colors, each adapting to the current theme mode. This is the canonical color palette for non-MUI-theme colors:
+**`semanticColors(isDark)`** returns a flat object of 19 named colors, each adapting to the current theme mode. This is the canonical color palette for non-MUI-theme colors:
 
 ```typescript
 {
-  success, warning, error, errorLight, info, muted, orange, cyan, purple,
+  success, warning, error, errorLight, info, muted, orange, cyan, purple, vividYellow,
   successBg, warningBg, errorBg, infoBg, mutedBg, orangeBg, purpleBg,
   zoneBg,
 }
@@ -1014,7 +1010,7 @@ A thin permission-checking layer. The internal `hasPerm(permissions, perm)` func
 
 ### lib/usePolicyTriggers.ts
 
-A custom hook that encapsulates sleep/wake trigger mutations for a policy. Returns `{ sleepMut, wakeMut, isBusy }`. On success, it invalidates the `policies`, `policy`, `policy-executions` query keys and navigates to the execution detail view. On error, it calls the provided `onNotify` callback. Used by both `PolicyCard` and `PolicyDetailPage` to avoid duplicating mutation setup, query invalidation, and error handling.
+A custom hook that encapsulates sleep/wake trigger mutations for a policy. Returns `{ sleepMut, wakeMut, isBusy }`. On success, it invalidates the `policies`, `policy`, `policy-executions` query keys and opens the execution log viewer inline. On error, it calls the provided `onNotify` callback. Used by both `PolicyCard` and `PolicyDetailPage` to avoid duplicating mutation setup, query invalidation, and error handling.
 
 ### lib/useDrawerResize.ts
 
@@ -1283,45 +1279,7 @@ No TanStack Query is used on this page. All data arrives via SSE push rather tha
 
 ---
 
-## 11. Animation Prototypes
-
-Animation prototypes are interactive demos for evaluating proposed UI animations before implementing them in production code. They are only available in `dev-mock` mode.
-
-### How it works
-
-Prototype pages use a `.proto.tsx` file extension instead of `.tsx`. The `next.config.mjs` conditionally includes `proto.tsx` in `pageExtensions` only when `NEXT_PUBLIC_PROTOTYPES=1` is set. The `dev-mock` launcher sets this automatically. In production builds, Next.js ignores `.proto.tsx` files entirely -- no routes, no HTML, no JS bundles are generated.
-
-Prototypes use the `.proto.tsx` extension which is conditionally included in Next.js page extensions only when `NEXT_PUBLIC_PROTOTYPES=1`. Prototype files are committed to the repository.
-
-### Adding a new prototype
-
-1. Create a directory: `src/app/prototypes/<name>/`
-2. Add a `page.proto.tsx` file with a `'use client'` directive
-3. Add an entry to the `PROTOTYPES` array in `src/app/prototypes/page.proto.tsx`
-4. Run `make dev-mock` and navigate to `/prototypes/<name>/`
-
-### Current prototypes
-
-| Code | Name | Category |
-|:-----|:-----|:---------|
-| A1 | Phoenix Rise | Onboarding -- skeleton screen with staggered reveal |
-| A3 | Staggered Reveal | Onboarding -- cascading card grid entrance |
-| B1 | Heartbeat Pulse | Real-time -- cluster status with health-dependent pulse |
-| B2 | Stream Glow | Real-time -- metric bar updates with glow highlights |
-| B4 | Log Waterfall | Real-time -- log stream slide-in with error highlighting |
-| C1 | Phoenix Lifecycle | State transitions -- pod state machine animations |
-| C3 | Rollout Wave | State transitions -- execution progress bar with barberpole |
-| C4 | Sleep/Wake Morph | State transitions -- policy state chip and hero band morphing |
-| D4 | Drawer Slide | Micro-interactions -- spring physics drawer with staggered content |
-| D5 | Sidebar Morph | Micro-interactions -- collapsible sidebar with label fade |
-
-### Dependencies
-
-Prototypes use [Framer Motion](https://www.framer.com/motion/) for spring physics and layout animations. This dependency is listed in `package.json` but is only imported by `.proto.tsx` files, so it is tree-shaken from production builds.
-
----
-
-## 12. Adding New Features Guide
+## 11. Adding New Features Guide
 
 ### Adding a New Page
 

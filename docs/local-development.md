@@ -62,7 +62,7 @@ Two worker nodes allow testing node drain where workloads migrate from one worke
 
 **Addons:** metrics-server (for CPU/memory display in the cluster UI).
 
-**Namespaces and workloads:** Nine namespaces simulating team-owned environments (~240 pods across ~70 deployments). Most workloads use `busybox` with lightweight activity (HTTP serve, log lines, DNS lookups, compute, cron jobs, file watchers); a handful use `pause` for idle pods. Each container has resource requests (5m CPU / 8Mi mem) and limits (20m CPU / 32Mi mem).
+**Namespaces and workloads:** Twelve namespaces simulating team-owned environments (~43 workloads across multiple deployment types). Most workloads use `busybox` with lightweight activity (HTTP serve, log lines, DNS lookups, compute, cron jobs, file watchers); a handful use `pause` for idle pods. Each container has resource requests (5m CPU / 8Mi mem) and limits (20m CPU / 32Mi mem).
 
 | Namespace | Pods | What it tests |
 | :-------- | :--: | :------------ |
@@ -249,35 +249,6 @@ The seed data is designed to exercise every UI state:
 | Pod logs | Weighted random levels (INFO 50%, DEBUG 20%, WARN 15%, ERROR 15%) with realistic messages |
 | Log streaming | Follow mode cycles through varied messages including error and warning lines |
 
-### Animation prototypes
-
-`dev-mock` automatically sets `NEXT_PUBLIC_PROTOTYPES=1`, which enables the `/prototypes` route and adds a "Prototypes" link in the sidebar. This route hosts interactive animation demos for evaluating proposed UI animations before implementing them in production.
-
-Prototype pages use the `.proto.tsx` file extension (e.g., `page.proto.tsx`). Next.js only recognizes this extension when `NEXT_PUBLIC_PROTOTYPES=1` is set. In production builds, these files are completely excluded -- no routes, no HTML, no JavaScript bundles are generated.
-
-```
-frontend/src/app/prototypes/
-  page.proto.tsx              # Index page with card grid of all prototypes
-  layout.proto.tsx            # Shared layout wrapper
-  <name>/page.proto.tsx       # One directory per prototype
-```
-
-The gallery currently contains 77 prototypes across the following categories:
-
-| Category | Count | Examples |
-| :------- | :---: | :------- |
-| Flagship | 8 | 3D Cluster Topology, Execution Theater, Multi-Region Globe, Policy DNA Sequencer, Workload Symphony, Cluster Nervous System, Incident Cinema, Carbon Footprint, Physics Pod Collider, Cytoscape Topology |
-| Data Viz | 40 | Prometheus Dashboard, Namespace Sankey, Execution Heatmap Calendar, Chord Dependency Map, Voronoi Namespaces, Polar Timeline, Sigma Mega Cluster, Observable Stream, Recharts Sparkboard, Internal API Rivers |
-| Micro-Interactions | 15 | Magnetic Nav Icons, Liquid Toggle, Particle Search, Replica Slot Machine, Glitch Error State, Morphing Status Badge, Floating Metric Bubbles, Confetti Success, Haptic Buttons, Data Flow Rivers |
-| Delight | 5 | Phoenix Moment, Danger Zone, Empty State Egg, Guardrails Shield, Wake Ripple |
-| Onboarding | 3 | Phoenix Rise, Staggered Reveal, Skeleton Loading |
-| Real-Time | 3 | Heartbeat Pulse, Stream Glow, Log Waterfall |
-| State Transitions | 3 | Phoenix Lifecycle, Rollout Wave, Sleep/Wake Morph |
-
-Technologies used across prototypes: Three.js / React Three Fiber, GSAP, Framer Motion, eCharts, Canvas 2D, SVG, Web Audio API, CSS 3D transforms.
-
-To add a new prototype, create a directory under `prototypes/` with a `page.proto.tsx` file and add an entry to the `PROTOTYPES` array in `page.proto.tsx`.
-
 ---
 
 ## Testing Scaling End-to-End
@@ -345,7 +316,6 @@ What works in each local setup:
 | Guardrails enforcement | Yes | Yes | Simulated |
 | Audit log | Yes | Yes | Fixture data |
 | Authentication / RBAC | Yes | Yes | Simulated |
-| Animation prototypes | -- | -- | Yes |
 
 ---
 
@@ -360,7 +330,6 @@ What works in each local setup:
 | `CLUSTER_NAME` | _(empty)_ | Human-readable cluster name shown in `GET /api/cluster/info` |
 | `NEXT_PUBLIC_API_URL` | `''` (empty string, same-origin) | Backend URL for the frontend dev server (build-time, Mode 2 only). `make dev-mock` sets this to `http://localhost:4444`. |
 | `NEXT_PUBLIC_APP_VERSION` | `dev` | Version string shown in the About modal |
-| `NEXT_PUBLIC_PROTOTYPES` | _(empty)_ | Set to `1` to enable `/prototypes` route (auto-set by `make dev-mock`) |
 
 See `.env.example` for a copy-paste template.
 
