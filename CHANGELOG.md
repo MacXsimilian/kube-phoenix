@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.25](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.24...v0.5.25) (2026-04-05)
+
+
+### Bug Fixes
+
+* **docker:** harden build with trimpath, strip flags, and caching improvements ([#321](https://github.com/MacXsimilian/kube-phoenix/issues/321)) ([2473503](https://github.com/MacXsimilian/kube-phoenix/commit/247350334d42b239d128097ef9c34871778fae1c))
+
 ## [0.5.24](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.23...v0.5.24) (2026-04-05)
 
 
