@@ -150,6 +150,10 @@ func (c *Collector) collect() error {
 	snap.DBPoolInUse = int(gaugeValue(families["kube_phoenix_db_pool_in_use"]))
 	snap.DBPoolIdle = int(gaugeValue(families["kube_phoenix_db_pool_idle"]))
 
+	snap.ActiveSessions = int(gaugeValue(families["kube_phoenix_active_sessions"]))
+	snap.ActivePolicies = int(gaugeValue(families["kube_phoenix_active_policies"]))
+	snap.K8sErrorRate = c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "status", "failure") * 60
+
 	c.prev = current
 	c.prevTime = now
 
@@ -324,13 +328,15 @@ func buildPayload(snap *store.MetricSnapshot, thresholds []store.ObservabilityTh
 		thresholdMap[t.PanelKey] = t
 	}
 
+	k8sRPS := (snap.K8sGetRate + snap.K8sPatchRate + snap.K8sDeleteRate) / 60
+
 	components := []store.RiverComponentMetrics{
 		{Component: "router", RPSIn: snap.HTTPRequestRate, RPSOut: snap.HTTPRequestRate, LatencyMs: snap.HTTPLatencyP50Ms, ErrorRate: snap.HTTPErrorRate, Status: thresholdStatus(snap.HTTPRequestRate, thresholdMap["http_rate"])},
-		{Component: "auth", RPSIn: snap.HTTPRequestRate, RPSOut: snap.HTTPRequestRate * 0.98, LatencyMs: 2, ErrorRate: 0, Status: "ok"},
+		{Component: "auth", RPSIn: snap.HTTPRequestRate, RPSOut: snap.HTTPRequestRate * 0.98, LatencyMs: 2, ErrorRate: float64(snap.RateLimitHits), Status: "ok"},
 		{Component: "handlers", RPSIn: snap.HTTPRequestRate * 0.95, RPSOut: snap.HTTPRequestRate * 0.90, LatencyMs: snap.HTTPLatencyP50Ms, ErrorRate: snap.HTTPErrorRate, Status: thresholdStatus(snap.HTTPLatencyP99Ms, thresholdMap["latency_p99"])},
 		{Component: "scheduler", RPSIn: snap.SchedulerEvalRate / 60, RPSOut: snap.SchedulerEvalRate / 60, LatencyMs: snap.SchedulerEvalDurationMs, ErrorRate: float64(snap.SchedulerPanics), Status: thresholdStatus(snap.SchedulerEvalDurationMs, thresholdMap["scheduler_health"])},
 		{Component: "scaler", RPSIn: float64(snap.WorkloadsScaledCount), RPSOut: snap.K8sGetRate/60 + snap.K8sPatchRate/60, LatencyMs: snap.ScaleOperationDurationMs, ErrorRate: 0, Status: "ok"},
-		{Component: "k8s-client", RPSIn: (snap.K8sGetRate + snap.K8sPatchRate + snap.K8sDeleteRate) / 60, RPSOut: (snap.K8sGetRate + snap.K8sPatchRate + snap.K8sDeleteRate) / 60, LatencyMs: 50, ErrorRate: 0, Status: thresholdStatus((snap.K8sGetRate+snap.K8sPatchRate+snap.K8sDeleteRate)/60, thresholdMap["k8s_api"])},
+		{Component: "k8s-client", RPSIn: k8sRPS, RPSOut: k8sRPS, LatencyMs: snap.K8sLatencyP50Ms, ErrorRate: snap.K8sErrorRate / 60, Status: thresholdStatus(k8sRPS, thresholdMap["k8s_api"])},
 		{Component: "store", RPSIn: snap.HTTPRequestRate * 0.6, RPSOut: snap.HTTPRequestRate * 0.6, LatencyMs: 5, ErrorRate: float64(snap.AuditDrops), Status: "ok"},
 		{Component: "ws-broker", RPSIn: float64(snap.WSActiveConnections), RPSOut: float64(snap.WSActiveConnections), LatencyMs: 1, ErrorRate: 0, Status: thresholdStatus(float64(snap.WSActiveConnections), thresholdMap["ws_connections"])},
 	}

@@ -55,6 +55,15 @@ type MetricSnapshot struct {
 	DBPoolOpen  int `json:"dbPoolOpen"`
 	DBPoolInUse int `json:"dbPoolInUse"`
 	DBPoolIdle  int `json:"dbPoolIdle"`
+
+	// Auth & session
+	ActiveSessions int `json:"activeSessions"`
+
+	// Active policies
+	ActivePolicies int `json:"activePolicies"`
+
+	// K8s error rate
+	K8sErrorRate float64 `json:"k8sErrorRate"` // failed K8s API calls/min
 }
 
 // ObservabilityThreshold stores user-configurable warn/crit thresholds per metric panel.
@@ -201,6 +210,9 @@ func averageBucket(bucket []MetricSnapshot) MetricSnapshot {
 		result.SchedulerPanics += s.SchedulerPanics
 		result.AuditDrops += s.AuditDrops
 		result.RateLimitHits += s.RateLimitHits
+		result.ActiveSessions += s.ActiveSessions
+		result.ActivePolicies += s.ActivePolicies
+		result.K8sErrorRate += s.K8sErrorRate
 	}
 	averageRateFields(&result, n)
 	return result
@@ -221,6 +233,9 @@ func averageRateFields(s *MetricSnapshot, n float64) {
 	s.ScaleOperationDurationMs /= n
 	s.TotalErrorRate /= n
 	s.WSActiveConnections = int(float64(s.WSActiveConnections) / n)
+	s.ActiveSessions = int(float64(s.ActiveSessions) / n)
+	s.ActivePolicies = int(float64(s.ActivePolicies) / n)
+	s.K8sErrorRate /= n
 }
 
 // maxPointsForRange returns the target number of data points for a time range.
