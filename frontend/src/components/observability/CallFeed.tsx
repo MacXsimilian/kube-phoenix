@@ -41,6 +41,7 @@ const SCROLL_NEAR_BOTTOM_PX = 40
 const SKELETON_ROW_COUNT = 8
 const COPY_FEEDBACK_MS = 1_500
 const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
+const MAX_DISPLAY_ROWS = 100
 const ANIMATED_ROW_COUNT = 5
 const SPARKLINE_BAR_WIDTH = 4
 const SPARKLINE_MAX_HEIGHT = 16
@@ -266,14 +267,15 @@ interface CallListProps {
 }
 
 function CallList({ scrollRef, calls, filtered, now, expandedId, onToggleExpanded, isScrollPaused, scrollToBottom }: CallListProps) {
-  const animatedCutoff = filtered.length - ANIMATED_ROW_COUNT
+  const displayedCalls = filtered.slice(-MAX_DISPLAY_ROWS)
+  const animatedCutoff = displayedCalls.length - ANIMATED_ROW_COUNT
   return (
     <Box ref={scrollRef} sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
       {calls.length === 0 ? (
         <SkeletonRows />
       ) : (
         <>
-          {filtered.slice(0, Math.max(0, animatedCutoff)).map((call, index) => (
+          {displayedCalls.slice(0, Math.max(0, animatedCutoff)).map((call, index) => (
             <StaticCallRow
               key={call.id}
               call={call}
@@ -284,7 +286,7 @@ function CallList({ scrollRef, calls, filtered, now, expandedId, onToggleExpande
             />
           ))}
           <AnimatePresence initial={false}>
-            {filtered.slice(Math.max(0, animatedCutoff)).map((call, index) => (
+            {displayedCalls.slice(Math.max(0, animatedCutoff)).map((call, index) => (
               <CallRow
                 key={call.id}
                 call={call}

@@ -34,7 +34,6 @@ const TRAFFIC_COLORS = {
   http: '#3B82F6',
   k8s: '#A855F7',
   cache: '#22C55E',
-  ws: '#FBBF24',
 } as const
 
 const STATUS_COLORS = {
@@ -176,15 +175,14 @@ function computeTrafficSegments(
 ): TrafficSegment[] {
   if (!snapshot) return []
   const http = snapshot.httpRequestRate
-  const k8s = snapshot.k8sGetRate + snapshot.k8sPatchRate + snapshot.k8sDeleteRate
+  // K8s rates are stored as calls/min — convert to req/s for consistent units
+  const k8s = (snapshot.k8sGetRate + snapshot.k8sPatchRate + snapshot.k8sDeleteRate) / 60
   // Store traffic is estimated as 60% of HTTP rate (no direct metric available)
   const store = snapshot.httpRequestRate * 0.6
-  const ws = snapshot.wsActiveConnections
   return [
     { label: 'HTTP', value: http, color: TRAFFIC_COLORS.http },
     { label: 'K8s', value: k8s, color: TRAFFIC_COLORS.k8s },
     { label: 'Store', value: store, color: TRAFFIC_COLORS.cache },
-    { label: 'WS', value: ws, color: TRAFFIC_COLORS.ws },
   ]
 }
 
