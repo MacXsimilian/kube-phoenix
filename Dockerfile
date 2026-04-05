@@ -3,7 +3,7 @@
 # Digest pins the exact image; update with: docker pull node:24-alpine && docker inspect --format='{{index .RepoDigests 0}}' node:24-alpine
 FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b AS frontend-builder
 
-ARG NEXT_PUBLIC_APP_VERSION
+ARG NEXT_PUBLIC_APP_VERSION=dev
 
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
@@ -16,7 +16,8 @@ RUN --mount=type=cache,target=/root/.npm \
 ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
 
 COPY frontend/ ./
-RUN npm run build
+RUN --mount=type=cache,target=/app/frontend/.next/cache \
+    npm run build
 
 # ── Stage 2: Build backend ────────────────────────────────────────────────────
 # Always compile on the host platform using Go cross-compilation (no QEMU).
@@ -40,12 +41,15 @@ COPY --from=frontend-builder /app/frontend/out ./web/static/
 COPY openapi.yaml ./internal/docs/openapi.yaml
 
 # Reuse module cache and incremental build cache across invocations.
+# -trimpath strips host paths from the binary for reproducibility.
+# -s -w strips symbol table and DWARF info to reduce binary size.
 # -ldflags -X injects the build version into the api.Version variable so that
 # GET /api/version returns the correct release tag instead of "dev".
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
-    -ldflags "-X github.com/macxsimilian/kube-phoenix/backend/internal/api.Version=${NEXT_PUBLIC_APP_VERSION}" \
+    -trimpath \
+    -ldflags "-s -w -X github.com/macxsimilian/kube-phoenix/backend/internal/api.Version=${NEXT_PUBLIC_APP_VERSION}" \
     -o /bin/kube-phoenix ./cmd/server/...
 
 # ── Stage 3: Final minimal image ──────────────────────────────────────────────
