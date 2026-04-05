@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.24](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.23...v0.5.24) (2026-04-05)
+
+
+### Features
+
+* **frontend:** implement animations, audit fixes, and prototype cleanup ([#319](https://github.com/MacXsimilian/kube-phoenix/issues/319)) ([ef06339](https://github.com/MacXsimilian/kube-phoenix/commit/ef06339bcebb19785edb77cd86c26b4a1a20dd20))
+
 ## [0.5.23](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.22...v0.5.23) (2026-04-04)
 
 
