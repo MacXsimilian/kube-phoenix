@@ -80,6 +80,8 @@ func (c *Collector) Start(ctx context.Context) {
 }
 
 func (c *Collector) collect() error {
+	c.store.UpdatePoolMetrics()
+
 	now := time.Now()
 	mfs, err := c.registry.Gather()
 	if err != nil {
@@ -106,19 +108,32 @@ func (c *Collector) collect() error {
 
 	snap.HTTPRequestRate = c.counterRate("kube_phoenix_http_requests_total", current, elapsed)
 	snap.HTTPErrorRate = c.counterRateFiltered("kube_phoenix_http_requests_total", current, elapsed, "status_code", "5")
-	snap.K8sGetRate = c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "GET") * 60
-	snap.K8sPatchRate = c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "PATCH") * 60
-	snap.K8sDeleteRate = c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "DELETE") * 60
+	snap.K8sGetRate = (c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "list") +
+		c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "get")) * 60
+	snap.K8sPatchRate = (c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "scale") +
+		c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "annotate") +
+		c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "cordon")) * 60
+	snap.K8sDeleteRate = (c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "delete") +
+		c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "drain")) * 60
 	snap.SchedulerEvalRate = c.counterRate("kube_phoenix_scheduler_evaluations_total", current, elapsed) * 60
 	snap.TotalErrorRate = snap.HTTPErrorRate + c.counterRate("kube_phoenix_scheduler_panics_total", current, elapsed)
 
 	snap.HTTPLatencyP50Ms = histogramQuantile(families["kube_phoenix_http_request_duration_seconds"], 0.50) * 1000
 	snap.HTTPLatencyP95Ms = histogramQuantile(families["kube_phoenix_http_request_duration_seconds"], 0.95) * 1000
 	snap.HTTPLatencyP99Ms = histogramQuantile(families["kube_phoenix_http_request_duration_seconds"], 0.99) * 1000
+	snap.K8sLatencyP50Ms = histogramQuantile(families["kube_phoenix_k8s_request_duration_seconds"], 0.50) * 1000
+	snap.K8sLatencyP99Ms = histogramQuantile(families["kube_phoenix_k8s_request_duration_seconds"], 0.99) * 1000
 	snap.SchedulerEvalDurationMs = histogramQuantile(families["kube_phoenix_scheduler_evaluation_duration_seconds"], 0.50) * 1000
 
 	snap.WSActiveConnections = int(gaugeValue(families["kube_phoenix_ws_active_connections"]))
-	snap.CacheHitRate = computeCacheHitRate(families["kube_phoenix_cache_rebuilds_total"])
+
+	hits := counterValue(families["kube_phoenix_cache_hits_total"])
+	misses := counterValue(families["kube_phoenix_cache_misses_total"])
+	if hits+misses > 0 {
+		snap.CacheHitRate = (hits / (hits + misses)) * 100
+	} else {
+		snap.CacheHitRate = 100
+	}
 
 	snap.PolicySuccessCount = int(c.counterRateFiltered("kube_phoenix_executions_total", current, elapsed, "status", "success") * elapsed)
 	snap.PolicyFailedCount = int(c.counterRateFiltered("kube_phoenix_executions_total", current, elapsed, "status", "failed") * elapsed)
@@ -131,6 +146,10 @@ func (c *Collector) collect() error {
 	snap.AuditDrops = int(c.counterRate("kube_phoenix_audit_drops_total", current, elapsed) * elapsed)
 	snap.RateLimitHits = int(c.counterRate("kube_phoenix_rate_limit_hits_total", current, elapsed) * elapsed)
 
+	snap.DBPoolOpen = int(gaugeValue(families["kube_phoenix_db_pool_open_connections"]))
+	snap.DBPoolInUse = int(gaugeValue(families["kube_phoenix_db_pool_in_use"]))
+	snap.DBPoolIdle = int(gaugeValue(families["kube_phoenix_db_pool_idle"]))
+
 	c.prev = current
 	c.prevTime = now
 
@@ -138,7 +157,10 @@ func (c *Collector) collect() error {
 		return fmt.Errorf("save metric snapshot: %w", err)
 	}
 
-	thresholds, _ := c.store.ListObservabilityThresholds()
+	thresholds, err := c.store.ListObservabilityThresholds()
+	if err != nil {
+		slog.Warn("observability: failed to load thresholds", "err", err)
+	}
 	recentCalls := c.callRecorder.Recent(50)
 	payload := buildPayload(snap, thresholds, recentCalls)
 	c.mu.Lock()
@@ -284,19 +306,15 @@ func gaugeValue(mf *dto.MetricFamily) float64 {
 	return total
 }
 
-func computeCacheHitRate(rebuildsMf *dto.MetricFamily) float64 {
-	if rebuildsMf == nil {
-		return 100
+func counterValue(mf *dto.MetricFamily) float64 {
+	if mf == nil {
+		return 0
 	}
-	var totalRebuilds float64
-	for _, m := range rebuildsMf.GetMetric() {
-		totalRebuilds += m.GetCounter().GetValue()
+	var total float64
+	for _, m := range mf.GetMetric() {
+		total += m.GetCounter().GetValue()
 	}
-	rate := 100.0 - totalRebuilds*0.5
-	if rate < 70 {
-		rate = 70
-	}
-	return rate
+	return total
 }
 
 // buildPayload constructs the SSE event payload from current metrics.

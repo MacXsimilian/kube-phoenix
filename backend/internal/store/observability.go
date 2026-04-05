@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -19,9 +20,11 @@ type MetricSnapshot struct {
 	HTTPErrorRate    float64 `json:"httpErrorRate"`    // 5xx/s since last tick
 
 	// Kubernetes API
-	K8sGetRate    float64 `json:"k8sGetRate"`    // calls/min
-	K8sPatchRate  float64 `json:"k8sPatchRate"`  // calls/min
-	K8sDeleteRate float64 `json:"k8sDeleteRate"` // calls/min
+	K8sGetRate       float64 `json:"k8sGetRate"`       // calls/min
+	K8sPatchRate     float64 `json:"k8sPatchRate"`     // calls/min
+	K8sDeleteRate    float64 `json:"k8sDeleteRate"`    // calls/min
+	K8sLatencyP50Ms  float64 `json:"k8sLatencyP50Ms"` // milliseconds
+	K8sLatencyP99Ms  float64 `json:"k8sLatencyP99Ms"` // milliseconds
 
 	// Policy executions
 	PolicySuccessCount int `json:"policySuccessCount"` // in the tick window
@@ -47,6 +50,11 @@ type MetricSnapshot struct {
 	AuditDrops      int     `json:"auditDrops"`
 	RateLimitHits   int     `json:"rateLimitHits"`
 	TotalErrorRate  float64 `json:"totalErrorRate"` // combined error/s
+
+	// Database pool
+	DBPoolOpen  int `json:"dbPoolOpen"`
+	DBPoolInUse int `json:"dbPoolInUse"`
+	DBPoolIdle  int `json:"dbPoolIdle"`
 }
 
 // ObservabilityThreshold stores user-configurable warn/crit thresholds per metric panel.
@@ -131,7 +139,9 @@ func (s *Store) SeedDefaultThresholds() error {
 	}
 	for i := range defaults {
 		var count int64
-		s.db.Model(&ObservabilityThreshold{}).Where("panel_key = ?", defaults[i].PanelKey).Count(&count)
+		if err := s.db.Model(&ObservabilityThreshold{}).Where("panel_key = ?", defaults[i].PanelKey).Count(&count).Error; err != nil {
+			return fmt.Errorf("check threshold %s: %w", defaults[i].PanelKey, err)
+		}
 		if count == 0 {
 			if err := s.db.Create(&defaults[i]).Error; err != nil {
 				return err

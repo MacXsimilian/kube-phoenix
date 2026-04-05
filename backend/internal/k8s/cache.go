@@ -126,6 +126,11 @@ func (c *ClusterCache) Stop() {
 func (c *ClusterCache) Snapshot() CachedSnapshot {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	if c.snap.Ready() {
+		metrics.CacheHitsTotal.Inc()
+	} else {
+		metrics.CacheMissesTotal.Inc()
+	}
 	return c.snap
 }
 
