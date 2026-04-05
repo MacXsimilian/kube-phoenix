@@ -31,6 +31,7 @@ import { useDrawerResize } from '@/lib/useDrawerResize'
 import type { PolicyExecution, LogLine } from '@/lib/types'
 import { LOG_LEVEL_COLORS_DARK, LOG_LEVEL_COLORS_LIGHT, getModeStyle } from '@/lib/statusColors'
 import { useSnackbar } from '@/lib/useSnackbar'
+import { LOG_WATERFALL_SX } from '@/lib/animations'
 import ExecutionSummary from './ExecutionSummary'
 import { useExecutionLogs } from './useExecutionLogs'
 
@@ -135,7 +136,7 @@ function buildPhases(state: ParsedState, direction: string, colors: ReturnType<t
   }
 
   if (hasDrainPhase) {
-    phases.push({ label: 'Drain', color: '#FACC15', weight: 0.10 })
+    phases.push({ label: 'Drain', color: colors.vividYellow, weight: 0.10 })
   }
 
   phases.push({ label: 'Done', color: colors.success, weight: 0.02 })
@@ -452,22 +453,11 @@ function RolloutProgressBar({ lines, status, direction }: { lines: LogLine[]; st
 
 // ── Log line row ──────────────────────────────────────────────────────────────
 
-const LOG_WATERFALL_SX = {
-  animation: 'logSlideIn 200ms ease-out, logFlash 1.5s ease-out',
-  '@keyframes logSlideIn': {
-    '0%': { opacity: 0, transform: 'translateX(12px)' },
-    '100%': { opacity: 1, transform: 'translateX(0)' },
-  },
-  '@keyframes logFlash': {
-    '0%': { backgroundColor: 'rgba(255,255,255,0.06)' },
-    '100%': { backgroundColor: 'transparent' },
-  },
-} as const
-
 function LogLineRow({ line }: { line: LogLine }) {
   const isDark = useIsDark()
+  const colors = useColors()
   const levelColors = isDark ? LOG_LEVEL_COLORS_DARK : LOG_LEVEL_COLORS_LIGHT
-  const color = levelColors[line.level] ?? (isDark ? '#94A3B8' : '#475569')
+  const color = levelColors[line.level] ?? colors.muted
   const isError = line.level === 'error'
   const isWarn = line.level === 'warn'
   return (
@@ -520,7 +510,7 @@ export default function LogViewer({
   const [wsToastOpen, setWsToastOpen] = useState(false)
   const wasConnectedRef = useRef(false)
 
-  const { lines, isConnected, logsError } = useExecutionLogs(execution?.id, isRunning)
+  const { lines, isConnected, logsError, maxRetriesReached } = useExecutionLogs(execution?.id, isRunning)
 
   // Show floating toast when WebSocket disconnects (only after it was connected)
   useEffect(() => {
@@ -554,7 +544,8 @@ export default function LogViewer({
     if (!el) return
     function handleScroll() {
       if (!el) return
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+      const SCROLL_THRESHOLD_PX = 40
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_THRESHOLD_PX
       setAutoScroll(atBottom)
     }
     el.addEventListener('scroll', handleScroll, { passive: true })
@@ -580,7 +571,9 @@ export default function LogViewer({
     const text = lines
       .map((l) => `${new Date(l.timestamp).toLocaleTimeString()}  ${l.message}`)
       .join('\n')
-    navigator.clipboard.writeText(text).then(() => notify('Logs copied to clipboard', 'success'))
+    navigator.clipboard.writeText(text)
+      .then(() => notify('Logs copied to clipboard', 'success'))
+      .catch(() => notify('Failed to copy logs', 'error'))
   }
 
   return (
@@ -740,14 +733,19 @@ export default function LogViewer({
                   Could not load logs.
                 </Alert>
               )}
-              <Box ref={logContainerRef} sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: 'background.default', minHeight: 0 }}>
+              {maxRetriesReached && isRunning && (
+                <Alert severity="error" sx={{ borderRadius: 0 }}>
+                  Log stream failed after {10} reconnect attempts.
+                </Alert>
+              )}
+              <Box ref={logContainerRef} role="log" aria-label="Execution logs" sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: 'background.default', minHeight: 0 }}>
                 {lines.length === 0 && !isRunning && !logsError && (
                   <Typography variant="body2" color="text.secondary">
                     No log lines found.
                   </Typography>
                 )}
                 {lines.map((line, i) => (
-                  <Box key={`${line.id ?? line.seq}-${i}`} ref={(el) => { lineEls.current[i] = el as HTMLElement | null }}>
+                  <Box key={`${line.id ?? line.seq}-${i}`} ref={(el: HTMLElement | null) => { lineEls.current[i] = el }}>
                     <LogLineRow line={line} />
                   </Box>
                 ))}
@@ -761,7 +759,7 @@ export default function LogViewer({
       {/* WebSocket disconnect floating toast */}
       <Snackbar
         open={wsToastOpen}
-        autoHideDuration={5000}
+        autoHideDuration={isConnected ? 3000 : undefined}
         onClose={() => setWsToastOpen(false)}
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
         TransitionComponent={Slide}

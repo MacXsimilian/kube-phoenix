@@ -44,8 +44,14 @@ export function handleUpgrade(req, socket, head) {
   })
 }
 
+const LOG_STREAM_MIN_DELAY_MS = 1200
+const LOG_STREAM_JITTER_MS = 1000
+const DRAIN_TIMEOUT_PER_POD_SECS = 15
+const DRAIN_TIMEOUT_BASE_SECS = 60
+const MAX_LOG_LINES = 50_000
+
 function randomDelay() {
-  return 1200 + Math.random() * 1000
+  return LOG_STREAM_MIN_DELAY_MS + Math.random() * LOG_STREAM_JITTER_MS
 }
 
 function matchesNamespaceFilter(namespace, filter) {
@@ -74,10 +80,10 @@ function findMatchingWorkloads(policy) {
 }
 
 function findDrainableNodes() {
-  return db.nodes.filter((n) => n.status === 'would-drain')
+  return (db.nodes || []).filter((n) => n.status === 'would-drain')
 }
 
-function buildSleepLines(exec, policy, guardrails, workloads) {
+function buildSleepLines(policy, guardrails, workloads) {
   const lines = []
   const concurrency = guardrails.scalingConcurrency || 10
 
@@ -113,7 +119,7 @@ function buildSleepLines(exec, policy, guardrails, workloads) {
   if (drainableNodes.length > 0) {
     lines.push({ level: 'info', message: `Draining ${drainableNodes.length} nodes (concurrency=${concurrency})...` })
     for (const node of drainableNodes) {
-      const timeout = node.podCount * 15 + 60
+      const timeout = node.podCount * DRAIN_TIMEOUT_PER_POD_SECS + DRAIN_TIMEOUT_BASE_SECS
       if (isApply) {
         lines.push({ level: 'info', message: `Draining node ${node.name} (pods=${node.podCount} timeout=${timeout}s)...` })
         lines.push({ level: 'ok', message: `Drained node ${node.name}` })
@@ -132,7 +138,7 @@ function buildSleepLines(exec, policy, guardrails, workloads) {
   return { lines, countScaled: scalable.length, countSkipped: workloads.length - scalable.length }
 }
 
-function buildWakeLines(exec, policy, guardrails, workloads) {
+function buildWakeLines(policy, guardrails, workloads) {
   const lines = []
   const concurrency = guardrails.scalingConcurrency || 10
   const waveSize = guardrails.wakeWaveSize || 0
@@ -204,42 +210,62 @@ function buildWakeLines(exec, policy, guardrails, workloads) {
 function handleConnection(ws, execId) {
   const exec = db.executions.find((e) => e.id === execId)
 
+  if (!exec) {
+    ws.send(JSON.stringify({
+      id: nextId('logLine'), executionId: execId, seq: 1,
+      level: 'error', message: 'Execution not found',
+      timestamp: new Date().toISOString(),
+    }))
+    ws.close(1000, 'execution not found')
+    return
+  }
+
   const existing = db.logLines
     .filter((l) => l.executionId === execId)
     .sort((a, b) => a.seq - b.seq)
 
-  // Completed executions: send all existing lines at once
-  if (exec?.status !== 'running') {
+  if (exec.status !== 'running') {
     for (const line of existing) {
       ws.send(JSON.stringify(line))
     }
+    ws.close(1000, 'execution complete')
     return
   }
 
-  // Running execution: stream fresh lines incrementally
   const policy = db.policies.find((p) => p.id === exec.policyId)
+  if (!policy) {
+    ws.send(JSON.stringify({
+      id: nextId('logLine'), executionId: execId, seq: 1,
+      level: 'error', message: 'Policy not found — cannot generate logs',
+      timestamp: new Date().toISOString(),
+    }))
+    ws.close(1000, 'policy not found')
+    return
+  }
   const guardrails = db.guardrails
-  const workloads = policy ? findMatchingWorkloads(policy) : []
+  const workloads = findMatchingWorkloads(policy)
 
   const { lines, countScaled, countSkipped } = exec.direction === 'wake'
-    ? buildWakeLines(exec, policy, guardrails, workloads)
-    : buildSleepLines(exec, policy, guardrails, workloads)
+    ? buildWakeLines(policy, guardrails, workloads)
+    : buildSleepLines(policy, guardrails, workloads)
 
   let msgIdx = 0
   let seq = 1
+  let pendingTimer = null
+  let aborted = false
 
   function sendNext() {
-    if (msgIdx >= lines.length || ws.readyState !== 1) {
-      if (exec.status === 'running') {
+    if (aborted || msgIdx >= lines.length || ws.readyState !== 1) {
+      if (!aborted && exec.status === 'running') {
+        aborted = true
         exec.status = 'success'
         exec.finishedAt = new Date().toISOString()
         exec.countScaled = countScaled
         exec.countSkipped = countSkipped
-        if (policy) {
-          policy.currentState = exec.direction === 'sleep' ? 'sleeping' : 'awake'
-          policy.stateSince = exec.finishedAt
-        }
+        policy.currentState = exec.direction === 'sleep' ? 'sleeping' : 'awake'
+        policy.stateSince = exec.finishedAt
       }
+      if (ws.readyState === 1) ws.close(1000, 'execution complete')
       return
     }
 
@@ -253,13 +279,19 @@ function handleConnection(ws, execId) {
       timestamp: new Date().toISOString(),
     }
     db.logLines.push(logLine)
+    if (db.logLines.length > MAX_LOG_LINES) {
+      db.logLines.splice(0, db.logLines.length - MAX_LOG_LINES)
+    }
     ws.send(JSON.stringify(logLine))
     msgIdx++
-    setTimeout(sendNext, randomDelay())
+    pendingTimer = setTimeout(sendNext, randomDelay())
   }
 
-  setTimeout(sendNext, randomDelay())
-  ws.on('close', () => { msgIdx = lines.length })
+  pendingTimer = setTimeout(sendNext, randomDelay())
+  ws.on('close', () => {
+    aborted = true
+    if (pendingTimer) clearTimeout(pendingTimer)
+  })
 }
 
 // This file also registers a REST-compatible route stub so the router doesn't 404

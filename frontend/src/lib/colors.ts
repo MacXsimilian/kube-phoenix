@@ -14,6 +14,7 @@ export function semanticColors(isDark: boolean) {
     orange:     isDark ? '#F97316' : '#C2410C',
     cyan:       isDark ? '#22D3EE' : '#0369A1',
     purple:     isDark ? '#7C3AED' : '#6D28D9',
+    vividYellow: isDark ? '#FACC15' : '#CA8A04',
 
     // Tinted backgrounds (low-alpha)
     successBg:    isDark ? 'rgba(34,197,94,0.12)'  : 'rgba(21,128,61,0.10)',

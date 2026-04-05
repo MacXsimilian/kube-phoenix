@@ -20,14 +20,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored === 'true') setCollapsed(true)
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY)
+      if (stored === 'true') setCollapsed(true)
+    } catch { /* localStorage unavailable (private browsing) */ }
   }, [])
 
   const toggleCollapse = useCallback(() => {
     setCollapsed((prev) => {
       const next = !prev
-      localStorage.setItem(STORAGE_KEY, String(next))
+      try { localStorage.setItem(STORAGE_KEY, next ? 'true' : 'false') } catch { /* noop */ }
       return next
     })
   }, [])

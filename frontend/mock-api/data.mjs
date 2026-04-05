@@ -8,6 +8,11 @@ const iso = (d) => d.toISOString()
 const ago = (hours) => iso(new Date(now.getTime() - hours * 3600_000))
 const future = (hours) => iso(new Date(now.getTime() + hours * 3600_000))
 
+const ADMIN_PERMISSIONS = [
+  'view.all', 'schedule.edit', 'schedule.trigger', 'guardrail.edit',
+  'user.manage', 'admin.reset_db', 'admin.emergency_scale', 'audit.view', 'password.change',
+]
+
 function createSeedData() {
   return {
     _seq: {
@@ -26,10 +31,7 @@ function createSeedData() {
       email: 'admin@example.com', role: 'admin', source: 'local', enabled: true,
       createdAt: ago(720), lastLoginAt: ago(1),
       defaultTimezone: 'Europe/Berlin',
-      permissions: [
-        'view.all', 'schedule.edit', 'schedule.trigger', 'guardrail.edit',
-        'user.manage', 'admin.reset_db', 'admin.emergency_scale', 'audit.view', 'password.change',
-      ],
+      permissions: ADMIN_PERMISSIONS,
     },
 
     users: [
@@ -37,7 +39,7 @@ function createSeedData() {
         id: 1, username: 'admin', givenName: 'Max', familyName: 'Mustermann',
         email: 'admin@example.com', role: 'admin', source: 'local', enabled: true,
         createdAt: ago(720), lastLoginAt: ago(1),
-        permissions: ['view.all', 'schedule.edit', 'schedule.trigger', 'guardrail.edit', 'user.manage', 'admin.reset_db', 'admin.emergency_scale', 'audit.view', 'password.change'],
+        permissions: ADMIN_PERMISSIONS,
       },
       {
         id: 2, username: 'operator1', givenName: 'Sarah', familyName: 'Chen',

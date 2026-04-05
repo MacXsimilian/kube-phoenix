@@ -20,23 +20,10 @@ import DownloadIcon from '@mui/icons-material/Download'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import { useColors } from '@/lib/colors'
 import { useSnackbar } from '@/lib/useSnackbar'
+import { LOG_WATERFALL_SX } from '@/lib/animations'
 import type { PodContainer } from '@/lib/types'
 import { usePodLogStream } from './usePodLogStream'
 import LogSearchBar from './LogSearchBar'
-
-// ── Waterfall animation styles ───────────────────────────────────────────────
-
-const LOG_WATERFALL_SX = {
-  animation: 'logSlideIn 200ms ease-out, logFlash 1.5s ease-out',
-  '@keyframes logSlideIn': {
-    '0%': { opacity: 0, transform: 'translateX(12px)' },
-    '100%': { opacity: 1, transform: 'translateX(0)' },
-  },
-  '@keyframes logFlash': {
-    '0%': { backgroundColor: 'rgba(255,255,255,0.06)' },
-    '100%': { backgroundColor: 'transparent' },
-  },
-} as const
 
 const ERROR_PATTERN = /\b(error|fatal|panic|exception|fail(ed|ure)?|crash)\b/i
 const WARN_PATTERN = /\b(warn(ing)?|deprecat)\b/i
@@ -47,11 +34,6 @@ function detectLevel(line: string): 'error' | 'warn' | 'info' {
   return 'info'
 }
 
-const LEVEL_BORDER_COLORS = {
-  error: '#EF4444',
-  warn: '#F59E0B',
-  info: 'rgba(148,163,184,0.25)',
-} as const
 
 interface PodLogViewerProps {
   namespace: string
@@ -129,7 +111,8 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
   const handleScroll = useCallback(() => {
     if (!logRef.current) return
     const { scrollTop, scrollHeight, clientHeight } = logRef.current
-    const atBottom = scrollHeight - scrollTop - clientHeight < 40
+    const SCROLL_THRESHOLD_PX = 40
+    const atBottom = scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD_PX
     setAutoScroll(atBottom)
   }, [])
 
@@ -137,7 +120,9 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
 
   const handleCopy = useCallback(() => {
     const text = lines.join('\n')
-    navigator.clipboard.writeText(text).then(() => notify('Logs copied to clipboard', 'success'))
+    navigator.clipboard.writeText(text)
+      .then(() => notify('Logs copied to clipboard', 'success'))
+      .catch(() => notify('Failed to copy logs', 'error'))
   }, [lines, notify])
 
   const handleDownload = useCallback(() => {
@@ -148,7 +133,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
     downloadLink.href = url
     downloadLink.download = `${namespace}-${podName}-${container || 'default'}.log`
     downloadLink.click()
-    URL.revokeObjectURL(url)
+    setTimeout(() => URL.revokeObjectURL(url), 0)
   }, [lines, namespace, podName, container])
 
   // Reset when container changes
@@ -305,6 +290,8 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
       <Box
         ref={logRef}
         onScroll={handleScroll}
+        role="log"
+        aria-label="Container logs"
         sx={{
           flex: 1, overflow: 'auto', bgcolor: 'background.default',
           fontFamily: 'monospace', fontSize: '0.75rem', lineHeight: 1.7, p: 1, minHeight: 0,
@@ -331,12 +318,12 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
           return (
             <Box
               key={i}
-              ref={(el) => { lineEls.current[i] = el as HTMLElement | null }}
+              ref={(el: HTMLElement | null) => { lineEls.current[i] = el }}
               sx={{
                 px: 1, py: 0.125, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-                color: isError ? '#F87171' : level === 'warn' ? '#FCD34D' : 'text.primary',
+                color: isError ? colors.errorLight : level === 'warn' ? colors.warning : 'text.primary',
                 fontWeight: isError ? 500 : 400,
-                borderLeft: `3px solid ${LEVEL_BORDER_COLORS[level]}`,
+                borderLeft: `3px solid ${isError ? colors.error : level === 'warn' ? colors.warning : colors.mutedBg}`,
                 ml: 0.5,
                 borderRadius: 0.5,
                 bgcolor: isError ? 'rgba(239,68,68,0.06)' : 'transparent',

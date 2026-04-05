@@ -124,7 +124,12 @@ const server = createServer(async (req, res) => {
   req.params = match.params
   req.query = query
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-    try { req.body = await parseBody(req) } catch { req.body = {} }
+    try {
+      req.body = await parseBody(req)
+    } catch (err) {
+      console.warn(`  [mock] Failed to parse request body: ${err.message}`)
+      req.body = {}
+    }
   } else {
     req.body = {}
   }
