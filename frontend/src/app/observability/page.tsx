@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import Box from '@mui/material/Box'
 import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
-import { useObservabilityStream } from '@/lib/useObservabilityStream'
+import { useSharedObservabilityStream } from '@/lib/ObservabilityStreamContext'
 import MetricsDashboard from '@/components/observability/MetricsDashboard'
 import ApiRivers from '@/components/observability/ApiRivers'
 import type { TimeRange } from '@/lib/observability-types'
@@ -26,7 +26,7 @@ function parseRangeParam(param: string | null): TimeRange {
 export default function ObservabilityPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const stream = useObservabilityStream()
+  const stream = useSharedObservabilityStream()
 
   const [activeTab, setActiveTab] = useState(() => parseTabParam(searchParams.get('tab')))
   const [timeRange, setTimeRange] = useState<TimeRange>(() => parseRangeParam(searchParams.get('range')))

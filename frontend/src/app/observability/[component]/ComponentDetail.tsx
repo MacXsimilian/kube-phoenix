@@ -1,16 +1,17 @@
 'use client'
 
-import { useEffect, useRef, useMemo } from 'react'
+import { useEffect, useRef } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Card from '@mui/material/Card'
 import Chip from '@mui/material/Chip'
 import IconButton from '@mui/material/IconButton'
+import Skeleton from '@mui/material/Skeleton'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import { useTheme } from '@mui/material/styles'
 import { useRouter } from 'next/navigation'
-import { useObservabilityStream } from '@/lib/useObservabilityStream'
+import { useSharedObservabilityStream } from '@/lib/ObservabilityStreamContext'
 import { COMPONENT_INFO } from '@/lib/observability-components'
 import type { MetricSnapshot } from '@/lib/observability-types'
 
@@ -40,7 +41,7 @@ async function loadECharts() {
 export default function ComponentDetail({ component }: { component: string }) {
   const theme = useTheme()
   const router = useRouter()
-  const stream = useObservabilityStream()
+  const stream = useSharedObservabilityStream()
   const info = COMPONENT_INFO[component]
 
   if (!info) {
@@ -51,6 +52,7 @@ export default function ComponentDetail({ component }: { component: string }) {
     )
   }
 
+  const loading = !stream.latest
   const snap = stream.latest?.snapshot
   const componentMetrics = stream.latest?.components.find((c) => c.component === info.id)
   const status = componentMetrics?.status ?? 'ok'
@@ -66,8 +68,14 @@ export default function ComponentDetail({ component }: { component: string }) {
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="h5" fontWeight={700}>{info.label}</Typography>
-            <FiberManualRecordIcon sx={{ fontSize: 10, color: statusColor }} />
-            <Chip label={status.toUpperCase()} size="small" sx={{ height: 18, fontSize: 10, fontWeight: 700, bgcolor: `${statusColor}20`, color: statusColor }} />
+            {loading ? (
+              <Skeleton variant="circular" width={10} height={10} />
+            ) : (
+              <>
+                <FiberManualRecordIcon sx={{ fontSize: 10, color: statusColor }} />
+                <Chip label={status.toUpperCase()} size="small" sx={{ height: 18, fontSize: 10, fontWeight: 700, bgcolor: `${statusColor}20`, color: statusColor }} />
+              </>
+            )}
           </Box>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             {info.description}
@@ -82,18 +90,19 @@ export default function ComponentDetail({ component }: { component: string }) {
 
       {/* Metric cards */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: `repeat(${Math.min(info.metrics.length, 4)}, 1fr)` }, gap: 2, mb: 3 }}>
-        {info.metrics.map((m) => {
-          const value = snap ? m.getValue(snap) : 0
-          return (
-            <Card key={m.label} sx={{ p: 2 }}>
-              <Typography variant="caption" color="text.secondary" fontWeight={600}>{m.label}</Typography>
+        {info.metrics.map((m) => (
+          <Card key={m.label} sx={{ p: 2 }}>
+            <Typography variant="caption" color="text.secondary" fontWeight={600}>{m.label}</Typography>
+            {loading ? (
+              <Skeleton variant="text" width={80} sx={{ fontSize: '2.125rem' }} />
+            ) : (
               <Typography variant="h4" fontWeight={700}>
-                {m.unit === 'ms' ? value.toFixed(0) : m.unit === '%' ? value.toFixed(1) : value.toFixed(1)}
+                {m.unit === 'ms' ? (snap ? m.getValue(snap) : 0).toFixed(0) : (snap ? m.getValue(snap) : 0).toFixed(1)}
               </Typography>
-              <Typography variant="caption" color="text.secondary">{m.unit}</Typography>
-            </Card>
-          )
-        })}
+            )}
+            <Typography variant="caption" color="text.secondary">{m.unit}</Typography>
+          </Card>
+        ))}
       </Box>
 
       {/* Metric charts */}
