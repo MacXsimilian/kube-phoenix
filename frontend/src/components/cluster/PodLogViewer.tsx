@@ -24,6 +24,35 @@ import type { PodContainer } from '@/lib/types'
 import { usePodLogStream } from './usePodLogStream'
 import LogSearchBar from './LogSearchBar'
 
+// ── Waterfall animation styles ───────────────────────────────────────────────
+
+const LOG_WATERFALL_SX = {
+  animation: 'logSlideIn 200ms ease-out, logFlash 1.5s ease-out',
+  '@keyframes logSlideIn': {
+    '0%': { opacity: 0, transform: 'translateX(12px)' },
+    '100%': { opacity: 1, transform: 'translateX(0)' },
+  },
+  '@keyframes logFlash': {
+    '0%': { backgroundColor: 'rgba(255,255,255,0.06)' },
+    '100%': { backgroundColor: 'transparent' },
+  },
+} as const
+
+const ERROR_PATTERN = /\b(error|fatal|panic|exception|fail(ed|ure)?|crash)\b/i
+const WARN_PATTERN = /\b(warn(ing)?|deprecat)\b/i
+
+function detectLevel(line: string): 'error' | 'warn' | 'info' {
+  if (ERROR_PATTERN.test(line)) return 'error'
+  if (WARN_PATTERN.test(line)) return 'warn'
+  return 'info'
+}
+
+const LEVEL_BORDER_COLORS = {
+  error: '#EF4444',
+  warn: '#F59E0B',
+  info: 'rgba(148,163,184,0.25)',
+} as const
+
 interface PodLogViewerProps {
   namespace: string
   podName: string
@@ -297,15 +326,24 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
         {lines.map((line, i) => {
           const isMatch = search && matchSet.has(i)
           const isCurrent = isMatch && matchIndices[currentMatchIdx] === i
+          const level = detectLevel(line)
+          const isError = level === 'error'
           return (
             <Box
               key={i}
               ref={(el) => { lineEls.current[i] = el as HTMLElement | null }}
               sx={{
-                px: 1, py: 0.125, whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'text.primary',
-                '&:hover': { bgcolor: 'action.hover' },
+                px: 1, py: 0.125, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                color: isError ? '#F87171' : level === 'warn' ? '#FCD34D' : 'text.primary',
+                fontWeight: isError ? 500 : 400,
+                borderLeft: `3px solid ${LEVEL_BORDER_COLORS[level]}`,
+                ml: 0.5,
+                borderRadius: 0.5,
+                bgcolor: isError ? 'rgba(239,68,68,0.06)' : 'transparent',
+                '&:hover': { bgcolor: isError ? 'rgba(239,68,68,0.10)' : 'rgba(255,255,255,0.03)' },
+                ...LOG_WATERFALL_SX,
                 ...(isCurrent
-                  ? { bgcolor: 'rgba(124,58,237,0.35)', borderLeft: '2px solid', borderColor: 'primary.main' }
+                  ? { bgcolor: 'rgba(124,58,237,0.35)', borderLeft: '3px solid', borderColor: 'primary.main' }
                   : isMatch ? { bgcolor: 'rgba(124,58,237,0.12)' } : {}),
               }}
             >

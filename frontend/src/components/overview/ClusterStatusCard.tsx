@@ -15,7 +15,7 @@ import Brightness4Icon from '@mui/icons-material/Brightness4'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import Skeleton from '@mui/material/Skeleton'
 import Alert from '@mui/material/Alert'
-import { getOverview, getPolicies } from '@/lib/api'
+import { getOverview, getPolicies, getPolicyExecutions } from '@/lib/api'
 import { timeUntil } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
@@ -25,6 +25,8 @@ import { useClusterStream } from '@/lib/useClusterStream'
 import { useSnackbar } from '@/lib/useSnackbar'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
 import TriggerModeDialog, { type TriggerDirection } from '@/components/common/TriggerModeDialog'
+import LogViewer from '@/components/history/LogViewer'
+import type { PolicyExecution } from '@/lib/types'
 
 const statusPulseAnimation = {
   animation: 'statusPulse 2s ease-in-out infinite',
@@ -62,12 +64,23 @@ export default function ClusterStatusCard() {
   // Find first enabled policy for quick sleep/wake triggers
   const firstPolicy = policies.find(p => p.enabled)
 
+  const [liveExecution, setLiveExecution] = useState<PolicyExecution | null>(null)
+
   const { sleepMut, wakeMut, isBusy } = usePolicyTriggers(
     firstPolicy?.id ?? 0,
     notify,
-    ({ executionId }) => {
+    async ({ executionId }) => {
       queryClient.invalidateQueries({ queryKey: ['overview'] })
-      router.push(`/policies/detail/?id=${firstPolicy!.id}&exec=${executionId}`)
+      try {
+        const execs = await queryClient.fetchQuery({
+          queryKey: ['policy-executions', { id: executionId }],
+          queryFn: () => getPolicyExecutions({ policyId: firstPolicy!.id, page: 1, pageSize: 10 }),
+        })
+        const exec = execs.items.find((e: PolicyExecution) => e.id === executionId)
+        if (exec) setLiveExecution(exec)
+      } catch {
+        notify('Execution started but could not load details', 'error')
+      }
     },
   )
 
@@ -260,6 +273,14 @@ export default function ClusterStatusCard() {
           else wakeMut.mutate(mode)
         }}
         onClose={() => setTriggerDialog(null)}
+      />
+
+      <LogViewer
+        execution={liveExecution}
+        onClose={() => {
+          setLiveExecution(null)
+          queryClient.invalidateQueries({ queryKey: ['overview'] })
+        }}
       />
 
       {SnackbarAlert}

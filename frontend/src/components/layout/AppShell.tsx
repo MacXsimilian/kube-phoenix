@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Box from '@mui/material/Box'
 import AppBar from '@mui/material/AppBar'
 import Toolbar from '@mui/material/Toolbar'
@@ -10,11 +10,29 @@ import MenuIcon from '@mui/icons-material/Menu'
 import Sidebar from './Sidebar'
 import AboutModal from './AboutModal'
 
-export const DRAWER_WIDTH = 240
+export const DRAWER_WIDTH = 220
+const COLLAPSED_WIDTH = 64
+const STORAGE_KEY = 'kube-phoenix-sidebar-collapsed'
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
+
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored === 'true') setCollapsed(true)
+  }, [])
+
+  const toggleCollapse = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev
+      localStorage.setItem(STORAGE_KEY, String(next))
+      return next
+    })
+  }, [])
+
+  const sidebarWidth = collapsed ? COLLAPSED_WIDTH : DRAWER_WIDTH
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -47,7 +65,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </AppBar>
 
       <Sidebar
-        width={DRAWER_WIDTH}
+        expandedWidth={DRAWER_WIDTH}
+        collapsedWidth={COLLAPSED_WIDTH}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapse}
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
         onAboutClick={() => setAboutOpen(true)}

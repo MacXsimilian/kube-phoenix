@@ -30,7 +30,7 @@ export default function CollapsibleSection({ title, count, defaultOpen = false, 
         <ExpandMoreIcon sx={{ fontSize: 16, color: 'text.disabled', transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
       </ButtonBase>
       <Collapse in={open}>
-        <Box sx={{ px: 2.5, pb: 1.5 }}>
+        <Box sx={{ px: 2.5, pt: 1, pb: 1.5 }}>
           {children}
         </Box>
       </Collapse>

@@ -56,51 +56,91 @@ interface MockWorkload {
   pods: MockPod[]
 }
 
-const WORKLOADS: MockWorkload[] = [
-  {
-    name: 'api-server', namespace: 'dev', kind: 'Deployment',
-    status: 'Running', statusColor: '#22C55E', statusBg: 'rgba(34,197,94,0.12)',
-    currentReplicas: 3, readyReplicas: 3, savedReplicas: null,
-    pods: [
-      { name: 'api-server-7f8b9c-x2k4q', status: 'Running', ready: '1/1', cpu: '180m', mem: '380Mi', age: '10h' },
-      { name: 'api-server-7f8b9c-m9p2j', status: 'Running', ready: '1/1', cpu: '140m', mem: '350Mi', age: '10h' },
-      { name: 'api-server-7f8b9c-crash1', status: 'CrashLoopBackOff', ready: '0/1', cpu: '—', mem: '—', age: '2h' },
-    ],
-  },
-  {
-    name: 'web-frontend', namespace: 'dev', kind: 'Deployment',
-    status: 'Running', statusColor: '#22C55E', statusBg: 'rgba(34,197,94,0.12)',
-    currentReplicas: 2, readyReplicas: 2, savedReplicas: null,
-    pods: [
-      { name: 'web-frontend-5c4d3e-h8j2k', status: 'Running', ready: '1/1', cpu: '60m', mem: '180Mi', age: '10h' },
-      { name: 'web-frontend-5c4d3e-p3n6f', status: 'Running', ready: '1/1', cpu: '55m', mem: '170Mi', age: '10h' },
-    ],
-  },
-  {
-    name: 'checkout-svc', namespace: 'staging', kind: 'Deployment',
-    status: 'Sleeping', statusColor: '#F59E0B', statusBg: 'rgba(245,158,11,0.12)',
-    currentReplicas: 0, readyReplicas: 0, savedReplicas: 2,
-    pods: [],
-  },
-  {
-    name: 'redis', namespace: 'dev', kind: 'StatefulSet',
-    status: 'Running', statusColor: '#22C55E', statusBg: 'rgba(34,197,94,0.12)',
-    currentReplicas: 1, readyReplicas: 1, savedReplicas: null,
-    pods: [
-      { name: 'redis-0', status: 'Running', ready: '1/1', cpu: '50m', mem: '650Mi', age: '7d' },
-    ],
-  },
-  {
-    name: 'event-processor', namespace: 'dev', kind: 'Deployment',
-    status: 'Partial', statusColor: '#3B82F6', statusBg: 'rgba(59,130,246,0.12)',
-    currentReplicas: 3, readyReplicas: 1, savedReplicas: null,
-    pods: [
-      { name: 'event-processor-a1b2c3-ok1', status: 'Running', ready: '1/1', cpu: '90m', mem: '200Mi', age: '5h' },
-      { name: 'event-processor-a1b2c3-pend', status: 'Pending', ready: '0/1', cpu: '—', mem: '—', age: '2m' },
-      { name: 'event-processor-a1b2c3-fail', status: 'Failed', ready: '0/1', cpu: '—', mem: '—', age: '8m' },
-    ],
-  },
+const STATUS_STYLES = {
+  Running: { color: '#22C55E', bg: 'rgba(34,197,94,0.12)' },
+  Sleeping: { color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
+  Partial: { color: '#3B82F6', bg: 'rgba(59,130,246,0.12)' },
+} as const
+
+const WORKLOAD_DEFS: { name: string; ns: string; kind: string; status: keyof typeof STATUS_STYLES; cur: number; ready: number; saved: number | null; podStatuses: string[] }[] = [
+  { name: 'api-server', ns: 'team-backend', kind: 'Deployment', status: 'Running', cur: 3, ready: 3, saved: null, podStatuses: ['Running', 'Running', 'CrashLoopBackOff'] },
+  { name: 'web-frontend', ns: 'team-web', kind: 'Deployment', status: 'Running', cur: 2, ready: 2, saved: null, podStatuses: ['Running', 'Running'] },
+  { name: 'checkout-svc', ns: 'staging', kind: 'Deployment', status: 'Sleeping', cur: 0, ready: 0, saved: 3, podStatuses: [] },
+  { name: 'redis', ns: 'team-backend', kind: 'StatefulSet', status: 'Running', cur: 3, ready: 3, saved: null, podStatuses: ['Running', 'Running', 'Running'] },
+  { name: 'event-processor', ns: 'team-data', kind: 'Deployment', status: 'Partial', cur: 3, ready: 1, saved: null, podStatuses: ['Running', 'Pending', 'Failed'] },
+  { name: 'payment-gateway', ns: 'team-payments', kind: 'Deployment', status: 'Running', cur: 4, ready: 4, saved: null, podStatuses: ['Running', 'Running', 'Running', 'Running'] },
+  { name: 'ml-training-job', ns: 'team-ml', kind: 'Deployment', status: 'Sleeping', cur: 0, ready: 0, saved: 8, podStatuses: [] },
+  { name: 'notification-worker', ns: 'team-backend', kind: 'Deployment', status: 'Running', cur: 2, ready: 2, saved: null, podStatuses: ['Running', 'Running'] },
+  { name: 'postgres', ns: 'team-data', kind: 'StatefulSet', status: 'Running', cur: 2, ready: 2, saved: null, podStatuses: ['Running', 'Running'] },
+  { name: 'grafana', ns: 'monitoring', kind: 'Deployment', status: 'Sleeping', cur: 0, ready: 0, saved: 1, podStatuses: [] },
+  { name: 'mobile-bff', ns: 'team-mobile', kind: 'Deployment', status: 'Partial', cur: 3, ready: 2, saved: null, podStatuses: ['Running', 'Running', 'Pending'] },
+  { name: 'load-generator', ns: 'staging-perf', kind: 'Deployment', status: 'Sleeping', cur: 0, ready: 0, saved: 5, podStatuses: [] },
+  { name: 'search-indexer', ns: 'team-platform', kind: 'Deployment', status: 'Running', cur: 1, ready: 1, saved: null, podStatuses: ['Running'] },
+  { name: 'ci-runner', ns: 'team-infra', kind: 'StatefulSet', status: 'Running', cur: 3, ready: 3, saved: null, podStatuses: ['Running', 'Running', 'Running'] },
+  { name: 'auth-proxy', ns: 'team-backend', kind: 'Deployment', status: 'Running', cur: 2, ready: 2, saved: null, podStatuses: ['Running', 'Running'] },
+  { name: 'cart-service', ns: 'staging', kind: 'Deployment', status: 'Sleeping', cur: 0, ready: 0, saved: 2, podStatuses: [] },
+  { name: 'product-api', ns: 'staging', kind: 'Deployment', status: 'Sleeping', cur: 0, ready: 0, saved: 3, podStatuses: [] },
+  { name: 'order-processor', ns: 'team-payments', kind: 'Deployment', status: 'Running', cur: 3, ready: 3, saved: null, podStatuses: ['Running', 'Running', 'Running'] },
+  { name: 'email-sender', ns: 'team-backend', kind: 'Deployment', status: 'Running', cur: 1, ready: 1, saved: null, podStatuses: ['Running'] },
+  { name: 'prometheus', ns: 'monitoring', kind: 'StatefulSet', status: 'Running', cur: 2, ready: 2, saved: null, podStatuses: ['Running', 'Running'] },
+  { name: 'alertmanager', ns: 'monitoring', kind: 'StatefulSet', status: 'Running', cur: 1, ready: 1, saved: null, podStatuses: ['Running'] },
+  { name: 'loki', ns: 'monitoring', kind: 'StatefulSet', status: 'Sleeping', cur: 0, ready: 0, saved: 2, podStatuses: [] },
+  { name: 'recommendation-engine', ns: 'team-ml', kind: 'Deployment', status: 'Partial', cur: 4, ready: 2, saved: null, podStatuses: ['Running', 'Running', 'CrashLoopBackOff', 'Pending'] },
+  { name: 'data-pipeline', ns: 'team-data', kind: 'Deployment', status: 'Running', cur: 5, ready: 5, saved: null, podStatuses: ['Running', 'Running', 'Running', 'Running', 'Running'] },
+  { name: 'cdn-purge-worker', ns: 'team-web', kind: 'Deployment', status: 'Running', cur: 1, ready: 1, saved: null, podStatuses: ['Running'] },
+  { name: 'debug-tools', ns: 'team-platform', kind: 'Deployment', status: 'Sleeping', cur: 0, ready: 0, saved: 1, podStatuses: [] },
+  { name: 'vault', ns: 'team-infra', kind: 'StatefulSet', status: 'Running', cur: 3, ready: 3, saved: null, podStatuses: ['Running', 'Running', 'Running'] },
+  { name: 'kafka', ns: 'team-data', kind: 'StatefulSet', status: 'Running', cur: 3, ready: 3, saved: null, podStatuses: ['Running', 'Running', 'Running'] },
+  { name: 'zookeeper', ns: 'team-data', kind: 'StatefulSet', status: 'Running', cur: 3, ready: 3, saved: null, podStatuses: ['Running', 'Running', 'Running'] },
+  { name: 'feature-flag-svc', ns: 'team-platform', kind: 'Deployment', status: 'Running', cur: 2, ready: 2, saved: null, podStatuses: ['Running', 'Running'] },
+  { name: 'image-resizer', ns: 'team-web', kind: 'Deployment', status: 'Sleeping', cur: 0, ready: 0, saved: 2, podStatuses: [] },
+  { name: 'invoice-generator', ns: 'team-payments', kind: 'Deployment', status: 'Running', cur: 1, ready: 1, saved: null, podStatuses: ['Running'] },
+  { name: 'cron-scheduler', ns: 'team-infra', kind: 'Deployment', status: 'Running', cur: 1, ready: 1, saved: null, podStatuses: ['Running'] },
+  { name: 'model-serving', ns: 'team-ml', kind: 'Deployment', status: 'Sleeping', cur: 0, ready: 0, saved: 4, podStatuses: [] },
+  { name: 'user-profile-svc', ns: 'team-backend', kind: 'Deployment', status: 'Running', cur: 2, ready: 2, saved: null, podStatuses: ['Running', 'Running'] },
+  { name: 'session-store', ns: 'team-backend', kind: 'StatefulSet', status: 'Running', cur: 1, ready: 1, saved: null, podStatuses: ['Running'] },
+  { name: 'analytics-ingester', ns: 'team-data', kind: 'Deployment', status: 'Partial', cur: 2, ready: 1, saved: null, podStatuses: ['Running', 'Failed'] },
+  { name: 'ab-test-router', ns: 'team-platform', kind: 'Deployment', status: 'Running', cur: 2, ready: 2, saved: null, podStatuses: ['Running', 'Running'] },
+  { name: 'sms-gateway', ns: 'team-backend', kind: 'Deployment', status: 'Sleeping', cur: 0, ready: 0, saved: 1, podStatuses: [] },
+  { name: 'perf-baseline', ns: 'staging-perf', kind: 'Deployment', status: 'Sleeping', cur: 0, ready: 0, saved: 3, podStatuses: [] },
 ]
+
+const HASH_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789'
+function fakeHash(seed: number): string {
+  let h = ''
+  let s = seed
+  for (let i = 0; i < 5; i++) { h += HASH_CHARS[s % HASH_CHARS.length]; s = (s * 7 + 13) % 997 }
+  return h
+}
+
+const AGES = ['30s', '2m', '15m', '1h', '3h', '6h', '12h', '1d', '2d', '3d', '5d', '7d', '14d']
+const CPUS = ['15m', '30m', '50m', '75m', '90m', '120m', '180m', '250m', '350m', '500m']
+const MEMS = ['64Mi', '120Mi', '180Mi', '256Mi', '380Mi', '512Mi', '650Mi', '980Mi', '1.2Gi', '2.0Gi']
+
+const WORKLOADS: MockWorkload[] = WORKLOAD_DEFS.map((d, wi) => ({
+  name: d.name,
+  namespace: d.ns,
+  kind: d.kind,
+  status: d.status,
+  statusColor: STATUS_STYLES[d.status].color,
+  statusBg: STATUS_STYLES[d.status].bg,
+  currentReplicas: d.cur,
+  readyReplicas: d.ready,
+  savedReplicas: d.saved,
+  pods: d.podStatuses.map((ps, pi) => {
+    const isStatefulSet = d.kind === 'StatefulSet'
+    const podName = isStatefulSet ? `${d.name}-${pi}` : `${d.name}-${fakeHash(wi * 100 + pi)}-${fakeHash(wi * 200 + pi + 50)}`
+    const isDown = ps !== 'Running'
+    return {
+      name: podName,
+      status: ps,
+      ready: isDown ? '0/1' : '1/1',
+      cpu: isDown ? '—' : CPUS[(wi * 3 + pi * 7) % CPUS.length],
+      mem: isDown ? '—' : MEMS[(wi * 5 + pi * 3) % MEMS.length],
+      age: AGES[(wi + pi * 4) % AGES.length],
+    }
+  }),
+}))
 
 const POD_DOT_COLORS: Record<string, string> = {
   Running: '#22C55E',
