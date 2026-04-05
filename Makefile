@@ -83,7 +83,7 @@ helm-install: ## Install or upgrade Helm release
 	helm upgrade --install $(HELM_RELEASE) $(HELM_CHART) \
 	  --namespace $(HELM_NAMESPACE) \
 	  --create-namespace \
-	  --set image.tag=$(TAG) \
+	  --set-string image.tag=$(TAG) \
 	  $(HELM_VALUES)
 
 helm-upgrade: helm-install ## Alias for helm-install

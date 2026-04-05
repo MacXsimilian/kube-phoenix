@@ -10,6 +10,14 @@ rules:
     resources: ["namespaces", "pods"]
     verbs: ["get", "list", "watch"]
 
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list"]
+
   # WARNING: 'delete' on nodes is required for cluster downscaling (removing empty
   # nodes after workloads are scaled to zero). This is a powerful permission — a
   # compromised pod with this ServiceAccount could delete any node. For hardened

@@ -290,7 +290,7 @@ deploy_app() {
   helm upgrade --install kube-phoenix helm/kube-phoenix \
     --namespace kube-phoenix \
     --create-namespace \
-    --set image.tag="$tag" \
+    --set-string image.tag="$tag" \
     --set image.pullPolicy=Never \
     --set secret.adminUser="$ADMIN_USER" \
     --set secret.adminPassword="$ADMIN_PASSWORD" \
@@ -311,6 +311,31 @@ deploy_app() {
   sleep 1
   kubectl port-forward -n kube-phoenix svc/kube-phoenix 8080:80 &>/dev/null &
   sleep 2
+
+  info "Running smoke tests"
+  local smoke_ok=true
+  # 1. Health endpoint
+  if ! curl -sf http://localhost:8080/healthz >/dev/null 2>&1; then
+    warn "Smoke test FAILED: /healthz not reachable"
+    smoke_ok=false
+  fi
+  # 2. API returns JSON (not blocked by CSP or middleware)
+  if ! curl -sf http://localhost:8080/api/version 2>&1 | grep -q '"version"'; then
+    warn "Smoke test FAILED: /api/version did not return JSON"
+    smoke_ok=false
+  fi
+  # 3. Frontend serves HTML with scripts (CSP must allow inline scripts)
+  local html
+  html=$(curl -sf http://localhost:8080/ 2>&1)
+  if ! echo "$html" | grep -q '<script'; then
+    warn "Smoke test FAILED: frontend HTML missing <script> tags (possible CSP issue)"
+    smoke_ok=false
+  fi
+  if [ "$smoke_ok" = true ]; then
+    ok "Smoke tests passed"
+  else
+    warn "Some smoke tests failed — check browser console for errors"
+  fi
 
   ok "kube-phoenix is running"
   echo
