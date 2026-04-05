@@ -27,6 +27,9 @@ export interface MetricSnapshot {
   dbPoolOpen: number
   dbPoolInUse: number
   dbPoolIdle: number
+  activeSessions: number
+  activePolicies: number
+  k8sErrorRate: number
 }
 
 export interface RiverComponentMetrics {

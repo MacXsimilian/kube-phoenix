@@ -1,5 +1,4 @@
 // Single source of truth for observability component metadata.
-// TODO: Replace with an API endpoint once the backend exposes component metadata.
 
 import type { MetricSnapshot } from '@/lib/observability-types'
 
@@ -34,8 +33,8 @@ export const COMPONENT_INFO: Record<string, ComponentInfo> = {
     description: 'Session validation, CSRF protection, RBAC enforcement. Rejects unauthenticated requests.',
     goFile: 'internal/middleware/session.go',
     metrics: [
-      { label: 'Throughput', unit: 'req/s', getValue: (s) => s.httpRequestRate * 0.98 },
-      { label: 'Active Sessions', unit: '', getValue: (s) => s.wsActiveConnections * 2 },
+      { label: 'Throughput', unit: 'req/s', getValue: (s) => s.httpRequestRate },
+      { label: 'Active Sessions', unit: '', getValue: (s) => s.activeSessions },
       { label: 'Rate Limit Hits', unit: '', getValue: (s) => s.rateLimitHits },
     ],
     relatedLinks: [
@@ -49,7 +48,7 @@ export const COMPONENT_INFO: Record<string, ComponentInfo> = {
     description: 'REST endpoint logic for policies, cluster state, users, guardrails, and audit logs.',
     goFile: 'internal/api/',
     metrics: [
-      { label: 'Request Rate', unit: 'req/s', getValue: (s) => s.httpRequestRate * 0.95 },
+      { label: 'Request Rate', unit: 'req/s', getValue: (s) => s.httpRequestRate },
       { label: 'Latency', unit: 'ms', getValue: (s) => s.httpLatencyP50Ms },
       { label: 'Error Rate', unit: '/s', getValue: (s) => s.httpErrorRate },
       { label: 'Audit Drops', unit: '', getValue: (s) => s.auditDrops },
@@ -100,6 +99,8 @@ export const COMPONENT_INFO: Record<string, ComponentInfo> = {
       { label: 'GET Rate', unit: '/min', getValue: (s) => s.k8sGetRate },
       { label: 'PATCH Rate', unit: '/min', getValue: (s) => s.k8sPatchRate },
       { label: 'DELETE Rate', unit: '/min', getValue: (s) => s.k8sDeleteRate },
+      { label: 'P50 Latency', unit: 'ms', getValue: (s) => s.k8sLatencyP50Ms },
+      { label: 'Error Rate', unit: '/min', getValue: (s) => s.k8sErrorRate },
     ],
     relatedLinks: [
       { direction: 'in', target: 'scaler', category: 'k8s' },
@@ -112,7 +113,8 @@ export const COMPONENT_INFO: Record<string, ComponentInfo> = {
     description: 'PostgreSQL persistence layer. Connection pool of 10. Handles policies, executions, audit logs, snapshots.',
     goFile: 'internal/store/store.go',
     metrics: [
-      { label: 'Query Rate', unit: 'req/s', getValue: (s) => s.httpRequestRate * 0.6 },
+      { label: 'Pool In Use', unit: '', getValue: (s) => s.dbPoolInUse },
+      { label: 'Pool Open', unit: '', getValue: (s) => s.dbPoolOpen },
       { label: 'Audit Drops', unit: '', getValue: (s) => s.auditDrops },
       { label: 'Cache Hit Rate', unit: '%', getValue: (s) => s.cacheHitRate },
     ],
