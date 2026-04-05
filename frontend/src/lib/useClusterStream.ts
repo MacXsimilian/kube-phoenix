@@ -50,7 +50,8 @@ export function useClusterStream() {
             }
           }
         } catch (err) {
-          if (!mountedRef.current) break
+          if (!mountedRef.current || controller.signal.aborted) break
+          if (err instanceof DOMException && err.name === 'AbortError') break
           if (process.env.NODE_ENV === 'development') console.warn('[kp] cluster stream error:', err)
           failCountRef.current += 1
           if (failCountRef.current > 1) setDisconnected(true)

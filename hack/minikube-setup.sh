@@ -196,95 +196,73 @@ create_workloads() {
     kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
   done
 
-  # ── team-backend (30 pods) ────────────────────────────────────────────────
-  apply_deployment team-backend api           5 http
-  apply_deployment team-backend worker        5 compute
-  apply_deployment team-backend cron          3 cron
-  apply_deployment team-backend gateway       5 http
-  apply_deployment team-backend auth          4 http
-  apply_deployment team-backend notifications 3 log
-  apply_deployment team-backend cache         3 pause
-  apply_deployment team-backend search        2 dns
+  # ── team-backend (7 deployments, 9 pods) ──────────────────────────────────
+  apply_deployment team-backend api           2 http
+  apply_deployment team-backend worker        1 compute
+  apply_deployment team-backend cron          1 cron
+  apply_deployment team-backend gateway       2 http
+  apply_deployment team-backend auth          1 http
+  apply_deployment team-backend notifications 1 log
+  apply_deployment team-backend cache         1 pause
 
-  # ── team-web (25 pods) ──────────────────────────────────────────────────
-  apply_deployment team-web web        5 http
-  apply_deployment team-web bff        4 http
-  apply_deployment team-web assets     3 http
-  apply_deployment team-web ssr        4 compute
-  apply_deployment team-web cdn-origin 3 http
-  apply_deployment team-web analytics  3 log
-  apply_deployment team-web preview    3 pause
+  # ── team-web (5 deployments, 6 pods) ────────────────────────────────────
+  apply_deployment team-web web        2 http
+  apply_deployment team-web bff        1 http
+  apply_deployment team-web assets     1 http
+  apply_deployment team-web ssr        1 compute
+  apply_deployment team-web analytics  1 log
 
-  # ── team-data (30 pods) ─────────────────────────────────────────────────
-  apply_deployment team-data pipeline     5 compute
-  apply_deployment team-data scheduler    3 cron
-  apply_deployment team-data dashboard    3 http
-  apply_deployment team-data etl          4 compute
-  apply_deployment team-data warehouse    3 pause
-  apply_deployment team-data spark-driver 2 compute
-  apply_deployment team-data spark-worker 5 compute
-  apply_deployment team-data airflow      3 cron
-  apply_deployment team-data metabase     2 http
+  # ── team-data (6 deployments, 7 pods) ───────────────────────────────────
+  apply_deployment team-data pipeline  2 compute
+  apply_deployment team-data scheduler 1 cron
+  apply_deployment team-data dashboard 1 http
+  apply_deployment team-data etl       1 compute
+  apply_deployment team-data warehouse 1 pause
+  apply_deployment team-data metabase  1 http
 
-  # ── team-qa (25 pods) ───────────────────────────────────────────────────
-  apply_deployment team-qa test-runner 5 compute
-  apply_deployment team-qa selenium    4 compute
-  apply_deployment team-qa mock-api    3 http
-  apply_deployment team-qa cypress     4 compute
-  apply_deployment team-qa load-test   3 compute
-  apply_deployment team-qa coverage    3 pause
-  apply_deployment team-qa report      3 cron
+  # ── team-qa (5 deployments, 5 pods) ─────────────────────────────────────
+  apply_deployment team-qa test-runner 1 compute
+  apply_deployment team-qa selenium    1 compute
+  apply_deployment team-qa mock-api    1 http
+  apply_deployment team-qa cypress     1 compute
+  apply_deployment team-qa load-test   1 compute
 
-  # ── team-platform (30 pods) ─────────────────────────────────────────────
-  apply_deployment team-platform consul         4 dns
-  apply_deployment team-platform vault          3 http
-  apply_deployment team-platform prometheus     3 log
-  apply_deployment team-platform grafana        2 http
-  apply_deployment team-platform alertmanager   2 watch
-  apply_deployment team-platform loki           3 log
-  apply_deployment team-platform tempo          3 log
-  apply_deployment team-platform otel-collector 4 log
-  apply_deployment team-platform cert-manager   3 watch
-  apply_deployment team-platform ingress        3 http
+  # ── team-platform (6 deployments, 6 pods) ───────────────────────────────
+  apply_deployment team-platform vault        1 http
+  apply_deployment team-platform prometheus   1 log
+  apply_deployment team-platform grafana      1 http
+  apply_deployment team-platform alertmanager 1 watch
+  apply_deployment team-platform loki         1 log
+  apply_deployment team-platform ingress      1 http
 
-  # ── team-ml (25 pods) ───────────────────────────────────────────────────
-  apply_deployment team-ml model-serve   5 http
-  apply_deployment team-ml trainer       3 compute
-  apply_deployment team-ml feature-store 3 http
-  apply_deployment team-ml notebook      4 http
-  apply_deployment team-ml labeling      3 log
-  apply_deployment team-ml inference     4 compute
-  apply_deployment team-ml vector-db     3 pause
+  # ── team-ml (4 deployments, 5 pods) ─────────────────────────────────────
+  apply_deployment team-ml model-serve   2 http
+  apply_deployment team-ml trainer       1 compute
+  apply_deployment team-ml feature-store 1 http
+  apply_deployment team-ml notebook      1 http
 
-  # ── team-mobile (25 pods) ───────────────────────────────────────────────
-  apply_deployment team-mobile push-service  4 http
-  apply_deployment team-mobile media-api     3 http
-  apply_deployment team-mobile chat-service  4 log
-  apply_deployment team-mobile sync          3 cron
-  apply_deployment team-mobile deeplink      3 http
-  apply_deployment team-mobile config-server 3 dns
-  apply_deployment team-mobile ab-testing    3 compute
-  apply_deployment team-mobile crash-report  2 pause
+  # ── team-mobile (5 deployments, 5 pods) ─────────────────────────────────
+  apply_deployment team-mobile push-service 1 http
+  apply_deployment team-mobile media-api    1 http
+  apply_deployment team-mobile chat-service 1 log
+  apply_deployment team-mobile sync         1 cron
+  apply_deployment team-mobile deeplink     1 http
 
-  # ── team-payments (25 pods) ─────────────────────────────────────────────
-  apply_deployment team-payments ledger     4 log
-  apply_deployment team-payments processor  3 compute
-  apply_deployment team-payments fraud      3 compute
-  apply_deployment team-payments invoicing  3 cron
-  apply_deployment team-payments webhook    4 http
-  apply_deployment team-payments reconciler 3 cron
-  apply_deployment team-payments pci-proxy  3 pause
-  apply_deployment team-payments audit      2 log
+  # ── team-payments (6 deployments, 6 pods) ───────────────────────────────
+  apply_deployment team-payments ledger     1 log
+  apply_deployment team-payments processor  1 compute
+  apply_deployment team-payments fraud      1 compute
+  apply_deployment team-payments invoicing  1 cron
+  apply_deployment team-payments webhook    1 http
+  apply_deployment team-payments reconciler 1 cron
 
-  # ── team-infra (25 pods) ────────────────────────────────────────────────
-  apply_deployment team-infra dns          3 dns
-  apply_deployment team-infra ntp          2 pause
-  apply_deployment team-infra log-shipper  4 log
-  apply_deployment team-infra backup       3 watch
-  apply_deployment team-infra registry     3 http
-  apply_deployment team-infra artifact     3 http
-  apply_deployment team-infra scanner      4 watch
-  apply_deployment team-infra policy-agent 3 dns
+  # ── team-infra (6 deployments, 6 pods) ──────────────────────────────────
+  apply_deployment team-infra dns         1 dns
+  apply_deployment team-infra log-shipper 1 log
+  apply_deployment team-infra backup      1 watch
+  apply_deployment team-infra registry    1 http
+  apply_deployment team-infra scanner     1 watch
+  apply_deployment team-infra policy-agent 1 dns
 
   ok "Sample workloads created"
   echo

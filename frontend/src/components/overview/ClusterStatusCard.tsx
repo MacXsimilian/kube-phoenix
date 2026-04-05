@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -15,7 +15,7 @@ import Brightness4Icon from '@mui/icons-material/Brightness4'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import Skeleton from '@mui/material/Skeleton'
 import Alert from '@mui/material/Alert'
-import { getOverview, getPolicies } from '@/lib/api'
+import { getOverview, getPolicies, getPolicyExecutions } from '@/lib/api'
 import { timeUntil } from '@/lib/formatters'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
@@ -25,6 +25,8 @@ import { useClusterStream } from '@/lib/useClusterStream'
 import { useSnackbar } from '@/lib/useSnackbar'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
 import TriggerModeDialog, { type TriggerDirection } from '@/components/common/TriggerModeDialog'
+import LogViewer from '@/components/history/LogViewer'
+import type { PolicyExecution } from '@/lib/types'
 
 const statusPulseAnimation = {
   animation: 'statusPulse 2s ease-in-out infinite',
@@ -62,14 +64,45 @@ export default function ClusterStatusCard() {
   // Find first enabled policy for quick sleep/wake triggers
   const firstPolicy = policies.find(p => p.enabled)
 
+  const [liveExecution, setLiveExecution] = useState<PolicyExecution | null>(null)
+
   const { sleepMut, wakeMut, isBusy } = usePolicyTriggers(
     firstPolicy?.id ?? 0,
     notify,
-    ({ executionId }) => {
+    async ({ executionId }) => {
       queryClient.invalidateQueries({ queryKey: ['overview'] })
-      router.push(`/policies/detail/?id=${firstPolicy!.id}&exec=${executionId}`)
+      try {
+        const execs = await queryClient.fetchQuery({
+          queryKey: ['policy-executions', { id: executionId }],
+          queryFn: () => getPolicyExecutions({ policyId: firstPolicy!.id, page: 1, pageSize: 10 }),
+        })
+        const exec = execs.items.find((e: PolicyExecution) => e.id === executionId)
+        if (exec) setLiveExecution(exec)
+      } catch {
+        notify('Execution started but could not load details', 'error')
+      }
     },
   )
+
+  // Poll for execution completion while running
+  const liveId = liveExecution?.id
+  const liveRunning = liveExecution?.status === 'running'
+  const { data: refreshedExec } = useQuery({
+    queryKey: ['policy-execution-poll', liveId],
+    queryFn: async () => {
+      const execs = await getPolicyExecutions({ policyId: firstPolicy!.id, page: 1, pageSize: 10 })
+      return execs.items.find((e: PolicyExecution) => e.id === liveId) ?? null
+    },
+    enabled: !!liveId && liveRunning && !!firstPolicy,
+    refetchInterval: 3_000,
+  })
+
+  useEffect(() => {
+    if (refreshedExec && refreshedExec.status !== 'running') {
+      setLiveExecution(refreshedExec)
+      queryClient.invalidateQueries({ queryKey: ['overview'] })
+    }
+  }, [refreshedExec, queryClient])
 
   const [triggerDialog, setTriggerDialog] = useState<TriggerDirection | null>(null)
 
@@ -175,21 +208,21 @@ export default function ClusterStatusCard() {
                 <Chip
                   label={`${activeNodes} Nodes Active`}
                   size="small"
-                  role="link"
+
                   onClick={() => router.push('/cluster/?tab=nodes')}
                   sx={{ bgcolor: 'rgba(34,197,94,0.1)', color: 'success.main', fontWeight: 600, cursor: 'pointer' }}
                 />
                 <Chip
                   label={`${running} Workloads Running`}
                   size="small"
-                  role="link"
+
                   onClick={() => router.push('/cluster/?status=running')}
                   sx={{ bgcolor: 'rgba(59,130,246,0.1)', color: 'info.main', fontWeight: 600, cursor: 'pointer' }}
                 />
                 <Chip
                   label={`${sleeping} Workloads Sleeping`}
                   size="small"
-                  role="link"
+
                   onClick={() => router.push('/cluster/?status=sleeping')}
                   sx={{ bgcolor: 'rgba(245,158,11,0.1)', color: 'warning.main', fontWeight: 600, cursor: 'pointer' }}
                 />
@@ -260,6 +293,14 @@ export default function ClusterStatusCard() {
           else wakeMut.mutate(mode)
         }}
         onClose={() => setTriggerDialog(null)}
+      />
+
+      <LogViewer
+        execution={liveExecution}
+        onClose={() => {
+          setLiveExecution(null)
+          queryClient.invalidateQueries({ queryKey: ['overview'] })
+        }}
       />
 
       {SnackbarAlert}

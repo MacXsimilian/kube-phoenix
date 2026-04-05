@@ -20,9 +20,20 @@ import DownloadIcon from '@mui/icons-material/Download'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import { useColors } from '@/lib/colors'
 import { useSnackbar } from '@/lib/useSnackbar'
+import { LOG_WATERFALL_SX } from '@/lib/animations'
 import type { PodContainer } from '@/lib/types'
 import { usePodLogStream } from './usePodLogStream'
 import LogSearchBar from './LogSearchBar'
+
+const ERROR_PATTERN = /\b(error|fatal|panic|exception|fail(ed|ure)?|crash)\b/i
+const WARN_PATTERN = /\b(warn(ing)?|deprecat)\b/i
+
+function detectLevel(line: string): 'error' | 'warn' | 'info' {
+  if (ERROR_PATTERN.test(line)) return 'error'
+  if (WARN_PATTERN.test(line)) return 'warn'
+  return 'info'
+}
+
 
 interface PodLogViewerProps {
   namespace: string
@@ -100,7 +111,8 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
   const handleScroll = useCallback(() => {
     if (!logRef.current) return
     const { scrollTop, scrollHeight, clientHeight } = logRef.current
-    const atBottom = scrollHeight - scrollTop - clientHeight < 40
+    const SCROLL_THRESHOLD_PX = 40
+    const atBottom = scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD_PX
     setAutoScroll(atBottom)
   }, [])
 
@@ -108,7 +120,9 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
 
   const handleCopy = useCallback(() => {
     const text = lines.join('\n')
-    navigator.clipboard.writeText(text).then(() => notify('Logs copied to clipboard', 'success'))
+    navigator.clipboard.writeText(text)
+      .then(() => notify('Logs copied to clipboard', 'success'))
+      .catch(() => notify('Failed to copy logs', 'error'))
   }, [lines, notify])
 
   const handleDownload = useCallback(() => {
@@ -119,7 +133,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
     downloadLink.href = url
     downloadLink.download = `${namespace}-${podName}-${container || 'default'}.log`
     downloadLink.click()
-    URL.revokeObjectURL(url)
+    setTimeout(() => URL.revokeObjectURL(url), 0)
   }, [lines, namespace, podName, container])
 
   // Reset when container changes
@@ -276,6 +290,8 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
       <Box
         ref={logRef}
         onScroll={handleScroll}
+        role="log"
+        aria-label="Container logs"
         sx={{
           flex: 1, overflow: 'auto', bgcolor: 'background.default',
           fontFamily: 'monospace', fontSize: '0.75rem', lineHeight: 1.7, p: 1, minHeight: 0,
@@ -297,15 +313,24 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
         {lines.map((line, i) => {
           const isMatch = search && matchSet.has(i)
           const isCurrent = isMatch && matchIndices[currentMatchIdx] === i
+          const level = detectLevel(line)
+          const isError = level === 'error'
           return (
             <Box
               key={i}
-              ref={(el) => { lineEls.current[i] = el as HTMLElement | null }}
+              ref={(el: HTMLElement | null) => { lineEls.current[i] = el }}
               sx={{
-                px: 1, py: 0.125, whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'text.primary',
-                '&:hover': { bgcolor: 'action.hover' },
+                px: 1, py: 0.125, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                color: isError ? colors.errorLight : level === 'warn' ? colors.warning : 'text.primary',
+                fontWeight: isError ? 500 : 400,
+                borderLeft: `3px solid ${isError ? colors.error : level === 'warn' ? colors.warning : colors.mutedBg}`,
+                ml: 0.5,
+                borderRadius: 0.5,
+                bgcolor: isError ? 'rgba(239,68,68,0.06)' : 'transparent',
+                '&:hover': { bgcolor: isError ? 'rgba(239,68,68,0.10)' : 'rgba(255,255,255,0.03)' },
+                ...LOG_WATERFALL_SX,
                 ...(isCurrent
-                  ? { bgcolor: 'rgba(124,58,237,0.35)', borderLeft: '2px solid', borderColor: 'primary.main' }
+                  ? { bgcolor: 'rgba(124,58,237,0.35)', borderLeft: '3px solid', borderColor: 'primary.main' }
                   : isMatch ? { bgcolor: 'rgba(124,58,237,0.12)' } : {}),
               }}
             >

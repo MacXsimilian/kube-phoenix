@@ -37,7 +37,7 @@ export default function AboutModal({ open, onClose }: { open: boolean; onClose: 
 
         {/* Logo + title */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-          <Typography sx={{ fontSize: 32, lineHeight: 1, userSelect: 'none' }}>🐦‍🔥</Typography>
+          <Box sx={{ fontSize: 32, lineHeight: 0, userSelect: 'none', mt: -0.5 }}>🐦‍🔥</Box>
           <Box>
             <Typography variant="h6" fontWeight={700} letterSpacing={-0.5} lineHeight={1.2}>
               kube-phoenix
