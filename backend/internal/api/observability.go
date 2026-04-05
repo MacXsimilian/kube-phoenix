@@ -84,6 +84,7 @@ func (h *Handler) streamObservability(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
+	rc := http.NewResponseController(w)
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	keepalive := time.NewTicker(sseKeepaliveInterval)
@@ -95,10 +96,12 @@ func (h *Handler) streamObservability(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			rc.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			if !h.writeSSEObservability(w, flusher) {
 				return
 			}
 		case <-keepalive.C:
+			rc.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
 				return
 			}
@@ -181,6 +184,10 @@ func (h *Handler) updateObservabilityThreshold(w http.ResponseWriter, r *http.Re
 	}
 	if t.PanelKey == "" {
 		jsonError(w, "panelKey is required", http.StatusBadRequest)
+		return
+	}
+	if t.WarnVal < 0 || t.CritVal < 0 {
+		jsonError(w, "threshold values must not be negative", http.StatusBadRequest)
 		return
 	}
 	if err := h.store.UpsertObservabilityThreshold(&t); err != nil {
