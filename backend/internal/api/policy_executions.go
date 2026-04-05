@@ -166,7 +166,28 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 		_ = conn.Close()
 	}()
 
-	// Send existing log lines
+	if exec.Status != store.ExecStatusRunning {
+		// Execution already finished — send persisted lines and close.
+		existing, err := h.store.GetPolicyLogLines(id)
+		if err != nil {
+			slog.Error("ws policy: failed to fetch existing log lines", "execID", id, "err", err)
+		}
+		wsSendLines(conn, existing)
+		return
+	}
+
+	// Subscribe FIRST so the broker channel captures lines published while
+	// the DB query runs. The replay buffer covers lines not yet flushed to
+	// the database, closing the gap between persisted history and the live
+	// stream. See docs/observability.md "Log Streaming Architecture".
+	sub, replayLines := h.policyScheduler.Broker.Subscribe(id)
+	if sub == nil {
+		slog.Warn("ws policy: subscriber limit reached", "execID", id)
+		return
+	}
+	defer h.policyScheduler.Broker.Unsubscribe(id, sub)
+
+	// Fetch persisted lines from DB.
 	existing, err := h.store.GetPolicyLogLines(id)
 	if err != nil {
 		slog.Error("ws policy: failed to fetch existing log lines", "execID", id, "err", err)
@@ -175,18 +196,27 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if exec.Status != store.ExecStatusRunning {
-		return
+	// Send replay lines that are not yet in the DB (dedup by seq on the
+	// frontend handles any overlap with the DB result).
+	maxDBSeq := 0
+	for _, line := range existing {
+		if line.Seq > maxDBSeq {
+			maxDBSeq = line.Seq
+		}
+	}
+	for _, line := range replayLines {
+		if line.Seq <= maxDBSeq {
+			continue
+		}
+		if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
+			return
+		}
+		if err := conn.WriteJSON(line); err != nil {
+			return
+		}
 	}
 
-	sub := h.policyScheduler.Broker.Subscribe(id)
-	if sub == nil {
-		slog.Warn("ws policy: subscriber limit reached", "execID", id)
-		return
-	}
-	defer h.policyScheduler.Broker.Unsubscribe(id, sub)
-
-	// Re-check: may have finished between GetPolicyExecution and Subscribe
+	// Re-check: may have finished between initial check and Subscribe.
 	if fresh, err := h.store.GetPolicyExecution(id); err == nil && fresh.Status != store.ExecStatusRunning {
 		wsDrainChannel(conn, sub)
 		return
