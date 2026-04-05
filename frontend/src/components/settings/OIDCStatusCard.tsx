@@ -1,6 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Box from '@mui/material/Box'
@@ -70,7 +71,7 @@ function StatusIndicator({ color, bgColor, label }: { color: string; bgColor: st
 
 export default function OIDCStatusCard() {
   const { data: oidcCfg, isLoading, isError } = useQuery({
-    queryKey: ['oidc-config'],
+    queryKey: queryKeys.oidcConfig(),
     queryFn: getOIDCConfig,
   })
 

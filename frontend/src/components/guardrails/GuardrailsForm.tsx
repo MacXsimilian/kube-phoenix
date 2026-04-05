@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useReducer } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import { formatError } from '@/lib/formatters'
 import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
@@ -153,7 +154,7 @@ export default function GuardrailsForm() {
   const { user } = useAuth()
   const hasEdit = canEditGuardrails(user?.permissions)
   const queryClient = useQueryClient()
-  const { data: guardrails, isLoading, isError: loadError } = useQuery({ queryKey: ['guardrails'], queryFn: getGuardrails })
+  const { data: guardrails, isLoading, isError: loadError } = useQuery({ queryKey: queryKeys.guardrails(), queryFn: getGuardrails })
 
   const [expanded, setExpanded] = useState<Section | null>(null)
   const [form, dispatch] = useReducer(formReducer, INITIAL_FORM)
@@ -226,7 +227,7 @@ export default function GuardrailsForm() {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['guardrails'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.guardrails() })
       setSaveError(null)
       savedSnapshot.current = buildSnapshot(form)
       setDirty(false)

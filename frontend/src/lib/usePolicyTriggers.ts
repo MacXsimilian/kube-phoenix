@@ -1,6 +1,7 @@
 'use client'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import { useRouter } from 'next/navigation'
 import { triggerPolicySleep, triggerPolicyWake } from '@/lib/api'
 import { formatError } from '@/lib/formatters'
@@ -22,10 +23,10 @@ export function usePolicyTriggers(
   const router = useRouter()
 
   function onSuccess(result: { executionId: number }) {
-    queryClient.invalidateQueries({ queryKey: ['policies'] })
-    queryClient.invalidateQueries({ queryKey: ['policy', policyId] })
-    queryClient.invalidateQueries({ queryKey: ['policy-executions'] })
-    queryClient.invalidateQueries({ queryKey: ['policy-executions', policyId] })
+    queryClient.invalidateQueries({ queryKey: queryKeys.policies() })
+    queryClient.invalidateQueries({ queryKey: queryKeys.policy(policyId) })
+    queryClient.invalidateQueries({ queryKey: queryKeys.policyExecutions() })
+    queryClient.invalidateQueries({ queryKey: queryKeys.policyExecutions(policyId) })
     if (onSuccessOverride) {
       onSuccessOverride(result)
     } else {

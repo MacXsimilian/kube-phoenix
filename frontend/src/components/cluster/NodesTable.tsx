@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import React from 'react'
 import Paper from '@mui/material/Paper'
 import Table from '@mui/material/Table'
@@ -118,7 +119,7 @@ const NodeRow = React.memo(function NodeRow({ node, groupByZone, isSelected, onS
 
 export default function NodesTable() {
   const { data: nodes = [], isLoading, isError, error, dataUpdatedAt } = useQuery({
-    queryKey: ['nodes'],
+    queryKey: queryKeys.nodes(),
     queryFn: getNodes,
     refetchInterval: NODES_REFETCH_MS,
   })

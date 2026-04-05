@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import { useRouter } from 'next/navigation'
 import Paper from '@mui/material/Paper'
 import Box from '@mui/material/Box'
@@ -107,7 +108,7 @@ export default function PolicyCard({
   const deleteMut = useMutation({
     mutationFn: () => deletePolicy(policy.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['policies'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.policies() })
       onNotify?.(`"${policy.name}" deleted`, 'success')
     },
     onError: (err: unknown) => {

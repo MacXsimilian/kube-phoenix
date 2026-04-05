@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Card from '@mui/material/Card'
@@ -215,29 +216,29 @@ export default function SettingsPage() {
 
   /* ── Data fetching ────────────────────────────────────────────────── */
   const { data: clusterInfo, isLoading: clusterLoading } = useQuery({
-    queryKey: ['cluster-info'],
+    queryKey: queryKeys.clusterInfo(),
     queryFn: getClusterInfo,
     staleTime: 5 * 60_000,
   })
 
   const { data: versionInfo, isLoading: versionLoading } = useQuery({
-    queryKey: ['version'],
+    queryKey: queryKeys.version(),
     queryFn: getVersionInfo,
     staleTime: 5 * 60_000,
   })
 
   const { data: sessions, isLoading: sessionsLoading, isError: sessionsError } = useQuery({
-    queryKey: ['sessions'],
+    queryKey: queryKeys.sessions(),
     queryFn: getSessions,
   })
 
   const { data: oidcConfig } = useQuery({
-    queryKey: ['oidc-config'],
+    queryKey: queryKeys.oidcConfig(),
     queryFn: getOIDCConfig,
   })
 
   const { data: guardrails } = useQuery({
-    queryKey: ['guardrails'],
+    queryKey: queryKeys.guardrails(),
     queryFn: getGuardrails,
   })
 

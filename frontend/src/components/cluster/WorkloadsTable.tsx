@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import { useSearchParams } from 'next/navigation'
 import Paper from '@mui/material/Paper'
 import Table from '@mui/material/Table'
@@ -38,12 +39,12 @@ type WorkloadSortCol = 'namespace' | 'name' | 'kind' | 'replicas' | 'status'
 export default function WorkloadsTable() {
   const searchParams = useSearchParams()
   const { data: workloads = [], isLoading, isError, error, dataUpdatedAt } = useQuery({
-    queryKey: ['workloads'],
+    queryKey: queryKeys.workloads(),
     queryFn: getWorkloads,
     refetchInterval: WORKLOADS_REFETCH_MS,
   })
 
-  const { data: guardrails } = useQuery({ queryKey: ['guardrails'], queryFn: getGuardrails })
+  const { data: guardrails } = useQuery({ queryKey: queryKeys.guardrails(), queryFn: getGuardrails })
   const protectedNamespaces = useMemo(
     () => new Set(guardrails?.systemNamespaces.split(',').map((s) => s.trim()).filter(Boolean) ?? []),
     [guardrails],

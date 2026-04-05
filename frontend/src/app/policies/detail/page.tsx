@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
@@ -54,19 +55,19 @@ function PolicyDetailContent() {
   const canTrigger = canTriggerSchedules(user?.permissions)
 
   const { data: policy, isLoading: loadingPolicy } = useQuery({
-    queryKey: ['policy', policyId],
+    queryKey: queryKeys.policy(policyId),
     queryFn: () => getPolicy(policyId),
     enabled: !isNaN(policyId),
   })
 
   const { data: executions } = useQuery({
-    queryKey: ['policy-executions', policyId],
+    queryKey: queryKeys.policyExecutions(policyId),
     queryFn: () => getPolicyExecutions({ policyId, pageSize: 20 }),
     enabled: !isNaN(policyId),
   })
 
   const { data: exceptions } = useQuery({
-    queryKey: ['exceptions', policyId],
+    queryKey: queryKeys.exceptions(policyId),
     queryFn: () => getExceptions({ policyId }),
     enabled: !isNaN(policyId),
   })

@@ -1,6 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Box from '@mui/material/Box'
@@ -104,7 +105,7 @@ function SessionRow({ session }: { session: SessionInfo }) {
 
 export default function ActiveSessionsCard() {
   const { data: sessions, isLoading, isError } = useQuery({
-    queryKey: ['sessions'],
+    queryKey: queryKeys.sessions(),
     queryFn: getSessions,
   })
 

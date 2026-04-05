@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
 import Divider from '@mui/material/Divider'
@@ -55,7 +56,7 @@ export default function NodeDetailDrawer({ node, onClose }: NodeDetailDrawerProp
   const colors = useColors()
 
   const { data: pods = [], isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
-    queryKey: ['node-pods', node?.name],
+    queryKey: queryKeys.nodePods(node?.name),
     queryFn: () => {
       if (!node) throw new Error('No node selected')
       return getNodePods(node.name)

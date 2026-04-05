@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -25,7 +26,7 @@ export default function PoliciesPage() {
   const { notify, SnackbarAlert } = useSnackbar()
 
   const { data: policies, isLoading, error } = useQuery({
-    queryKey: ['policies'],
+    queryKey: queryKeys.policies(),
     queryFn: getPolicies,
     refetchInterval: POLICIES_REFETCH_MS,
   })

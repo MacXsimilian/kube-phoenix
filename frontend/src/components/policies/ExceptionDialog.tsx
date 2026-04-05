@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -59,7 +60,7 @@ export default function ExceptionDialog({
   const showPolicyPicker = !defaultPolicyId && !existing
 
   const { data: policies } = useQuery({
-    queryKey: ['policies'],
+    queryKey: queryKeys.policies(),
     queryFn: getPolicies,
     enabled: open && showPolicyPicker,
   })
@@ -132,7 +133,7 @@ export default function ExceptionDialog({
       return createException(payload)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['exceptions'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.exceptions() })
       onNotify?.(existing ? 'Exception updated' : 'Exception created', 'success')
       onClose()
     },

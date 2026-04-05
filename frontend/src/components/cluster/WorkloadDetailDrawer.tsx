@@ -1,6 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
 import LinearProgress from '@mui/material/LinearProgress'
@@ -49,7 +50,7 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
   const colors = useColors()
 
   const { data: pods = [], isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
-    queryKey: ['workload-pods', workload?.namespace, workload?.kind, workload?.name],
+    queryKey: queryKeys.workloadPods(workload?.namespace, workload?.kind, workload?.name),
     queryFn: () => getWorkloadPods(workload!.namespace, workload!.kind, workload!.name),
     enabled: workload != null,
     refetchInterval: WORKLOAD_PODS_REFETCH_MS,

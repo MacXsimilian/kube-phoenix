@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Typography from '@mui/material/Typography'
@@ -42,7 +43,7 @@ export default function ClusterStatusCard() {
 
   // Single overview query — fed by SSE in real time, polls as fallback
   const { data: overview, isLoading, isError } = useQuery({
-    queryKey: ['overview'],
+    queryKey: queryKeys.overview(),
     queryFn: getOverview,
     staleTime: 25_000,
     refetchInterval: 30_000,
@@ -50,7 +51,7 @@ export default function ClusterStatusCard() {
 
   // Policies for trigger button (find first enabled apply-mode policy)
   const { data: policies = [] } = useQuery({
-    queryKey: ['policies'],
+    queryKey: queryKeys.policies(),
     queryFn: getPolicies,
     staleTime: 60_000,
     refetchInterval: 60_000,
@@ -70,10 +71,10 @@ export default function ClusterStatusCard() {
     firstPolicy?.id ?? 0,
     notify,
     async ({ executionId }) => {
-      queryClient.invalidateQueries({ queryKey: ['overview'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.overview() })
       try {
         const execs = await queryClient.fetchQuery({
-          queryKey: ['policy-executions', { id: executionId }],
+          queryKey: queryKeys.policyExecutionsFetch(executionId),
           queryFn: () => getPolicyExecutions({ policyId: firstPolicy!.id, page: 1, pageSize: 10 }),
         })
         const exec = execs.items.find((e: PolicyExecution) => e.id === executionId)
@@ -88,7 +89,7 @@ export default function ClusterStatusCard() {
   const liveId = liveExecution?.id
   const liveRunning = liveExecution?.status === 'running'
   const { data: refreshedExec } = useQuery({
-    queryKey: ['policy-execution-poll', liveId],
+    queryKey: queryKeys.policyExecutionPoll(liveId),
     queryFn: async () => {
       const execs = await getPolicyExecutions({ policyId: firstPolicy!.id, page: 1, pageSize: 10 })
       return execs.items.find((e: PolicyExecution) => e.id === liveId) ?? null
@@ -100,7 +101,7 @@ export default function ClusterStatusCard() {
   useEffect(() => {
     if (refreshedExec && refreshedExec.status !== 'running') {
       setLiveExecution(refreshedExec)
-      queryClient.invalidateQueries({ queryKey: ['overview'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.overview() })
     }
   }, [refreshedExec, queryClient])
 
@@ -299,7 +300,7 @@ export default function ClusterStatusCard() {
         execution={liveExecution}
         onClose={() => {
           setLiveExecution(null)
-          queryClient.invalidateQueries({ queryKey: ['overview'] })
+          queryClient.invalidateQueries({ queryKey: queryKeys.overview() })
         }}
       />
 
