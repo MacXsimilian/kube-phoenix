@@ -20,11 +20,11 @@ type MetricSnapshot struct {
 	HTTPErrorRate    float64 `json:"httpErrorRate"`    // 5xx/s since last tick
 
 	// Kubernetes API
-	K8sGetRate       float64 `json:"k8sGetRate"`       // calls/min
-	K8sPatchRate     float64 `json:"k8sPatchRate"`     // calls/min
-	K8sDeleteRate    float64 `json:"k8sDeleteRate"`    // calls/min
-	K8sLatencyP50Ms  float64 `json:"k8sLatencyP50Ms"` // milliseconds
-	K8sLatencyP99Ms  float64 `json:"k8sLatencyP99Ms"` // milliseconds
+	K8sGetRate      float64 `json:"k8sGetRate"`      // calls/min
+	K8sPatchRate    float64 `json:"k8sPatchRate"`    // calls/min
+	K8sDeleteRate   float64 `json:"k8sDeleteRate"`   // calls/min
+	K8sLatencyP50Ms float64 `json:"k8sLatencyP50Ms"` // milliseconds
+	K8sLatencyP99Ms float64 `json:"k8sLatencyP99Ms"` // milliseconds
 
 	// Policy executions
 	PolicySuccessCount int `json:"policySuccessCount"` // in the tick window
