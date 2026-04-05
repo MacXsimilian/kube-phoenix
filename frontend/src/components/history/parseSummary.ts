@@ -13,10 +13,21 @@ export type NodeEntry = {
   action: 'drained' | 'deleted' | 'plan' | 'protected'
 }
 
+export type ExecutionStats = {
+  operation: 'scaled' | 'restored'
+  duration: string
+  scaled: number
+  skipped: number
+  errors: number
+  apiCalls: number
+  throughput: string
+}
+
 export type ParsedSummary = {
   workloads: WorkloadEntry[]
   nodes: NodeEntry[]
   errors: string[]
+  stats: ExecutionStats | null
 }
 
 export function parseSummary(lines: LogLine[]): ParsedSummary {
@@ -27,24 +38,38 @@ export function parseSummary(lines: LogLine[]): ParsedSummary {
   for (const line of lines) {
     const m = line.message
 
-    // scale-down: "Scaled Deployment ns/name → 0"
-    const scaled = m.match(/^Scaled (Deployment|StatefulSet) (\S+)\/(\S+) → (\d+)$/)
-    if (scaled) {
-      workloads.push({ kind: scaled[1] as WorkloadEntry['kind'], ns: scaled[2], name: scaled[3], targetReplicas: parseInt(scaled[4]), action: 'scaled' })
+    // sleep (apply): "Slept Deployment ns/name (was 3 replicas)"
+    const slept = m.match(/^Slept (Deployment|StatefulSet) (\S+)\/(\S+) \(was (\d+) replicas\)$/)
+    if (slept) {
+      workloads.push({ kind: slept[1] as WorkloadEntry['kind'], ns: slept[2], name: slept[3], targetReplicas: 0, action: 'scaled' })
       continue
     }
 
-    // scale-up: "Restored Deployment ns/name → N"
-    const restored = m.match(/^Restored (Deployment|StatefulSet) (\S+)\/(\S+) → (\d+)$/)
+    // enforce sleep: "Enforced sleep on Deployment ns/name (was 2 replicas)"
+    const enforced = m.match(/^Enforced sleep on (Deployment|StatefulSet) (\S+)\/(\S+) \(was (\d+) replicas\)$/)
+    if (enforced) {
+      workloads.push({ kind: enforced[1] as WorkloadEntry['kind'], ns: enforced[2], name: enforced[3], targetReplicas: 0, action: 'scaled' })
+      continue
+    }
+
+    // wake (apply): "Restored Deployment ns/name → 8 replicas"
+    const restored = m.match(/^Restored (Deployment|StatefulSet) (\S+)\/(\S+) → (\d+) replicas$/)
     if (restored) {
       workloads.push({ kind: restored[1] as WorkloadEntry['kind'], ns: restored[2], name: restored[3], targetReplicas: parseInt(restored[4]), action: 'restored' })
       continue
     }
 
-    // plan: "Would scale|restore Deployment ns/name → N"
-    const planned = m.match(/^Would (?:scale|restore) (Deployment|StatefulSet) (\S+)\/(\S+) → (\d+)$/)
-    if (planned) {
-      workloads.push({ kind: planned[1] as WorkloadEntry['kind'], ns: planned[2], name: planned[3], targetReplicas: parseInt(planned[4]), action: 'plan' })
+    // plan sleep: "Would sleep Deployment ns/name → 0 (currently 3 replicas)"
+    const planSleep = m.match(/^Would (?:sleep|enforce sleep) (Deployment|StatefulSet) (\S+)\/(\S+) → (\d+)/)
+    if (planSleep) {
+      workloads.push({ kind: planSleep[1] as WorkloadEntry['kind'], ns: planSleep[2], name: planSleep[3], targetReplicas: parseInt(planSleep[4]), action: 'plan' })
+      continue
+    }
+
+    // plan wake: "Would restore Deployment ns/name → 8 replicas"
+    const planWake = m.match(/^Would restore (Deployment|StatefulSet) (\S+)\/(\S+) → (\d+) replicas$/)
+    if (planWake) {
+      workloads.push({ kind: planWake[1] as WorkloadEntry['kind'], ns: planWake[2], name: planWake[3], targetReplicas: parseInt(planWake[4]), action: 'plan' })
       continue
     }
 
@@ -64,5 +89,15 @@ export function parseSummary(lines: LogLine[]): ParsedSummary {
     if (line.level === 'error') errors.push(m)
   }
 
-  return { workloads, nodes: Array.from(nodeMap.values()), errors }
+  let stats: ExecutionStats | null = null
+  const COMPLETE_RE = /(?:Sleep|Wake|Enforce sleep) complete in (\S+) — (scaled|restored) (\d+) workloads?, (\d+) skipped, (\d+) errors?, (\d+) K8s API calls \((\S+ req\/s)\)/
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const cm = lines[i].message.match(COMPLETE_RE)
+    if (cm) {
+      stats = { operation: cm[2] as 'scaled' | 'restored', duration: cm[1], scaled: parseInt(cm[3]), skipped: parseInt(cm[4]), errors: parseInt(cm[5]), apiCalls: parseInt(cm[6]), throughput: cm[7] }
+      break
+    }
+  }
+
+  return { workloads, nodes: Array.from(nodeMap.values()), errors, stats }
 }

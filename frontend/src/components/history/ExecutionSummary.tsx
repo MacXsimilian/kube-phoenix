@@ -16,8 +16,36 @@ import DnsIcon from '@mui/icons-material/Dns'
 import StorageIcon from '@mui/icons-material/Storage'
 import { useIsDark } from '@/lib/useIsDark'
 import { semanticColors } from '@/lib/colors'
-import { parseSummary, type WorkloadEntry, type NodeEntry } from './parseSummary'
+import { parseSummary, type WorkloadEntry, type NodeEntry, type ExecutionStats } from './parseSummary'
 import type { LogLine } from '@/lib/types'
+
+function StatsBar({ stats, nodes }: { stats: ExecutionStats; nodes: NodeEntry[] }) {
+  const isDark = useIsDark()
+  const c = semanticColors(isDark)
+  const drained = nodes.filter((n) => n.action === 'drained').length
+  const deleted = nodes.filter((n) => n.action === 'deleted').length
+  const items = [
+    { label: stats.duration, color: c.info },
+    { label: `${stats.scaled} ${stats.operation}`, color: c.success },
+    ...(drained > 0 ? [{ label: `${drained} drained`, color: c.warning }] : []),
+    ...(deleted > 0 ? [{ label: `${deleted} deleted`, color: c.error }] : []),
+    ...(stats.skipped > 0 ? [{ label: `${stats.skipped} skipped`, color: c.muted }] : []),
+    ...(stats.errors > 0 ? [{ label: `${stats.errors} err`, color: c.error }] : []),
+    { label: `${stats.apiCalls} calls (${stats.throughput})`, color: c.muted },
+  ]
+  return (
+    <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
+      {items.map((item) => (
+        <Chip
+          key={item.label}
+          label={item.label}
+          size="small"
+          sx={{ height: 16, fontSize: 10, bgcolor: `${item.color}22`, color: item.color, '& .MuiChip-label': { px: 0.75 } }}
+        />
+      ))}
+    </Box>
+  )
+}
 
 function actionChip(isDark: boolean): Record<WorkloadEntry['action'], { label: string; color: string }> {
   const c = semanticColors(isDark)
@@ -40,9 +68,9 @@ function nodeChip(isDark: boolean): Record<NodeEntry['action'], { label: string;
 
 export default function ExecutionSummary({ lines }: { lines: LogLine[] }) {
   const isDark = useIsDark()
-  const { workloads, nodes, errors } = parseSummary(lines)
+  const { workloads, nodes, errors, stats } = parseSummary(lines)
 
-  if (workloads.length === 0 && nodes.length === 0 && errors.length === 0) return null
+  if (workloads.length === 0 && nodes.length === 0 && errors.length === 0 && !stats) return null
 
   // Group workloads by namespace
   const byNs = workloads.reduce<Record<string, WorkloadEntry[]>>((acc, w) => {
@@ -69,13 +97,6 @@ export default function ExecutionSummary({ lines }: { lines: LogLine[] }) {
         <Typography variant="caption" fontWeight={700} letterSpacing={0.8} sx={{ color: 'text.secondary', textTransform: 'uppercase' }}>
           Summary
         </Typography>
-        {(workloads.length + nodes.length) > 0 && (
-          <Chip
-            label={workloads.length + nodes.length}
-            size="small"
-            sx={{ height: 16, fontSize: 10, bgcolor: 'rgba(124,58,237,0.2)', color: 'primary.main', '& .MuiChip-label': { px: 0.75 } }}
-          />
-        )}
         {errors.length > 0 && (
           <Chip
             label={`${errors.length} err`}
@@ -83,6 +104,7 @@ export default function ExecutionSummary({ lines }: { lines: LogLine[] }) {
             sx={{ height: 16, fontSize: 10, bgcolor: isDark ? 'rgba(248,113,113,0.15)' : 'rgba(185,28,28,0.10)', color: isDark ? '#F87171' : '#B91C1C', '& .MuiChip-label': { px: 0.75 } }}
           />
         )}
+        {stats && <StatsBar stats={stats} nodes={nodes} />}
       </AccordionSummary>
 
       <AccordionDetails sx={{ p: 0, pb: 1.5, maxHeight: 320, overflowY: 'auto' }}>

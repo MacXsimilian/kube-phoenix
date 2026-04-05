@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Drawer from '@mui/material/Drawer'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
@@ -510,17 +511,17 @@ export default function LogViewer({
   const [wsToastOpen, setWsToastOpen] = useState(false)
   const wasConnectedRef = useRef(false)
 
-  const { lines, isConnected, logsError, maxRetriesReached } = useExecutionLogs(execution?.id, isRunning)
+  const { lines, isConnected, cleanClose, logsError, maxRetriesReached } = useExecutionLogs(execution?.id, isRunning)
 
-  // Show floating toast when WebSocket disconnects (only after it was connected)
+  // Show floating toast when WebSocket disconnects unexpectedly (not on clean server close)
   useEffect(() => {
     if (isConnected) {
       wasConnectedRef.current = true
       setWsToastOpen(false)
-    } else if (wasConnectedRef.current && isRunning) {
+    } else if (wasConnectedRef.current && isRunning && !cleanClose) {
       setWsToastOpen(true)
     }
-  }, [isConnected, isRunning])
+  }, [isConnected, isRunning, cleanClose])
 
   // Reset error cursor and re-enable auto-scroll when switching executions
   useEffect(() => {
@@ -623,7 +624,7 @@ export default function LogViewer({
                   <Typography variant="subtitle1" fontWeight={700}>
                     {execution.direction === 'sleep' ? 'Sleep' : 'Wake'} #{execution.id}
                   </Typography>
-                  {isRunning && <CircularProgress size={14} />}
+                  {isRunning && !cleanClose && <CircularProgress size={14} />}
                 </Box>
                 <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
                   <Chip
@@ -725,7 +726,7 @@ export default function LogViewer({
                   severity="error"
                   sx={{ borderRadius: 0 }}
                   action={
-                    <Button color="inherit" size="small" onClick={() => queryClient.invalidateQueries({ queryKey: ['logs', execution?.id] })}>
+                    <Button color="inherit" size="small" onClick={() => queryClient.invalidateQueries({ queryKey: queryKeys.logs(execution?.id) })}>
                       Retry
                     </Button>
                   }
