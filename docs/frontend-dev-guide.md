@@ -36,6 +36,12 @@ The kube-phoenix frontend is the operator-facing UI for managing Kubernetes slee
 | Framer Motion | 12 | Sidebar morph, drawer slide, log animations |
 | TypeScript | 6 | |
 
+**Dependency notes:**
+
+- `three`, `@react-three/fiber`, and `@react-three/drei` were removed (unused).
+- `react-window` is listed as a dependency but not currently used (evaluated for log virtualization).
+- GSAP is lazy-loaded via dynamic `import()` in `ApiRivers` rather than eagerly imported.
+
 **Running locally:**
 
 ```bash
@@ -134,7 +140,7 @@ frontend/
         CenteredSpinner.tsx     # Centered CircularProgress spinner for loading states
         TriggerModeDialog.tsx   # Plan/apply mode selection dialog for policy triggers
       shared/
-        StatusChip.tsx          # Reusable status chip with color mapping
+        StatusChip.tsx          # Reusable status chip with color mapping; supports hideSpinner prop (pulse animation for running state instead of spinner)
         TriggerChip.tsx         # Reusable chip displaying execution trigger type with icon and color
       exceptions/
         ExceptionsCalendarStrip.tsx  # Calendar strip layout: day rows, span rows for multi-day, history split
@@ -169,6 +175,7 @@ frontend/
       timelineUtils.ts          # Day labels and time-range-to-segment conversion for timelines
       rbac.ts                   # Permission checking helpers
       observability-types.ts    # TypeScript interfaces for observability metrics and streams
+      observability-components.ts # Component metadata (display names, descriptions, icons) for drill-down pages
       useObservabilityStream.ts # SSE hook for observability data streams
       motion/                   # Motion design tokens and animation utilities
         echartsTheme.ts         # ECharts theme configuration
@@ -176,6 +183,7 @@ frontend/
         variants.ts             # Framer Motion variant definitions
       themeMode.tsx             # ThemeModeProvider context (light/dark/system + localStorage)
       queryClient.ts            # TanStack QueryClient singleton with default options
+      queryKeys.ts              # Centralized query key factory for all TanStack Query keys
       useClusterStream.ts       # SSE hook: cluster/stream subscription with reconnect + TanStack cache injection
       useDebouncedValue.ts      # Generic debounce hook for search inputs
       useDrawerResize.ts        # Mouse/touch drag resize hook for side drawers (returns named object)
@@ -238,6 +246,8 @@ QueryClientProvider          # TanStack Query cache
 TanStack Query is the sole data-fetching and caching layer. There is no Redux, Zustand, or other global state library.
 
 **Query key conventions:**
+
+All query keys are centralized in the `queryKeys` factory at `src/lib/queryKeys.ts` instead of hardcoded arrays. Components import key builders from this module (e.g., `queryKeys.policies.list()`, `queryKeys.executions.detail(id)`) to ensure consistency across queries and invalidations.
 
 | Pattern | Example | Used by |
 |:--------|:--------|:--------|
@@ -751,9 +761,9 @@ The execution log viewer is a resizable right-side drawer. Data fetching and Web
 
 | File | Purpose |
 |:-----|:--------|
-| `useExecutionLogs.ts` | Hook that manages the data source: opens a WebSocket for running executions, falls back to REST `getPolicyExecutionLogs()` for completed ones. Handles reconnection (3s delay) and merges live lines with replayed lines. |
-| `parseSummary.ts` | Regex-based parser that extracts structured data from log lines: workload entries (scaled, restored, would-scale), node entries (drained, deleted, would-drain), and error lines. Groups workloads by namespace. |
-| `ExecutionSummary.tsx` | Renders the parsed summary as an accordion: workloads grouped by namespace with target replicas, node entries, and an error count chip. |
+| `useExecutionLogs.ts` | Hook that manages the data source: opens a WebSocket for running executions, falls back to REST `getPolicyExecutionLogs()` for completed ones. Handles reconnection with exponential backoff, RAF message batching, `seq`-based deduplication, and `cleanClose` detection. |
+| `parseSummary.ts` | Regex-based parser that extracts structured data from log lines: workload entries (`Slept`, `Restored -> N replicas`, `Would sleep/restore`), node entries (drained, deleted, would-drain), and error lines. Groups workloads by namespace. |
+| `ExecutionSummary.tsx` | Renders the parsed summary as an accordion: workloads grouped by namespace with target replicas, node entries, error count chip, and a stats bar showing duration, scaled/restored count, drained/deleted nodes, skipped, errors, and API call throughput. |
 
 **Drawer layout:**
 
@@ -900,7 +910,7 @@ Data is loaded from the API as CSV strings and split with `splitCommaList()`. On
 
 The Scheduler Behaviour section uses stacked label-left/control-right rows for Eval Interval (Go duration, validated), Auto Wake (switch), and Reconcile While Awake (switch).
 
-**`useUnsavedChanges`** (`lib/useUnsavedChanges.tsx`): A context provider that tracks dirty state across any form. Intercepts internal `<a>` link clicks (capture phase) to show a confirmation dialog when dirty, and uses `beforeunload` for browser tab close. Wrapped in `UnsavedChangesProvider` inside `providers.tsx`.
+**`useUnsavedChanges`** (`lib/useUnsavedChanges.tsx`): A context provider that tracks dirty state across any form. Intercepts internal `<a>` link clicks (capture phase) to show a confirmation dialog when dirty, and uses `beforeunload` for browser tab close. Wrapped in `UnsavedChangesProvider` inside `providers.tsx`. The context value is memoized with `useMemo` to prevent unnecessary re-renders of all consumers when the parent re-renders without a dirty-state change.
 
 **`LabeledSwitch`** (`components/common/LabeledSwitch.tsx`): A shared component that renders a `FormControlLabel` wrapping a `Switch` with a two-line label (bold title + secondary caption). Used by `ExceptionDialog`.
 
@@ -1179,15 +1189,29 @@ The SSE stream pushes updates within ~2 seconds of any cluster change (the backe
 
 **Component:** `LogViewer` via the `useExecutionLogs` hook
 
-**Flow:**
+**Connection flow:**
 1. When `execution.status === 'running'`, `useExecutionLogs` opens `new WebSocket(wsPolicyLogsUrl(execution.id))`
-2. `ws.onmessage` parses each message as a JSON `LogLine` and appends to the lines array
-3. On `ws.onerror`, sets error state and attempts reconnection after 3 seconds
-4. Reconnection only happens if the execution is still running (`isRunningRef.current`)
-5. On component unmount or execution change, the WebSocket is closed via cleanup function
-6. For completed executions, the hook falls back to `getPolicyExecutionLogs()` via REST
+2. The backend sends lines in three phases:
+   - **Persisted lines** from PostgreSQL (ordered by `seq`)
+   - **Replay buffer lines** covering the gap between the last DB flush and the subscription start (filtered to `seq > maxDBSeq`)
+   - **Live stream** from the broker as new lines arrive
+3. `ws.onmessage` deduplicates by `seq` (not `id`, since broker lines have `id: 0` before DB insertion) and buffers messages for RAF batch rendering
+4. Each `requestAnimationFrame` flush sorts the batch by `seq` to guarantee visual ordering
+5. For completed executions, the hook falls back to `getPolicyExecutionLogs()` via REST
 
-The WebSocket URL is constructed by replacing `http` with `ws` in the API base URL. The backend replays all existing log lines on connection, then streams new ones as they arrive from the policy scaler.
+**Reconnection:**
+- On `ws.onerror`, reconnection is attempted with exponential backoff (1s base, 15s max, 10% jitter, 10 max retries)
+- Reconnection only happens if the execution is still running (`isRunningRef.current`)
+- On `ws.onclose`, the hook inspects the close code: 1000 (normal), 1008 (policy violation), and 1009 (message too large) are treated as terminal and do not trigger reconnection
+- A `cleanClose` flag distinguishes graceful server-initiated disconnections (execution finished) from unexpected drops, suppressing the "connection lost" toast and spinner
+
+**Deduplication:**
+The frontend deduplicates by `line.seq` rather than `line.id` because the broker publishes lines before they are inserted into PostgreSQL. At publish time, `id` is 0 (the auto-increment primary key has not been assigned yet). The `seq` field is a per-execution monotonic counter assigned by the scheduler before publish, making it stable across both the broker and the database.
+
+**Why the replay buffer matters:**
+Log lines are batch-flushed to PostgreSQL every 50 lines but published to the broker immediately. When a client connects mid-execution, the DB may not yet contain recently published lines. The broker's replay buffer (last 256 lines) bridges this gap. Without it, lines emitted between the last DB flush and the WebSocket subscription would be lost. See `docs/observability.md` "Log Streaming Architecture" for the full backend design.
+
+The WebSocket URL is constructed by replacing `http` with `ws` in the API base URL.
 
 ### REST Polling Fallback
 
@@ -1254,7 +1278,7 @@ All components live under `src/components/observability/`.
 
 ### Key Hooks
 
-- **`useObservabilityStream`** -- SSE connection with automatic reconnect, history ring buffer (60 entries), threshold crossing detection, and runtime config polling (30s).
+- **`useObservabilityStream`** -- SSE connection with automatic reconnect using exponential backoff (5s base, 30s max), history ring buffer (60 entries), threshold crossing detection, and runtime config polling (30s).
 - **Lazy eCharts loading** -- a Promise-based dedup pattern ensures only one `import('echarts')` call is in-flight at a time, shared across all chart panels.
 - **`useSharedClock`** (in `StatusHeader`) -- consolidates 3 timer intervals (clock, freshness, sparkline tick) into a single `setInterval`.
 
@@ -1269,13 +1293,22 @@ All components live under `src/components/observability/`.
 
 No TanStack Query is used on this page. All data arrives via SSE push rather than request/response polling.
 
+### Additional Observability Details
+
+- **MetricsDashboard** uses a split `useEffect` pattern: one effect initializes chart instances (runs once), a separate effect updates chart data when the SSE stream delivers new snapshots.
+- **ApiRivers** caches path lengths in the animation loop to avoid repeated `getTotalLength()` calls. Shadow blur is disabled when the particle count exceeds 300 to maintain frame rate.
+- **Traffic segments** in `SystemOverview`: K8s API rates are converted from calls/min (backend) to req/s (display). WebSocket connections are no longer included in the traffic bar breakdown.
+- **ComponentDetail** metadata (display names, descriptions, icons) is extracted to `src/lib/observability-components.ts` for reuse across the drill-down pages.
+- **Inverted threshold logic** applies to the `cache_hit` panel: higher values are better, so warning/critical thresholds are inverted compared to other panels.
+- **Accessibility:** `aria-live="polite"` is set on key KPI values in `StatusHeader` and `MetricsDashboard` so screen readers announce metric changes.
+
 ### Performance Considerations
 
 - eCharts instances are disposed on unmount with `ResizeObserver` cleanup to prevent memory leaks.
 - The particle animation in `ApiRivers` reads live data from refs (not effect dependencies) to avoid teardown and re-initialization on every SSE update.
 - `AnimatePresence` in `CallFeed` is limited to the newest 5 rows to cap layout animation cost.
 - The canvas renderer uses `devicePixelRatio` for crisp rendering on retina displays.
-- GSAP is imported eagerly (not lazy-loaded) because `ApiRivers` uses it immediately on mount.
+- GSAP is lazy-loaded via dynamic `import()` in `ApiRivers`.
 
 ---
 

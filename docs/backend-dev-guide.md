@@ -143,10 +143,10 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - ~~`ActiveException`~~ -- removed (was unused).
 
 **Broker (`broker.go`):**
-- `Subscribe(execID) chan PolicyLogLine` -- creates a buffered channel (capacity 256).
-- `Publish(execID, line)` -- non-blocking fan-out; drops lines for slow subscribers.
+- `Subscribe(execID) (chan PolicyLogLine, []PolicyLogLine)` -- creates a buffered channel (capacity 256) and returns a snapshot of the per-execution replay buffer (last 256 published lines). The replay buffer covers lines not yet flushed to the database, closing the gap between persisted history and the live stream.
+- `Publish(execID, line)` -- appends to the per-execution replay ring buffer, then non-blocking fan-out to all subscriber channels; drops lines for slow subscribers.
 - `Unsubscribe(execID, ch)` -- removes and closes the channel (double-close safe).
-- `Close(execID)` -- closes all subscriber channels for an execution.
+- `Close(execID)` -- closes all subscriber channels and cleans up the replay buffer.
 
 **Dependencies:** `store`, `k8s`, `scaler`, `policy`, `metrics`.
 
@@ -196,6 +196,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `PodLogOptions` -- `{Container, TailLines, Previous, Follow}` used by `GetPodLogs`.
 
 **Key functions (Client):**
+- `paginatedList[T]()` -- generic helper that pages through all List results using `Continue` tokens, collecting items across pages. All List operations (Deployments, StatefulSets, Nodes, Pods) use this helper.
 - `ListDeployments(ctx, namespace)` / `ListDeploymentsBySelector(ctx, namespace, labelSelector)` -- list with optional label filter. `GetDeployment(ctx, ns, name)` -- single fetch.
 - `ScaleDeployment(ctx, ns, name, replicas)` -- get scale subresource, set replicas, update. Uses `scaleWithRetry` for retry-on-conflict with exponential backoff (500ms, 1.5s, 3s).
 - `AnnotateDeployment(ctx, ns, name, key, value)` / `RemoveDeploymentAnnotation(ctx, ns, name, key)` -- delegates to `annotateResource` / `removeAnnotation` internal helpers.
@@ -252,7 +253,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 | File | Content |
 |:-----|:--------|
-| `store.go` | `New(dsn)` -- opens PostgreSQL connection, configures pool (10 open, 5 idle, 5m lifetime, 2m idle timeout), runs `AutoMigrate`, adds CHECK constraints via `addEnumCheckConstraints`, migrates legacy cron columns. `Ping()`, `DB()`. |
+| `store.go` | `New(dsn)` -- opens PostgreSQL connection, configures pool (10 open, 5 idle, 5m lifetime, 2m idle timeout), runs `AutoMigrate` (gated by `AUTO_MIGRATE` env var; set to `false` to skip), adds CHECK constraints via `addEnumCheckConstraints`, migrates legacy cron columns. `Ping()`, `DB()`, `Close()` (returns the underlying `*sql.DB` connection to the pool), `UpdatePoolMetrics()` (publishes `sql.DBStats` gauges to Prometheus). |
 | `models.go` | All GORM model struct definitions with tags. |
 | `status.go` | String constants: `PolicyState*`, `PolicyMode*`, `ExecStatus*`, `ExceptionStatus*`, `ExceptionType*`. |
 | `policies.go` | `ListPolicies`, `ListEnabledPolicies` (SQL-filtered, used by scheduler), `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning` (atomic conditional update, sets both `current_state` and `state_since`, returns `ErrTransitionAlreadyClaimed` on race), `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`, `ResetStuckTransitioningPolicies`. Retention: `CleanOldExecutions` (deletes finished executions older than threshold, preserving those with open snapshots; cascades to log lines and snapshots via FK). Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines` (capped at 5000 rows). Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `CountOpenSnapshotsForRestore`, `GetSnapshotsForExecution`, `GetSnapshotsForPolicy` (capped at 5000 rows), `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Exceptions: `Create/Get/List/Update ScheduledException`, `HasOverlappingException` (checks for time-overlapping exceptions of opposite type on the same policy, used during create and update validation), `CancelScheduledException` (atomic status + cancelled_at + cancel_reason, guarded by `WHERE status IN ('pending','active')`), `ListOpenExceptions`, `ListActiveExceptionsForPolicies` (batch fetch of active exceptions by policy IDs and time range, used by scheduler tick), `ListActiveExceptionsForPolicy` (single-policy variant, used by startup recovery), `UpdateScheduledExceptionStatus` (atomic conditional transition: requires `expectedStatus` to match current row state, prevents concurrent double-transitions). |
@@ -721,6 +722,11 @@ Client
     -> chiMiddleware.RequestID     (assigns X-Request-Id)
     -> chiMiddleware.Logger        (structured access log)
     -> chiMiddleware.Recoverer     (panic recovery -> 500)
+    -> securityHeaders()           (X-Frame-Options: DENY, X-Content-Type-Options: nosniff,
+                                    Referrer-Policy: strict-origin-when-cross-origin,
+                                    CSP: default-src 'self'; style-src 'self' 'unsafe-inline';
+                                    script-src 'self' 'unsafe-inline'; img-src 'self' data:;
+                                    connect-src 'self' ws: wss:)
     -> corsHandler()               (CORS headers)
     -> Body size limit (1 MB)      (inline middleware)
     -> [route match]
@@ -980,7 +986,7 @@ Streams pod logs directly from the K8s API. Supports:
 1. Client connects. Headers set: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`.
 2. Current overview is sent immediately (so client gets data before first tick).
 3. Handler subscribes to `ClusterCache.Subscribe()`.
-4. On each cache refresh signal, `buildOverview()` is called and sent as `data: {...}\n\n`.
+4. On each cache refresh signal, `buildOverview()` is called and sent as `data: {...}\n\n` with a 5-second write deadline for backpressure (slow clients are disconnected rather than blocking the server).
 5. Connection lives until client disconnects or request context is cancelled.
 
 **Overview payload (`OverviewResponse`):**
@@ -997,7 +1003,7 @@ Streams pod logs directly from the K8s API. Supports:
 **Flow:**
 1. Handler validates execution ID, fetches execution record.
 2. Upgrades to WebSocket (gorilla/websocket). Origin check: `Origin` header host must match `Host` header.
-3. Starts `wsReadPump` goroutine (reads pong frames, manages read deadline of 60s).
+3. Sets `SetReadLimit(4096)` to cap incoming frame size. Starts `wsReadPump` goroutine (reads pong frames, manages read deadline of 60s).
 4. **Replay:** Fetches all existing log lines from DB and sends them as JSON frames.
 5. If execution is no longer `running` -> close connection (all logs already sent).
 6. **Subscribe:** Subscribes to `Broker` for the execution ID.
@@ -1061,6 +1067,12 @@ All metrics are registered via `promauto` in `backend/internal/metrics/metrics.g
 | **Cluster cache** | | | |
 | `kube_phoenix_cache_rebuilds_total` | Counter | -- | Cluster cache snapshot rebuilds (SharedInformer-backed). |
 | `kube_phoenix_cache_rebuild_duration_seconds` | Histogram | -- | Time spent rebuilding the cache snapshot. Buckets: 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1. |
+| `kube_phoenix_cache_hits_total` | Counter | -- | Cache hits (requests served from ClusterCache without K8s API call). |
+| `kube_phoenix_cache_misses_total` | Counter | -- | Cache misses (requests that required a K8s API call). |
+| **Database pool** | | | |
+| `kube_phoenix_db_pool_open_connections` | Gauge | -- | Current number of open database connections (from `sql.DBStats`). |
+| `kube_phoenix_db_pool_in_use` | Gauge | -- | Database connections currently in use. |
+| `kube_phoenix_db_pool_idle` | Gauge | -- | Database connections currently idle. |
 
 ### Structured Logging
 

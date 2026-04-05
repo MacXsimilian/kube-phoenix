@@ -85,7 +85,7 @@ Prometheus metrics from a single HTTP listener on port 8080.
 
 **Key responsibilities:**
 - Route requests through a middleware stack: request ID, structured logging,
-  panic recovery, CORS, body size limit, session auth, CSRF protection, RBAC.
+  panic recovery, HTTP security headers, CORS, body size limit, session auth, CSRF protection, RBAC.
 - Expose 45+ REST endpoints under `/api/*` for policies, executions, cluster
   state, guardrails, users, audit logs, exceptions, observability, and system info.
 - Serve the embedded Next.js SPA for all non-API paths (SPA fallback to
@@ -106,7 +106,7 @@ Prometheus metrics from a single HTTP listener on port 8080.
 **Purpose:** Real-time system observability with dual-view dashboard: Metrics Dashboard for quantitative monitoring and API Rivers for visual request flow topology.
 
 **Key responsibilities:**
-- Self-scrape the Prometheus registry every 2 seconds, computing counter deltas, histogram quantiles, and gauge values into structured metric snapshots.
+- Self-scrape the Prometheus registry every 2 seconds, computing counter deltas, histogram quantiles, and gauge values into structured metric snapshots. DB pool metrics (`open_connections`, `in_use`, `idle`) are collected from `sql.DBStats` on every tick. Cache hit rate is computed from real `cache_hits_total` and `cache_misses_total` counters.
 - Store snapshots in PostgreSQL for historical queries (up to 3 days, auto-pruned).
 - Cache the latest SSE payload in memory under a `sync.RWMutex`. The SSE handler reads from this buffer, never from the database, so multiple concurrent dashboard clients do not increase DB load.
 - Serve component runtime configuration (DB pool sizes, rate limits, K8s QPS, scheduler interval) from actual runtime values.

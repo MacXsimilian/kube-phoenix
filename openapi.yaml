@@ -1130,6 +1130,15 @@ components:
           type: integer
         totalErrorRate:
           type: number
+        dbPoolOpen:
+          type: integer
+          description: Number of open database connections.
+        dbPoolInUse:
+          type: integer
+          description: Number of database connections currently in use.
+        dbPoolIdle:
+          type: integer
+          description: Number of idle database connections.
 
     ObservabilityThreshold:
       description: A configurable warning/critical threshold for a dashboard panel.
@@ -2656,7 +2665,7 @@ paths:
     put:
       operationId: updateObservabilityThreshold
       summary: Create or update a threshold
-      description: Upserts an observability threshold by panel key. Returns the saved threshold.
+      description: Upserts an observability threshold by panel key. Returns the saved threshold. Negative values for warnVal or critVal are rejected with 400.
       tags: [Observability]
       requestBody:
         required: true
