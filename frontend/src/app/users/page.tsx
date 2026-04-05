@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Card from '@mui/material/Card'
@@ -64,7 +65,7 @@ export default function UsersPage() {
   const { user: me } = useAuth()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { data: users, isLoading, isError } = useQuery({ queryKey: ['users'], queryFn: getUsers })
+  const { data: users, isLoading, isError } = useQuery({ queryKey: queryKeys.users(), queryFn: getUsers })
 
   const [search, setSearch] = useState('')
   const filteredUsers = useMemo(() => {
@@ -87,19 +88,19 @@ export default function UsersPage() {
 
   const createMutation = useMutation({
     mutationFn: () => createUserAPI(form),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); setCreateOpen(false); setForm({ username: '', email: '', password: '', role: 'viewer' }); setCreateError('') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: queryKeys.users() }); setCreateOpen(false); setForm({ username: '', email: '', password: '', role: 'viewer' }); setCreateError('') },
     onError: (err: Error) => setCreateError(err.message),
   })
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<Pick<User, 'role' | 'enabled'>> }) => updateUserAPI(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); setMutationError('') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: queryKeys.users() }); setMutationError('') },
     onError: (err: Error) => setMutationError(err.message),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => deleteUserAPI(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); setDeleteTarget(null); setMutationError('') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: queryKeys.users() }); setDeleteTarget(null); setMutationError('') },
     onError: (err: Error) => { setMutationError(err.message); setDeleteTarget(null) },
   })
 

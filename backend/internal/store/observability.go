@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -19,9 +20,11 @@ type MetricSnapshot struct {
 	HTTPErrorRate    float64 `json:"httpErrorRate"`    // 5xx/s since last tick
 
 	// Kubernetes API
-	K8sGetRate    float64 `json:"k8sGetRate"`    // calls/min
-	K8sPatchRate  float64 `json:"k8sPatchRate"`  // calls/min
-	K8sDeleteRate float64 `json:"k8sDeleteRate"` // calls/min
+	K8sGetRate       float64 `json:"k8sGetRate"`       // calls/min
+	K8sPatchRate     float64 `json:"k8sPatchRate"`     // calls/min
+	K8sDeleteRate    float64 `json:"k8sDeleteRate"`    // calls/min
+	K8sLatencyP50Ms  float64 `json:"k8sLatencyP50Ms"` // milliseconds
+	K8sLatencyP99Ms  float64 `json:"k8sLatencyP99Ms"` // milliseconds
 
 	// Policy executions
 	PolicySuccessCount int `json:"policySuccessCount"` // in the tick window
@@ -47,6 +50,20 @@ type MetricSnapshot struct {
 	AuditDrops      int     `json:"auditDrops"`
 	RateLimitHits   int     `json:"rateLimitHits"`
 	TotalErrorRate  float64 `json:"totalErrorRate"` // combined error/s
+
+	// Database pool
+	DBPoolOpen  int `json:"dbPoolOpen"`
+	DBPoolInUse int `json:"dbPoolInUse"`
+	DBPoolIdle  int `json:"dbPoolIdle"`
+
+	// Auth & session
+	ActiveSessions int `json:"activeSessions"`
+
+	// Active policies
+	ActivePolicies int `json:"activePolicies"`
+
+	// K8s error rate
+	K8sErrorRate float64 `json:"k8sErrorRate"` // failed K8s API calls/min
 }
 
 // ObservabilityThreshold stores user-configurable warn/crit thresholds per metric panel.
@@ -131,7 +148,9 @@ func (s *Store) SeedDefaultThresholds() error {
 	}
 	for i := range defaults {
 		var count int64
-		s.db.Model(&ObservabilityThreshold{}).Where("panel_key = ?", defaults[i].PanelKey).Count(&count)
+		if err := s.db.Model(&ObservabilityThreshold{}).Where("panel_key = ?", defaults[i].PanelKey).Count(&count).Error; err != nil {
+			return fmt.Errorf("check threshold %s: %w", defaults[i].PanelKey, err)
+		}
 		if count == 0 {
 			if err := s.db.Create(&defaults[i]).Error; err != nil {
 				return err
@@ -191,6 +210,9 @@ func averageBucket(bucket []MetricSnapshot) MetricSnapshot {
 		result.SchedulerPanics += s.SchedulerPanics
 		result.AuditDrops += s.AuditDrops
 		result.RateLimitHits += s.RateLimitHits
+		result.ActiveSessions += s.ActiveSessions
+		result.ActivePolicies += s.ActivePolicies
+		result.K8sErrorRate += s.K8sErrorRate
 	}
 	averageRateFields(&result, n)
 	return result
@@ -211,6 +233,9 @@ func averageRateFields(s *MetricSnapshot, n float64) {
 	s.ScaleOperationDurationMs /= n
 	s.TotalErrorRate /= n
 	s.WSActiveConnections = int(float64(s.WSActiveConnections) / n)
+	s.ActiveSessions = int(float64(s.ActiveSessions) / n)
+	s.ActivePolicies = int(float64(s.ActivePolicies) / n)
+	s.K8sErrorRate /= n
 }
 
 // maxPointsForRange returns the target number of data points for a time range.

@@ -81,6 +81,20 @@ var (
 
 	// ─── Cluster cache metrics ───────────────────────────────────────────
 
+	// CacheHitsTotal counts cache reads served from memory.
+	CacheHitsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "kube_phoenix",
+		Name:      "cache_hits_total",
+		Help:      "Total number of cache hits in the cluster cache.",
+	})
+
+	// CacheMissesTotal counts cache reads that found no data.
+	CacheMissesTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "kube_phoenix",
+		Name:      "cache_misses_total",
+		Help:      "Total number of cache misses in the cluster cache.",
+	})
+
 	// CacheRebuildsTotal counts cluster cache snapshot rebuilds.
 	CacheRebuildsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "kube_phoenix_cache_rebuilds_total",
@@ -171,5 +185,28 @@ var (
 	SchedulerPanicsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "kube_phoenix_scheduler_panics_total",
 		Help: "Total recovered panics in scheduler and background goroutines.",
+	})
+
+	// ─── Database pool metrics ───────────────────────────────────────────
+
+	// DBPoolOpenConnections tracks the number of open connections to the database.
+	DBPoolOpenConnections = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "kube_phoenix",
+		Name:      "db_pool_open_connections",
+		Help:      "Number of open connections to the database.",
+	})
+
+	// DBPoolInUse tracks the number of connections currently in use.
+	DBPoolInUse = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "kube_phoenix",
+		Name:      "db_pool_in_use",
+		Help:      "Number of connections currently in use.",
+	})
+
+	// DBPoolIdle tracks the number of idle connections.
+	DBPoolIdle = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "kube_phoenix",
+		Name:      "db_pool_idle",
+		Help:      "Number of idle connections.",
 	})
 )

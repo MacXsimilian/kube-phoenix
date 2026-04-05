@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Card from '@mui/material/Card'
@@ -63,7 +64,7 @@ export default function AuditLogPage() {
   const localTo = toFilter ? new Date(`${toFilter}T23:59:59`).toISOString() : undefined
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['audit-logs', page, pageSize, debouncedUserFilter, actionFilter, fromFilter, toFilter],
+    queryKey: queryKeys.auditLogs(page, pageSize, debouncedUserFilter, actionFilter, fromFilter, toFilter),
     queryFn: () => getAuditLogs({
       user: debouncedUserFilter || undefined,
       action: actionFilter || undefined,

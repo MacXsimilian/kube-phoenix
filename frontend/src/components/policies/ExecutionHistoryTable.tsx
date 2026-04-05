@@ -112,7 +112,7 @@ export default function ExecutionHistoryTable({
                       }}
                     />
                   </TableCell>
-                  <TableCell><StatusChip status={ex.status} /></TableCell>
+                  <TableCell><StatusChip status={ex.status} hideSpinner /></TableCell>
                   <TableCell>{counts}</TableCell>
                   <TableCell>{fmtDtShort(ex.startedAt)}</TableCell>
                   <TableCell>{fmtDuration(ex.startedAt, ex.finishedAt)}</TableCell>

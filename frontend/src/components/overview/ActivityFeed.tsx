@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import { useRouter } from 'next/navigation'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -38,7 +39,7 @@ export default function ActivityFeed() {
   const isDark = useIsDark()
   const [selected, setSelected] = useState<PolicyExecution | null>(null)
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['policy-executions', 'feed'],
+    queryKey: queryKeys.policyExecutionsFeed(),
     queryFn: () => getPolicyExecutions({ pageSize: 4 }),
     staleTime: ACTIVITY_FEED_STALE_MS,
     refetchInterval: ACTIVITY_FEED_REFETCH_MS,
@@ -117,7 +118,7 @@ export default function ActivityFeed() {
                     {exec.direction === 'sleep' ? 'Sleep' : 'Wake'} #{exec.id}
                   </Typography>
                   <TriggerChip trigger={exec.trigger} />
-                  <StatusChip status={exec.status} />
+                  <StatusChip status={exec.status} hideSpinner />
                   <Chip
                     label={exec.mode.toUpperCase()}
                     size="small"

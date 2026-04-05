@@ -18,6 +18,7 @@
 | `CLUSTER_NAME` | -- | No | Human-readable cluster name returned by `GET /api/cluster/info`. When unset, the endpoint omits the field. |
 | `K8S_QPS` | `100` | No | Sustained K8s API requests per second (client-go default: 5). Higher values speed up large scaling events but increase control plane load. |
 | `K8S_BURST` | `200` | No | Short spike allowance above `K8S_QPS` (client-go default: 10). The K8s API server's own APF throttling acts as a server-side safety net. |
+| `AUTO_MIGRATE` | `true` (implicit) | No | Set to `false` to skip GORM AutoMigrate on startup. Useful for production deployments with versioned migrations. |
 
 ### OIDC Variables
 

@@ -27,10 +27,17 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+// CallRecorder records API calls for the observability dashboard.
+// Implemented by observability.CallRecorder; nil means no recording.
+type CallRecorder interface {
+	Record(method, path string, statusCode int, durationMs float64)
+}
+
 type Client struct {
-	cs        *kubernetes.Clientset
-	apiServer string
-	inCluster bool
+	cs           *kubernetes.Clientset
+	apiServer    string
+	inCluster    bool
+	callRecorder CallRecorder
 
 	// Cached cluster info to avoid hitting k8s Discovery on every request.
 	clusterInfoMu     sync.Mutex
@@ -59,6 +66,11 @@ type ClusterInfoResult struct {
 // Clientset returns the underlying typed client for use at the composition root.
 func (c *Client) Clientset() kubernetes.Interface {
 	return c.cs
+}
+
+// SetCallRecorder attaches a call recorder for K8s API call tracking.
+func (c *Client) SetCallRecorder(cr CallRecorder) {
+	c.callRecorder = cr
 }
 
 func New() (*Client, error) {
@@ -154,42 +166,84 @@ func (c *Client) ClusterInfo(ctx context.Context) (ClusterInfoResult, error) {
 }
 
 func recordK8sOp(verb, resource string, start time.Time, err error) {
+	recordK8sOpWith(nil, verb, resource, start, err)
+}
+
+func recordK8sOpWith(cr CallRecorder, verb, resource string, start time.Time, err error) {
 	status := "success"
+	statusCode := 200
 	if err != nil {
 		status = "error"
+		statusCode = 500
 	}
+	duration := time.Since(start)
 	metrics.K8sRequestsTotal.WithLabelValues(verb, resource, status).Inc()
-	metrics.K8sRequestDuration.WithLabelValues(verb, resource).Observe(time.Since(start).Seconds())
+	metrics.K8sRequestDuration.WithLabelValues(verb, resource).Observe(duration.Seconds())
+	if cr != nil {
+		cr.Record("K8S", verb+" "+resource, statusCode, float64(duration.Nanoseconds())/1e6)
+	}
+}
+
+const paginationLimit = 500
+
+// paginatedList collects all items from a paginated Kubernetes List call.
+// listFn receives ListOptions and returns the page items plus the continue token.
+func paginatedList[T any](opts metav1.ListOptions, listFn func(metav1.ListOptions) ([]T, string, error)) ([]T, error) {
+	opts.Limit = paginationLimit
+	var all []T
+	for {
+		items, cont, err := listFn(opts)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, items...)
+		if cont == "" {
+			return all, nil
+		}
+		opts.Continue = cont
+	}
 }
 
 // ─── Deployments ─────────────────────────────────────────────────────────────
 
 func (c *Client) ListDeployments(ctx context.Context, namespace string) ([]appsv1.Deployment, error) {
 	start := time.Now()
-	list, err := c.cs.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
-	recordK8sOp("list", "deployment", start, err)
+	items, err := paginatedList(metav1.ListOptions{}, func(opts metav1.ListOptions) ([]appsv1.Deployment, string, error) {
+		list, err := c.cs.AppsV1().Deployments(namespace).List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
+	})
+	recordK8sOpWith(c.callRecorder, "list", "deployment", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list deployments in %q: %w", namespace, err)
 	}
-	return list.Items, nil
+	return items, nil
 }
 
 // ListDeploymentsBySelector lists deployments filtered by a label selector string.
 // An empty labelSelector returns all deployments (same as ListDeployments).
 func (c *Client) ListDeploymentsBySelector(ctx context.Context, namespace, labelSelector string) ([]appsv1.Deployment, error) {
 	start := time.Now()
-	list, err := c.cs.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
-	recordK8sOp("list", "deployment", start, err)
+	items, err := paginatedList(metav1.ListOptions{LabelSelector: labelSelector}, func(opts metav1.ListOptions) ([]appsv1.Deployment, string, error) {
+		list, err := c.cs.AppsV1().Deployments(namespace).List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
+	})
+	recordK8sOpWith(c.callRecorder, "list", "deployment", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list deployments by selector in %q: %w", namespace, err)
 	}
-	return list.Items, nil
+	return items, nil
 }
 
 func (c *Client) GetDeployment(ctx context.Context, namespace, name string) (*appsv1.Deployment, error) {
 	start := time.Now()
 	d, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
-	recordK8sOp("get", "deployment", start, err)
+	recordK8sOpWith(c.callRecorder, "get", "deployment", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
 	}
@@ -241,7 +295,7 @@ func (c *Client) ScaleDeployment(ctx context.Context, namespace, name string, re
 	start := time.Now()
 	dep := c.cs.AppsV1().Deployments(namespace)
 	err := c.scaleWithRetry(ctx, namespace, name, replicas, dep.GetScale, dep.UpdateScale)
-	recordK8sOp("scale", "deployment", start, err)
+	recordK8sOpWith(c.callRecorder, "scale", "deployment", start, err)
 	return err
 }
 
@@ -334,29 +388,41 @@ func (c *Client) RemoveDeploymentAnnotation(ctx context.Context, namespace, name
 
 func (c *Client) ListStatefulSets(ctx context.Context, namespace string) ([]appsv1.StatefulSet, error) {
 	start := time.Now()
-	list, err := c.cs.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
-	recordK8sOp("list", "statefulset", start, err)
+	items, err := paginatedList(metav1.ListOptions{}, func(opts metav1.ListOptions) ([]appsv1.StatefulSet, string, error) {
+		list, err := c.cs.AppsV1().StatefulSets(namespace).List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
+	})
+	recordK8sOpWith(c.callRecorder, "list", "statefulset", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list statefulsets in %q: %w", namespace, err)
 	}
-	return list.Items, nil
+	return items, nil
 }
 
 // ListStatefulSetsBySelector lists statefulsets filtered by a label selector string.
 func (c *Client) ListStatefulSetsBySelector(ctx context.Context, namespace, labelSelector string) ([]appsv1.StatefulSet, error) {
 	start := time.Now()
-	list, err := c.cs.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
-	recordK8sOp("list", "statefulset", start, err)
+	items, err := paginatedList(metav1.ListOptions{LabelSelector: labelSelector}, func(opts metav1.ListOptions) ([]appsv1.StatefulSet, string, error) {
+		list, err := c.cs.AppsV1().StatefulSets(namespace).List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
+	})
+	recordK8sOpWith(c.callRecorder, "list", "statefulset", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list statefulsets by selector in %q: %w", namespace, err)
 	}
-	return list.Items, nil
+	return items, nil
 }
 
 func (c *Client) GetStatefulSet(ctx context.Context, namespace, name string) (*appsv1.StatefulSet, error) {
 	start := time.Now()
 	ss, err := c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
-	recordK8sOp("get", "statefulset", start, err)
+	recordK8sOpWith(c.callRecorder, "get", "statefulset", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
 	}
@@ -367,7 +433,7 @@ func (c *Client) ScaleStatefulSet(ctx context.Context, namespace, name string, r
 	start := time.Now()
 	ss := c.cs.AppsV1().StatefulSets(namespace)
 	err := c.scaleWithRetry(ctx, namespace, name, replicas, ss.GetScale, ss.UpdateScale)
-	recordK8sOp("scale", "statefulset", start, err)
+	recordK8sOpWith(c.callRecorder, "scale", "statefulset", start, err)
 	return err
 }
 
@@ -413,12 +479,18 @@ func (c *Client) RemoveStatefulSetAnnotation(ctx context.Context, namespace, nam
 
 func (c *Client) ListNodes(ctx context.Context) ([]corev1.Node, error) {
 	start := time.Now()
-	list, err := c.cs.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-	recordK8sOp("list", "node", start, err)
+	items, err := paginatedList(metav1.ListOptions{}, func(opts metav1.ListOptions) ([]corev1.Node, string, error) {
+		list, err := c.cs.CoreV1().Nodes().List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
+	})
+	recordK8sOpWith(c.callRecorder, "list", "node", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list nodes: %w", err)
 	}
-	return list.Items, nil
+	return items, nil
 }
 
 func (c *Client) CordonNode(ctx context.Context, name string) error {
@@ -435,7 +507,7 @@ func (c *Client) CordonNode(ctx context.Context, name string) error {
 		}
 		return nil
 	})
-	recordK8sOp("cordon", "node", start, err)
+	recordK8sOpWith(c.callRecorder, "cordon", "node", start, err)
 	return err
 }
 
@@ -453,15 +525,19 @@ func isDaemonSetPod(pod corev1.Pod) bool {
 // Used to compute a dynamic drain timeout before calling DrainNode.
 func (c *Client) CountNonDaemonSetPods(ctx context.Context, nodeName string) (int, error) {
 	start := time.Now()
-	pods, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{
-		FieldSelector: "spec.nodeName=" + nodeName,
+	allPods, err := paginatedList(metav1.ListOptions{FieldSelector: "spec.nodeName=" + nodeName}, func(opts metav1.ListOptions) ([]corev1.Pod, string, error) {
+		list, err := c.cs.CoreV1().Pods("").List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
 	})
-	recordK8sOp("list", "pod", start, err)
+	recordK8sOpWith(c.callRecorder, "list", "pod", start, err)
 	if err != nil {
 		return 0, fmt.Errorf("list pods on %s: %w", nodeName, err)
 	}
 	count := 0
-	for _, pod := range pods.Items {
+	for _, pod := range allPods {
 		if !isDaemonSetPod(pod) {
 			count++
 		}
@@ -477,18 +553,22 @@ func (c *Client) DrainNode(ctx context.Context, name string, timeout time.Durati
 	}
 
 	start := time.Now()
-	pods, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{
-		FieldSelector: "spec.nodeName=" + name,
+	drainPods, err := paginatedList(metav1.ListOptions{FieldSelector: "spec.nodeName=" + name}, func(opts metav1.ListOptions) ([]corev1.Pod, string, error) {
+		list, err := c.cs.CoreV1().Pods("").List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
 	})
 	if err != nil {
-		recordK8sOp("drain", "node", start, err)
+		recordK8sOpWith(c.callRecorder, "drain", "node", start, err)
 		return fmt.Errorf("list pods on %s: %w", name, err)
 	}
 
-	c.evictPods(ctx, name, pods.Items)
-	err = c.waitForDrain(ctx, name, timeout)
-	recordK8sOp("drain", "node", start, err)
-	return err
+	c.evictPods(ctx, name, drainPods)
+	drainErr := c.waitForDrain(ctx, name, timeout)
+	recordK8sOpWith(c.callRecorder, "drain", "node", start, drainErr)
+	return drainErr
 }
 
 // evictPods attempts to evict all non-DaemonSet pods, falling back to force delete.
@@ -520,14 +600,18 @@ func (c *Client) evictPods(ctx context.Context, nodeName string, pods []corev1.P
 func (c *Client) waitForDrain(ctx context.Context, nodeName string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		remaining, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{
-			FieldSelector: "spec.nodeName=" + nodeName,
+		remainingPods, err := paginatedList(metav1.ListOptions{FieldSelector: "spec.nodeName=" + nodeName}, func(opts metav1.ListOptions) ([]corev1.Pod, string, error) {
+			list, err := c.cs.CoreV1().Pods("").List(ctx, opts)
+			if err != nil {
+				return nil, "", err
+			}
+			return list.Items, list.Continue, nil
 		})
 		if err != nil {
 			return fmt.Errorf("poll pods on %s: %w", nodeName, err)
 		}
 		evictable := 0
-		for _, pod := range remaining.Items {
+		for _, pod := range remainingPods {
 			if !isDaemonSetPod(pod) {
 				evictable++
 			}
@@ -547,7 +631,7 @@ func (c *Client) waitForDrain(ctx context.Context, nodeName string, timeout time
 func (c *Client) DeleteNode(ctx context.Context, name string) error {
 	start := time.Now()
 	err := c.cs.CoreV1().Nodes().Delete(ctx, name, metav1.DeleteOptions{})
-	recordK8sOp("delete", "node", start, err)
+	recordK8sOpWith(c.callRecorder, "delete", "node", start, err)
 	if err != nil {
 		return fmt.Errorf("delete node %q: %w", name, err)
 	}
@@ -558,12 +642,18 @@ func (c *Client) DeleteNode(ctx context.Context, name string) error {
 
 func (c *Client) ListPods(ctx context.Context, namespace string) ([]corev1.Pod, error) {
 	start := time.Now()
-	list, err := c.cs.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
-	recordK8sOp("list", "pod", start, err)
+	items, err := paginatedList(metav1.ListOptions{}, func(opts metav1.ListOptions) ([]corev1.Pod, string, error) {
+		list, err := c.cs.CoreV1().Pods(namespace).List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
+	})
+	recordK8sOpWith(c.callRecorder, "list", "pod", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list pods in %q: %w", namespace, err)
 	}
-	return list.Items, nil
+	return items, nil
 }
 
 func (c *Client) ListAllPods(ctx context.Context) ([]corev1.Pod, error) {
@@ -572,14 +662,18 @@ func (c *Client) ListAllPods(ctx context.Context) ([]corev1.Pod, error) {
 
 func (c *Client) ListPodsOnNode(ctx context.Context, nodeName string) ([]corev1.Pod, error) {
 	start := time.Now()
-	list, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{
-		FieldSelector: "spec.nodeName=" + nodeName,
+	items, err := paginatedList(metav1.ListOptions{FieldSelector: "spec.nodeName=" + nodeName}, func(opts metav1.ListOptions) ([]corev1.Pod, string, error) {
+		list, err := c.cs.CoreV1().Pods("").List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
 	})
-	recordK8sOp("list", "pod", start, err)
+	recordK8sOpWith(c.callRecorder, "list", "pod", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list pods on node %q: %w", nodeName, err)
 	}
-	return list.Items, nil
+	return items, nil
 }
 
 const rsCacheTTL = 60 * time.Second
@@ -595,12 +689,18 @@ func (c *Client) ListAllReplicaSets(ctx context.Context) ([]appsv1.ReplicaSet, e
 	}
 
 	start := time.Now()
-	list, err := c.cs.AppsV1().ReplicaSets("").List(ctx, metav1.ListOptions{})
-	recordK8sOp("list", "replicaset", start, err)
+	items, err := paginatedList(metav1.ListOptions{}, func(opts metav1.ListOptions) ([]appsv1.ReplicaSet, string, error) {
+		list, err := c.cs.AppsV1().ReplicaSets("").List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
+	})
+	recordK8sOpWith(c.callRecorder, "list", "replicaset", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("list replicasets: %w", err)
 	}
-	c.cachedRS = list.Items
+	c.cachedRS = items
 	c.rsAt = time.Now()
 	return c.cachedRS, nil
 }
@@ -608,7 +708,7 @@ func (c *Client) ListAllReplicaSets(ctx context.Context) ([]appsv1.ReplicaSet, e
 func (c *Client) GetPod(ctx context.Context, namespace, name string) (*corev1.Pod, error) {
 	start := time.Now()
 	pod, err := c.cs.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
-	recordK8sOp("get", "pod", start, err)
+	recordK8sOpWith(c.callRecorder, "get", "pod", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("get pod %s/%s: %w", namespace, name, err)
 	}
@@ -623,12 +723,18 @@ func (c *Client) CountReadyPods(ctx context.Context, kind, namespace, name strin
 		return 0, 0, err
 	}
 	start := time.Now()
-	list, err := c.cs.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
-	recordK8sOp("list", "pod", start, err)
-	if err != nil {
-		return 0, 0, fmt.Errorf("list pods for %s %s/%s: %w", kind, namespace, name, err)
+	pods, listErr := paginatedList(metav1.ListOptions{LabelSelector: selector}, func(opts metav1.ListOptions) ([]corev1.Pod, string, error) {
+		list, err := c.cs.CoreV1().Pods(namespace).List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
+	})
+	recordK8sOpWith(c.callRecorder, "list", "pod", start, listErr)
+	if listErr != nil {
+		return 0, 0, fmt.Errorf("list pods for %s %s/%s: %w", kind, namespace, name, listErr)
 	}
-	for _, pod := range list.Items {
+	for _, pod := range pods {
 		total++
 		if isPodReady(pod) {
 			ready++
@@ -670,7 +776,7 @@ func isPodReady(pod corev1.Pod) bool {
 func (c *Client) GetNode(ctx context.Context, name string) (*corev1.Node, error) {
 	start := time.Now()
 	node, err := c.cs.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
-	recordK8sOp("get", "node", start, err)
+	recordK8sOpWith(c.callRecorder, "get", "node", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("get node %q: %w", name, err)
 	}
@@ -709,7 +815,7 @@ func (c *Client) fetchAllPodMetrics(ctx context.Context) (map[string]ContainerMe
 	start := time.Now()
 	res := c.cs.RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/pods").Do(ctx)
 	data, err := res.Raw()
-	recordK8sOp("get", "podmetrics", start, err)
+	recordK8sOpWith(c.callRecorder, "get", "podmetrics", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("fetch pod metrics: %w", err)
 	}
@@ -761,7 +867,7 @@ func (c *Client) GetPodMetrics(ctx context.Context, namespace, name string) (map
 		Get().
 		AbsPath(fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods/%s", namespace, name)).
 		DoRaw(ctx)
-	recordK8sOp("get", "podmetrics", start, err)
+	recordK8sOpWith(c.callRecorder, "get", "podmetrics", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("fetch pod metrics %s/%s: %w", namespace, name, err)
 	}
@@ -821,7 +927,7 @@ func (c *Client) GetPodLogs(ctx context.Context, namespace, name string, logOpts
 		opts.TailLines = &logOpts.TailLines
 	}
 	stream, err := c.cs.CoreV1().Pods(namespace).GetLogs(name, opts).Stream(ctx)
-	recordK8sOp("get", "podlogs", start, err)
+	recordK8sOpWith(c.callRecorder, "get", "podlogs", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("get logs %s/%s (container=%s): %w", namespace, name, logOpts.Container, err)
 	}
@@ -830,12 +936,16 @@ func (c *Client) GetPodLogs(ctx context.Context, namespace, name string, logOpts
 
 func (c *Client) GetPodEvents(ctx context.Context, namespace, podName string) ([]corev1.Event, error) {
 	start := time.Now()
-	list, err := c.cs.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
-		FieldSelector: "involvedObject.name=" + podName,
+	items, err := paginatedList(metav1.ListOptions{FieldSelector: "involvedObject.name=" + podName}, func(opts metav1.ListOptions) ([]corev1.Event, string, error) {
+		list, err := c.cs.CoreV1().Events(namespace).List(ctx, opts)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.Continue, nil
 	})
-	recordK8sOp("list", "event", start, err)
+	recordK8sOpWith(c.callRecorder, "list", "event", start, err)
 	if err != nil {
 		return nil, fmt.Errorf("get events for pod %s/%s: %w", namespace, podName, err)
 	}
-	return list.Items, nil
+	return items, nil
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Alert from '@mui/material/Alert'
 import Paper from '@mui/material/Paper'
 import Table from '@mui/material/Table'
@@ -91,7 +92,7 @@ export default function PolicyExecutionTable({
   const [directionFilter, setDirectionFilter] = useState('')
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['policy-executions', page, rowsPerPage, statusFilter, directionFilter],
+    queryKey: queryKeys.policyExecutionsTable(page, rowsPerPage, statusFilter, directionFilter),
     queryFn: () => getPolicyExecutions({
       page,
       pageSize: rowsPerPage,
@@ -220,7 +221,7 @@ export default function PolicyExecutionTable({
                             }}
                           />
                         </TableCell>
-                        <TableCell><StatusChip status={exec.status} /></TableCell>
+                        <TableCell><StatusChip status={exec.status} hideSpinner /></TableCell>
                         <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{fmtDuration(exec.startedAt, exec.finishedAt)}</TableCell>
                         <TableCell><SummaryCell exec={exec} /></TableCell>
                       </TableRow>

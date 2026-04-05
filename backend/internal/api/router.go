@@ -94,6 +94,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 	r.Use(chiMiddleware.Recoverer)
 	r.Use(prometheusMiddleware)
 	r.Use(callRecorderMiddleware(obsCollector.CallRecorder()))
+	r.Use(securityHeaders)
 	r.Use(corsHandler())
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -258,6 +259,16 @@ func (h *Handler) registerAdminRoutes(r chi.Router) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:")
+		next.ServeHTTP(w, r)
+	})
+}
+
 func corsHandler() func(http.Handler) http.Handler {
 	var allowedOrigins []string
 	if origin := os.Getenv("CORS_ALLOWED_ORIGIN"); origin != "" {
@@ -291,6 +302,10 @@ func prometheusMiddleware(next http.Handler) http.Handler {
 			routePattern = "unmatched"
 		}
 
+		if observability.IsSkippedMetricsRoute(routePattern) {
+			return
+		}
+
 		status := strconv.Itoa(ww.Status())
 		duration := time.Since(start).Seconds()
 
@@ -308,7 +323,7 @@ func callRecorderMiddleware(recorder *observability.CallRecorder) func(http.Hand
 			next.ServeHTTP(ww, r)
 
 			routePattern := chi.RouteContext(r.Context()).RoutePattern()
-			if routePattern == "" || observability.IsSkippedRoute(routePattern) {
+			if routePattern == "" || observability.IsSkippedRecorderRoute(routePattern) {
 				return
 			}
 			durationMs := float64(time.Since(start).Nanoseconds()) / 1e6

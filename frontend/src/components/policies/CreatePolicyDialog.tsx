@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -122,7 +123,7 @@ export default function CreatePolicyDialog({
       return isEdit ? updatePolicy(existing!.id, payload) : createPolicy(payload)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['policies'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.policies() })
       onNotify?.(isEdit ? 'Policy updated' : 'Policy created', 'success')
       onClose()
     },

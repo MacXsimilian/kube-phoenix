@@ -8,7 +8,13 @@ import type {
   RuntimeConfig,
 } from '@/lib/observability-types'
 
-const RECONNECT_DELAY_MS = 5_000
+const RECONNECT_BASE_MS = 5_000
+const RECONNECT_MAX_MS = 30_000
+
+function reconnectDelay(failCount: number): number {
+  return Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * Math.pow(2, failCount - 1))
+}
+
 const HISTORY_SIZE = 60
 const EVENT_TTL_MS = 10_000
 const MAX_EVENTS = 5
@@ -116,7 +122,7 @@ export function useObservabilityStream(): ObservabilityStreamState {
           if (!res.ok || !res.body) {
             failCountRef.current += 1
             if (failCountRef.current > 1) setDisconnected(true)
-            await new Promise((r) => setTimeout(r, RECONNECT_DELAY_MS))
+            await new Promise((r) => setTimeout(r, reconnectDelay(failCountRef.current)))
             if (controller.signal.aborted) break
             continue
           }
@@ -158,7 +164,7 @@ export function useObservabilityStream(): ObservabilityStreamState {
           if (!mountedRef.current) break
           failCountRef.current += 1
           if (failCountRef.current > 1) setDisconnected(true)
-          await new Promise((r) => setTimeout(r, RECONNECT_DELAY_MS))
+          await new Promise((r) => setTimeout(r, reconnectDelay(failCountRef.current)))
           if (controller.signal.aborted) break
         }
       }

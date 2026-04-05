@@ -39,8 +39,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const LATENCY_AMBER_THRESHOLD = 200
 const LATENCY_RED_THRESHOLD = 500
-const DB_POOL_MAX = 10
-const DB_POOL_FACTOR = 0.06
+const DB_POOL_FALLBACK_MAX = 10
 const SPARKLINE_SAMPLE_COUNT = 20
 const CLOCK_INTERVAL_MS = 1000
 const FLASH_DURATION_MS = 500
@@ -130,7 +129,7 @@ function HealthSection({
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
       <StatusDot color={statusColor} pulse={isCritical} />
-      <Typography variant="body2" fontWeight={600} sx={{ minWidth: 52 }}>
+      <Typography variant="body2" fontWeight={600} sx={{ minWidth: 52 }} aria-live="polite">
         {statusLabel}
       </Typography>
       <LiveClock tick={tick} />
@@ -234,7 +233,8 @@ function KpiSection({
   const theme = useTheme()
   const throughputValues = useLast20Values(history, getHttpRate)
   const latencyP99 = snapshot?.httpLatencyP99Ms ?? 0
-  const dbActive = snapshot ? deriveDbPoolActive(snapshot.httpRequestRate) : 0
+  const dbActive = snapshot?.dbPoolInUse ?? 0
+  const dbPoolMax = snapshot?.dbPoolOpen || DB_POOL_FALLBACK_MAX
   const errorRate = snapshot?.totalErrorRate ?? 0
 
   const latencyColor = resolveLatencyColor(latencyP99, theme)
@@ -261,9 +261,8 @@ function KpiSection({
         trend={latencyTrend}
       />
       <MiniStatCard
-        label="DB POOL (est.)"
-        title="Estimated from request rate"
-        value={snapshot ? `${dbActive}/${DB_POOL_MAX}` : '--'}
+        label="DB POOL"
+        value={snapshot ? `${dbActive}/${dbPoolMax}` : '--'}
         currentRaw={dbActive}
       />
       <MiniStatCard
@@ -333,6 +332,7 @@ function MiniStatCard({
       </Typography>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
         <Typography
+          aria-live="polite"
           sx={{
             fontFamily: 'monospace',
             fontWeight: 700,
@@ -413,6 +413,7 @@ function AlertBadge({ events }: { events: IncidentEvent[] }) {
 
   return (
     <Chip
+      aria-live="polite"
       icon={<ErrorOutlineIcon sx={{ fontSize: 14 }} />}
       label={label}
       size="small"
@@ -552,10 +553,6 @@ function resolveLatencyColor(
   if (valueMs > LATENCY_RED_THRESHOLD) return theme.palette.error.main
   if (valueMs > LATENCY_AMBER_THRESHOLD) return theme.palette.warning.main
   return theme.palette.success.main
-}
-
-function deriveDbPoolActive(httpRequestRate: number): number {
-  return Math.min(DB_POOL_MAX, Math.max(1, Math.round(httpRequestRate * DB_POOL_FACTOR)))
 }
 
 function formatTime(date: Date): string {

@@ -9,7 +9,7 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
-const ringBufferSize = 100
+const ringBufferSize = 4096
 
 // CallRecorder stores recent API calls in a thread-safe ring buffer.
 type CallRecorder struct {
@@ -132,22 +132,65 @@ var routeComponentMap = map[string]routeInfo{
 	"GET /api/observability/config":     {"handlers", "h.getObservabilityConfig", "http"},
 	// Version
 	"GET /api/version": {"handlers", "h.getVersion", "http"},
+	// WebSocket
+	"GET /ws/policy-executions/{id}/logs": {"ws-broker", "h.wsPolicyExecutionLogs", "ws"},
+	// K8s API calls (recorded via recordK8sOpWith)
+	"K8S list deployment":    {"k8s-client", "ListDeployments", "k8s"},
+	"K8S list statefulset":   {"k8s-client", "ListStatefulSets", "k8s"},
+	"K8S list node":          {"k8s-client", "ListNodes", "k8s"},
+	"K8S list pod":           {"k8s-client", "ListPods", "k8s"},
+	"K8S list replicaset":    {"k8s-client", "ListReplicaSets", "k8s"},
+	"K8S list event":         {"k8s-client", "GetPodEvents", "k8s"},
+	"K8S get deployment":     {"k8s-client", "GetDeployment", "k8s"},
+	"K8S get statefulset":    {"k8s-client", "GetStatefulSet", "k8s"},
+	"K8S get pod":            {"k8s-client", "GetPod", "k8s"},
+	"K8S get node":           {"k8s-client", "GetNode", "k8s"},
+	"K8S get podmetrics":     {"k8s-client", "GetPodMetrics", "k8s"},
+	"K8S get podlogs":        {"k8s-client", "GetPodLogs", "k8s"},
+	"K8S scale deployment":   {"k8s-client", "ScaleDeployment", "k8s"},
+	"K8S scale statefulset":  {"k8s-client", "ScaleStatefulSet", "k8s"},
+	"K8S cordon node":        {"k8s-client", "CordonNode", "k8s"},
+	"K8S drain node":         {"k8s-client", "DrainNode", "k8s"},
+	"K8S delete node":        {"k8s-client", "DeleteNode", "k8s"},
+	"K8S annotate deployment":  {"k8s-client", "AnnotateDeployment", "k8s"},
+	"K8S annotate statefulset": {"k8s-client", "AnnotateStatefulSet", "k8s"},
 }
 
-// skipRoutes are routes that should not be recorded: streaming endpoints
-// (duration grows indefinitely) and non-API infrastructure routes.
-var skipRoutes = map[string]bool{
-	"/api/cluster/stream":       true,
-	"/api/observability/stream": true,
-	"/healthz":                  true,
-	"/metrics":                  true,
-	"/*":                        true,
+// skipRecorderRoutes are routes excluded from the call feed ring buffer:
+// streaming endpoints whose duration grows indefinitely.
+var skipRecorderRoutes = map[string]bool{
+	"/api/cluster/stream":                       true,
+	"/api/observability/stream":                 true,
+	"/api/cluster/pods/{namespace}/{name}/logs": true,
+	"/healthz":                                  true,
+	"/metrics":                                  true,
+	"/*":                                        true,
+	"/api/*":                                    true,
 }
 
-// IsSkippedRoute returns true for routes that should not be recorded:
-// streaming endpoints and non-API infrastructure routes.
-func IsSkippedRoute(routePattern string) bool {
-	return skipRoutes[routePattern]
+// skipMetricsRoutes are routes excluded from Prometheus HTTP histograms.
+// Includes everything in skipRecorderRoutes plus long-lived connections
+// that are recorded in the call feed but would skew latency metrics.
+var skipMetricsRoutes = map[string]bool{
+	"/api/cluster/stream":                       true,
+	"/api/observability/stream":                 true,
+	"/api/cluster/pods/{namespace}/{name}/logs": true,
+	"/ws/policy-executions/{id}/logs":           true,
+	"/api/auth/login":                           true,
+	"/healthz":                                  true,
+	"/metrics":                                  true,
+	"/*":                                        true,
+	"/api/*":                                    true,
+}
+
+// IsSkippedRecorderRoute returns true for routes excluded from the call feed.
+func IsSkippedRecorderRoute(routePattern string) bool {
+	return skipRecorderRoutes[routePattern]
+}
+
+// IsSkippedMetricsRoute returns true for routes excluded from Prometheus HTTP metrics.
+func IsSkippedMetricsRoute(routePattern string) bool {
+	return skipMetricsRoutes[routePattern]
 }
 
 var defaultRouteInfo = routeInfo{

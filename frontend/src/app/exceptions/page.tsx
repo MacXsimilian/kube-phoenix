@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import { formatError } from '@/lib/formatters'
 import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
@@ -33,7 +34,7 @@ export default function ExceptionsPage() {
   const canEdit = canEditSchedules(user?.permissions)
 
   const { data: exceptions, isLoading, isError } = useQuery({
-    queryKey: ['exceptions'],
+    queryKey: queryKeys.exceptions(),
     queryFn: () => getExceptions(),
     refetchInterval: EXCEPTIONS_REFETCH_MS,
   })
@@ -41,7 +42,7 @@ export default function ExceptionsPage() {
   const deleteMut = useMutation({
     mutationFn: (id: number) => deleteException(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['exceptions'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.exceptions() })
       notify('Exception cancelled', 'success')
     },
     onError: (err: unknown) => {

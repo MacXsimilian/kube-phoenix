@@ -18,8 +18,7 @@ import BubbleChartIcon from '@mui/icons-material/BubbleChart'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme, alpha } from '@mui/material/styles'
 import { useRouter } from 'next/navigation'
-// gsap is imported eagerly because it powers the animation loop that starts on mount
-import gsap from 'gsap'
+import type gsap from 'gsap'
 import type { ObservabilityStreamState } from '@/lib/useObservabilityStream'
 import RiversMinimap from '@/components/observability/RiversMinimap'
 import RiversLinkPopover from '@/components/observability/RiversLinkPopover'
@@ -432,10 +431,12 @@ export default function ApiRivers({ stream }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const pathRefs = useRef<(SVGPathElement | null)[]>([])
+  const pathLengthCache = useRef<number[]>([])
   const particlesRef = useRef<RiverParticle[]>([])
   const shockwavesRef = useRef<Shockwave[]>([])
   const animFrameRef = useRef(0)
-  const gsapCtxRef = useRef<gsap.Context | null>(null)
+  const gsapCtxRef = useRef<ReturnType<typeof gsap.context> | null>(null)
+  const gsapRef = useRef<typeof gsap | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const previousPathsRef = useRef<string[]>([])
   const prevEventsLenRef = useRef(0)
@@ -453,6 +454,18 @@ export default function ApiRivers({ stream }: Props) {
   const [fullscreen, setFullscreen] = useState(false)
   const [clickedLinkId, setClickedLinkId] = useState<string | null>(null)
   const [clickPosition, setClickPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+
+  // Lazy-load GSAP — heavy animation library only needed at runtime
+  const [gsapReady, setGsapReady] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    import('gsap').then(({ default: g }) => {
+      if (cancelled) return
+      gsapRef.current = g
+      setGsapReady(true)
+    })
+    return () => { cancelled = true }
+  }, [])
 
   // Drag state
   const [dragOffsets, setDragOffsets] = useState<DragOffsets>({})
@@ -599,26 +612,37 @@ export default function ApiRivers({ stream }: Props) {
 
   // I: Smooth path transitions with GSAP
   useEffect(() => {
+    const g = gsapRef.current
+    if (!g) return
     const prevPaths = previousPathsRef.current
     if (prevPaths.length > 0) {
       pathRefs.current.forEach((el, i) => {
         if (!el || !resolvedPaths[i]) return
-        gsap.to(el, { attr: { d: resolvedPaths[i] }, duration: 0.5, ease: 'power2.inOut' })
+        g.to(el, {
+          attr: { d: resolvedPaths[i] }, duration: 0.25, ease: 'power2.inOut',
+          onComplete() { if (el) pathLengthCache.current[i] = el.getTotalLength() },
+        })
+      })
+    } else {
+      pathRefs.current.forEach((el, i) => {
+        if (el) pathLengthCache.current[i] = el.getTotalLength()
       })
     }
     previousPathsRef.current = resolvedPaths
-  }, [resolvedPaths])
+  }, [resolvedPaths, gsapReady])
 
   // GSAP stroke animations
   useEffect(() => {
+    const g = gsapRef.current
+    if (!g) return
     gsapCtxRef.current?.revert()
-    gsapCtxRef.current = gsap.context(() => {
+    gsapCtxRef.current = g.context(() => {
       pathRefs.current.forEach((el, i) => {
         if (!el) return
         const link = ALL_LINKS[i]
         const isLit = effectiveLinks.has(link.id)
         const liveRps = liveRpsMap[link.id]?.rps ?? link.rps
-        gsap.to(el, {
+        g.to(el, {
           attr: { 'stroke-width': isLit ? strokeW(liveRps) : 0.4, 'stroke-opacity': isLit ? 0.28 : 0.04 },
           stroke: CATEGORY_COLORS[link.category],
           duration: 0.5, ease: 'power2.out',
@@ -626,7 +650,7 @@ export default function ApiRivers({ stream }: Props) {
       })
     })
     return () => { gsapCtxRef.current?.revert() }
-  }, [effectiveLinks, liveRpsMap])
+  }, [effectiveLinks, liveRpsMap, gsapReady])
 
   // S: Error shockwave watcher
   useEffect(() => {
@@ -733,7 +757,7 @@ export default function ApiRivers({ stream }: Props) {
         const pathEl = pathRefs.current[p.linkIndex]
         if (!pathEl) continue
 
-        const len = pathEl.getTotalLength()
+        const len = pathLengthCache.current[p.linkIndex] || pathEl.getTotalLength()
         const pt = pathEl.getPointAtLength(p.progress * len)
 
         p.trail.push({ x: pt.x, y: pt.y })
@@ -749,8 +773,9 @@ export default function ApiRivers({ stream }: Props) {
           ctx.fill()
         }
 
-        ctx.shadowBlur = 6
-        ctx.shadowColor = p.color
+        const useGlow = particlesRef.current.length < 300
+        ctx.shadowBlur = useGlow ? 6 : 0
+        ctx.shadowColor = useGlow ? p.color : ''
         ctx.beginPath()
         ctx.arc(pt.x, pt.y, p.radius, 0, Math.PI * 2)
         ctx.fillStyle = p.color

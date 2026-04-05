@@ -5,7 +5,7 @@ fullnameOverride: ""
 
 image:
   repository: ghcr.io/macxsimilian/kube-phoenix
-  tag: ""   # defaults to Chart.AppVersion; override to pin a specific tag
+  tag: ""   # defaults to Chart.AppVersion; use --set-string image.tag=VALUE (not --set) to avoid YAML type coercion
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []   # e.g. [{name: my-registry-secret}]

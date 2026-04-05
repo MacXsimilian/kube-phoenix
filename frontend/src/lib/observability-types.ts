@@ -9,6 +9,8 @@ export interface MetricSnapshot {
   k8sGetRate: number
   k8sPatchRate: number
   k8sDeleteRate: number
+  k8sLatencyP50Ms: number
+  k8sLatencyP99Ms: number
   policySuccessCount: number
   policyFailedCount: number
   policySkippedCount: number
@@ -22,6 +24,12 @@ export interface MetricSnapshot {
   auditDrops: number
   rateLimitHits: number
   totalErrorRate: number
+  dbPoolOpen: number
+  dbPoolInUse: number
+  dbPoolIdle: number
+  activeSessions: number
+  activePolicies: number
+  k8sErrorRate: number
 }
 
 export interface RiverComponentMetrics {

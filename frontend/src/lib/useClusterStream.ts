@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Overview } from '@/lib/types'
+import { queryKeys } from '@/lib/queryKeys'
 
 const STREAM_RECONNECT_DELAY_MS = 5_000
 
@@ -44,7 +45,7 @@ export function useClusterStream() {
             for (const line of lines) {
               if (line.startsWith('data: ')) {
                 try {
-                  queryClient.setQueryData<Overview>(['overview'], JSON.parse(line.slice(6)))
+                  queryClient.setQueryData<Overview>(queryKeys.overview(), JSON.parse(line.slice(6)))
                 } catch (e) { if (process.env.NODE_ENV === 'development') console.warn('[kp] skipping malformed SSE event:', e) }
               }
             }

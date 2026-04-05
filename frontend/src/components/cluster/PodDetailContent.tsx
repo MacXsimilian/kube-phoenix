@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
 import Alert from '@mui/material/Alert'
@@ -215,7 +216,7 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
   }, [namespace, podName])
 
   const { data: pod, isLoading, isError, error } = useQuery({
-    queryKey: ['pod-detail', namespace, podName],
+    queryKey: queryKeys.podDetail(namespace, podName),
     queryFn: () => getPodDetail(namespace, podName),
     refetchInterval: POD_DETAIL_REFETCH_MS,
   })

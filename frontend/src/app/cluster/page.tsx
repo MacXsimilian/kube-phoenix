@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Typography from '@mui/material/Typography'
 import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
@@ -20,8 +21,8 @@ function ClusterTabs() {
     setTab(searchParams.get('tab') === 'nodes' ? 1 : 0)
   }, [searchParams])
 
-  const { data: workloads = [], isError: workloadsError } = useQuery({ queryKey: ['workloads'], queryFn: getWorkloads, refetchInterval: WORKLOADS_REFETCH_MS })
-  const { data: nodes = [], isError: nodesError } = useQuery({ queryKey: ['nodes'], queryFn: getNodes, refetchInterval: NODES_REFETCH_MS })
+  const { data: workloads = [], isError: workloadsError } = useQuery({ queryKey: queryKeys.workloads(), queryFn: getWorkloads, refetchInterval: WORKLOADS_REFETCH_MS })
+  const { data: nodes = [], isError: nodesError } = useQuery({ queryKey: queryKeys.nodes(), queryFn: getNodes, refetchInterval: NODES_REFETCH_MS })
 
   const workloadLabel = workloadsError ? 'Workloads (?)' : workloads.length ? `Workloads (${workloads.length})` : 'Workloads'
   const nodeLabel = nodesError ? 'Nodes (?)' : nodes.length ? `Nodes (${nodes.length})` : 'Nodes'

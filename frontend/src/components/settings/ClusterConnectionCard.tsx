@@ -1,6 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Box from '@mui/material/Box'
@@ -29,7 +30,7 @@ function InfoField({ label, value, mono }: { label: string; value: string; mono?
 
 export default function ClusterConnectionCard() {
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['cluster-info'],
+    queryKey: queryKeys.clusterInfo(),
     queryFn: getClusterInfo,
     staleTime: 5 * 60 * 1000, // cluster info changes very rarely
   })

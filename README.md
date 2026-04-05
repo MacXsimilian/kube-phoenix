@@ -31,7 +31,7 @@ kube-phoenix replaces ad-hoc cron scripts with a proper operator for scheduling 
 - **RBAC and OIDC** -- Session-based auth with admin/operator/viewer roles. Optional Keycloak SSO with AD group-to-role mapping.
 - **Enforce sleep** -- Detects and corrects external scale-ups during sleeping policies, ensuring workloads stay at zero until the wake window.
 - **Emergency scale** -- Danger-zone admin action that disables all policies and scales sleeping workloads to 1 replica for minimum availability.
-- **Prometheus metrics** -- Built-in `/metrics` endpoint with 24 metrics covering HTTP requests, K8s API calls, policy executions, CRUD operations, scheduler health, WebSocket connections, auth, and caching.
+- **Prometheus metrics** -- Built-in `/metrics` endpoint with 29 metrics covering HTTP requests, K8s API calls, policy executions, CRUD operations, scheduler health, WebSocket connections, auth, caching, and database connection pool.
 - **Observability Center** -- Dual-view dashboard combining a Metrics Dashboard (6 real-time panels with eCharts, live API call feed, system overview, configurable thresholds) and an API Rivers topology visualization (animated particle flows through 15 Go backend components with live metrics, trace mode, and scenario filtering).
 
 ---

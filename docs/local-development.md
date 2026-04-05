@@ -134,7 +134,7 @@ minikube image load ghcr.io/macxsimilian/kube-phoenix:$(git rev-parse --short HE
 helm upgrade --install kube-phoenix helm/kube-phoenix \
   --namespace kube-phoenix \
   --create-namespace \
-  --set image.tag=$(git rev-parse --short HEAD) \
+  --set-string image.tag=$(git rev-parse --short HEAD) \
   --set image.pullPolicy=Never \
   --set secret.adminUser=admin \
   --set secret.adminPassword=adminadmin \
