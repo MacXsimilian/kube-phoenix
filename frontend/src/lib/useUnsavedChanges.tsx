@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import ConfirmDialog from '@/components/common/ConfirmDialog'
 
@@ -67,8 +67,10 @@ export function UnsavedChangesProvider({ children }: { children: React.ReactNode
     setPendingHref(null)
   }, [])
 
+  const value = useMemo(() => ({ setDirty, isDirty: dirty }), [setDirty, dirty])
+
   return (
-    <UnsavedChangesContext.Provider value={{ setDirty, isDirty: dirty }}>
+    <UnsavedChangesContext.Provider value={value}>
       {children}
       <ConfirmDialog
         open={pendingHref !== null}
