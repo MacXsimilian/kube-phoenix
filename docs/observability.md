@@ -226,6 +226,9 @@ One row per collection tick (every 2 seconds). Stored in the `metric_snapshots` 
 | `auditDrops` | int | count | Dropped audit log entries |
 | `rateLimitHits` | int | count | Rate limit rejections |
 | `totalErrorRate` | float64 | errors/s | Combined error rate (HTTP 5xx + scheduler panics) |
+| `activeSessions` | int | sessions | Current active (non-expired) sessions from `kube_phoenix_active_sessions` gauge |
+| `activePolicies` | int | policies | Enabled policies across all modes from `kube_phoenix_active_policies` gauge |
+| `k8sErrorRate` | float64 | failures/min | Failed Kubernetes API calls per minute |
 
 ### ApiCall
 
@@ -321,10 +324,10 @@ Lines are sent in three ordered phases: DB (by seq), replay (by seq, filtered to
 
 ### Known Limitations
 
-- The `cacheHitRate` field in `MetricSnapshot` is computed from real `cache_hits_total` and `cache_misses_total` Prometheus counters.
+- The `cacheHitRate` field measures cache readiness (whether the cluster cache snapshot is initialized), not per-key lookup effectiveness. After initial sync, hit rate is near 100%.
 - The Call Recorder ring buffer holds 4096 entries. Under high request rates (>50 req/s), older calls rotate out within 2 seconds and may never appear in an SSE payload.
 - The collector does not retry failed database writes. A failed tick is logged and skipped; the next tick will proceed normally.
-- Component and link metrics in the API Rivers view are derived from the metric snapshot using scaling factors, not from direct per-component instrumentation.
+- Component and link metrics in the API Rivers view use a mix of real metrics and scaling-factor estimates. The `k8s-client` component uses real K8s latency and error rate from Prometheus histograms/counters. The `store` and `ws-broker` components use hardcoded latency values (5ms and 1ms respectively) because no direct per-component latency instrumentation exists for database queries or broker message delivery. Inter-component link RPS values use decay factors (e.g., auth passes 98% to handlers) that are estimates, not measured values.
 
 ---
 
