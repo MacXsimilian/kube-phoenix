@@ -6,8 +6,10 @@ package store
 import (
 	"encoding/json"
 	"log/slog"
+	"os"
 	"time"
 
+	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/policy"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -82,8 +84,13 @@ func runMigrations(db *gorm.DB) error {
 		slog.Warn("migration: drop policy_overrides table failed (non-fatal)", "err", err)
 	}
 
-	if err := db.AutoMigrate(allModels...); err != nil {
-		return err
+	if os.Getenv("AUTO_MIGRATE") == "false" {
+		slog.Info("store: auto-migration skipped (AUTO_MIGRATE=false)")
+	} else {
+		slog.Info("store: running auto-migration")
+		if err := db.AutoMigrate(allModels...); err != nil {
+			return err
+		}
 	}
 	// Add CHECK constraints for enum-like status fields (idempotent).
 	if err := db.Exec(`DO $$ BEGIN
@@ -178,10 +185,35 @@ func migrateWindowsFromCrons(db *gorm.DB) {
 
 func (s *Store) DB() *gorm.DB { return s.db }
 
+func (s *Store) Close() {
+	sqlDB, err := s.db.DB()
+	if err != nil {
+		slog.Warn("store: failed to get underlying DB for close", "err", err)
+		return
+	}
+	if err := sqlDB.Close(); err != nil {
+		slog.Warn("store: close failed", "err", err)
+	} else {
+		slog.Info("store: database connection closed")
+	}
+}
+
 func (s *Store) Ping() error {
 	db, err := s.db.DB()
 	if err != nil {
 		return err
 	}
 	return db.Ping()
+}
+
+// UpdatePoolMetrics publishes current sql.DBStats to Prometheus gauges.
+func (s *Store) UpdatePoolMetrics() {
+	sqlDB, err := s.db.DB()
+	if err != nil {
+		return
+	}
+	stats := sqlDB.Stats()
+	metrics.DBPoolOpenConnections.Set(float64(stats.OpenConnections))
+	metrics.DBPoolInUse.Set(float64(stats.InUse))
+	metrics.DBPoolIdle.Set(float64(stats.Idle))
 }

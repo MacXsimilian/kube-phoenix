@@ -47,6 +47,7 @@ func main() {
 		slog.Error("store init failed", "err", err)
 		os.Exit(1)
 	}
+	defer st.Close()
 	if err := st.SeedDefaults(); err != nil {
 		slog.Error("seed failed", "err", err)
 		os.Exit(1)
@@ -111,6 +112,10 @@ func main() {
 		os.Exit(1)
 	}
 	go obsCollector.Start(ctx)
+
+	if k8s != nil {
+		k8s.SetCallRecorder(obsCollector.CallRecorder())
+	}
 
 	retentionDays := parseIntEnv("AUDIT_RETENTION_DAYS", 90)
 	startMaintenanceTickers(ctx, st, retentionDays, &tickerWg)
