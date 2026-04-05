@@ -19,9 +19,13 @@ docker-compose.override.yml
 .env
 .env.*
 .claude
+CLAUDE.md
 helm
 k8s
 .github
+frontend/mock-api
+frontend/mock-api.mjs
+frontend/tsconfig.tsbuildinfo
 
 # Docs & mockups
 *.md

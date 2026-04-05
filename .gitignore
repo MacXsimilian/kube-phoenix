@@ -22,6 +22,7 @@ helm/kube-phoenix/charts/
 
 # ── Claude Code ───────────────────────────────────────────────────────────────
 .claude/
+CLAUDE.md
 memory/
 mockups/
 **/mockups/
