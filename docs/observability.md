@@ -9,7 +9,7 @@ The page offers two complementary views:
 - **Metrics Dashboard** -- Quantitative monitoring with live metric panels, a system overview card, configurable thresholds, and a live API call feed. Designed for at-a-glance health assessment and threshold-based alerting during sleep/wake operations.
 - **API Rivers** -- A visual topology of the 15 Go backend components with animated particle flows proportional to real-time traffic. Designed for understanding request flow, identifying bottlenecks, and tracing dependency chains.
 
-Both views share the same SSE data stream (`GET /api/observability/stream`), keeping all visualizations in sync without additional backend load. See [api.md](api.md) for endpoint details and [configuration.md](configuration.md) for threshold tuning.
+Both views and the component drill-down pages share a single SSE connection (`GET /api/observability/stream`) via `ObservabilityStreamProvider` mounted in the route layout. The stream persists across navigation between the dashboard and `/observability/{component}` drill-down pages, keeping all visualizations in sync without additional backend load or reconnection delays. See [api.md](api.md) for endpoint details and [configuration.md](configuration.md) for threshold tuning.
 
 ---
 
@@ -180,7 +180,7 @@ A Chi middleware captures every HTTP request flowing through the router: method,
 1. Middleware extracts the Chi route pattern (not the raw URL) and calls `CallRecorder.Record()`.
 2. `Record()` maps the `"METHOD /pattern"` key to a `routeInfo` struct containing component name, Go function name, and category via a static lookup table (49 route patterns).
 3. Each call is assigned a monotonically increasing ID via `atomic.Uint64`.
-4. The call is written to a fixed-size ring buffer (100 entries) protected by a `sync.Mutex`.
+4. The call is written to a fixed-size ring buffer (4096 entries) protected by a `sync.Mutex`.
 5. The collector reads the latest 50 calls via `Recent(50)` and includes them in each SSE payload as `recentCalls`.
 
 **Performance:** The critical section in `Record()` is a single array write and two integer updates -- approximately 1-2 microseconds per request. The `sync.Mutex` is used instead of `sync.RWMutex` because the write path is the hot path and there is only one concurrent reader (the collector goroutine every 2 seconds).
@@ -264,7 +264,7 @@ The collector writes one `MetricSnapshot` row to PostgreSQL every 2 seconds. At 
 ### Memory Footprint
 
 - **SSE payload cache:** A single `ObservabilityStreamPayload` struct held under `sync.RWMutex`. Size varies with component count and recent call count but is typically under 50 KB.
-- **Ring buffer:** Fixed 100-entry `[100]store.ApiCall` array. Each `ApiCall` is ~200 bytes, totaling ~20 KB.
+- **Ring buffer:** Fixed 4096-entry `[4096]store.ApiCall` array. Each `ApiCall` is ~200 bytes, totaling ~800 KB.
 - **Previous tick values:** A `map[string]float64` holding the previous tick's flattened metric values. Size is proportional to the number of Prometheus metric series (typically a few hundred entries).
 
 ### Connection Pool Impact
@@ -273,7 +273,7 @@ The collector uses a single database connection per write tick (one INSERT every
 
 ### Scaling Behavior
 
-- **Dashboard clients:** Adding more concurrent SSE clients has zero database impact. Each client reads the same in-memory payload. The Go runtime handles the per-client SSE write.
+- **Dashboard clients:** Adding more concurrent SSE clients has zero database impact. Each client reads the same in-memory payload. The Go runtime handles the per-client SSE write. On the frontend, a single SSE connection is shared across all observability routes via React context, so navigating between the dashboard and drill-down pages does not open additional connections.
 - **Large clusters (100+ nodes):** The collector scrapes the local Prometheus registry, not remote endpoints. Collection time is bounded by the number of local metric series, not cluster size. Kubernetes API call rates will be higher, increasing the values in the snapshot but not the collection overhead.
 - **Long time ranges:** The history endpoint uses SQL-level `ROW_NUMBER` downsampling. A 3-day query returns at most 864 points regardless of the number of stored rows.
 

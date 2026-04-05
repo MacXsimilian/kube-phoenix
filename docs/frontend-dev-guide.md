@@ -78,6 +78,7 @@ frontend/
       users/page.tsx            # /users -- user management (admin)
       settings/page.tsx         # /settings -- Command Center layout with collapsible sections: Profile & Identity, Cluster & Connection, Appearance, Security & Sessions, System Pulse, Danger Zone, About
       guardrails/page.tsx       # /guardrails -- guardrails editor
+      observability/layout.tsx  # /observability layout -- wraps all observability routes in ObservabilityStreamProvider
       observability/page.tsx    # /observability -- observability center
       observability/[component]/page.tsx  # /observability/{component} -- component drill-down
     components/
@@ -176,6 +177,7 @@ frontend/
       rbac.ts                   # Permission checking helpers
       observability-types.ts    # TypeScript interfaces for observability metrics and streams
       observability-components.ts # Component metadata (display names, descriptions, icons) for drill-down pages
+      ObservabilityStreamContext.tsx # Shared React context + provider for useObservabilityStream (persists SSE across route transitions)
       useObservabilityStream.ts # SSE hook for observability data streams
       motion/                   # Motion design tokens and animation utilities
         echartsTheme.ts         # ECharts theme configuration
@@ -1251,13 +1253,15 @@ A two-tab layout (Metrics Dashboard / API Rivers) sharing a single SSE stream. T
 
 ```
 SSE /api/observability/stream
-  → useObservabilityStream hook
-    → ObservabilityPage (URL state, keyboard shortcuts)
-      → MetricsDashboard (panels, call feed, overview, timeline)
-      → ApiRivers (topology, particles, tooltips, minimap)
+  → useObservabilityStream hook (single instance)
+    → ObservabilityStreamContext (React context in layout.tsx)
+      → ObservabilityPage (URL state, keyboard shortcuts)
+      │   → MetricsDashboard (panels, call feed, overview, timeline)
+      │   → ApiRivers (topology, particles, tooltips, minimap)
+      → ComponentDetail (drill-down with skeleton loading)
 ```
 
-The SSE stream is the sole data source -- there is no TanStack Query polling fallback. `useObservabilityStream` manages the connection at page level and passes derived state down as props.
+The SSE stream is the sole data source -- there is no TanStack Query polling fallback. A single `useObservabilityStream` instance is created in `ObservabilityStreamProvider` (mounted in `observability/layout.tsx`) and shared via React context to all child routes. This means navigating between the dashboard and component drill-down pages does not tear down and re-establish the SSE connection -- the stream persists across route transitions, providing instant data availability on navigation.
 
 ### Key Components
 
@@ -1278,7 +1282,8 @@ All components live under `src/components/observability/`.
 
 ### Key Hooks
 
-- **`useObservabilityStream`** -- SSE connection with automatic reconnect using exponential backoff (5s base, 30s max), history ring buffer (60 entries), threshold crossing detection, and runtime config polling (30s).
+- **`useObservabilityStream`** -- SSE connection with automatic reconnect using exponential backoff (5s base, 30s max), history ring buffer (60 entries), threshold crossing detection, and runtime config polling (30s). Instantiated once in the layout provider, not per-page.
+- **`useSharedObservabilityStream`** -- Context consumer hook that reads from `ObservabilityStreamContext`. All observability pages and components use this instead of calling `useObservabilityStream` directly.
 - **Lazy eCharts loading** -- a Promise-based dedup pattern ensures only one `import('echarts')` call is in-flight at a time, shared across all chart panels.
 - **`useSharedClock`** (in `StatusHeader`) -- consolidates 3 timer intervals (clock, freshness, sparkline tick) into a single `setInterval`.
 
@@ -1286,7 +1291,7 @@ All components live under `src/components/observability/`.
 
 | Concern | Approach |
 |:--------|:---------|
-| Stream data | Lifted to page level via `useObservabilityStream`; child components receive props |
+| Stream data | Lifted to layout level via `ObservabilityStreamProvider`; all child routes consume via `useSharedObservabilityStream` context hook |
 | Tab and time range | URL query params (`?tab=`, `?range=`) via `useSearchParams` |
 | Rivers drag offsets | Persisted to `localStorage` |
 | Keyboard shortcuts | Registered at page level (tab switching, time range cycling) |
@@ -1298,12 +1303,13 @@ No TanStack Query is used on this page. All data arrives via SSE push rather tha
 - **MetricsDashboard** uses a split `useEffect` pattern: one effect initializes chart instances (runs once), a separate effect updates chart data when the SSE stream delivers new snapshots.
 - **ApiRivers** caches path lengths in the animation loop to avoid repeated `getTotalLength()` calls. Shadow blur is disabled when the particle count exceeds 300 to maintain frame rate.
 - **Traffic segments** in `SystemOverview`: K8s API rates are converted from calls/min (backend) to req/s (display). WebSocket connections are no longer included in the traffic bar breakdown.
-- **ComponentDetail** metadata (display names, descriptions, icons) is extracted to `src/lib/observability-components.ts` for reuse across the drill-down pages.
+- **ComponentDetail** metadata (display names, descriptions, icons) is extracted to `src/lib/observability-components.ts` for reuse across the drill-down pages. The drill-down page displays MUI `Skeleton` placeholders for the status indicator and metric card values while waiting for the first SSE payload, providing immediate visual feedback on navigation.
 - **Inverted threshold logic** applies to the `cache_hit` panel: higher values are better, so warning/critical thresholds are inverted compared to other panels.
 - **Accessibility:** `aria-live="polite"` is set on key KPI values in `StatusHeader` and `MetricsDashboard` so screen readers announce metric changes.
 
 ### Performance Considerations
 
+- The SSE stream is instantiated once in `ObservabilityStreamProvider` at the layout level. Navigating between `/observability` and `/observability/{component}` does not destroy or re-establish the connection, eliminating the 2--4 second data gap that would occur if each page managed its own stream.
 - eCharts instances are disposed on unmount with `ResizeObserver` cleanup to prevent memory leaks.
 - The particle animation in `ApiRivers` reads live data from refs (not effect dependencies) to avoid teardown and re-initialization on every SSE update.
 - `AnimatePresence` in `CallFeed` is limited to the newest 5 rows to cap layout animation cost.
