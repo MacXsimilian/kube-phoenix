@@ -111,6 +111,8 @@ jobs:
 
       - name: Install cosign
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003  # v4.1.1
+        with:
+          cosign-release: v3.0.6
 
       - name: Sign image (keyless)
         run: |
@@ -191,6 +193,8 @@ jobs:
 
       - name: Install cosign
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003  # v4.1.1
+        with:
+          cosign-release: v3.0.6
 
       - name: Generate checksums
         run: |
@@ -213,6 +217,7 @@ jobs:
       - name: Sign checksums (keyless)
         run: |
           cosign sign-blob --yes \
+            --new-bundle-format=false \
             --output-signature SHA256SUMS.sig \
             --output-certificate SHA256SUMS.cert \
             SHA256SUMS
