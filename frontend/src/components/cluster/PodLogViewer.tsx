@@ -58,6 +58,10 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
     startStream, fetchPrevious, clear,
   } = usePodLogStream({ namespace, podName, container })
 
+  // Track previous line count so the entrance animation only applies to new lines.
+  const prevLineCountRef = useRef(0)
+  useEffect(() => { prevLineCountRef.current = lines.length }, [lines.length])
+
   const selectedContainer = containers.find((c) => c.name === container)
   const hasPreviousInstance = !!selectedContainer?.lastState
 
@@ -328,7 +332,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
                 borderRadius: 0.5,
                 bgcolor: isError ? 'rgba(239,68,68,0.06)' : 'transparent',
                 '&:hover': { bgcolor: isError ? 'rgba(239,68,68,0.10)' : 'rgba(255,255,255,0.03)' },
-                ...LOG_WATERFALL_SX,
+                ...(i >= prevLineCountRef.current ? LOG_WATERFALL_SX : {}),
                 ...(isCurrent
                   ? { bgcolor: 'rgba(124,58,237,0.35)', borderLeft: '3px solid', borderColor: 'primary.main' }
                   : isMatch ? { bgcolor: 'rgba(124,58,237,0.12)' } : {}),

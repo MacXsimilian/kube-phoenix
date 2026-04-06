@@ -16,7 +16,9 @@ try {
 
 let wss = null
 
+// Sleep: snapshot + scale-to-zero + annotation + list = 4 K8s API calls per workload
 const API_CALLS_PER_SLEEP = 4
+// Wake: read-snapshot + scale-up + remove-annotation + verify-ready + list = 5 K8s API calls per workload
 const API_CALLS_PER_WAKE = 5
 
 /**
@@ -44,10 +46,13 @@ export function handleUpgrade(req, socket, head) {
   })
 }
 
+// Pacing: each log line appears after 1.2–2.2s to mimic real execution timing
 const LOG_STREAM_MIN_DELAY_MS = 1200
 const LOG_STREAM_JITTER_MS = 1000
+// Drain timeout = base + (podCount × per-pod), matching the backend's drain calculator
 const DRAIN_TIMEOUT_PER_POD_SECS = 15
 const DRAIN_TIMEOUT_BASE_SECS = 60
+// Cap stored log lines to prevent unbounded memory growth
 const MAX_LOG_LINES = 50_000
 
 function randomDelay() {

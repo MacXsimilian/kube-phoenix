@@ -155,6 +155,18 @@ kubectl logs -n kube-phoenix deployment/kube-phoenix
 2. Confirm the WebSocket URL is same-origin as the page. In development, set `NEXT_PUBLIC_API_URL` so the frontend knows the backend URL.
 3. Check browser DevTools > Network > WS for the close code. Code `4401` means no valid session.
 
+## Pod log viewer lines arrive in bursts (deployed environments)
+
+**Problem:** In the pod log viewer, log lines arrive in delayed bursts instead of streaming in real time. This typically only occurs in deployed environments, not during local development.
+
+**Cause:** A reverse proxy (nginx ingress, Envoy) is buffering the chunked HTTP response before forwarding it to the browser.
+
+**Solution:**
+
+1. Verify the backend is setting `X-Accel-Buffering: no` on the streaming response. This header is set automatically in `streamPodLogs()`.
+2. If using nginx, ensure `proxy_buffering off;` is respected. Some ingress controllers override `X-Accel-Buffering` at the server level.
+3. If using AWS ALB, note that ALB does not support chunked streaming natively. Consider using an nginx ingress controller or NLB instead.
+
 ## CORS errors during local development
 
 **Problem:** The browser console shows CORS errors when the frontend dev server calls the backend.

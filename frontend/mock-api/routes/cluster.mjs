@@ -45,22 +45,48 @@ export function register(router) {
         ['INFO ', 'Health check passed — latency 3ms'],
         ['DEBUG', 'Cache miss for key session:abc — fetching from db'],
         ['INFO ', 'Request completed in 8ms — 200 OK'],
+        ['INFO ', 'Request completed in 14ms — 200 OK'],
+        ['INFO ', 'Request completed in 3ms — 304 Not Modified'],
         ['WARN ', 'Slow upstream response: 420ms from payment-svc'],
         ['INFO ', 'Scheduled task metrics.export executed'],
         ['ERROR', 'Connection to redis timed out after 5s'],
         ['INFO ', 'Reconnected to redis cluster (attempt 1)'],
         ['WARN ', 'Memory usage at 82% of limit'],
         ['INFO ', 'GC pause 2.1ms — heap 64MB/128MB'],
+        ['DEBUG', 'Received message on channel events.workload (len=284)'],
+        ['INFO ', 'Processing request GET /api/v1/namespaces/dev/pods'],
+        ['INFO ', 'Serving static asset /assets/main.css (cache hit)'],
+        ['DEBUG', 'SQL query: SELECT id, name FROM policies WHERE enabled = true (4 rows, 1.2ms)'],
+        ['INFO ', 'WebSocket client connected from 10.244.1.12:48290'],
+        ['WARN ', 'Retrying upstream request to inventory-svc (attempt 2/3)'],
+        ['INFO ', 'Liveness probe succeeded — 200 OK in 1ms'],
+        ['INFO ', 'Readiness probe succeeded — 200 OK in 2ms'],
+        ['DEBUG', 'Token refresh: new expiry in 3599s'],
+        ['INFO ', 'Batch write: 12 audit log entries flushed in 3ms'],
+        ['INFO ', 'Request completed in 22ms — 201 Created'],
+        ['WARN ', 'Connection pool at 85% capacity (17/20 active)'],
+        ['ERROR', 'Upstream returned 503: payment-svc temporarily unavailable'],
+        ['INFO ', 'Circuit breaker for payment-svc: open → half-open'],
+        ['DEBUG', 'Cache set: key=user:456 ttl=300s size=1.2KB'],
+        ['INFO ', 'Cron job cleanup.expired_sessions completed (removed 3)'],
+        ['INFO ', 'TLS handshake completed with peer 10.244.2.8:443 in 12ms'],
+        ['WARN ', 'DNS resolution for postgres.svc took 150ms (threshold: 100ms)'],
       ]
       let msgIdx = 0
-      const interval = setInterval(() => {
-        const ts = new Date().toISOString()
-        const [level, msg] = liveMsgs[msgIdx % liveMsgs.length]
-        msgIdx++
-        res.write(`${ts} ${level} [main] ${msg}\n`)
-      }, 2000)
+      let timer = null
+      function sendBurst() {
+        const burstSize = 1 + Math.floor(Math.random() * 4)
+        for (let i = 0; i < burstSize; i++) {
+          const ts = new Date().toISOString()
+          const [level, msg] = liveMsgs[msgIdx % liveMsgs.length]
+          msgIdx++
+          res.write(`${ts} ${level} [main] ${msg}\n`)
+        }
+        timer = setTimeout(sendBurst, 300 + Math.floor(Math.random() * 300))
+      }
+      timer = setTimeout(sendBurst, 200)
 
-      req.on('close', () => clearInterval(interval))
+      req.on('close', () => clearTimeout(timer))
     } else {
       res.text(200, logLines.join('\n'))
     }

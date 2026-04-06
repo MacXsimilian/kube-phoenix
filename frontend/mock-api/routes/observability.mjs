@@ -37,6 +37,9 @@ let state = {
   k8sGetRate: 65,
   k8sPatchRate: 12,
   k8sDeleteRate: 3,
+  k8sLatencyP50Ms: 18,
+  k8sLatencyP99Ms: 85,
+  k8sErrorRate: 0.3,
   policySuccessCount: 0,
   policyFailedCount: 0,
   policySkippedCount: 0,
@@ -50,6 +53,11 @@ let state = {
   auditDrops: 0,
   rateLimitHits: 0,
   totalErrorRate: 1.2,
+  dbPoolOpen: 10,
+  dbPoolInUse: 4,
+  dbPoolIdle: 6,
+  activeSessions: 5,
+  activePolicies: 6,
 }
 
 // ── History ring buffer (stores last 3 days at 2s intervals) ────────────────
@@ -72,6 +80,9 @@ function tickState() {
   state.k8sGetRate = rw(state.k8sGetRate, 10, 130, 15)
   state.k8sPatchRate = rw(state.k8sPatchRate, 0, 40, 5)
   state.k8sDeleteRate = rw(state.k8sDeleteRate, 0, 10, 2)
+  state.k8sLatencyP50Ms = rw(state.k8sLatencyP50Ms, 5, 60, 8)
+  state.k8sLatencyP99Ms = rw(state.k8sLatencyP99Ms, 20, 300, 20)
+  state.k8sErrorRate = rw(state.k8sErrorRate, 0, 5, 0.5)
 
   // Policy executions — sparse events
   state.policySuccessCount = Math.random() < 0.1 ? Math.floor(Math.random() * 3) + 1 : 0
@@ -89,6 +100,12 @@ function tickState() {
   state.schedulerPanics = Math.random() < 0.005 ? 1 : 0
   state.auditDrops = Math.random() < 0.01 ? Math.floor(Math.random() * 3) + 1 : 0
   state.rateLimitHits = Math.random() < 0.03 ? Math.floor(Math.random() * 5) + 1 : 0
+
+  // DB pool metrics
+  state.dbPoolInUse = Math.round(rw(state.dbPoolInUse, 1, state.dbPoolOpen, 2))
+  state.dbPoolIdle = state.dbPoolOpen - state.dbPoolInUse
+  state.activeSessions = Math.round(rw(state.activeSessions, 1, 15, 1.5))
+  state.activePolicies = 6
 
   // Error spike (4% chance)
   if (Math.random() < 0.04) {
@@ -380,8 +397,10 @@ function averageBucket(bucket) {
   const numericKeys = [
     'httpRequestRate', 'httpLatencyP50Ms', 'httpLatencyP95Ms', 'httpLatencyP99Ms',
     'httpErrorRate', 'k8sGetRate', 'k8sPatchRate', 'k8sDeleteRate',
+    'k8sLatencyP50Ms', 'k8sLatencyP99Ms', 'k8sErrorRate',
     'wsActiveConnections', 'cacheHitRate', 'schedulerEvalRate', 'schedulerEvalDurationMs',
     'scaleOperationDurationMs', 'totalErrorRate',
+    'dbPoolOpen', 'dbPoolInUse', 'dbPoolIdle', 'activeSessions', 'activePolicies',
   ]
   for (const key of numericKeys) {
     const sum = bucket.reduce((s, row) => s + (row[key] ?? 0), 0)

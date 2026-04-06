@@ -487,6 +487,8 @@ streamPodLogs(namespace, podName, container?, tailLines?, signal?): {
 
 The caller passes an `AbortSignal` to cancel the stream (used when the component unmounts or the user switches containers).
 
+The `usePodLogStream` hook batches incoming lines in a ref buffer and flushes to React state once per `requestAnimationFrame`. This collapses many rapid `onLine` callbacks into a single state update per frame, avoiding excessive re-renders and array copies under high log throughput.
+
 ### Streaming: Database Reset
 
 `resetDatabaseStream()` is an async generator that reads NDJSON (newline-delimited JSON) from the POST response body. Each line is a `ResetEvent` with `type: 'step' | 'done' | 'error'` and a `message`. The `DatabaseSettings` component consumes these events to show a real-time progress dialog.
@@ -596,7 +598,7 @@ Several components were extracted from `NodeDetailDrawer` and `PodLogViewer` for
 | `MiniBar` | `cluster/MiniBar.tsx` | Compact resource utilization bar (CPU/memory) with label and percentage. Used by `NodeDetailDrawer` and `PodDetailContent`. |
 | `LogSearchBar` | `cluster/LogSearchBar.tsx` | Search input with match count display and prev/next navigation buttons. Used by `PodLogViewer`. |
 | `DetailDrawer` | `cluster/DetailDrawer.tsx` | Shared resizable drawer shell with header, pod list table, pod search, drill-down to `PodDetailContent`, and back navigation. Used by both `WorkloadDetailDrawer` and `NodeDetailDrawer` to eliminate duplicated drawer/pod-list/drill-down code. |
-| `usePodLogStream` | `cluster/usePodLogStream.ts` | Hook that manages chunked HTTP streaming for pod logs: initial tail fetch, follow mode, line buffering, and abort cleanup. Used by `PodLogViewer`. |
+| `usePodLogStream` | `cluster/usePodLogStream.ts` | Hook that manages chunked HTTP streaming for pod logs: initial 250-line tail fetch, follow mode, `requestAnimationFrame`-batched line buffering, and abort cleanup. Used by `PodLogViewer`. |
 
 #### useDrawerResize Hook
 
@@ -1240,6 +1242,8 @@ Components that do not use SSE or WebSocket rely on TanStack Query's `refetchInt
 3. `onScroll` handler that detects if user is near the bottom (within 40px): `setAutoScroll(atBottom)`
 4. User scrolling up disables auto-scroll; scrolling back to the bottom re-enables it
 5. Clicking "next match" in search disables auto-scroll so the view stays at the match
+
+The entrance animation (`LOG_WATERFALL_SX`) is only applied to newly appended lines. A `prevLineCountRef` tracks the line count from the previous render so that existing lines skip the animation, avoiding hundreds of concurrent CSS animations on each state update.
 
 ---
 

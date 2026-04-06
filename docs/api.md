@@ -57,7 +57,7 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 | `GET` | `/api/cluster/nodes` | List nodes with protection status |
 | `GET` | `/api/cluster/nodes/{name}/pods` | List non-DaemonSet pods on a node |
 | `GET` | `/api/cluster/pods/{namespace}/{name}` | Full pod detail: containers, conditions, events, labels, annotations |
-| `GET` | `/api/cluster/pods/{namespace}/{name}/logs` | Stream container logs (query params: `container`, `tailLines`, `follow`, `previous`) |
+| `GET` | `/api/cluster/pods/{namespace}/{name}/logs` | Stream container logs (query params: `container`, `tailLines` default 250, `follow`, `previous`). Sets `X-Accel-Buffering: no` when `follow=true`. |
 | `GET` | `/api/cluster/workloads/{namespace}/{kind}/{name}/pods` | List pods belonging to a Deployment or StatefulSet |
 | `GET` | `/api/cluster/info` | Kubernetes API server URL, version, auth mode, and cluster name |
 

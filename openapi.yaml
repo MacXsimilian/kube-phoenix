@@ -1519,8 +1519,10 @@ paths:
       description: |
         Proxies the Kubernetes pod logs API. Returns plain-text log output.
         When `follow=true`, the response uses chunked transfer encoding and
-        streams new log lines as the container writes them. The connection
-        stays open until the client disconnects or the container terminates.
+        streams new log lines as the container writes them. The response
+        includes `X-Accel-Buffering: no` to prevent reverse-proxy buffering.
+        The connection stays open until the client disconnects or the
+        container terminates.
         No database involvement — logs are streamed directly from the K8s API.
       tags: [Cluster]
       parameters:
@@ -1531,10 +1533,10 @@ paths:
             type: string
         - name: tailLines
           in: query
-          description: Number of lines from the end to start from (default 500, max 10000)
+          description: Number of lines from the end to start from (default 250, max 10000)
           schema:
             type: integer
-            default: 500
+            default: 250
         - name: follow
           in: query
           description: Stream live logs (chunked transfer encoding)
