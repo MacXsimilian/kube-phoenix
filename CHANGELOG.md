@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.33](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.32...v0.5.33) (2026-04-06)
+
+
+### Bug Fixes
+
+* **ci:** use cosign v2.6.3 for detached .sig output compatibility ([#340](https://github.com/MacXsimilian/kube-phoenix/issues/340)) ([575174e](https://github.com/MacXsimilian/kube-phoenix/commit/575174eef620a9f145f748505799efedea2bd8eb))
+
 ## [0.5.32](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.31...v0.5.32) (2026-04-06)
 
 
