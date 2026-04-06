@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.35](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.34...v0.5.35) (2026-04-06)
+
+
+### Bug Fixes
+
+* **ci:** harden release signing pipeline for OpenSSF Scorecard compliance ([#344](https://github.com/MacXsimilian/kube-phoenix/issues/344)) ([24d31e0](https://github.com/MacXsimilian/kube-phoenix/commit/24d31e00e235312a604125a10ac4ada579e48a4b))
+
 ## [0.5.34](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.33...v0.5.34) (2026-04-06)
 
 
