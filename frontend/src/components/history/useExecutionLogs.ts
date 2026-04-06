@@ -86,8 +86,8 @@ export function useExecutionLogs(executionId: number | undefined, isRunning: boo
           const lineId = line.seq
           if (seenIdsRef.current.has(lineId)) return
           if (seenIdsRef.current.size >= MAX_SEEN_IDS) {
-            const ids = Array.from(seenIdsRef.current)
-            seenIdsRef.current = new Set(ids.slice(-SEEN_IDS_TRIM))
+            const sorted = Array.from(seenIdsRef.current).sort((a, b) => a - b)
+            seenIdsRef.current = new Set(sorted.slice(-SEEN_IDS_TRIM))
           }
           seenIdsRef.current.add(lineId)
           bufferRef.current.push(line)
@@ -136,7 +136,10 @@ export function useExecutionLogs(executionId: number | undefined, isRunning: boo
     return () => {
       mountedRef.current = false
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
       bufferRef.current = []
       wsRef.current?.close()
       wsRef.current = null
