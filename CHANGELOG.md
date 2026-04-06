@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.36](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.35...v0.5.36) (2026-04-06)
+
+
+### Bug Fixes
+
+* **ci:** compile SLSA generator from source for SHA-pinned ref compatibility ([#346](https://github.com/MacXsimilian/kube-phoenix/issues/346)) ([b2b5060](https://github.com/MacXsimilian/kube-phoenix/commit/b2b5060f2a77a0e3ef1f9be315aeae8e21dc93bd))
+
 ## [0.5.35](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.34...v0.5.35) (2026-04-06)
 
 
