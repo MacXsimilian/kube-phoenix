@@ -7,6 +7,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](frontend/package.json)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-6BA539?logo=openapiinitiative&logoColor=white)](openapi.yaml)
 [![Security Scan](https://img.shields.io/github/actions/workflow/status/MacXsimilian/kube-phoenix/security.yml?branch=master&label=security&logo=shieldsdotio&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/actions/workflows/security.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/MacXsimilian/kube-phoenix/badge)](https://securityscorecards.dev/viewer/?uri=github.com/MacXsimilian/kube-phoenix)
 [![Docker](https://img.shields.io/badge/ghcr.io-kube--phoenix-2496ED?logo=docker&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/pkgs/container/kube-phoenix)
 [![Helm Chart](https://img.shields.io/badge/helm-oci%3A%2F%2Fghcr.io-0F1689?logo=helm&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/pkgs/container/helm%2Fkube-phoenix)
 [![Prometheus](https://img.shields.io/badge/metrics-prometheus-E6522C?logo=prometheus&logoColor=white)](#observability)
