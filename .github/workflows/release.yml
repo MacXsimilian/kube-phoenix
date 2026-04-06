@@ -182,6 +182,8 @@ jobs:
     permissions:
       contents: write
       id-token: write
+    outputs:
+      artifacts-sha256: ${{ steps.hash.outputs.sha256 }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
@@ -209,9 +211,32 @@ jobs:
           sha256sum checksums.txt > SHA256SUMS
 
       - name: Sign checksums (keyless)
-        run: cosign sign-blob --yes --bundle SHA256SUMS.bundle SHA256SUMS
+        run: |
+          cosign sign-blob --yes \
+            --output-signature SHA256SUMS.sig \
+            --output-certificate SHA256SUMS.cert \
+            SHA256SUMS
+
+      - name: Compute artifact hash for SLSA provenance
+        id: hash
+        run: |
+          echo "sha256=$(sha256sum SHA256SUMS | base64 -w0)" >> "$GITHUB_OUTPUT"
 
       - name: Upload assets to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ inputs.tag }}" SHA256SUMS SHA256SUMS.bundle checksums.txt --clobber
+        run: gh release upload "${{ inputs.tag }}" SHA256SUMS SHA256SUMS.sig SHA256SUMS.cert checksums.txt --clobber
+
+  # ── SLSA provenance ────────────────────────────────────────────────────────
+  provenance:
+    name: SLSA provenance
+    needs: release-assets
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a  # v2.1.0
+    with:
+      base64-subjects: ${{ needs.release-assets.outputs.artifacts-sha256 }}
+      upload-assets: true
+      upload-tag-name: ${{ inputs.tag }}
