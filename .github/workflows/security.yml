@@ -5,13 +5,6 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
-    paths:
-      - "frontend/**"
-      - "backend/**"
-      - "openapi.yaml"
-      - "Dockerfile"
-      - "helm/**"
-      - ".github/workflows/**"
   schedule:
     - cron: "0 6 * * 1" # Every Monday at 06:00 UTC
 
@@ -50,7 +43,7 @@ jobs:
       - name: govulncheck
         id: govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
           govulncheck ./... 2>&1 | tee /tmp/govulncheck.out && STATUS="clean" || STATUS="found"
           echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
           VULN_COUNT=$(grep -c '^Vulnerability' /tmp/govulncheck.out || true)
