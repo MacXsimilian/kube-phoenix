@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useMemo } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Tooltip from '@mui/material/Tooltip'
@@ -14,11 +14,10 @@ interface ErrorTimelineProps {
 
 export default function ErrorTimeline({ events, history }: ErrorTimelineProps) {
   const theme = useTheme()
-
-  if (history.length === 0) return null
-
   const { startMs, endMs } = useTimeRange(history)
   const maxErrorRate = useMaxErrorRate(history)
+
+  if (history.length === 0) return null
 
   return (
     <Box
