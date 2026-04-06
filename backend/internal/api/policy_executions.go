@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 import (
@@ -173,6 +175,7 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 			slog.Error("ws policy: failed to fetch existing log lines", "execID", id, "err", err)
 		}
 		wsSendLines(conn, existing)
+		wsCloseNormal(conn, done, "execution already finished")
 		return
 	}
 
@@ -183,6 +186,7 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 	sub, replayLines := h.policyScheduler.Broker.Subscribe(id)
 	if sub == nil {
 		slog.Warn("ws policy: subscriber limit reached", "execID", id)
+		wsCloseNormal(conn, done, "subscriber limit reached")
 		return
 	}
 	defer h.policyScheduler.Broker.Unsubscribe(id, sub)
@@ -219,6 +223,7 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 	// Re-check: may have finished between initial check and Subscribe.
 	if fresh, err := h.store.GetPolicyExecution(id); err == nil && fresh.Status != store.ExecStatusRunning {
 		wsDrainChannel(conn, sub)
+		wsCloseNormal(conn, done, "execution finished")
 		return
 	}
 

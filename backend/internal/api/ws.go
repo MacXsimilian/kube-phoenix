@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 import (
@@ -84,6 +86,18 @@ func wsDrainChannel(conn *websocket.Conn, sub <-chan store.PolicyLogLine) {
 	}
 }
 
+// wsCloseNormal sends a 1000 close frame and waits for the client to
+// acknowledge (or times out after 2 s) so the peer sees code 1000 instead
+// of 1006 from an abrupt TCP teardown.
+func wsCloseNormal(conn *websocket.Conn, done <-chan struct{}, reason string) {
+	_ = conn.WriteMessage(websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, reason))
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+	}
+}
+
 // wsStreamLoop streams live log lines and sends periodic pings until the
 // subscription closes, the client disconnects, or the request context ends.
 func wsStreamLoop(conn *websocket.Conn, done <-chan struct{}, sub <-chan store.PolicyLogLine, r *http.Request) {
@@ -96,8 +110,7 @@ func wsStreamLoop(conn *websocket.Conn, done <-chan struct{}, sub <-chan store.P
 			return
 		case line, ok := <-sub:
 			if !ok {
-				_ = conn.WriteMessage(websocket.CloseMessage,
-					websocket.FormatCloseMessage(websocket.CloseNormalClosure, "execution finished"))
+				wsCloseNormal(conn, done, "execution finished")
 				return
 			}
 			if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
@@ -114,6 +127,8 @@ func wsStreamLoop(conn *websocket.Conn, done <-chan struct{}, sub <-chan store.P
 				return
 			}
 		case <-r.Context().Done():
+			_ = conn.WriteMessage(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseGoingAway, "server shutting down"))
 			return
 		}
 	}
