@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.29](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.28...v0.5.29) (2026-04-06)
+
+
+### Bug Fixes
+
+* **ci:** use cosign v3 bundle format for release signing ([#331](https://github.com/MacXsimilian/kube-phoenix/issues/331)) ([72441f4](https://github.com/MacXsimilian/kube-phoenix/commit/72441f42b23fdd5872fdc438081453c931bfc6df))
+
 ## [0.5.28](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.27...v0.5.28) (2026-04-06)
 
 
