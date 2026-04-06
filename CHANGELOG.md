@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.28](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.27...v0.5.28) (2026-04-06)
+
+
+### Bug Fixes
+
+* **ci:** correct OpenSSF Scorecard action SHA to v2.4.3 ([#328](https://github.com/MacXsimilian/kube-phoenix/issues/328)) ([505c5f5](https://github.com/MacXsimilian/kube-phoenix/commit/505c5f5bc3b48e01bf7cfa3b7b445e09b4448bf4))
+
 ## [0.5.27](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.26...v0.5.27) (2026-04-06)
 
 
