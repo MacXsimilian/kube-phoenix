@@ -1,8 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package store
 
 import (
 	"fmt"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // MetricSnapshot stores a point-in-time capture of all Prometheus metrics
@@ -135,6 +139,7 @@ func (s *Store) UpsertObservabilityThreshold(t *ObservabilityThreshold) error {
 }
 
 // SeedDefaultThresholds inserts default thresholds if none exist.
+// Runs inside a transaction so either all defaults are seeded or none are.
 func (s *Store) SeedDefaultThresholds() error {
 	defaults := []ObservabilityThreshold{
 		{PanelKey: "http_rate", WarnVal: 150, CritVal: 200},
@@ -146,18 +151,20 @@ func (s *Store) SeedDefaultThresholds() error {
 		{PanelKey: "scheduler_health", WarnVal: 200, CritVal: 500},
 		{PanelKey: "policy_executions", WarnVal: 5, CritVal: 10},
 	}
-	for i := range defaults {
-		var count int64
-		if err := s.db.Model(&ObservabilityThreshold{}).Where("panel_key = ?", defaults[i].PanelKey).Count(&count).Error; err != nil {
-			return fmt.Errorf("check threshold %s: %w", defaults[i].PanelKey, err)
-		}
-		if count == 0 {
-			if err := s.db.Create(&defaults[i]).Error; err != nil {
-				return err
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for i := range defaults {
+			var count int64
+			if err := tx.Model(&ObservabilityThreshold{}).Where("panel_key = ?", defaults[i].PanelKey).Count(&count).Error; err != nil {
+				return fmt.Errorf("check threshold %s: %w", defaults[i].PanelKey, err)
+			}
+			if count == 0 {
+				if err := tx.Create(&defaults[i]).Error; err != nil {
+					return fmt.Errorf("seed threshold %s: %w", defaults[i].PanelKey, err)
+				}
 			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // downsampleSnapshots reduces a slice of snapshots by averaging every n rows.

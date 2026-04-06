@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package store
 
 import (
@@ -86,46 +88,50 @@ func (s *Store) ChangePassword(id uint, newPassword string) error {
 
 // GetOrCreateOIDCUser upserts a user by OIDC subject. If no match by sub,
 // creates a new OIDC user. Updates role, email, and name on every login.
+// The lookup and mutation run inside a transaction to prevent races between
+// concurrent OIDC logins with the same subject.
 func (s *Store) GetOrCreateOIDCUser(info OIDCUserInfo) (*User, error) {
-	var user User
-
-	// Try by oidc_subject first.
-	err := s.db.Where("oidc_subject = ?", info.Sub).First(&user).Error
-	if err == nil {
-		// Existing OIDC user — update role, email, and name.
-		if err := s.db.Model(&user).Updates(map[string]interface{}{
-			"role":        info.Role,
-			"email":       info.Email,
-			"given_name":  info.GivenName,
-			"family_name": info.FamilyName,
-		}).Error; err != nil {
-			return nil, fmt.Errorf("update oidc user: %w", err)
+	var result User
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		err := tx.Where("oidc_subject = ?", info.Sub).First(&result).Error
+		if err == nil {
+			if err := tx.Model(&result).Updates(map[string]interface{}{
+				"role":        info.Role,
+				"email":       info.Email,
+				"given_name":  info.GivenName,
+				"family_name": info.FamilyName,
+			}).Error; err != nil {
+				return fmt.Errorf("update oidc user: %w", err)
+			}
+			result.Role = info.Role
+			result.Email = info.Email
+			result.GivenName = info.GivenName
+			result.FamilyName = info.FamilyName
+			return nil
 		}
-		user.Role = info.Role
-		user.Email = info.Email
-		user.GivenName = info.GivenName
-		user.FamilyName = info.FamilyName
-		return &user, nil
-	}
-	if err != gorm.ErrRecordNotFound {
-		return nil, fmt.Errorf("lookup oidc user: %w", err)
-	}
+		if err != gorm.ErrRecordNotFound {
+			return fmt.Errorf("lookup oidc user: %w", err)
+		}
 
-	// Create new OIDC user.
-	user = User{
-		Username:    info.Username,
-		Email:       info.Email,
-		GivenName:   info.GivenName,
-		FamilyName:  info.FamilyName,
-		Role:        info.Role,
-		Source:      "oidc",
-		OIDCSubject: &info.Sub,
-		Enabled:     true,
+		result = User{
+			Username:    info.Username,
+			Email:       info.Email,
+			GivenName:   info.GivenName,
+			FamilyName:  info.FamilyName,
+			Role:        info.Role,
+			Source:      "oidc",
+			OIDCSubject: &info.Sub,
+			Enabled:     true,
+		}
+		if err := tx.Create(&result).Error; err != nil {
+			return fmt.Errorf("create oidc user: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	if err := s.db.Create(&user).Error; err != nil {
-		return nil, fmt.Errorf("create oidc user: %w", err)
-	}
-	return &user, nil
+	return &result, nil
 }
 
 // HashPassword returns a bcrypt hash suitable for storing in User.PasswordHash.
