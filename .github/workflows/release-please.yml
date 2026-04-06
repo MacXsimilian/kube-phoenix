@@ -51,6 +51,7 @@ jobs:
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}
     permissions:
+      actions: read
       contents: write
       packages: write
       id-token: write
