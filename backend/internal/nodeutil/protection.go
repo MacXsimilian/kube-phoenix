@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package nodeutil provides shared node protection logic for matching labels,
 // taints, and pod priority classes against guardrail configurations.
 package nodeutil

@@ -96,7 +96,7 @@ export default function MiniTimeline({
   if (!windows || windows.length === 0) return null
 
   function isSleeping(hr: number): boolean {
-    return sleepRanges.some(r => hr >= r.start && hr < r.end)
+    return sleepRanges.some(r => hr >= r.start && (hr < r.end || (hr === 24 && r.end === 24)))
   }
 
   // Build points at 15-minute intervals

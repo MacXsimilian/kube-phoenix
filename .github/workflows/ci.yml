@@ -48,6 +48,9 @@ jobs:
       - name: npm audit (high + critical)
         run: npm audit --omit=dev --audit-level=high
 
+      - name: Lint
+        run: npm run lint
+
       - name: Build
         id: fe_build
         run: |
@@ -55,11 +58,35 @@ jobs:
           npm run build
           echo "duration=$(( $(date +%s) - START ))" >> "$GITHUB_OUTPUT"
 
+      - name: Bundle size analysis
+        id: fe_bundle
+        run: |
+          TOTAL_BYTES=$(du -sb out/ 2>/dev/null | cut -f1 || echo 0)
+          TOTAL_HUMAN=$(du -sh out/ 2>/dev/null | cut -f1 || echo 'N/A')
+          JS_BYTES=$(find out/ -name '*.js' -exec du -cb {} + 2>/dev/null | tail -1 | cut -f1 || echo 0)
+          CSS_BYTES=$(find out/ -name '*.css' -exec du -cb {} + 2>/dev/null | tail -1 | cut -f1 || echo 0)
+          HTML_BYTES=$(find out/ -name '*.html' -exec du -cb {} + 2>/dev/null | tail -1 | cut -f1 || echo 0)
+
+          JS_HUMAN=$(numfmt --to=iec "${JS_BYTES:-0}" 2>/dev/null || echo 'N/A')
+          CSS_HUMAN=$(numfmt --to=iec "${CSS_BYTES:-0}" 2>/dev/null || echo 'N/A')
+          HTML_HUMAN=$(numfmt --to=iec "${HTML_BYTES:-0}" 2>/dev/null || echo 'N/A')
+
+          BUDGET_BYTES=$((5 * 1024 * 1024))
+          if [ "${TOTAL_BYTES}" -gt "${BUDGET_BYTES}" ] 2>/dev/null; then
+            echo "status=⚠️ Over 5 MB budget" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=✅ Within 5 MB budget" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "total=${TOTAL_HUMAN}" >> "$GITHUB_OUTPUT"
+          echo "js=${JS_HUMAN}" >> "$GITHUB_OUTPUT"
+          echo "css=${CSS_HUMAN}" >> "$GITHUB_OUTPUT"
+          echo "html=${HTML_HUMAN}" >> "$GITHUB_OUTPUT"
+
       - name: Frontend summary
         if: always()
         run: |
           PAGES=$(find out/ -name '*.html' -not -name '404.html' 2>/dev/null | wc -l | tr -d ' ')
-          SIZE=$(du -sh out/ 2>/dev/null | cut -f1 || echo 'N/A')
 
           {
             echo "## Frontend Build Summary"
@@ -69,7 +96,11 @@ jobs:
             echo "| Node | $(node -v) |"
             echo "| Build duration | ${{ steps.fe_build.outputs.duration }}s |"
             echo "| Static pages | ${PAGES} |"
-            echo "| Export size | ${SIZE} |"
+            echo "| Export size | ${{ steps.fe_bundle.outputs.total }} |"
+            echo "| JavaScript | ${{ steps.fe_bundle.outputs.js }} |"
+            echo "| CSS | ${{ steps.fe_bundle.outputs.css }} |"
+            echo "| HTML | ${{ steps.fe_bundle.outputs.html }} |"
+            echo "| Size budget | ${{ steps.fe_bundle.outputs.status }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Backend ─────────────────────────────────────────────────────────────────

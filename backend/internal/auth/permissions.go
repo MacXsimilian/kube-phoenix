@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package auth provides permission-based RBAC, rate limiting, and (later) OIDC helpers.
 package auth
 

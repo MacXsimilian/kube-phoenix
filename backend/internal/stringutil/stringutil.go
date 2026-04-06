@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stringutil provides CSV string splitting and set conversion helpers.
 package stringutil
 

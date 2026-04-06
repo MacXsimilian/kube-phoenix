@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package k8s provides a Kubernetes API client wrapper with typed operations
 // for deployments, statefulsets, nodes, and pods.
 package k8s

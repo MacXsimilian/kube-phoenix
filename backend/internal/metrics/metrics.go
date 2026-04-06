@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package metrics defines and registers all Prometheus metrics for kube-phoenix.
 // Metrics are registered once via promauto and exposed at /metrics.
 // Covers: HTTP requests, K8s API calls, policy executions, CRUD operations,

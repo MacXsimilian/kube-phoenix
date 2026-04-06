@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package web embeds the compiled Next.js static export.
 // Run `make build` from the repo root to populate the static/ directory
 // before building the Go binary.

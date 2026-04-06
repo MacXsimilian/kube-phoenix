@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package scheduler runs the policy evaluation ticker that periodically
 // triggers sleep and wake executions. The evaluation pipeline is decomposed
 // into evaluatePolicy → reconcilePolicy / resetStuckTransition / executeTransition,

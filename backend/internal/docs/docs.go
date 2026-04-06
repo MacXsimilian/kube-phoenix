@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package docs embeds and serves the OpenAPI specification at /api/docs/.
 package docs
 

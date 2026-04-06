@@ -7,7 +7,12 @@
     "dev:mock": "node mock-api/dev.mjs",
     "mock-api": "node mock-api/server.mjs",
     "build": "next build",
-    "start": "next start"
+    "analyze": "ANALYZE=true next build",
+    "start": "next start",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write 'src/**/*.{ts,tsx,json,css}'",
+    "format:check": "prettier --check 'src/**/*.{ts,tsx,json,css}'"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -24,10 +29,19 @@
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
+    "@eslint/js": "^9",
+    "@next/bundle-analyzer": "^16",
+    "@next/eslint-plugin-next": "^16",
     "@types/node": "^25",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-prettier": "^10",
+    "eslint-plugin-react": "^7",
+    "eslint-plugin-react-hooks": "^5",
+    "prettier": "^3",
     "typescript": "^6",
+    "typescript-eslint": "^8",
     "ws": "^8.20.0"
   }
 }

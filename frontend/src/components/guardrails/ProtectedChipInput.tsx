@@ -48,7 +48,7 @@ export default function ProtectedChipInput({
         <Typography variant="body2" fontWeight={600}>System-Protected Namespaces</Typography>
       </Box>
       <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
-        Always-on namespaces. Only remove an entry if you know what you're doing.
+        Always-on namespaces. Only remove an entry if you know what you&apos;re doing.
       </Typography>
 
       <ChipInput

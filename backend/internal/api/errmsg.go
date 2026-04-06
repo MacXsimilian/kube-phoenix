@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 import "github.com/macxsimilian/kube-phoenix/backend/internal/store"

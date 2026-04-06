@@ -1,3 +1,9 @@
+import withBundleAnalyzer from '@next/bundle-analyzer'
+
+const analyzer = withBundleAnalyzer({
+  enabled: process.env.ANALYZE === 'true',
+})
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',      // static export — Go embeds and serves the output
@@ -12,4 +18,4 @@ const nextConfig = {
   ],
 }
 
-export default nextConfig
+export default analyzer(nextConfig)

@@ -1,9 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package store
 
 import (
 	"fmt"
 	"log/slog"
 	"os"
+
+	"gorm.io/gorm"
 )
 
 // ─── Guardrails ───────────────────────────────────────────────────────────────
@@ -34,59 +38,60 @@ func (s *Store) UpdateGuardrails(updates map[string]interface{}) (*Guardrails, e
 // ─── Seeds ────────────────────────────────────────────────────────────────────
 
 func (s *Store) SeedDefaults() error {
-	var gCount int64
-	if err := s.db.Model(&Guardrails{}).Count(&gCount).Error; err != nil {
-		return fmt.Errorf("seed: count guardrails: %w", err)
-	}
-	if gCount == 0 {
-		g := Guardrails{
-			SystemNamespaces:             "default,istio-gateway,istio-system,karpenter,kube-node-lease,kube-phoenix,kube-public,kube-system,kyverno,kyverno-notation-aws,monitoring,vault,velero,victoriametrics,gitlab",
-			SkipNsNode:                   "victoriametrics,karpenter",
-			SkipNodeLabels:               "karpenter.k8s.aws/ec2nodeclass=default",
-			SkipNodeTaints:               "karpenter-eks-base=true:NoSchedule",
-			SchedulerEvalInterval:        "30s",
-			SchedulerAutoWake:            true,
-			SchedulerReconcileWhileAwake: true,
-			ScalingConcurrency:           10,
-			WakeWaveSize:                 0,
-			WakeWavePauseSeconds:         90,
-			ProtectCriticalPodNodes:      true,
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var gCount int64
+		if err := tx.Model(&Guardrails{}).Count(&gCount).Error; err != nil {
+			return fmt.Errorf("seed: count guardrails: %w", err)
 		}
-		if err := s.db.Create(&g).Error; err != nil {
-			return err
+		if gCount == 0 {
+			g := Guardrails{
+				SystemNamespaces:             "default,istio-gateway,istio-system,karpenter,kube-node-lease,kube-phoenix,kube-public,kube-system,kyverno,kyverno-notation-aws,monitoring,vault,velero,victoriametrics,gitlab",
+				SkipNsNode:                   "victoriametrics,karpenter",
+				SkipNodeLabels:               "karpenter.k8s.aws/ec2nodeclass=default",
+				SkipNodeTaints:               "karpenter-eks-base=true:NoSchedule",
+				SchedulerEvalInterval:        "30s",
+				SchedulerAutoWake:            true,
+				SchedulerReconcileWhileAwake: true,
+				ScalingConcurrency:           10,
+				WakeWaveSize:                 0,
+				WakeWavePauseSeconds:         90,
+				ProtectCriticalPodNodes:      true,
+			}
+			if err := tx.Create(&g).Error; err != nil {
+				return fmt.Errorf("seed: create guardrails: %w", err)
+			}
 		}
-	}
 
-	// ── Seed admin user ──────────────────────────────────────────────────
-	var userCount int64
-	if err := s.db.Model(&User{}).Count(&userCount).Error; err != nil {
-		return fmt.Errorf("seed: count users: %w", err)
-	}
-	if userCount == 0 {
-		adminUser := os.Getenv("ADMIN_USER")
-		adminPass := os.Getenv("ADMIN_PASSWORD")
-		if adminUser != "" && adminPass != "" {
-			hash, err := HashPassword(adminPass)
-			if err != nil {
-				return fmt.Errorf("seed: hash admin password: %w", err)
-			}
-			admin := User{
-				Username:     adminUser,
-				PasswordHash: hash,
-				Role:         "admin",
-				Source:       "local",
-				Enabled:      true,
-			}
-			if err := s.db.Create(&admin).Error; err != nil {
-				return fmt.Errorf("seed: create admin user: %w", err)
-			}
-			slog.Info("seed: admin user created from environment variables", "username", adminUser)
-		} else {
-			slog.Warn("seed: no users in database and ADMIN_USER/ADMIN_PASSWORD not set — no one can log in")
+		var userCount int64
+		if err := tx.Model(&User{}).Count(&userCount).Error; err != nil {
+			return fmt.Errorf("seed: count users: %w", err)
 		}
-	}
+		if userCount == 0 {
+			adminUser := os.Getenv("ADMIN_USER")
+			adminPass := os.Getenv("ADMIN_PASSWORD")
+			if adminUser != "" && adminPass != "" {
+				hash, err := HashPassword(adminPass)
+				if err != nil {
+					return fmt.Errorf("seed: hash admin password: %w", err)
+				}
+				admin := User{
+					Username:     adminUser,
+					PasswordHash: hash,
+					Role:         "admin",
+					Source:       "local",
+					Enabled:      true,
+				}
+				if err := tx.Create(&admin).Error; err != nil {
+					return fmt.Errorf("seed: create admin user: %w", err)
+				}
+				slog.Info("seed: admin user created from environment variables", "username", adminUser)
+			} else {
+				slog.Warn("seed: no users in database and ADMIN_USER/ADMIN_PASSWORD not set — no one can log in")
+			}
+		}
 
-	return nil
+		return nil
+	})
 }
 
 // ─── Danger zone ──────────────────────────────────────────────────────────────
