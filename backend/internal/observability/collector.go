@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package observability implements the metric collector that periodically
 // self-scrapes the Prometheus /metrics endpoint, parses counter/histogram
 // deltas, and stores MetricSnapshot rows for the observability dashboard.

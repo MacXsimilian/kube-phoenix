@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package store implements the PostgreSQL persistence layer via GORM,
 // including models, queries, migrations, and snapshot accounting
 // (CountOpenSnapshotsForRestore for scheduler drift detection).

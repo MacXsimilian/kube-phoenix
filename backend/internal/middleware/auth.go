@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package middleware provides HTTP middleware for session authentication,
 // CSRF protection, and permission checks.
 package middleware

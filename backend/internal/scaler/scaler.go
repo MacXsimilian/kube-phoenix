@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package scaler performs Kubernetes scaling operations for sleep and wake,
 // including scaling deployments and draining nodes.
 package scaler
