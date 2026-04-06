@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.27](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.26...v0.5.27) (2026-04-06)
+
+
+### Features
+
+* **security:** add SPDX headers, gosec, ESLint, bundle analysis, OpenSSF Scorecard, DB transactions, and WebSocket/UI fixes ([#326](https://github.com/MacXsimilian/kube-phoenix/issues/326)) ([53d920a](https://github.com/MacXsimilian/kube-phoenix/commit/53d920a252542452510270e17290c71137c5cc7d))
+
 ## [0.5.26](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.25...v0.5.26) (2026-04-05)
 
 
