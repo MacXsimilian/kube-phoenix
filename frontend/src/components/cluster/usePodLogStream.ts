@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getPodLogs, streamPodLogs } from '@/lib/api'
 import { formatError } from '@/lib/formatters'
 
-const INITIAL_TAIL = 500
+const INITIAL_TAIL = 250
 const LOAD_MORE_INCREMENT = 2000
 const MAX_LINES = 10_000
 
@@ -44,10 +44,42 @@ export function usePodLogStream({ namespace, podName, container }: PodLogStreamO
 
   const [canLoadMore, setCanLoadMore] = useState(true)
 
+  // ── RAF line buffer ──────────────────────────────────────────────────────────
+
+  const lineBufRef = useRef<string[]>([])
+  const rafRef = useRef<number | null>(null)
+
+  const flushBuffer = useCallback(() => {
+    rafRef.current = null
+    const batch = lineBufRef.current
+    if (batch.length === 0) return
+    lineBufRef.current = []
+    setStreamLines((prev) => {
+      const next = prev.concat(batch)
+      return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next
+    })
+  }, [])
+
+  const pushLine = useCallback((line: string) => {
+    lineBufRef.current.push(line)
+    if (rafRef.current === null) {
+      rafRef.current = requestAnimationFrame(flushBuffer)
+    }
+  }, [flushBuffer])
+
+  const cancelBatch = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    lineBufRef.current = []
+  }, [])
+
   // ── Live streaming ──────────────────────────────────────────────────────────
 
   const startStream = useCallback((tail: number) => {
     abortRef.current?.abort()
+    cancelBatch()
     const ac = new AbortController()
     abortRef.current = ac
 
@@ -58,32 +90,32 @@ export function usePodLogStream({ namespace, podName, container }: PodLogStreamO
     const { start } = streamPodLogs(namespace, podName, container || undefined, tail, ac.signal)
 
     start(
-      (line) => {
-        setStreamLines((prev) => {
-          const next = [...prev, line]
-          return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next
-        })
-      },
+      pushLine,
       (err) => {
         setStreamError(err.message)
         setStreaming(false)
       },
       () => {
+        flushBuffer()
         setStreaming(false)
       },
     )
-  }, [namespace, podName, container])
+  }, [namespace, podName, container, pushLine, cancelBatch, flushBuffer])
 
   // Start/restart stream when in live mode
   useEffect(() => {
     if (mode !== 'live') {
       abortRef.current?.abort()
+      cancelBatch()
       setStreaming(false)
       return
     }
     startStream(tailLines)
-    return () => { abortRef.current?.abort() }
-  }, [mode, startStream, tailLines])
+    return () => {
+      abortRef.current?.abort()
+      cancelBatch()
+    }
+  }, [mode, startStream, tailLines, cancelBatch])
 
   // ── Previous logs fetch ─────────────────────────────────────────────────────
 
