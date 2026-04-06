@@ -101,7 +101,7 @@ jobs:
           context: .
           platforms: linux/amd64
           provenance: true
-          sbom: true
+          sbom: false
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
@@ -125,9 +125,9 @@ jobs:
           artifact-name: sbom-kube-phoenix.spdx.json
           output-file: sbom-kube-phoenix.spdx.json
 
-      - name: Attach SBOM to image
+      - name: Attest SBOM to image
         run: |
-          cosign attach sbom --sbom sbom-kube-phoenix.spdx.json "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
+          cosign attest --yes --predicate sbom-kube-phoenix.spdx.json --type spdxjson "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
 
       - name: Smoke test — verify image runs
         run: |
@@ -217,9 +217,9 @@ jobs:
       - name: Sign checksums (keyless)
         run: |
           cosign sign-blob --yes \
-            --new-bundle-format=false \
             --output-signature SHA256SUMS.sig \
             --output-certificate SHA256SUMS.cert \
+            --bundle SHA256SUMS.bundle \
             SHA256SUMS
 
       - name: Compute artifact hash for SLSA provenance
@@ -230,7 +230,7 @@ jobs:
       - name: Upload assets to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ inputs.tag }}" SHA256SUMS SHA256SUMS.sig SHA256SUMS.cert checksums.txt --clobber
+        run: gh release upload "${{ inputs.tag }}" SHA256SUMS SHA256SUMS.sig SHA256SUMS.cert SHA256SUMS.bundle checksums.txt --clobber
 
   # ── SLSA provenance ────────────────────────────────────────────────────────
   provenance:
@@ -246,3 +246,4 @@ jobs:
       provenance-name: SHA256SUMS.intoto.jsonl
       upload-assets: true
       upload-tag-name: ${{ inputs.tag }}
+      private-repository: true
