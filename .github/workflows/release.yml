@@ -213,6 +213,7 @@ jobs:
       - name: Sign checksums (keyless)
         run: |
           cosign sign-blob --yes \
+            --new-bundle-format=false \
             --output-signature SHA256SUMS.sig \
             --output-certificate SHA256SUMS.cert \
             SHA256SUMS
