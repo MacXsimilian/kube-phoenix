@@ -970,9 +970,9 @@ Detailed pod view: container specs with resource requests/limits/usage, conditio
 
 Streams pod logs directly from the K8s API. Supports:
 - `container` query param (required for multi-container pods).
-- `tailLines` (default 500, max 10000).
+- `tailLines` (default 250, max 10000).
 - `previous=true` for terminated container logs.
-- `follow=true` for streaming mode (uses `ResponseController.Flush` for chunked transfer).
+- `follow=true` for streaming mode (uses `ResponseController.Flush` for chunked transfer). Sets `X-Accel-Buffering: no` to prevent nginx/ingress proxy buffering.
 
 ---
 
