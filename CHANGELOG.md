@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.32](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.31...v0.5.32) (2026-04-06)
+
+
+### Bug Fixes
+
+* **ci:** fix cosign .sig output and pin to v3.0.6 ([#338](https://github.com/MacXsimilian/kube-phoenix/issues/338)) ([32512a1](https://github.com/MacXsimilian/kube-phoenix/commit/32512a135813cc16e3a13f8b48651f1b5481d30a))
+
 ## [0.5.31](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.30...v0.5.31) (2026-04-06)
 
 
