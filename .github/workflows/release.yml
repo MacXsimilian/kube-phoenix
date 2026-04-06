@@ -247,3 +247,4 @@ jobs:
       upload-assets: true
       upload-tag-name: ${{ inputs.tag }}
       private-repository: true
+      compile-generator: true
