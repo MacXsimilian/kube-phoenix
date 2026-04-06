@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.31](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.30...v0.5.31) (2026-04-06)
+
+
+### Bug Fixes
+
+* **ci:** grant actions:read to release-build caller for SLSA provenance ([#336](https://github.com/MacXsimilian/kube-phoenix/issues/336)) ([556f4c9](https://github.com/MacXsimilian/kube-phoenix/commit/556f4c93e8a8733edaf1af670333245339331463))
+* **ci:** improve OpenSSF Scorecard Signed-Releases and Branch-Protection checks ([#335](https://github.com/MacXsimilian/kube-phoenix/issues/335)) ([3ce83bb](https://github.com/MacXsimilian/kube-phoenix/commit/3ce83bb3b6bb9538102b140dc71c0b8b558f2609))
+
 ## [0.5.30](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.29...v0.5.30) (2026-04-06)
 
 
