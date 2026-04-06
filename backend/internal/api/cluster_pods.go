@@ -369,6 +369,7 @@ func (h *Handler) getPodLogs(w http.ResponseWriter, r *http.Request) {
 func streamPodLogs(w http.ResponseWriter, stream io.Reader) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 	rc := http.NewResponseController(w)
 
 	buf := make([]byte, 4096)
