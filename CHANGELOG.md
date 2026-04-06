@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.34](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.33...v0.5.34) (2026-04-06)
+
+
+### Bug Fixes
+
+* **ci:** set provenance-name for SLSA generator artifact path ([#342](https://github.com/MacXsimilian/kube-phoenix/issues/342)) ([15289f9](https://github.com/MacXsimilian/kube-phoenix/commit/15289f9e02d0383ca82b63891f52149f6b3aecea))
+
 ## [0.5.33](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.32...v0.5.33) (2026-04-06)
 
 
