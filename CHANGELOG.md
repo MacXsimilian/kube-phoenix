@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.30](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.29...v0.5.30) (2026-04-06)
+
+
+### Bug Fixes
+
+* **api:** improve pod log stream throughput and mock data alignment ([#333](https://github.com/MacXsimilian/kube-phoenix/issues/333)) ([9cbcbff](https://github.com/MacXsimilian/kube-phoenix/commit/9cbcbff270bdf61b8178a1e672c15d6fee2b3ed5))
+
 ## [0.5.29](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.28...v0.5.29) (2026-04-06)
 
 
