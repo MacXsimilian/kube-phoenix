@@ -161,17 +161,17 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `PolicyRunner` -- wraps `Runner` and adds DB-backed `WorkloadSnapshot` logic. This is what the scheduler uses.
 - `LogLine` -- `{Level, Message, Time}` emitted to a channel during runs.
 - `Counts` -- aggregates: `Saved`, `Scaled`, `Drained`, `Deleted`, `Skipped`, `Protected`, `Errors`, `Requests` (K8s API calls). Tracks `StartedAt` for duration and req/s calculations. Thread-safe request counting via `AddRequests(n)`.
-- `workloadEntry` -- uniform representation of a Deployment or StatefulSet with function pointers for `Annotate`, `Scale`, `RemoveAnnotation`.
+- `workloadEntry` -- uniform representation of a Deployment or StatefulSet with a `Scale` function pointer.
 
 **Key functions (PolicyRunner):**
-- `RunPolicySleep(ctx, policy, execID, logCh)` -- scales matched workloads concurrently using `runConcurrent`, bounded by `guardrails.ScalingConcurrency`. For each workload: annotate `previous-replicas`, scale to 0, then persist `WorkloadSnapshot` to DB (this ordering prevents orphaned snapshots). Then drain and delete unprotected nodes. Returns an error when all workloads fail (`Errors > 0 && Scaled == 0`), causing the execution to be marked `failed`.
+- `RunPolicySleep(ctx, policy, execID, logCh)` -- scales matched workloads concurrently using `runConcurrent`, bounded by `guardrails.ScalingConcurrency`. For each workload: scale to 0, then persist `WorkloadSnapshot` to DB. Then drain and delete unprotected nodes. Returns an error when all workloads fail (`Errors > 0 && Scaled == 0`), causing the execution to be marked `failed`.
 - `RunPolicyWake(ctx, policy, execID, logCh)` -- loads open snapshots and restores them concurrently using `runConcurrent`, bounded by `guardrails.ScalingConcurrency`. Restores each workload to `ReplicasBefore`, closes snapshots. Nodes are not managed (Karpenter handles provisioning). Returns an error when all workloads fail (`Errors > 0 && Scaled == 0`).
-- `sleepWorkload(params, entry)` -- processes a single workload during sleep; handles already-zero detection. Uses annotate→scale→snapshot ordering to prevent orphaned snapshots: the annotation is written first as a recovery fallback, then the workload is scaled to zero, and only then is the snapshot persisted to DB. If the scale fails, no snapshot exists to orphan; if the snapshot write fails, the annotation fallback handles restoration.
+- `sleepWorkload(params, entry)` -- processes a single workload during sleep; handles already-zero detection. Scales to zero, then persists the snapshot. If the scale fails, no snapshot row is written, so a future wake is not confused.
 - `wakeWorkload(params, snap)` -- processes a single snapshot during wake; handles already-zero, lookup errors, external scaling detection, and restore. If a workload was externally scaled back to the exact target count, the snapshot is closed without a redundant API call (delegated to `handleExternallyScaled`).
 - `runConcurrent[T](items, concurrency, fn, counts)` -- generic worker pool bounded by a semaphore, with mutex-protected counts and panic recovery with stack trace logging.
-- `workloadOps(kind)` -- returns the k8s operations (get-replicas, scale, remove-annotation) for the given workload kind. Eliminates the duplicated Deployment/StatefulSet switch blocks in `lookupWorkload` and `restoreWorkload`.
+- `workloadOps(kind)` -- returns the k8s operations (get-replicas, scale) for the given workload kind. Eliminates the duplicated Deployment/StatefulSet switch blocks in `lookupWorkload` and `restoreWorkload`.
 - `lookupWorkload(ctx, kind, ns, name)` -- delegates to `workloadOps` to check if a workload still exists in the cluster. Returns `(exists, currentReplicas, error)`, using `apierrors.IsNotFound` to distinguish 404 from transient errors.
-- `restoreWorkload(ctx, kind, ns, name, target)` -- delegates to `workloadOps` to scale up and remove the annotation. Returns an error for unknown workload kinds.
+- `restoreWorkload(ctx, kind, ns, name, target)` -- delegates to `workloadOps` to scale the workload back to its target replica count. Returns an error for unknown workload kinds.
 
 **Key functions (Runner):**
 - `collectFilteredEntries(deployments, statefulsets, skipNS, nsFilter, counts)` -- filters workloads by namespace and converts to `workloadEntry` slice. Filtered-out items always increment `counts.Skipped`.
@@ -199,9 +199,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - `paginatedList[T]()` -- generic helper that pages through all List results using `Continue` tokens, collecting items across pages. All List operations (Deployments, StatefulSets, Nodes, Pods) use this helper.
 - `ListDeployments(ctx, namespace)` / `ListDeploymentsBySelector(ctx, namespace, labelSelector)` -- list with optional label filter. `GetDeployment(ctx, ns, name)` -- single fetch.
 - `ScaleDeployment(ctx, ns, name, replicas)` -- get scale subresource, set replicas, update. Uses `scaleWithRetry` for retry-on-conflict with exponential backoff (500ms, 1.5s, 3s).
-- `AnnotateDeployment(ctx, ns, name, key, value)` / `RemoveDeploymentAnnotation(ctx, ns, name, key)` -- delegates to `annotateResource` / `removeAnnotation` internal helpers.
-- `annotateResource(ns, name, key, value, resource, getAnnotations, setAndUpdate)` / `removeAnnotation(ns, name, key, resource, getAnnotations, setAndUpdate)` -- generic read-modify-write annotation helpers that use `retryOnConflict`. Both Deployment and StatefulSet annotation methods delegate to these.
-- Equivalent methods for StatefulSets: `ListStatefulSets`, `ListStatefulSetsBySelector`, `ScaleStatefulSet`, `GetStatefulSet`, `AnnotateStatefulSet`, `RemoveStatefulSetAnnotation`. Scale and annotation operations use the same retry-on-conflict logic.
+- Equivalent methods for StatefulSets: `ListStatefulSets`, `ListStatefulSetsBySelector`, `ScaleStatefulSet`, `GetStatefulSet`. Scale operations use the same retry-on-conflict logic.
 - `ListNodes(ctx)` / `GetNode(ctx, name)` / `CordonNode(ctx, name)` / `DrainNode(ctx, name, timeout)` / `DeleteNode(ctx, name)`. `CordonNode` uses `retryOnConflict`.
 - `retryOnConflict(fn)` -- internal helper that retries a function on 409 Conflict with exponential backoff (500ms, 1.5s, 3s; three attempts).
 - `scaleWithRetry(ctx, ns, name, replicas, getScale, updateScale)` -- thin wrapper calling `retryOnConflict` for scale subresource operations.
@@ -591,7 +589,7 @@ type WorkloadSnapshot struct {
 
 - "Open" snapshots have `WakeExecutionID IS NULL AND WasDeletedAtWake = false`.
 - `CloseSnapshot` links the snapshot to the wake execution and records `ReplicasRestored`.
-- The `previous-replicas` annotation on the K8s resource is a belt-and-suspenders fallback.
+- The `WorkloadSnapshot` table is the sole source of truth for what is sleeping. There is no on-cluster annotation fallback.
 
 #### ScheduledException
 
@@ -851,10 +849,9 @@ When `evaluatePolicy` detects a mismatch (intended != current, and current != tr
 5. Sort entries by `ScalingPriorityNamespaces` — workloads in priority namespaces are moved to the front of the processing queue in list order.
 6. For each workload entry, call `sleepWorkload`:
    - If already snapshotted -> skip (prevents double-sleep).
-   - Create `WorkloadSnapshot` in DB.
    - If replicas == 0 -> snapshot with `WasAlreadyZero=true`, skip scale.
    - If plan mode -> log "Would sleep..." and continue.
-   - If apply mode -> annotate `previous-replicas` (fallback), scale to 0, then persist snapshot to DB.
+   - If apply mode -> scale to 0, then persist `WorkloadSnapshot` to DB.
    - On scale failure -> no snapshot exists to orphan (safe by ordering).
 7. Call `drainNodes` to handle node draining.
 
@@ -867,7 +864,7 @@ When `evaluatePolicy` detects a mismatch (intended != current, and current != tr
    - Look up workload in cluster. If gone -> mark `WasDeletedAtWake`, skip.
    - If current replicas != 0 -> log warning (externally scaled), mark `WasExternallyScaled`, but still restore.
    - If plan mode -> log "Would restore..." and continue.
-   - If apply mode -> scale to `ReplicasBefore`, remove annotation, close snapshot.
+   - If apply mode -> scale to `ReplicasBefore`, close snapshot.
 
 ### Node Draining
 
@@ -892,7 +889,7 @@ During sleep, after workloads are scaled to 0:
 ### Plan Mode vs Apply Mode
 
 Every scaler operation checks `isApply(mode)`:
-- **Apply:** actually mutates Kubernetes resources, creates DB snapshots, writes annotations.
+- **Apply:** actually mutates Kubernetes resources and creates DB snapshots.
 - **Plan:** logs "Would ..." messages at the `plan` level without any mutations. Snapshot rows are not created. This is the default for new policies.
 
 ### Log Streaming Pipeline
@@ -937,7 +934,7 @@ Two-layer guard prevents double execution:
 2. Fallback: fetch Deployments and StatefulSets in parallel from the K8s API.
 3. Build `WorkloadResponse` for each:
    - Current replicas from `spec.replicas`.
-   - Saved replicas from `previous-replicas` annotation (indicates sleeping).
+   - Saved replicas looked up via `Handler.savedReplicasMap()`, which queries `store.GetAllOpenSnapshots()` and keys by `Kind/Namespace/Name`.
    - Status: `"sleeping"` (saved!=nil, current==0), `"partial"` (saved!=nil, 0 < current < saved), `"running"` (otherwise).
 
 ### `/api/cluster/nodes`

@@ -170,19 +170,19 @@ sleeping or awake at a given point in time.
 operations, persisting workload snapshots for reliable restoration.
 
 **Key responsibilities:**
-- **Sleep:** For each matched workload, annotate the resource with
-  `previous-replicas` (recovery fallback), scale to zero, then persist a
-  `WorkloadSnapshot` to the database. This ordering prevents orphaned snapshots. Then cordon, drain, and delete unprotected nodes.
-- **Wake:** Load snapshots from the most recent sleep execution, restore each
-  workload to its saved replica count, and remove the annotation. After
-  processing DB snapshots, an annotation fallback sweep scans for workloads
-  with `previous-replicas` annotations but no matching snapshot (recovers
-  from DB data loss). Nodes are not managed -- Karpenter provisions new nodes
-  in response to pending pods.
+- **Sleep:** For each matched workload, scale to zero, then persist a
+  `WorkloadSnapshot` to the database. If the scale fails, no snapshot row is
+  written, so a future wake is not confused by orphan rows. Then cordon, drain,
+  and delete unprotected nodes.
+- **Wake:** Load open snapshots for the policy and restore each workload to its
+  saved replica count (`ReplicasBefore`), then close the snapshot by linking it
+  to the wake execution. The `WorkloadSnapshot` table is the sole source of
+  truth -- there is no on-cluster annotation fallback. Nodes are not managed;
+  Karpenter provisions new nodes in response to pending pods.
 - Respect guardrails: skip protected namespaces, labeled nodes, tainted nodes,
   nodes hosting critical-namespace pods, and (when `ProtectCriticalPodNodes` is
   enabled) nodes running `system-node-critical` or `system-cluster-critical` pods.
-- Deduplicate Deployment/StatefulSet dispatch via `workloadOps()` helper, which returns the appropriate get-replicas, scale, and remove-annotation functions for a given kind.
+- Deduplicate Deployment/StatefulSet dispatch via `workloadOps()` helper, which returns the appropriate get-replicas and scale functions for a given kind.
 - Emit structured log lines to a channel for real-time streaming via the Broker.
   Summary lines include wall-clock duration, total K8s API calls, and req/s.
   Before scaling begins, an estimate line logs the predicted call count.
@@ -391,9 +391,9 @@ scheduled exception activation.
 4. **PolicyScaler.RunSleep** begins:
    a. Load guardrails (skip namespaces, protected labels/taints).
    b. Match workloads by `namespace_filter` and `label_selector`.
-   c. Scale matched workloads concurrently: for each workload, annotate
-      `previous-replicas` (fallback), scale to 0, then persist snapshot to DB.
-      This ordering prevents orphaned snapshots. Each scale operation retries
+   c. Scale matched workloads concurrently: for each workload, scale to 0, then
+      persist `WorkloadSnapshot` to DB. If the scale fails, no snapshot row is
+      written, so a future wake is not confused. Each scale operation retries
       on 409 Conflict with exponential backoff.
    d. For each unprotected node: cordon, drain (dynamic timeout: `podCount*15+60`s),
       delete.
@@ -412,10 +412,9 @@ Triggered by the ticker, a manual call, or a scheduled exception ending.
 2. **PolicyScaler.RunWake** loads `WorkloadSnapshot` records from the most
    recent sleep execution.
 3. Restore workloads concurrently (bounded by `scaling_concurrency` guardrail,
-   default 10): for each snapshot, restore the workload to `replicas_before`,
-   remove the `previous-replicas` annotation, update the snapshot with
-   `replicas_restored`. Each scale operation retries on 409 Conflict with
-   exponential backoff.
+   default 10): for each snapshot, scale the workload back to `replicas_before`
+   and update the snapshot with `replicas_restored`. Each scale operation
+   retries on 409 Conflict with exponential backoff.
 4. Nodes are **not** managed. Karpenter detects pending pods and provisions new
    nodes automatically.
 5. `current_state` is set to `awake`.
@@ -492,14 +491,13 @@ kube-phoenix/
 │   │   │   └── broker.go            # WebSocket log pub/sub
 │   │   ├── scaler/
 │   │   │   ├── scaler.go            # Low-level Kubernetes scale helpers, workload entry abstraction, collectFilteredEntries
-│   │   │   ├── policy_scaler.go     # DB-backed sleep/wake with WorkloadSnapshot logic, workloadOps dispatch, annotation fallback
-│   │   │   ├── annotation_fallback_test.go # Tests for annotation-based recovery path
+│   │   │   ├── policy_scaler.go     # DB-backed sleep/wake with WorkloadSnapshot logic, workloadOps dispatch
 │   │   │   └── nodes.go             # Concurrent node drain/delete (classifyNodes, drainNodes, drainConcurrent)
 │   │   ├── policy/
 │   │   │   ├── evaluator.go         # Pure sleep window evaluation (Evaluate, NextTransition)
 │   │   │   └── windows.go           # SleepWindow type definition and validation
 │   │   ├── k8s/
-│   │   │   ├── client.go            # Typed Kubernetes API wrapper (PodLogOptions, annotateResource/removeAnnotation helpers)
+│   │   │   ├── client.go            # Typed Kubernetes API wrapper (PodLogOptions, scale/list/get helpers)
 │   │   │   └── cache.go             # ClusterCache: SharedInformer-driven event cache
 │   │   ├── store/
 │   │   │   ├── models.go            # GORM model structs

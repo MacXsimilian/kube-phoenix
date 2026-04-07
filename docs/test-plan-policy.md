@@ -31,15 +31,14 @@
 21. [Workload Snapshots](#21-workload-snapshots)
 22. [Policy Delete Cascade](#22-policy-delete-cascade)
 23. [Scheduler Recovery on Restart](#23-scheduler-recovery-on-restart)
-24. [Annotation Fallback](#24-annotation-fallback)
-25. [Frontend — Policies List](#25-frontend--policies-list)
-26. [Frontend — Policy Detail](#26-frontend--policy-detail)
-27. [Frontend — Create / Edit Dialog](#27-frontend--create--edit-dialog)
-28. [Frontend — Exception Dialog](#28-frontend--exception-dialog)
-29. [Frontend — Trigger Mode Override](#29-frontend--trigger-mode-override)
-30. [Frontend — Execution History & Log Viewer](#30-frontend--execution-history--log-viewer)
-31. [API Validation & Error Responses](#31-api-validation--error-responses)
-32. [Load & Scale](#32-load--scale)
+24. [Frontend — Policies List](#24-frontend--policies-list)
+25. [Frontend — Policy Detail](#25-frontend--policy-detail)
+26. [Frontend — Create / Edit Dialog](#26-frontend--create--edit-dialog)
+27. [Frontend — Exception Dialog](#27-frontend--exception-dialog)
+28. [Frontend — Trigger Mode Override](#28-frontend--trigger-mode-override)
+29. [Frontend — Execution History & Log Viewer](#29-frontend--execution-history--log-viewer)
+30. [API Validation & Error Responses](#30-api-validation--error-responses)
+31. [Load & Scale](#31-load--scale)
 
 ---
 
@@ -781,203 +780,192 @@ Verify the environment is ready before running any policy tests.
 
 ---
 
-## 24. Annotation Fallback
+## 24. Frontend — Policies List
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 24.1 | Sleep a policy (apply mode) — annotations written to deployments | Verify annotation exists: `kubectl -n team-backend get deployment api -o jsonpath='{.metadata.annotations}'` |
-| 24.2 | Simulate DB snapshot loss (theoretical — hard to test in normal flow) | Snapshot row missing |
-| 24.3 | Wake fires, finds annotation but no DB snapshot | Annotation fallback: restores replicas from annotation |
-| 24.4 | Annotation cleaned up after restore | Annotation removed from deployment |
+| 24.1 | Navigate to `/policies` | Page loads with all policies displayed as cards |
+| 24.2 | Each card shows: name, mode badge, enabled state, current state (LED), next transition countdown | All data visible |
+| 24.3 | Disabled policy has reduced opacity | Visual distinction |
+| 24.4 | Cards show correct state colors: green (awake), purple/blue (sleeping), yellow (transitioning) | Color coding correct |
+| 24.5 | Page auto-refetches every 30s | State changes appear without manual refresh |
+| 24.6 | Click a policy card → navigates to detail page | Routing works |
 
 ---
 
-## 25. Frontend — Policies List
+## 25. Frontend — Policy Detail
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 25.1 | Navigate to `/policies` | Page loads with all policies displayed as cards |
-| 25.2 | Each card shows: name, mode badge, enabled state, current state (LED), next transition countdown | All data visible |
-| 25.3 | Disabled policy has reduced opacity | Visual distinction |
-| 25.4 | Cards show correct state colors: green (awake), purple/blue (sleeping), yellow (transitioning) | Color coding correct |
-| 25.5 | Page auto-refetches every 30s | State changes appear without manual refresh |
-| 25.6 | Click a policy card → navigates to detail page | Routing works |
+| 25.1 | Navigate to `/policies/detail?id={id}` | Detail page loads |
+| 25.2 | Policy metadata section: name, description, mode, timezone, namespace filter, label selector | All fields displayed |
+| 25.3 | Weekly timeline visualization shows sleep windows | Windows rendered correctly across 7-day grid |
+| 25.4 | Exception overlays visible on timeline | Active/pending exceptions shown |
+| 25.5 | Execution history table loaded | Shows recent executions with direction, status, trigger, counts |
+| 25.6 | Click execution row → log viewer populates | Logs for that execution displayed |
+| 25.7 | Exceptions section: lists all exceptions with status badges | Pending/active/completed/cancelled shown |
+| 25.8 | Navigate with `?exec={id}` query param | That execution pre-selected and logs shown |
 
 ---
 
-## 26. Frontend — Policy Detail
-
-| # | Step | Expected Result |
-|---|------|-----------------|
-| 26.1 | Navigate to `/policies/detail?id={id}` | Detail page loads |
-| 26.2 | Policy metadata section: name, description, mode, timezone, namespace filter, label selector | All fields displayed |
-| 26.3 | Weekly timeline visualization shows sleep windows | Windows rendered correctly across 7-day grid |
-| 26.4 | Exception overlays visible on timeline | Active/pending exceptions shown |
-| 26.5 | Execution history table loaded | Shows recent executions with direction, status, trigger, counts |
-| 26.6 | Click execution row → log viewer populates | Logs for that execution displayed |
-| 26.7 | Exceptions section: lists all exceptions with status badges | Pending/active/completed/cancelled shown |
-| 26.8 | Navigate with `?exec={id}` query param | That execution pre-selected and logs shown |
-
----
-
-## 27. Frontend — Create / Edit Dialog
+## 26. Frontend — Create / Edit Dialog
 
 ### 27.1 Create
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 27.1.1 | Open create dialog | Default values: mode=plan, timezone=user default, enabled=on |
-| 27.1.2 | Submit without name | Validation error: name required |
-| 27.1.3 | Submit without sleep windows | Validation error: at least 1 window required |
-| 27.1.4 | Add window via WindowPicker: select days, set times | Window appears in preview |
-| 27.1.5 | Toggle allDay | startTime/endTime pickers hidden |
-| 27.1.6 | Add 10 windows | Max reached — add button disabled |
-| 27.1.7 | Add 11th window | Not allowed (max 10) |
-| 27.1.8 | Fill all fields, submit | Policy created, dialog closes, list refreshes, success toast |
+| 26.1.1 | Open create dialog | Default values: mode=plan, timezone=user default, enabled=on |
+| 26.1.2 | Submit without name | Validation error: name required |
+| 26.1.3 | Submit without sleep windows | Validation error: at least 1 window required |
+| 26.1.4 | Add window via WindowPicker: select days, set times | Window appears in preview |
+| 26.1.5 | Toggle allDay | startTime/endTime pickers hidden |
+| 26.1.6 | Add 10 windows | Max reached — add button disabled |
+| 26.1.7 | Add 11th window | Not allowed (max 10) |
+| 26.1.8 | Fill all fields, submit | Policy created, dialog closes, list refreshes, success toast |
 
 ### 27.2 Edit
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 27.2.1 | Click edit on existing policy | Dialog opens pre-filled with current values |
-| 27.2.2 | Change name | Name updates on save |
-| 27.2.3 | Change mode plan → apply | Overlap check runs. If conflict, error shown |
-| 27.2.4 | Remove all windows | Validation error: at least 1 required |
-| 27.2.5 | Save changes | Policy updated, dialog closes, detail refreshes |
+| 26.2.1 | Click edit on existing policy | Dialog opens pre-filled with current values |
+| 26.2.2 | Change name | Name updates on save |
+| 26.2.3 | Change mode plan → apply | Overlap check runs. If conflict, error shown |
+| 26.2.4 | Remove all windows | Validation error: at least 1 required |
+| 26.2.5 | Save changes | Policy updated, dialog closes, detail refreshes |
 
 ---
 
-## 28. Frontend — Exception Dialog
+## 27. Frontend — Exception Dialog
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 28.1 | Open "Add Exception" | Dialog with type, start/end datetime pickers, optional fields |
-| 28.2 | Select type: stay_awake | Type set |
-| 28.3 | Set start before end | Accepted |
-| 28.4 | Set start after end | Validation error |
-| 28.5 | Fill ticket ref: `JIRA-456` | Optional field accepted |
-| 28.6 | Fill reason: `Emergency maintenance` | Optional field accepted |
-| 28.7 | Toggle sleepOnEnd off | Checkbox unchecked |
-| 28.8 | Submit | Exception created, exceptions section refreshes |
-| 28.9 | Edit a pending exception | Dialog opens pre-filled, can modify |
-| 28.10 | Delete a pending exception | Confirmation, then removed |
-| 28.11 | Cancel an active exception | Cancel button, confirmation, status → cancelled |
+| 27.1 | Open "Add Exception" | Dialog with type, start/end datetime pickers, optional fields |
+| 27.2 | Select type: stay_awake | Type set |
+| 27.3 | Set start before end | Accepted |
+| 27.4 | Set start after end | Validation error |
+| 27.5 | Fill ticket ref: `JIRA-456` | Optional field accepted |
+| 27.6 | Fill reason: `Emergency maintenance` | Optional field accepted |
+| 27.7 | Toggle sleepOnEnd off | Checkbox unchecked |
+| 27.8 | Submit | Exception created, exceptions section refreshes |
+| 27.9 | Edit a pending exception | Dialog opens pre-filled, can modify |
+| 27.10 | Delete a pending exception | Confirmation, then removed |
+| 27.11 | Cancel an active exception | Cancel button, confirmation, status → cancelled |
 
 ---
 
-## 29. Frontend — Trigger Mode Override
+## 28. Frontend — Trigger Mode Override
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 29.1 | Click Sleep on an awake policy | TriggerModeDialog opens |
-| 29.2 | Shows options: use policy default, plan, apply | All options visible |
-| 29.3 | Select "plan" override on an apply-mode policy | Confirms dry-run intent |
-| 29.4 | Confirm | Execution fires with overridden mode. Redirects to execution logs |
-| 29.5 | Cancel the dialog | No execution triggered |
+| 28.1 | Click Sleep on an awake policy | TriggerModeDialog opens |
+| 28.2 | Shows options: use policy default, plan, apply | All options visible |
+| 28.3 | Select "plan" override on an apply-mode policy | Confirms dry-run intent |
+| 28.4 | Confirm | Execution fires with overridden mode. Redirects to execution logs |
+| 28.5 | Cancel the dialog | No execution triggered |
 
 ---
 
-## 30. Frontend — Execution History & Log Viewer
+## 29. Frontend — Execution History & Log Viewer
 
 ### 30.1 Execution Table
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 30.1.1 | View execution history on policy detail | Table with columns: date, direction, status, trigger, mode, counts |
-| 30.1.2 | Status badges: running (yellow), success (green), failed (red), interrupted (orange) | Color coded |
-| 30.1.3 | Direction: sleep (moon icon) / wake (sun icon) | Visual indicators |
-| 30.1.4 | Paginate through >20 executions | Pagination controls work |
+| 29.1.1 | View execution history on policy detail | Table with columns: date, direction, status, trigger, mode, counts |
+| 29.1.2 | Status badges: running (yellow), success (green), failed (red), interrupted (orange) | Color coded |
+| 29.1.3 | Direction: sleep (moon icon) / wake (sun icon) | Visual indicators |
+| 29.1.4 | Paginate through >20 executions | Pagination controls work |
 
 ### 30.2 Log Viewer
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 30.2.1 | Select a completed execution | Logs load via REST |
-| 30.2.2 | Log lines color-coded by level: info (gray), ok (green), plan (blue), error (red), warn (yellow) | Colors match levels |
-| 30.2.3 | Select a running execution | WebSocket connects, logs stream in real-time |
-| 30.2.4 | Execution completes while watching | Stream ends, final state consistent |
-| 30.2.5 | Scroll through long log output | Smooth scrolling, no truncation in viewer |
+| 29.2.1 | Select a completed execution | Logs load via REST |
+| 29.2.2 | Log lines color-coded by level: info (gray), ok (green), plan (blue), error (red), warn (yellow) | Colors match levels |
+| 29.2.3 | Select a running execution | WebSocket connects, logs stream in real-time |
+| 29.2.4 | Execution completes while watching | Stream ends, final state consistent |
+| 29.2.5 | Scroll through long log output | Smooth scrolling, no truncation in viewer |
 
 ---
 
-## 31. API Validation & Error Responses
+## 30. API Validation & Error Responses
 
 ### 31.1 Field Validation
 
 | # | Input | Expected |
 |---|-------|----------|
-| 31.1.1 | name: "" (empty) | 400: name required |
-| 31.1.2 | name: 256 chars | 400: max 255 characters |
-| 31.1.3 | description: 1025 chars | 400: max 1024 characters |
-| 31.1.4 | labelSelector: 4097 chars | 400: max 4096 characters |
-| 31.1.5 | labelSelector: `!!invalid` | 400: invalid label selector |
-| 31.1.6 | namespaceFilter: `UPPERCASE` | 400: must match RFC 1123 |
-| 31.1.7 | namespaceFilter: `a-name-longer-than-63-characters-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` | 400: max 63 chars per name |
-| 31.1.8 | timezone: `Fake/Zone` | 400: invalid timezone |
-| 31.1.9 | mode: `destroy` | 400: must be plan or apply |
-| 31.1.10 | timeoutMinutes: -1 | 400: 0-1440 range |
-| 31.1.11 | timeoutMinutes: 1441 | 400: exceeds max |
-| 31.1.12 | sleepWindows: [] (empty) | 400: at least 1 window |
-| 31.1.13 | sleepWindows: 11 windows | 400: max 10 windows |
-| 31.1.14 | window daysOfWeek: [7] | 400: values must be 0-6 |
-| 31.1.15 | window daysOfWeek: [1,1] | 400: duplicate day |
-| 31.1.16 | window startTime: `25:00` | 400: invalid time format |
-| 31.1.17 | window startTime == endTime (not allDay) | 400: start and end must differ |
+| 30.1.1 | name: "" (empty) | 400: name required |
+| 30.1.2 | name: 256 chars | 400: max 255 characters |
+| 30.1.3 | description: 1025 chars | 400: max 1024 characters |
+| 30.1.4 | labelSelector: 4097 chars | 400: max 4096 characters |
+| 30.1.5 | labelSelector: `!!invalid` | 400: invalid label selector |
+| 30.1.6 | namespaceFilter: `UPPERCASE` | 400: must match RFC 1123 |
+| 30.1.7 | namespaceFilter: `a-name-longer-than-63-characters-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` | 400: max 63 chars per name |
+| 30.1.8 | timezone: `Fake/Zone` | 400: invalid timezone |
+| 30.1.9 | mode: `destroy` | 400: must be plan or apply |
+| 30.1.10 | timeoutMinutes: -1 | 400: 0-1440 range |
+| 30.1.11 | timeoutMinutes: 1441 | 400: exceeds max |
+| 30.1.12 | sleepWindows: [] (empty) | 400: at least 1 window |
+| 30.1.13 | sleepWindows: 11 windows | 400: max 10 windows |
+| 30.1.14 | window daysOfWeek: [7] | 400: values must be 0-6 |
+| 30.1.15 | window daysOfWeek: [1,1] | 400: duplicate day |
+| 30.1.16 | window startTime: `25:00` | 400: invalid time format |
+| 30.1.17 | window startTime == endTime (not allDay) | 400: start and end must differ |
 
 ### 31.2 Not Found
 
 | # | Input | Expected |
 |---|-------|----------|
-| 31.2.1 | `GET /api/policies/999999` | 404 |
-| 31.2.2 | `POST /api/policies/999999/sleep` | 404 |
-| 31.2.3 | `GET /api/policy-executions/999999` | 404 |
+| 30.2.1 | `GET /api/policies/999999` | 404 |
+| 30.2.2 | `POST /api/policies/999999/sleep` | 404 |
+| 30.2.3 | `GET /api/policy-executions/999999` | 404 |
 
 ### 31.3 Conflict
 
 | # | Input | Expected |
 |---|-------|----------|
-| 31.3.1 | Create overlapping apply-mode policy | 409: overlap |
-| 31.3.2 | Trigger sleep while transitioning | 409: already executing |
-| 31.3.3 | Edit non-pending exception | 409: only pending editable |
-| 31.3.4 | Create overlapping opposite-type exception | 409: exception overlap |
+| 30.3.1 | Create overlapping apply-mode policy | 409: overlap |
+| 30.3.2 | Trigger sleep while transitioning | 409: already executing |
+| 30.3.3 | Edit non-pending exception | 409: only pending editable |
+| 30.3.4 | Create overlapping opposite-type exception | 409: exception overlap |
 
 ---
 
-## 32. Load & Scale
+## 31. Load & Scale
 
 ### 32.1 Large Execution (All Namespaces)
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 32.1.1 | Create apply-mode policy with no namespace filter | Targets all 72 deployments, 240 pods |
-| 32.1.2 | Trigger sleep | All 240 pods scale to 0. Execution completes within timeout |
-| 32.1.3 | Verify `countScaled` = 72 | All deployments processed |
-| 32.1.4 | Verify 72 snapshots created | One per deployment |
-| 32.1.5 | Trigger wake | All 240 pods restored |
-| 32.1.6 | Verify `countScaled` = 72 on wake | All restored |
+| 31.1.1 | Create apply-mode policy with no namespace filter | Targets all 72 deployments, 240 pods |
+| 31.1.2 | Trigger sleep | All 240 pods scale to 0. Execution completes within timeout |
+| 31.1.3 | Verify `countScaled` = 72 | All deployments processed |
+| 31.1.4 | Verify 72 snapshots created | One per deployment |
+| 31.1.5 | Trigger wake | All 240 pods restored |
+| 31.1.6 | Verify `countScaled` = 72 on wake | All restored |
 
 ### 32.2 Multiple Concurrent Policies
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 32.2.1 | Create 5 apply-mode policies, each targeting a different namespace | No overlap |
-| 32.2.2 | Configure windows so all transition at the same time | Scheduler evaluates all 5 in same tick |
-| 32.2.3 | Wait for scheduled transition | All 5 execute concurrently (separate goroutines) |
-| 32.2.4 | All 5 succeed | No race conditions, no missed transitions |
+| 31.2.1 | Create 5 apply-mode policies, each targeting a different namespace | No overlap |
+| 31.2.2 | Configure windows so all transition at the same time | Scheduler evaluates all 5 in same tick |
+| 31.2.3 | Wait for scheduled transition | All 5 execute concurrently (separate goroutines) |
+| 31.2.4 | All 5 succeed | No race conditions, no missed transitions |
 
 ### 32.3 Rapid Manual Triggers
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 32.3.1 | Sleep policy A, immediately wake, immediately sleep | Each trigger waits for previous to complete or returns 409 |
-| 32.3.2 | No double-scaling or lost snapshots | State machine integrity maintained |
+| 31.3.1 | Sleep policy A, immediately wake, immediately sleep | Each trigger waits for previous to complete or returns 409 |
+| 31.3.2 | No double-scaling or lost snapshots | State machine integrity maintained |
 
 ### 32.4 Many Exceptions
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 32.4.1 | Create 10 scheduled exceptions on a single policy (non-overlapping, same type) | All created |
-| 32.4.2 | Each activates and completes in sequence | State transitions correct throughout |
+| 31.4.1 | Create 10 scheduled exceptions on a single policy (non-overlapping, same type) | All created |
+| 31.4.2 | Each activates and completes in sequence | State transitions correct throughout |
 
 ---
 
