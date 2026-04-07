@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.37](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.36...v0.5.37) (2026-04-07)
+
+
+### Features
+
+* **history:** add 100 to rows-per-page options ([#349](https://github.com/MacXsimilian/kube-phoenix/issues/349)) ([e98d0dd](https://github.com/MacXsimilian/kube-phoenix/commit/e98d0dda5359d34d6e55519abe9e49f2e86120b1))
+
 ## [0.5.36](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.35...v0.5.36) (2026-04-06)
 
 
