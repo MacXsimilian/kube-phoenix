@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
@@ -112,7 +111,7 @@ func (h *Handler) buildOverview() OverviewResponse {
 	if h.cache != nil {
 		if snap := h.cache.Snapshot(); snap.Ready() {
 			resp.CacheAgeMs = snap.AgeMs()
-			populateWorkloadCounts(&resp, snap)
+			populateWorkloadCounts(&resp, snap, h.savedReplicasMap())
 		}
 	}
 
@@ -122,21 +121,22 @@ func (h *Handler) buildOverview() OverviewResponse {
 
 // replicaInfo holds the fields needed to classify a workload's sleep status.
 type replicaInfo struct {
-	Namespace   string
-	Replicas    *int32
-	Annotations map[string]string
+	Kind      string
+	Namespace string
+	Name      string
+	Replicas  *int32
 }
 
 // countWorkloads tallies running vs sleeping workloads and tracks sleeping-by-namespace.
-func countWorkloads(items []replicaInfo) (running, sleeping int, nsSleep map[string]int) {
+func countWorkloads(items []replicaInfo, saved map[string]int32) (running, sleeping int, nsSleep map[string]int) {
 	nsSleep = map[string]int{}
 	for _, item := range items {
 		current := int32(0)
 		if item.Replicas != nil {
 			current = *item.Replicas
 		}
-		saved := parseSavedReplicas(item.Annotations)
-		if workloadStatus(current, saved) == "sleeping" {
+		savedPtr := lookupSaved(saved, item.Kind, item.Namespace, item.Name)
+		if workloadStatus(current, savedPtr) == "sleeping" {
 			sleeping++
 			nsSleep[item.Namespace]++
 		} else {
@@ -146,29 +146,16 @@ func countWorkloads(items []replicaInfo) (running, sleeping int, nsSleep map[str
 	return
 }
 
-func parseSavedReplicas(annotations map[string]string) *int32 {
-	v, ok := annotations["previous-replicas"]
-	if !ok {
-		return nil
-	}
-	n, err := strconv.ParseInt(v, 10, 32)
-	if err != nil {
-		return nil
-	}
-	n32 := int32(n)
-	return &n32
-}
-
-func populateWorkloadCounts(resp *OverviewResponse, snap k8s.CachedSnapshot) {
+func populateWorkloadCounts(resp *OverviewResponse, snap k8s.CachedSnapshot, saved map[string]int32) {
 	items := make([]replicaInfo, 0, len(snap.Deployments)+len(snap.StatefulSets))
 	for _, d := range snap.Deployments {
-		items = append(items, replicaInfo{Namespace: d.Namespace, Replicas: d.Spec.Replicas, Annotations: d.Annotations})
+		items = append(items, replicaInfo{Kind: "Deployment", Namespace: d.Namespace, Name: d.Name, Replicas: d.Spec.Replicas})
 	}
 	for _, ss := range snap.StatefulSets {
-		items = append(items, replicaInfo{Namespace: ss.Namespace, Replicas: ss.Spec.Replicas, Annotations: ss.Annotations})
+		items = append(items, replicaInfo{Kind: "StatefulSet", Namespace: ss.Namespace, Name: ss.Name, Replicas: ss.Spec.Replicas})
 	}
 
-	running, sleeping, nsSleep := countWorkloads(items)
+	running, sleeping, nsSleep := countWorkloads(items, saved)
 
 	resp.RunningCount = running
 	resp.SleepingCount = sleeping

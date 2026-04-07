@@ -20,8 +20,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-const annotationKey = "previous-replicas"
-
 // LogLine is emitted during a run and sent to the log channel.
 type LogLine struct {
 	Level   string // "info" | "ok" | "plan" | "error" | "warn"
@@ -118,19 +116,15 @@ func formatWorkload(kind, ns, name string) string {
 // workloadEntry is a uniform representation of a Deployment or StatefulSet
 // used by the shared scale-down and scale-up helpers.
 type workloadEntry struct {
-	Kind             string
-	Namespace        string
-	Name             string
-	Replicas         int32
-	Annotations      map[string]string
-	Annotate         func(ctx context.Context, ns, name, key, value string) error
-	Scale            func(ctx context.Context, ns, name string, replicas int32) error
-	RemoveAnnotation func(ctx context.Context, ns, name, key string) error
+	Kind      string
+	Namespace string
+	Name      string
+	Replicas  int32
+	Scale     func(ctx context.Context, ns, name string, replicas int32) error
 }
 
 // deploymentToEntry converts a Deployment into a workloadEntry, populating the
-// function pointers from the k8s client. Fields that are unused by the caller
-// (e.g. Annotate for scale-up, RemoveAnnotation for scale-down) are left nil.
+// scale function pointer from the k8s client.
 func (r *Runner) deploymentToEntry(d appsv1.Deployment) workloadEntry {
 	replicas := int32(0)
 	if d.Spec.Replicas != nil {
@@ -138,9 +132,7 @@ func (r *Runner) deploymentToEntry(d appsv1.Deployment) workloadEntry {
 	}
 	return workloadEntry{
 		Kind: "Deployment", Namespace: d.Namespace, Name: d.Name,
-		Replicas: replicas, Annotations: d.Annotations,
-		Annotate: r.k8s.AnnotateDeployment, Scale: r.k8s.ScaleDeployment,
-		RemoveAnnotation: r.k8s.RemoveDeploymentAnnotation,
+		Replicas: replicas, Scale: r.k8s.ScaleDeployment,
 	}
 }
 
@@ -152,9 +144,7 @@ func (r *Runner) statefulSetToEntry(ss appsv1.StatefulSet) workloadEntry {
 	}
 	return workloadEntry{
 		Kind: "StatefulSet", Namespace: ss.Namespace, Name: ss.Name,
-		Replicas: replicas, Annotations: ss.Annotations,
-		Annotate: r.k8s.AnnotateStatefulSet, Scale: r.k8s.ScaleStatefulSet,
-		RemoveAnnotation: r.k8s.RemoveStatefulSetAnnotation,
+		Replicas: replicas, Scale: r.k8s.ScaleStatefulSet,
 	}
 }
 

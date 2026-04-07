@@ -167,10 +167,6 @@ func (c *Client) ClusterInfo(ctx context.Context) (ClusterInfoResult, error) {
 	return info, nil
 }
 
-func recordK8sOp(verb, resource string, start time.Time, err error) {
-	recordK8sOpWith(nil, verb, resource, start, err)
-}
-
 func recordK8sOpWith(cr CallRecorder, verb, resource string, start time.Time, err error) {
 	status := "success"
 	statusCode := 200
@@ -301,91 +297,6 @@ func (c *Client) ScaleDeployment(ctx context.Context, namespace, name string, re
 	return err
 }
 
-// annotateResource sets an annotation on any resource via get/update funcs.
-func annotateResource(
-	namespace, name, key, value, resource string,
-	getAnnotations func() (map[string]string, error),
-	setAndUpdate func(map[string]string) error,
-) error {
-	start := time.Now()
-	err := retryOnConflict(func() error {
-		annotations, err := getAnnotations()
-		if err != nil {
-			return fmt.Errorf("get %s %s/%s: %w", resource, namespace, name, err)
-		}
-		if annotations == nil {
-			annotations = map[string]string{}
-		}
-		annotations[key] = value
-		if err := setAndUpdate(annotations); err != nil {
-			return fmt.Errorf("annotate %s %s/%s: %w", resource, namespace, name, err)
-		}
-		return nil
-	})
-	recordK8sOp("annotate", resource, start, err)
-	return err
-}
-
-// removeAnnotation removes an annotation from any resource via get/update funcs.
-func removeAnnotation(
-	namespace, name, key, resource string,
-	getAnnotations func() (map[string]string, error),
-	setAndUpdate func(map[string]string) error,
-) error {
-	start := time.Now()
-	err := retryOnConflict(func() error {
-		annotations, err := getAnnotations()
-		if err != nil {
-			return fmt.Errorf("get %s %s/%s: %w", resource, namespace, name, err)
-		}
-		delete(annotations, key)
-		if err := setAndUpdate(annotations); err != nil {
-			return fmt.Errorf("remove annotation %s %s/%s: %w", resource, namespace, name, err)
-		}
-		return nil
-	})
-	recordK8sOp("annotate", resource, start, err)
-	return err
-}
-
-func (c *Client) AnnotateDeployment(ctx context.Context, namespace, name, key, value string) error {
-	var d *appsv1.Deployment
-	return annotateResource(namespace, name, key, value, "deployment",
-		func() (map[string]string, error) {
-			var err error
-			d, err = c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
-			if err != nil {
-				return nil, err
-			}
-			return d.Annotations, nil
-		},
-		func(a map[string]string) error {
-			d.Annotations = a
-			_, err := c.cs.AppsV1().Deployments(namespace).Update(ctx, d, metav1.UpdateOptions{})
-			return err
-		},
-	)
-}
-
-func (c *Client) RemoveDeploymentAnnotation(ctx context.Context, namespace, name, key string) error {
-	var d *appsv1.Deployment
-	return removeAnnotation(namespace, name, key, "deployment",
-		func() (map[string]string, error) {
-			var err error
-			d, err = c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
-			if err != nil {
-				return nil, err
-			}
-			return d.Annotations, nil
-		},
-		func(a map[string]string) error {
-			d.Annotations = a
-			_, err := c.cs.AppsV1().Deployments(namespace).Update(ctx, d, metav1.UpdateOptions{})
-			return err
-		},
-	)
-}
-
 // ─── StatefulSets ─────────────────────────────────────────────────────────────
 
 func (c *Client) ListStatefulSets(ctx context.Context, namespace string) ([]appsv1.StatefulSet, error) {
@@ -437,44 +348,6 @@ func (c *Client) ScaleStatefulSet(ctx context.Context, namespace, name string, r
 	err := c.scaleWithRetry(ctx, namespace, name, replicas, ss.GetScale, ss.UpdateScale)
 	recordK8sOpWith(c.callRecorder, "scale", "statefulset", start, err)
 	return err
-}
-
-func (c *Client) AnnotateStatefulSet(ctx context.Context, namespace, name, key, value string) error {
-	var ss *appsv1.StatefulSet
-	return annotateResource(namespace, name, key, value, "statefulset",
-		func() (map[string]string, error) {
-			var err error
-			ss, err = c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
-			if err != nil {
-				return nil, err
-			}
-			return ss.Annotations, nil
-		},
-		func(a map[string]string) error {
-			ss.Annotations = a
-			_, err := c.cs.AppsV1().StatefulSets(namespace).Update(ctx, ss, metav1.UpdateOptions{})
-			return err
-		},
-	)
-}
-
-func (c *Client) RemoveStatefulSetAnnotation(ctx context.Context, namespace, name, key string) error {
-	var ss *appsv1.StatefulSet
-	return removeAnnotation(namespace, name, key, "statefulset",
-		func() (map[string]string, error) {
-			var err error
-			ss, err = c.cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
-			if err != nil {
-				return nil, err
-			}
-			return ss.Annotations, nil
-		},
-		func(a map[string]string) error {
-			ss.Annotations = a
-			_, err := c.cs.AppsV1().StatefulSets(namespace).Update(ctx, ss, metav1.UpdateOptions{})
-			return err
-		},
-	)
 }
 
 // ─── Nodes ────────────────────────────────────────────────────────────────────

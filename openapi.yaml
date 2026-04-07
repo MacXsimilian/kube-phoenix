@@ -232,7 +232,7 @@ components:
           type: integer
         savedReplicas:
           type: ["integer", "null"]
-          description: Original replica count stored in the `previous-replicas` annotation. Null if not sleeping.
+          description: Original replica count from the open WorkloadSnapshot (DB). Null if the workload is not sleeping under any policy.
         readyReplicas:
           type: integer
         status:
@@ -1354,7 +1354,7 @@ paths:
     get:
       operationId: listWorkloads
       summary: List workloads
-      description: Returns all Deployments and StatefulSets with sleep status derived from the `previous-replicas` annotation.
+      description: Returns all Deployments and StatefulSets with sleep status derived from open WorkloadSnapshot rows in the database.
       tags: [Cluster]
       responses:
         "200":

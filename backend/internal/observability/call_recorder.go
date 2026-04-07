@@ -154,8 +154,6 @@ var routeComponentMap = map[string]routeInfo{
 	"K8S cordon node":          {"k8s-client", "CordonNode", "k8s"},
 	"K8S drain node":           {"k8s-client", "DrainNode", "k8s"},
 	"K8S delete node":          {"k8s-client", "DeleteNode", "k8s"},
-	"K8S annotate deployment":  {"k8s-client", "AnnotateDeployment", "k8s"},
-	"K8S annotate statefulset": {"k8s-client", "AnnotateStatefulSet", "k8s"},
 }
 
 // skipRecorderRoutes are routes excluded from the call feed ring buffer:

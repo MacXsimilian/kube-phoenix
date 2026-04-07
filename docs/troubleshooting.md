@@ -54,28 +54,26 @@ If you need to resolve it immediately:
 
 1. Check whether workloads are in an inconsistent state. Some may have been scaled to zero while others were not.
 2. Open the execution log to see the last successful log lines.
-3. Use **Wake Now** or **Sleep Now** to drive the policy to a clean state.
-4. To find workloads that were partially scaled:
+3. Use **Wake Now** or **Sleep Now** to drive the policy to a clean state. Open `WorkloadSnapshot` rows in the database are the source of truth for what still needs restoring.
 
-```bash
-kubectl get deployments -A -o json | \
-  jq '.items[] | select(.metadata.annotations["previous-replicas"]) | .metadata.namespace + "/" + .metadata.name'
-```
+## Workload stuck at zero replicas after a failed wake
 
-## Workload stuck with `previous-replicas` annotation
-
-**Problem:** A workload has `replicas=0` and the `kube-phoenix/previous-replicas` annotation, but the wake never completed.
+**Problem:** A workload has `replicas=0` and an open `WorkloadSnapshot` row exists in the database, but the wake never completed.
 
 **Cause:** A wake execution was interrupted or partially failed.
 
 **Solution:**
 
-```bash
-# Restore replicas (replace <n> with the value from the annotation)
-kubectl scale deployment <name> -n <namespace> --replicas=<n>
+Trigger **Wake Now** for the policy. The wake routine reads open snapshots from the database and restores each workload to its original `ReplicasBefore` value, then closes the snapshot. If the workload no longer exists, the snapshot is marked deleted-at-wake and skipped.
 
-# Remove the annotation
-kubectl annotate deployment <name> -n <namespace> previous-replicas-
+If you need to inspect or clean up open snapshots manually, query the `workload_snapshots` table:
+
+```sql
+SELECT id, kind, namespace, name, replicas_before
+FROM workload_snapshots
+WHERE wake_execution_id IS NULL
+  AND was_deleted_at_wake = false
+  AND was_already_zero = false;
 ```
 
 Then review the failed execution log to understand the root cause.
