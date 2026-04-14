@@ -66,6 +66,25 @@ func wsSendLines(conn *websocket.Conn, lines []store.PolicyLogLine) bool {
 	return true
 }
 
+// wsSendReplayAfterDB sends replay-buffer lines whose Seq is greater than the
+// max Seq already returned by the database, deduping the overlap window between
+// persisted history and the live broker stream. Returns false if sending fails.
+func wsSendReplayAfterDB(conn *websocket.Conn, dbLines, replayLines []store.PolicyLogLine) bool {
+	maxDBSeq := 0
+	for _, line := range dbLines {
+		if line.Seq > maxDBSeq {
+			maxDBSeq = line.Seq
+		}
+	}
+	tail := make([]store.PolicyLogLine, 0, len(replayLines))
+	for _, line := range replayLines {
+		if line.Seq > maxDBSeq {
+			tail = append(tail, line)
+		}
+	}
+	return wsSendLines(conn, tail)
+}
+
 // wsDrainChannel sends any remaining buffered lines from a subscription channel.
 func wsDrainChannel(conn *websocket.Conn, sub <-chan store.PolicyLogLine) {
 	for {
