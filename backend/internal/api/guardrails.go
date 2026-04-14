@@ -99,6 +99,16 @@ var guardrailStringChecks = []guardrailStringCheck{
 	{"schedulerEvalInterval", validateSchedulerEvalInterval},
 }
 
+var guardrailIntChecks = []struct {
+	key string
+	min float64
+	max float64
+}{
+	{"scalingConcurrency", 1, 50},
+	{"wakeWaveSize", 0, 200},
+	{"wakeWavePauseSeconds", 10, 600},
+}
+
 // validateGuardrailFields validates guardrail update fields. Returns an error message or "".
 func validateGuardrailFields(body map[string]interface{}) string {
 	for _, check := range guardrailStringChecks {
@@ -114,23 +124,24 @@ func validateGuardrailFields(body map[string]interface{}) string {
 			return msg
 		}
 	}
-	if v, ok := body["scalingConcurrency"]; ok {
-		n, ok := v.(float64)
-		if !ok || n < 1 || n > 50 || n != float64(int(n)) {
-			return "scalingConcurrency must be a whole number between 1 and 50"
+	for _, check := range guardrailIntChecks {
+		if msg := validateBoundedWholeNumber(body, check.key, check.min, check.max); msg != "" {
+			return msg
 		}
 	}
-	if v, ok := body["wakeWaveSize"]; ok {
-		n, ok := v.(float64)
-		if !ok || n < 0 || n > 200 || n != float64(int(n)) {
-			return "wakeWaveSize must be a whole number between 0 and 200"
-		}
+	return ""
+}
+
+// validateBoundedWholeNumber returns an error message when body[key] is present
+// but not a whole number in [min, max], or "" when missing or valid.
+func validateBoundedWholeNumber(body map[string]interface{}, key string, min, max float64) string {
+	v, ok := body[key]
+	if !ok {
+		return ""
 	}
-	if v, ok := body["wakeWavePauseSeconds"]; ok {
-		n, ok := v.(float64)
-		if !ok || n < 10 || n > 600 || n != float64(int(n)) {
-			return "wakeWavePauseSeconds must be a whole number between 10 and 600"
-		}
+	n, ok := v.(float64)
+	if !ok || n < min || n > max || n != float64(int(n)) {
+		return fmt.Sprintf("%s must be a whole number between %d and %d", key, int(min), int(max))
 	}
 	return ""
 }
