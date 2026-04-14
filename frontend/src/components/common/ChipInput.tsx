@@ -50,12 +50,26 @@ export function ChipInput({
   return (
     <Box>
       {label && (
-        <Typography component="label" htmlFor={id} variant="body2" fontWeight={600} mb={1} display="block">
+        <Typography
+          component="label"
+          htmlFor={id}
+          variant="body2"
+          sx={{
+            fontWeight: 600,
+            mb: 1,
+            display: "block"
+          }}>
           {label}
         </Typography>
       )}
       {hint && (
-        <Typography variant="caption" color="text.secondary" display="block" mb={1}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            display: "block",
+            mb: 1
+          }}>
           {hint}
         </Typography>
       )}
@@ -91,5 +105,5 @@ export function ChipInput({
         )}
       </Box>
     </Box>
-  )
+  );
 }

@@ -21,21 +21,29 @@ export default function PolicyMetadataRow({ policy }: { policy: Policy }) {
       }}
     >
       <Box>
-        <Typography variant="caption" color="text.disabled">Timezone</Typography>
+        <Typography variant="caption" sx={{
+          color: "text.disabled"
+        }}>Timezone</Typography>
         <Typography variant="body2">{policy.timezone || 'UTC'}</Typography>
       </Box>
       {policy.namespaceFilter && (
         <Box>
-          <Typography variant="caption" color="text.disabled">Namespaces</Typography>
+          <Typography variant="caption" sx={{
+            color: "text.disabled"
+          }}>Namespaces</Typography>
           <Typography variant="body2">{policy.namespaceFilter}</Typography>
         </Box>
       )}
       {policy.labelSelector && (
         <Box>
-          <Typography variant="caption" color="text.disabled">Label Selector</Typography>
-          <Typography variant="body2" fontFamily="monospace">{policy.labelSelector}</Typography>
+          <Typography variant="caption" sx={{
+            color: "text.disabled"
+          }}>Label Selector</Typography>
+          <Typography variant="body2" sx={{
+            fontFamily: "monospace"
+          }}>{policy.labelSelector}</Typography>
         </Box>
       )}
     </Box>
-  )
+  );
 }

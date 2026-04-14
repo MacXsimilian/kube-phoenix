@@ -8,7 +8,12 @@ import ActivityFeed from '@/components/overview/ActivityFeed'
 export default function OverviewPage() {
   return (
     <>
-      <Typography variant="h5" fontWeight={700} mb={3}>
+      <Typography
+        variant="h5"
+        sx={{
+          fontWeight: 700,
+          mb: 3
+        }}>
         Overview
       </Typography>
       <Grid container spacing={3}>
@@ -20,5 +25,5 @@ export default function OverviewPage() {
         </Grid>
       </Grid>
     </>
-  )
+  );
 }

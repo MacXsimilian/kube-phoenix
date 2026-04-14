@@ -24,8 +24,8 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import CloudOffIcon from '@mui/icons-material/CloudOff'
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlineOutlined'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlineOutlined'
 import { getPolicyExecutions } from '@/lib/api'
 import { fmtDtShort, fmtDuration } from '@/lib/formatters'
 import { useIsDark } from '@/lib/useIsDark'
@@ -46,14 +46,18 @@ function SummaryCell({ exec }: { exec: PolicyExecution }) {
             ? <ArrowUpwardIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
             : <ArrowDownwardIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
           }
-          <Typography variant="caption" color="text.secondary">{exec.countScaled}</Typography>
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>{exec.countScaled}</Typography>
         </Box>
       </Tooltip>
       {exec.countDrained > 0 && (
         <Tooltip title="Drained">
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
             <CloudOffIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
-            <Typography variant="caption" color="text.secondary">{exec.countDrained}</Typography>
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>{exec.countDrained}</Typography>
           </Box>
         </Tooltip>
       )}
@@ -61,7 +65,9 @@ function SummaryCell({ exec }: { exec: PolicyExecution }) {
         <Tooltip title="Deleted">
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
             <DeleteOutlineIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
-            <Typography variant="caption" color="text.secondary">{exec.countDeleted}</Typography>
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>{exec.countDeleted}</Typography>
           </Box>
         </Tooltip>
       )}
@@ -69,12 +75,14 @@ function SummaryCell({ exec }: { exec: PolicyExecution }) {
         <Tooltip title="Errors">
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
             <ErrorOutlineIcon sx={{ fontSize: 12, color: 'error.main' }} />
-            <Typography variant="caption" color="error.main">{exec.countErrors}</Typography>
+            <Typography variant="caption" sx={{
+              color: "error.main"
+            }}>{exec.countErrors}</Typography>
           </Box>
         </Tooltip>
       )}
     </Box>
-  )
+  );
 }
 
 export default function PolicyExecutionTable({
@@ -145,7 +153,6 @@ export default function PolicyExecutionTable({
           <MenuItem value="wake">Wake</MenuItem>
         </TextField>
       </Box>
-
       <Paper>
       {isError && (
         <Alert severity="warning" sx={{ mx: 2, mt: 2 }}>
@@ -179,7 +186,13 @@ export default function PolicyExecutionTable({
                 {!data?.items?.length ? (
                   <TableRow>
                     <TableCell colSpan={8}>
-                      <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "text.secondary",
+                          py: 3,
+                          textAlign: 'center'
+                        }}>
                         {isError ? 'Could not load executions.' : 'No executions yet.'}
                       </Typography>
                     </TableCell>
@@ -244,5 +257,5 @@ export default function PolicyExecutionTable({
       )}
     </Paper>
     </>
-  )
+  );
 }

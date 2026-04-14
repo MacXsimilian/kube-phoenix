@@ -83,7 +83,14 @@ export default function NodeDetailDrawer({ node, onClose }: NodeDetailDrawerProp
     if (selectedPod) {
       return (
         <>
-          <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11, display: 'block', mb: 0.25 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.disabled",
+              fontSize: 11,
+              display: 'block',
+              mb: 0.25
+            }}>
             {node.name}
           </Typography>
           <Typography
@@ -92,11 +99,16 @@ export default function NodeDetailDrawer({ node, onClose }: NodeDetailDrawerProp
           >
             {selectedPod.name}
           </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              fontSize: 11
+            }}>
             {selectedPod.namespace}
           </Typography>
         </>
-      )
+      );
     }
     return (
       <>
@@ -108,22 +120,30 @@ export default function NodeDetailDrawer({ node, onClose }: NodeDetailDrawerProp
         </Typography>
         <Box sx={{ display: 'flex', gap: 0.75, mt: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
           {node.instanceType && (
-            <Typography variant="caption" color="text.secondary">{node.instanceType}</Typography>
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>{node.instanceType}</Typography>
           )}
           {node.zone && (
             <>
-              <Typography variant="caption" color="text.disabled">·</Typography>
-              <Typography variant="caption" color="text.secondary">{node.zone}</Typography>
+              <Typography variant="caption" sx={{
+                color: "text.disabled"
+              }}>·</Typography>
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>{node.zone}</Typography>
             </>
           )}
-          <Typography variant="caption" color="text.disabled">·</Typography>
+          <Typography variant="caption" sx={{
+            color: "text.disabled"
+          }}>·</Typography>
           {statusColor && <Chip label={statusColor.label} size="small" sx={{ height: 18, fontSize: 10, bgcolor: statusColor.bgcolor, color: statusColor.color }} />}
           {node.cordoned && (
             <Chip label="Cordoned" size="small" sx={{ height: 18, fontSize: 10, bgcolor: colors.errorBg, color: colors.errorLight }} />
           )}
         </Box>
       </>
-    )
+    );
   }
 
   const renderPodTableBody = (filteredPods: NodePod[], onSelectPod: (pod: NodePod) => void) => {
@@ -141,7 +161,15 @@ export default function NodeDetailDrawer({ node, onClose }: NodeDetailDrawerProp
             sx={{ bgcolor: 'rgba(124,58,237,0.06)', borderBottom: '1px solid', borderColor: 'divider', py: 0.5 }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="caption" fontWeight={700} sx={{ color: 'primary.light', textTransform: 'uppercase', letterSpacing: 0.8, fontSize: 10 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  fontWeight: 700,
+                  color: 'primary.light',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.8,
+                  fontSize: 10
+                }}>
                 {ns}
               </Typography>
               <Chip
@@ -156,7 +184,7 @@ export default function NodeDetailDrawer({ node, onClose }: NodeDetailDrawerProp
           <PodRow key={pod.name} pod={pod} onClick={() => onSelectPod(pod)} showOwner />
         ))}
       </React.Fragment>
-    ))
+    ));
   }
 
   return (

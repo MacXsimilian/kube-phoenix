@@ -43,26 +43,38 @@ export default function AuditRow({ entry }: { entry: AuditLogEntry }) {
         </TableCell>
         <TableCell>
           <Tooltip title={fmtUTC(entry.timestamp)} arrow placement="top">
-            <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums', cursor: 'default' }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.secondary",
+                fontVariantNumeric: 'tabular-nums',
+                cursor: 'default'
+              }}>
               {fmtDt(entry.timestamp)}
             </Typography>
           </Tooltip>
         </TableCell>
         <TableCell>
-          <Typography variant="body2" fontWeight={600}>{entry.username}</Typography>
+          <Typography variant="body2" sx={{
+            fontWeight: 600
+          }}>{entry.username}</Typography>
         </TableCell>
         <TableCell>
           <Chip label={formatActionLabel(entry.action)} size="small" color={actionColor(entry.action)} variant="outlined" />
         </TableCell>
         <TableCell>
           {entry.resourceType && (
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>
               {entry.resourceType}{entry.resourceId != null ? ` #${entry.resourceId}` : ''}
             </Typography>
           )}
         </TableCell>
         <TableCell>
-          <Typography variant="caption" color="text.secondary">{entry.ipAddress}</Typography>
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>{entry.ipAddress}</Typography>
         </TableCell>
       </TableRow>
       {hasDiff && (
@@ -77,5 +89,5 @@ export default function AuditRow({ entry }: { entry: AuditLogEntry }) {
         </TableRow>
       )}
     </>
-  )
+  );
 }

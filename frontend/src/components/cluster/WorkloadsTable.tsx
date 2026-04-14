@@ -161,20 +161,26 @@ export default function WorkloadsTable() {
           <MenuItem value="unprotected">Unprotected</MenuItem>
         </TextField>
         <Box sx={{ flex: 1 }} />
-        <Typography variant="caption" color="text.disabled">
+        <Typography variant="caption" sx={{
+          color: "text.disabled"
+        }}>
           {dataUpdatedAt ? `Updated ${sinceMs(dataUpdatedAt)}` : ''}
         </Typography>
       </Box>
-
       {/* Row count */}
       {!isLoading && !isError && (
-        <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.disabled",
+            display: 'block',
+            mb: 1
+          }}>
           {sorted.length === workloads.length
             ? `${workloads.length} workload${workloads.length !== 1 ? 's' : ''}`
             : `Showing ${sorted.length} of ${workloads.length} workloads`}
         </Typography>
       )}
-
       {isError ? (
         <Alert severity="error">
           Failed to load workloads: {formatError(error)}
@@ -197,7 +203,13 @@ export default function WorkloadsTable() {
               {sorted.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5}>
-                    <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: "text.secondary",
+                        py: 2,
+                        textAlign: 'center'
+                      }}>
                       No workloads match the current filters.
                     </Typography>
                   </TableCell>
@@ -237,7 +249,12 @@ export default function WorkloadsTable() {
                             {w.currentReplicas}
                           </Typography>
                           {w.savedReplicas !== null && (
-                            <Typography component="span" color="text.secondary" sx={{ fontSize: 12 }}>
+                            <Typography
+                              component="span"
+                              sx={{
+                                color: "text.secondary",
+                                fontSize: 12
+                              }}>
                               / {w.savedReplicas}
                             </Typography>
                           )}
@@ -251,7 +268,7 @@ export default function WorkloadsTable() {
                         />
                       </TableCell>
                     </TableRow>
-                  )
+                  );
                 })
               )}
             </TableBody>
@@ -267,11 +284,10 @@ export default function WorkloadsTable() {
           />
         </TableContainer>
       )}
-
       <WorkloadDetailDrawer
         workload={selectedWorkload}
         onClose={() => setSelectedWorkload(null)}
       />
     </>
-  )
+  );
 }

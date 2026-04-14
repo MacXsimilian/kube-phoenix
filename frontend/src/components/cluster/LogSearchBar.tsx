@@ -37,7 +37,9 @@ export default function LogSearchBar({ search, onSearchChange, matchCount, curre
           ),
           endAdornment: search ? (
             <InputAdornment position="end">
-              <Stack direction="row" alignItems="center" spacing={0.25}>
+              <Stack direction="row" spacing={0.25} sx={{
+                alignItems: "center"
+              }}>
                 <Typography variant="caption" sx={{ color: matchCount > 0 ? 'primary.main' : 'error.main', whiteSpace: 'nowrap' }}>
                   {matchCount > 0 ? `${currentMatchIdx + 1}/${matchCount}` : 'No matches'}
                 </Typography>
@@ -54,5 +56,5 @@ export default function LogSearchBar({ search, onSearchChange, matchCount, curre
         },
       }}
     />
-  )
+  );
 }

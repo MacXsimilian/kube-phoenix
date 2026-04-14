@@ -23,12 +23,17 @@ function HistoryContent() {
 export default function HistoryPage() {
   return (
     <>
-      <Typography variant="h5" fontWeight={700} mb={3}>
+      <Typography
+        variant="h5"
+        sx={{
+          fontWeight: 700,
+          mb: 3
+        }}>
         History
       </Typography>
       <Suspense>
         <HistoryContent />
       </Suspense>
     </>
-  )
+  );
 }

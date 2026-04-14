@@ -43,11 +43,15 @@ export default function AboutBar() {
             <GitHubIcon sx={{ fontSize: 20 }} />
           </IconButton>
           <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-            <Typography variant="body2" fontWeight={600}>
+            <Typography variant="body2" sx={{
+              fontWeight: 600
+            }}>
               kube-phoenix
             </Typography>
             {data ? (
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: "text.secondary"
+              }}>
                 {data.version}
               </Typography>
             ) : (
@@ -58,11 +62,24 @@ export default function AboutBar() {
 
         <Box sx={{ display: 'flex', gap: 3 }}>
           <Box sx={{ textAlign: 'right' }}>
-            <Typography variant="caption" color="text.disabled" sx={{ textTransform: 'uppercase', letterSpacing: 0.4, fontSize: 11 }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.disabled",
+                textTransform: 'uppercase',
+                letterSpacing: 0.4,
+                fontSize: 11
+              }}>
               Go
             </Typography>
             {data ? (
-              <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: 12.5 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                  fontFamily: 'monospace',
+                  fontSize: 12.5
+                }}>
                 {data.goVersion}
               </Typography>
             ) : (
@@ -70,11 +87,23 @@ export default function AboutBar() {
             )}
           </Box>
           <Box sx={{ textAlign: 'right' }}>
-            <Typography variant="caption" color="text.disabled" sx={{ textTransform: 'uppercase', letterSpacing: 0.4, fontSize: 11 }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.disabled",
+                textTransform: 'uppercase',
+                letterSpacing: 0.4,
+                fontSize: 11
+              }}>
               Uptime
             </Typography>
             {data ? (
-              <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12.5 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                  fontSize: 12.5
+                }}>
                 {data.uptime}
               </Typography>
             ) : (
@@ -84,5 +113,5 @@ export default function AboutBar() {
         </Box>
       </CardContent>
     </Card>
-  )
+  );
 }

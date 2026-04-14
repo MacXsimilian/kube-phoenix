@@ -102,7 +102,11 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
                 {c.lastState ? (
                   <Chip label={c.lastState} size="small" sx={{ height: 16, fontSize: 10, bgcolor: colors.errorBg, color: colors.errorLight }} />
                 ) : (
-                  <Typography color="text.disabled" sx={{ fontSize: 12 }}>—</Typography>
+                  <Typography
+                    sx={{
+                      color: "text.disabled",
+                      fontSize: 12
+                    }}>—</Typography>
                 )}
               </TableCell>
             </TableRow>
@@ -111,7 +115,7 @@ function ContainersSection({ containers }: { containers: PodContainer[] }) {
       </Table>
       </Box>
     </Box>
-  )
+  );
 }
 
 function ConditionsSection({ conditions }: { conditions: PodCondition[] }) {
@@ -277,7 +281,6 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
           Logs
         </Button>
       </Box>
-
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
         {[
           ['Node', pod.nodeName || '—'],
@@ -287,39 +290,42 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
           ['Age', podAge(pod.startedAt)],
         ].map(([label, value]) => (
           <Box key={label}>
-            <Typography variant="caption" color="text.disabled" sx={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block' }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.disabled",
+                fontSize: 10,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: 0.8,
+                display: 'block'
+              }}>
               {label}
             </Typography>
             <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 12 }}>{value}</Typography>
           </Box>
         ))}
       </Box>
-
       <Divider />
-
       <ContainersSection containers={pod.containers ?? []} />
-
       {(pod.conditions ?? []).length > 0 && (
         <>
           <Divider />
           <ConditionsSection conditions={pod.conditions ?? []} />
         </>
       )}
-
       {(pod.events ?? []).length > 0 && (
         <>
           <Divider />
           <EventsSection events={pod.events ?? []} />
         </>
       )}
-
       {Object.keys(pod.labels ?? {}).length > 0 && (
         <>
           <Divider />
           <CollapsibleKVSection title="Labels" entries={Object.entries(pod.labels ?? {})} />
         </>
       )}
-
       {Object.keys(pod.annotations ?? {}).length > 0 && (
         <>
           <Divider />
@@ -327,5 +333,5 @@ export default function PodDetailContent({ namespace, podName }: { namespace: st
         </>
       )}
     </Box>
-  )
+  );
 }

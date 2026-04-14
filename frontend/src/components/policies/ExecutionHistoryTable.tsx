@@ -44,7 +44,9 @@ export default function ExecutionHistoryTable({
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-        <Typography variant="subtitle1" fontWeight={600}>Recent Executions</Typography>
+        <Typography variant="subtitle1" sx={{
+          fontWeight: 600
+        }}>Recent Executions</Typography>
         <TextField
           select
           size="small"
@@ -62,7 +64,9 @@ export default function ExecutionHistoryTable({
       </Box>
       {!executions && <CircularProgress size={20} />}
       {filtered && filtered.length === 0 && (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           {statusFilter === 'all' ? 'No executions yet.' : `No ${statusFilter} executions.`}
         </Typography>
       )}
@@ -124,5 +128,5 @@ export default function ExecutionHistoryTable({
         </TableContainer>
       )}
     </Box>
-  )
+  );
 }

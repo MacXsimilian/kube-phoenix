@@ -123,7 +123,9 @@ export default function ClusterStatusCard() {
       <Card sx={{ height: '100%' }}>
         <CardContent sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-            <Typography variant="subtitle2" color="text.secondary">
+            <Typography variant="subtitle2" sx={{
+              color: "text.secondary"
+            }}>
               CLUSTER STATUS
             </Typography>
             {streamDisconnected && (
@@ -150,7 +152,12 @@ export default function ClusterStatusCard() {
 
           {!isLoading && isError && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" fontWeight={700} color="text.secondary">
+              <Typography
+                variant="h6"
+                sx={{
+                  fontWeight: 700,
+                  color: "text.secondary"
+                }}>
                 Status Unknown
               </Typography>
             </Box>
@@ -172,7 +179,9 @@ export default function ClusterStatusCard() {
                   }}
                 />
                 <StatusIcon sx={{ fontSize: 18, color: statusColor }} />
-                <Typography variant="h6" fontWeight={700}>
+                <Typography variant="h6" sx={{
+                  fontWeight: 700
+                }}>
                   {statusLabel}
                 </Typography>
               </Box>
@@ -284,7 +293,6 @@ export default function ClusterStatusCard() {
           )}
         </CardContent>
       </Card>
-
       <TriggerModeDialog
         open={triggerDialog !== null}
         direction={triggerDialog ?? 'sleep'}
@@ -295,7 +303,6 @@ export default function ClusterStatusCard() {
         }}
         onClose={() => setTriggerDialog(null)}
       />
-
       <LogViewer
         execution={liveExecution}
         onClose={() => {
@@ -303,8 +310,7 @@ export default function ClusterStatusCard() {
           queryClient.invalidateQueries({ queryKey: queryKeys.overview() })
         }}
       />
-
       {SnackbarAlert}
     </>
-  )
+  );
 }

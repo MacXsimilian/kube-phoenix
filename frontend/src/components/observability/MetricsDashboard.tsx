@@ -20,7 +20,7 @@ import TableRow from '@mui/material/TableRow'
 import CloseIcon from '@mui/icons-material/Close'
 import { useTheme, alpha, type Theme } from '@mui/material/styles'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlineOutlined'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { ObservabilityStreamState } from '@/lib/useObservabilityStream'
@@ -293,10 +293,17 @@ function MetricPanel({ config, snapshot, history, threshold, onClick }: MetricPa
     >
       {/* Status accent bar */}
       <Box sx={{ height: 3, bgcolor: thresholdStatus !== 'ok' ? statusColor : alpha(statusColor, 0.3) }} />
-
       <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 0.5, flex: 1 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              fontWeight: 600,
+              fontSize: 11,
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em'
+            }}>
             {config.title}
           </Typography>
           {thresholdStatus !== 'ok' && (
@@ -321,7 +328,12 @@ function MetricPanel({ config, snapshot, history, threshold, onClick }: MetricPa
               {config.chartType === 'gauge' ? value.toFixed(1) : value.toFixed(config.unit === 'ms' ? 0 : 1)}
             </span>
           </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>{config.unit}</Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              fontSize: 11
+            }}>{config.unit}</Typography>
           {Math.abs(delta) >= 0.1 && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, ml: 'auto' }}>
               <Typography variant="caption" sx={{ fontSize: 10, color: deltaColor, fontWeight: 700, fontFamily: 'monospace' }}>
@@ -340,7 +352,7 @@ function MetricPanel({ config, snapshot, history, threshold, onClick }: MetricPa
         {legendEntries.length > 0 && <InlineLegend entries={legendEntries} />}
       </Box>
     </Card>
-  )
+  );
 }
 
 // ── Inline sub-components ──────────────────────────────────────────────────
@@ -487,7 +499,16 @@ function SlowestCallsTable({ calls, theme }: { calls: ApiCall[]; theme: Theme })
 
   return (
     <Box sx={{ mt: 3 }}>
-      <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: '0.04em', mb: 1, display: 'block' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          fontWeight: 700,
+          color: "text.secondary",
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+          mb: 1,
+          display: 'block'
+        }}>
         Slowest Requests
       </Typography>
       <Table size="small">
@@ -518,7 +539,7 @@ function SlowestCallsTable({ calls, theme }: { calls: ApiCall[]; theme: Theme })
         </TableBody>
       </Table>
     </Box>
-  )
+  );
 }
 
 function ExpandedChart({ config, history, threshold }: { config: PanelConfig; history: MetricSnapshot[]; threshold: ObservabilityThreshold | undefined }) {

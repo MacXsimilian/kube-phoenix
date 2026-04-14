@@ -10,7 +10,7 @@ import Divider from '@mui/material/Divider'
 import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import FormControl from '@mui/material/FormControl'
-import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
+import PersonOutlineIcon from '@mui/icons-material/PersonOutlineOutlined'
 import { updateUserSettings } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { TIMEZONES } from '@/lib/constants'
@@ -21,10 +21,14 @@ const LABEL_SX = { textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 5
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <Typography variant="caption" color="text.secondary" sx={LABEL_SX}>
+    <Typography
+      variant="caption"
+      sx={[{
+        color: "text.secondary"
+      }, ...(Array.isArray(LABEL_SX) ? LABEL_SX : [LABEL_SX])]}>
       {children}
     </Typography>
-  )
+  );
 }
 
 export default function AccountSettings({ user }: { user: User }) {
@@ -52,11 +56,18 @@ export default function AccountSettings({ user }: { user: User }) {
         <CardContent sx={{ p: 3, height: '100%', boxSizing: 'border-box' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
             <PersonOutlineIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
-            <Typography variant="subtitle1" fontWeight={700}>
+            <Typography variant="subtitle1" sx={{
+              fontWeight: 700
+            }}>
               Profile
             </Typography>
           </Box>
-          <Typography variant="body2" color="text.secondary" mb={2.5}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mb: 2.5
+            }}>
             Your account information and preferences.
           </Typography>
 
@@ -64,7 +75,9 @@ export default function AccountSettings({ user }: { user: User }) {
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <Box sx={{ flex: 1, minWidth: 140 }}>
                 <FieldLabel>Username</FieldLabel>
-                <Typography variant="body2" fontWeight={500}>
+                <Typography variant="body2" sx={{
+                  fontWeight: 500
+                }}>
                   {user.username}
                 </Typography>
               </Box>
@@ -84,13 +97,17 @@ export default function AccountSettings({ user }: { user: User }) {
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <Box sx={{ flex: 1, minWidth: 140 }}>
                 <FieldLabel>Full Name</FieldLabel>
-                <Typography variant="body2" fontWeight={500}>
+                <Typography variant="body2" sx={{
+                  fontWeight: 500
+                }}>
                   {[user.givenName, user.familyName].filter(Boolean).join(' ') || '\u2014'}
                 </Typography>
               </Box>
               <Box sx={{ flex: 1, minWidth: 140 }}>
                 <FieldLabel>Auth Source</FieldLabel>
-                <Typography variant="body2" fontWeight={500}>
+                <Typography variant="body2" sx={{
+                  fontWeight: 500
+                }}>
                   {user.source === 'oidc' ? 'SSO (OIDC)' : 'Local'}
                 </Typography>
               </Box>
@@ -105,7 +122,7 @@ export default function AccountSettings({ user }: { user: User }) {
                   value={user.defaultTimezone ?? 'UTC'}
                   onChange={(e) => handleTimezoneChange(e.target.value)}
                   disabled={mutation.isPending}
-                  MenuProps={{ PaperProps: { sx: { maxHeight: 300 } } }}
+                  MenuProps={{ slotProps: { paper: { sx: { maxHeight: 300 } } } }}
                 >
                   {TIMEZONES.map((tz) => (
                     <MenuItem key={tz} value={tz}>
@@ -114,15 +131,20 @@ export default function AccountSettings({ user }: { user: User }) {
                   ))}
                 </Select>
               </FormControl>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  mt: 0.5,
+                  display: 'block'
+                }}>
                 Pre-fills the timezone when creating new policies.
               </Typography>
             </Box>
           </Box>
         </CardContent>
       </Card>
-
       {SnackbarAlert}
     </>
-  )
+  );
 }

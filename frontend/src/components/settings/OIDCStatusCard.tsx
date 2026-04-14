@@ -17,7 +17,11 @@ const LABEL_SX = { textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 5
 function GroupChipList({ label, groups, chipColor }: { label: string; groups?: string[]; chipColor: 'error' | 'warning' }) {
   return (
     <Box>
-      <Typography variant="caption" color="text.secondary" sx={LABEL_SX}>
+      <Typography
+        variant="caption"
+        sx={[{
+          color: "text.secondary"
+        }, ...(Array.isArray(LABEL_SX) ? LABEL_SX : [LABEL_SX])]}>
         {label}
       </Typography>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
@@ -25,10 +29,12 @@ function GroupChipList({ label, groups, chipColor }: { label: string; groups?: s
           ? groups.map((g) => (
               <Chip key={g} label={g} size="small" color={chipColor} variant="outlined" />
             ))
-          : <Typography variant="body2" color="text.disabled">{'\u2014'}</Typography>}
+          : <Typography variant="body2" sx={{
+          color: "text.disabled"
+        }}>{'\u2014'}</Typography>}
       </Box>
     </Box>
-  )
+  );
 }
 
 function StatusIndicator({ color, bgColor, label }: { color: string; bgColor: string; label: string }) {
@@ -62,11 +68,13 @@ function StatusIndicator({ color, bgColor, label }: { color: string; bgColor: st
           }),
         }}
       />
-      <Typography variant="body2" fontWeight={500} color={`${color}.main`}>
+      <Typography variant="body2" color={`${color}.main`} sx={{
+        fontWeight: 500
+      }}>
         {label}
       </Typography>
     </Box>
-  )
+  );
 }
 
 export default function OIDCStatusCard() {
@@ -80,11 +88,18 @@ export default function OIDCStatusCard() {
       <CardContent sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
           <LoginIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
-          <Typography variant="subtitle1" fontWeight={700}>
+          <Typography variant="subtitle1" sx={{
+            fontWeight: 700
+          }}>
             OIDC / SSO
           </Typography>
         </Box>
-        <Typography variant="body2" color="text.secondary" mb={2.5}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            mb: 2.5
+          }}>
           Single Sign-On provider configuration. These values are read from server environment variables and cannot be changed here.
         </Typography>
 
@@ -121,19 +136,22 @@ export default function OIDCStatusCard() {
                   { label: 'Groups Claim', value: oidcCfg.groupsClaim, mono: true },
                 ].map(({ label, value, mono }) => (
                   <Box key={label}>
-                    <Typography variant="caption" color="text.secondary" sx={LABEL_SX}>
+                    <Typography
+                      variant="caption"
+                      sx={[{
+                        color: "text.secondary"
+                      }, ...(Array.isArray(LABEL_SX) ? LABEL_SX : [LABEL_SX])]}>
                       {label}
                     </Typography>
                     <Typography
                       variant="body2"
-                      fontWeight={500}
                       sx={{
+                        fontWeight: 500,
                         fontFamily: mono ? 'monospace' : undefined,
                         fontSize: mono ? 12.5 : undefined,
                         wordBreak: 'break-all',
-                        color: value ? 'text.primary' : 'text.disabled',
-                      }}
-                    >
+                        color: value ? 'text.primary' : 'text.disabled'
+                      }}>
                       {value || '\u2014'}
                     </Typography>
                   </Box>
@@ -147,5 +165,5 @@ export default function OIDCStatusCard() {
         )}
       </CardContent>
     </Card>
-  )
+  );
 }

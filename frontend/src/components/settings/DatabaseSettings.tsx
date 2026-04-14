@@ -17,8 +17,8 @@ import CircularProgress from '@mui/material/CircularProgress'
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded'
 import DeleteForeverOutlinedIcon from '@mui/icons-material/DeleteForeverOutlined'
 import FlashOnIcon from '@mui/icons-material/FlashOn'
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlineOutlined'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlineOutlined'
 import { useTheme } from '@mui/material/styles'
 import { resetDatabaseStream, emergencyScaleStream, type ResetEvent } from '@/lib/api'
 import { canResetDB, canEmergencyScale } from '@/lib/rbac'
@@ -208,10 +208,14 @@ export default function DatabaseSettings({ permissions, bare }: DangerZoneProps)
       {showEmergencyScale && (
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: showResetDB ? 3 : 0 }}>
           <Box>
-            <Typography variant="body2" fontWeight={600}>
+            <Typography variant="body2" sx={{
+              fontWeight: 600
+            }}>
               Emergency Scale
             </Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>
               Immediately disables all policies and scales every sleeping workload to 1 replica.
               Use this in an emergency to restore minimum availability.
             </Typography>
@@ -233,10 +237,14 @@ export default function DatabaseSettings({ permissions, bare }: DangerZoneProps)
       {showResetDB && (
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
           <Box>
-            <Typography variant="body2" fontWeight={600}>
+            <Typography variant="body2" sx={{
+              fontWeight: 600
+            }}>
               Reset Database
             </Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>
               Drops all tables, recreates the schema, and reseeds default schedules and guardrails.
               All execution history and custom schedules will be permanently deleted.
             </Typography>
@@ -262,11 +270,21 @@ export default function DatabaseSettings({ permissions, bare }: DangerZoneProps)
           <CardContent sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               <WarningAmberRoundedIcon sx={{ color: 'error.main' }} />
-              <Typography variant="subtitle1" fontWeight={700} color="error.main">
+              <Typography
+                variant="subtitle1"
+                sx={{
+                  fontWeight: 700,
+                  color: "error.main"
+                }}>
                 Danger Zone
               </Typography>
             </Box>
-            <Typography variant="body2" color="text.secondary" mb={3}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+                mb: 3
+              }}>
               These operations are irreversible. Proceed with extreme caution.
             </Typography>
             <Divider sx={{ mb: 3 }} />
@@ -274,7 +292,6 @@ export default function DatabaseSettings({ permissions, bare }: DangerZoneProps)
           </CardContent>
         </Card>
       )}
-
       {/* ── Reset Database dialogs ──────────────────────────────────────── */}
       <Dialog open={resetStep1Open} onClose={() => setResetStep1Open(false)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -282,11 +299,19 @@ export default function DatabaseSettings({ permissions, bare }: DangerZoneProps)
           Are you absolutely sure?
         </DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             This will permanently delete <strong>all schedules, execution history, and guardrail settings</strong>.
             The database will be wiped and reseeded with factory defaults.
           </Typography>
-          <Typography variant="body2" color="error" mt={2} fontWeight={600}>
+          <Typography
+            variant="body2"
+            color="error"
+            sx={{
+              mt: 2,
+              fontWeight: 600
+            }}>
             This action cannot be undone.
           </Typography>
         </DialogContent>
@@ -297,11 +322,15 @@ export default function DatabaseSettings({ permissions, bare }: DangerZoneProps)
           </Button>
         </DialogActions>
       </Dialog>
-
       <Dialog open={resetStep2Open} onClose={() => setResetStep2Open(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Confirm destructive operation</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" mb={2}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mb: 2
+            }}>
             To confirm, type <strong>{RESET_CONFIRM_PHRASE}</strong> in the field below.
           </Typography>
           <TextField
@@ -329,14 +358,12 @@ export default function DatabaseSettings({ permissions, bare }: DangerZoneProps)
           </Button>
         </DialogActions>
       </Dialog>
-
       <ResetProgressDialog
         open={resetProgressOpen}
         events={resetProgressEvents}
         done={resetProgressDone}
         onClose={() => { setResetProgressOpen(false); setResetProgressEvents([]); setResetProgressDone(false) }}
       />
-
       {/* ── Emergency Scale dialogs ─────────────────────────────────────── */}
       <Dialog open={esStep1Open} onClose={() => setEsStep1Open(false)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -344,11 +371,19 @@ export default function DatabaseSettings({ permissions, bare }: DangerZoneProps)
           Are you absolutely sure?
         </DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             This will <strong>disable all policies</strong> and immediately scale every sleeping workload to
             {' '}<strong>1 replica</strong>. Policies will need to be manually re-enabled afterward.
           </Typography>
-          <Typography variant="body2" color="error" mt={2} fontWeight={600}>
+          <Typography
+            variant="body2"
+            color="error"
+            sx={{
+              mt: 2,
+              fontWeight: 600
+            }}>
             All policies will be disabled. Workloads will not return to their original replica counts.
           </Typography>
         </DialogContent>
@@ -359,11 +394,15 @@ export default function DatabaseSettings({ permissions, bare }: DangerZoneProps)
           </Button>
         </DialogActions>
       </Dialog>
-
       <Dialog open={esStep2Open} onClose={() => setEsStep2Open(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Confirm emergency operation</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" mb={2}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mb: 2
+            }}>
             To confirm, type <strong>{EMERGENCY_CONFIRM_PHRASE}</strong> in the field below.
           </Typography>
           <TextField
@@ -391,7 +430,6 @@ export default function DatabaseSettings({ permissions, bare }: DangerZoneProps)
           </Button>
         </DialogActions>
       </Dialog>
-
       <ResetProgressDialog
         open={esProgressOpen}
         events={esProgressEvents}
@@ -399,5 +437,5 @@ export default function DatabaseSettings({ permissions, bare }: DangerZoneProps)
         onClose={() => { setEsProgressOpen(false); setEsProgressEvents([]); setEsProgressDone(false) }}
       />
     </>
-  )
+  );
 }

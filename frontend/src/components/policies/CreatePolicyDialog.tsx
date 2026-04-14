@@ -150,7 +150,7 @@ export default function CreatePolicyDialog({
       maxWidth="sm"
       slotProps={{ paper: { sx: { bgcolor: 'background.paper' } } }}
     >
-      <DialogTitle fontWeight={700}>{isEdit ? 'Edit Policy' : 'New Policy'}</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 700 }}>{isEdit ? 'Edit Policy' : 'New Policy'}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '20px !important' }}>
         {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
 
@@ -177,7 +177,9 @@ export default function CreatePolicyDialog({
           slotProps={{ htmlInput: { maxLength: 1024 } }}
         />
 
-        <Divider><Typography variant="caption" color="text.disabled">Schedule</Typography></Divider>
+        <Divider><Typography variant="caption" sx={{
+          color: "text.disabled"
+        }}>Schedule</Typography></Divider>
 
         <TextField
           label="Timezone"
@@ -208,11 +210,24 @@ export default function CreatePolicyDialog({
               bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
             }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="caption" fontWeight={700} letterSpacing={0.5} textTransform="uppercase" color="text.secondary" sx={{ fontSize: '0.68rem' }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 700,
+                    letterSpacing: 0.5,
+                    textTransform: "uppercase",
+                    color: "text.secondary",
+                    fontSize: '0.68rem'
+                  }}>
                   Schedule Preview
                 </Typography>
               </Box>
-              <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.disabled",
+                  fontSize: 11
+                }}>
                 {form.timezone ?? 'UTC'}
               </Typography>
             </Box>
@@ -242,7 +257,13 @@ export default function CreatePolicyDialog({
                     {weeklyStats.awakeHours}h awake
                   </Typography>
                 </Box>
-                <Typography variant="caption" color="text.disabled" sx={{ ml: 'auto', fontSize: 11 }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "text.disabled",
+                    ml: 'auto',
+                    fontSize: 11
+                  }}>
                   {windowsToText(activeWindows)}
                 </Typography>
               </Box>
@@ -250,7 +271,9 @@ export default function CreatePolicyDialog({
           </Box>
         )}
 
-        <Divider><Typography variant="caption" color="text.disabled">Targeting</Typography></Divider>
+        <Divider><Typography variant="caption" sx={{
+          color: "text.disabled"
+        }}>Targeting</Typography></Divider>
 
         <TextField
           label="Namespace Filter"
@@ -271,7 +294,9 @@ export default function CreatePolicyDialog({
           helperText="Kubernetes label selector, e.g. app=web,tier=frontend"
         />
 
-        <Divider><Typography variant="caption" color="text.disabled">Settings</Typography></Divider>
+        <Divider><Typography variant="caption" sx={{
+          color: "text.disabled"
+        }}>Settings</Typography></Divider>
 
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <TextField
@@ -320,5 +345,5 @@ export default function CreatePolicyDialog({
         </Button>
       </DialogActions>
     </Dialog>
-  )
+  );
 }

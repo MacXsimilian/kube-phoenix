@@ -111,14 +111,20 @@ function LogoSection({ isCollapsed, onAboutClick }: { isCollapsed: boolean; onAb
         </motion.div>
         <CollapseLabel show={!isCollapsed}>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Typography variant="h6" fontWeight={700} letterSpacing={-0.5} sx={{ lineHeight: 1 }}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
+                letterSpacing: -0.5,
+                lineHeight: 1
+              }}>
               kube-phoenix
             </Typography>
           </Box>
         </CollapseLabel>
       </ButtonBase>
     </Box>
-  )
+  );
 }
 
 function NavItems({
@@ -181,7 +187,7 @@ function NavItems({
             <CollapseLabel show={!isCollapsed}>
               <ListItemText
                 primary={label}
-                primaryTypographyProps={{ fontSize: 14, fontWeight: active ? 600 : 400 }}
+                slotProps={{ primary: { sx: { fontSize: 14, fontWeight: active ? 600 : 400 } } }}
               />
             </CollapseLabel>
           </ListItemButton>
@@ -243,7 +249,7 @@ function SignOutButton({ isCollapsed, onLogout }: { isCollapsed: boolean; onLogo
         <LogoutOutlinedIcon fontSize="small" />
       </ListItemIcon>
       <CollapseLabel show={!isCollapsed}>
-        <ListItemText primary="Sign Out" primaryTypographyProps={{ fontSize: 14 }} />
+        <ListItemText primary="Sign Out" slotProps={{ primary: { sx: { fontSize: 14 } } }} />
       </CollapseLabel>
     </ListItemButton>
   )

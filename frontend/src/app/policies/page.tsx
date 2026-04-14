@@ -52,7 +52,9 @@ export default function PoliciesPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h5" fontWeight={700}>Policies</Typography>
+        <Typography variant="h5" sx={{
+          fontWeight: 700
+        }}>Policies</Typography>
         <Tooltip title={!canEdit ? 'You do not have permission to create policies' : ''}>
           <span>
             <Button
@@ -66,17 +68,14 @@ export default function PoliciesPage() {
           </span>
         </Tooltip>
       </Box>
-
       {isLoading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
           <CircularProgress />
         </Box>
       )}
-
       {error && (
         <Alert severity="error">{error instanceof Error ? error.message : 'Failed to load policies'}</Alert>
       )}
-
       {policies && policies.length === 0 && (
         <Box
           sx={{
@@ -87,12 +86,13 @@ export default function PoliciesPage() {
             textAlign: 'center',
           }}
         >
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             No policies yet. Create one to define when workloads sleep and wake.
           </Typography>
         </Box>
       )}
-
       {policies && policies.length > 0 && (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           {policies.map(p => (
@@ -107,15 +107,13 @@ export default function PoliciesPage() {
           ))}
         </Box>
       )}
-
       <CreatePolicyDialog
         open={dialogOpen}
         onClose={handleClose}
         existing={editing}
         onNotify={notify}
       />
-
       {SnackbarAlert}
     </Box>
-  )
+  );
 }

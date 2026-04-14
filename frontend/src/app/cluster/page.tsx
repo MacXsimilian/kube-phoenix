@@ -44,12 +44,17 @@ function ClusterTabs() {
 export default function ClusterPage() {
   return (
     <>
-      <Typography variant="h5" fontWeight={700} mb={3}>
+      <Typography
+        variant="h5"
+        sx={{
+          fontWeight: 700,
+          mb: 3
+        }}>
         Cluster State
       </Typography>
       <Suspense>
         <ClusterTabs />
       </Suspense>
     </>
-  )
+  );
 }

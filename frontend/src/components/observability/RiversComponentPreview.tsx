@@ -86,15 +86,28 @@ function Header({ label, sublabel, status }: { label: string; sublabel: string; 
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.3 }}>
       {status && <StatusDot status={status} />}
       <Box sx={{ minWidth: 0 }}>
-        <Typography variant="caption" fontWeight={700} color="text.primary" sx={{ display: 'block', fontSize: '0.68rem' }}>
+        <Typography
+          variant="caption"
+          sx={{
+            fontWeight: 700,
+            color: "text.primary",
+            display: 'block',
+            fontSize: '0.68rem'
+          }}>
           {label}
         </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.52rem' }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            display: 'block',
+            fontSize: '0.52rem'
+          }}>
           {sublabel}
         </Typography>
       </Box>
     </Box>
-  )
+  );
 }
 
 function RpsGrid({ rpsIn, rpsOut }: { rpsIn: number; rpsOut: number }) {
@@ -109,17 +122,29 @@ function RpsGrid({ rpsIn, rpsOut }: { rpsIn: number; rpsOut: number }) {
 function RpsCell({ label, value }: { label: string; value: number }) {
   return (
     <Box sx={{ textAlign: 'center' }}>
-      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.44rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          fontSize: '0.44rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em'
+        }}>
         {label}
       </Typography>
       <Typography variant="caption" sx={{ display: 'block', fontFamily: 'monospace', fontWeight: 700, fontSize: '0.78rem', color: 'text.primary' }}>
         {value}
       </Typography>
-      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.4rem' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          fontSize: '0.4rem'
+        }}>
         req/s
       </Typography>
     </Box>
-  )
+  );
 }
 
 function latencyColor(ms: number): string {
@@ -134,7 +159,12 @@ function LatencyBar({ latencyMs }: { latencyMs: number }) {
   return (
     <Box sx={{ mb: 0.4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.15 }}>
-        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.44rem' }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            fontSize: '0.44rem'
+          }}>
           Latency
         </Typography>
         <Typography variant="caption" sx={{ fontSize: '0.44rem', fontFamily: 'monospace', color }}>
@@ -145,7 +175,7 @@ function LatencyBar({ latencyMs }: { latencyMs: number }) {
         <Box sx={{ width: `${fraction * 100}%`, height: '100%', borderRadius: 1, bgcolor: color, transition: 'width 0.3s ease' }} />
       </Box>
     </Box>
-  )
+  );
 }
 
 function ErrorRateDisplay({ rate }: { rate: number }) {
@@ -198,14 +228,20 @@ function ConnectionList({ title, links, direction }: { title: string; links: Lin
   if (links.length === 0) return null
   return (
     <Box sx={{ mb: 0.2 }}>
-      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.48rem', fontWeight: 600 }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          fontSize: '0.48rem',
+          fontWeight: 600
+        }}>
         {title}
       </Typography>
       {links.map((link, i) => (
         <ConnectionRow key={i} link={link} direction={direction} />
       ))}
     </Box>
-  )
+  );
 }
 
 function ConnectionRow({ link, direction }: { link: LinkEntry; direction: 'in' | 'out' }) {

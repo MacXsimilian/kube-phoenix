@@ -193,12 +193,20 @@ function RequestFlowSection({
 
   return (
     <Box onClick={onNavigate} sx={{ ...sectionSx, ...clickableSx, flex: '1 1 auto', minWidth: 250, gap: 0.5 }}>
-      <Typography color="text.secondary" sx={labelSx}>
+      <Typography
+        sx={[{
+          color: "text.secondary"
+        }, ...(Array.isArray(labelSx) ? labelSx : [labelSx])]}>
         REQUEST FLOW
       </Typography>
       <StackedBar segments={segments} total={total} />
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography color="text.primary" sx={{ ...tinyLabelSx, fontWeight: 600 }}>
+        <Typography
+          sx={{
+            color: "text.primary",
+            ...tinyLabelSx,
+            fontWeight: 600
+          }}>
           {total > 0 ? total.toFixed(1) : '0.0'} req/s total
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -213,7 +221,7 @@ function RequestFlowSection({
         </Box>
       </Box>
     </Box>
-  )
+  );
 }
 
 function StackedBar({
@@ -307,7 +315,10 @@ function LatencySection({
 
   return (
     <Box onClick={onNavigate} sx={{ ...sectionSx, ...clickableSx, flex: '0 0 130px', gap: 0.5 }}>
-      <Typography color="text.secondary" sx={labelSx}>
+      <Typography
+        sx={[{
+          color: "text.secondary"
+        }, ...(Array.isArray(labelSx) ? labelSx : [labelSx])]}>
         LATENCY
       </Typography>
       <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1, flex: 1 }}>
@@ -316,7 +327,7 @@ function LatencySection({
         <LatencyBar label="P99" value={p99} color={LATENCY_COLORS.p99} />
       </Box>
     </Box>
-  )
+  );
 }
 
 function LatencyBar({
@@ -368,10 +379,19 @@ function ComponentHealthSection({
   return (
     <Box onClick={onNavigate} sx={{ ...sectionSx, ...clickableSx, flex: '0 0 160px', gap: 0.25 }}>
       <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, mb: 0.25 }}>
-        <Typography color="text.secondary" sx={labelSx}>
+        <Typography
+          sx={[{
+            color: "text.secondary"
+          }, ...(Array.isArray(labelSx) ? labelSx : [labelSx])]}>
           HEALTH
         </Typography>
-        <Typography color="text.secondary" sx={{ fontSize: 9, fontFamily: MONO, fontWeight: 600 }}>
+        <Typography
+          sx={{
+            color: "text.secondary",
+            fontSize: 9,
+            fontFamily: MONO,
+            fontWeight: 600
+          }}>
           {okCount}/{components.length}
         </Typography>
       </Box>
@@ -379,7 +399,7 @@ function ComponentHealthSection({
         <ComponentRow key={comp.component} component={comp} />
       ))}
     </Box>
-  )
+  );
 }
 
 function ComponentRow({ component }: { component: RiverComponentMetrics }) {
@@ -435,7 +455,12 @@ function ErrorSection({ stats, onNavigate }: { stats: ErrorStats; onNavigate: ()
 
   return (
     <Box onClick={onNavigate} sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', py: 1, px: 2, flex: '0 0 130px', bgcolor: tintBg, ...clickableSx }}>
-      <Typography color="text.secondary" sx={{ ...labelSx, mb: 0.75 }}>
+      <Typography
+        sx={{
+          color: "text.secondary",
+          ...labelSx,
+          mb: 0.75
+        }}>
         ERRORS
       </Typography>
       <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5, mb: 0.5 }}>
@@ -450,7 +475,7 @@ function ErrorSection({ stats, onNavigate }: { stats: ErrorStats; onNavigate: ()
         <ErrorMiniStat label="Drop" value={stats.drops} />
       </Box>
     </Box>
-  )
+  );
 }
 
 function ErrorMiniStat({ label, value }: { label: string; value: number }) {
@@ -492,7 +517,13 @@ function SchedulerSection({ stats, onNavigate }: { stats: SchedulerStats; onNavi
 
   return (
     <Box onClick={onNavigate} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 1, px: 2, ml: 1, flex: '0 0 160px', ...clickableSx }}>
-      <Typography color="text.secondary" sx={{ ...labelSx, mb: 0.75, alignSelf: 'flex-start' }}>
+      <Typography
+        sx={{
+          color: "text.secondary",
+          ...labelSx,
+          mb: 0.75,
+          alignSelf: 'flex-start'
+        }}>
         SCHEDULER
       </Typography>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -517,7 +548,7 @@ function SchedulerSection({ stats, onNavigate }: { stats: SchedulerStats; onNavi
         </Box>
       </Box>
     </Box>
-  )
+  );
 }
 
 function ProgressRing({

@@ -36,7 +36,9 @@ export default function ExceptionsSection({
   return (
     <Box sx={{ mb: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-        <Typography variant="subtitle1" fontWeight={600}>Scheduled Exceptions</Typography>
+        <Typography variant="subtitle1" sx={{
+          fontWeight: 600
+        }}>Scheduled Exceptions</Typography>
         {canEdit && (
           <Button size="small" startIcon={<AddIcon />} onClick={onAddException}>
             Add Exception
@@ -44,7 +46,9 @@ export default function ExceptionsSection({
         )}
       </Box>
       {exceptions && exceptions.length === 0 && (
-        <Typography variant="body2" color="text.secondary">No exceptions scheduled.</Typography>
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>No exceptions scheduled.</Typography>
       )}
       {exceptions && exceptions.length > 0 && (
         <TableContainer>
@@ -64,36 +68,40 @@ export default function ExceptionsSection({
             {exceptions.map(ex => {
               const typeLabel = getTypeLabel(isDark, ex.exceptionType)
               return (
-              <TableRow key={ex.id}>
-                <TableCell>
-                  <Chip label={typeLabel.label} size="small" sx={{ fontSize: 10, color: typeLabel.color, bgcolor: typeLabel.bg }} />
-                </TableCell>
-                <TableCell>{fmtDt(ex.startsAt)} \u2192 {fmtDt(ex.endsAt)}</TableCell>
-                <TableCell>{ex.ticketRef || '\u2014'}</TableCell>
-                <TableCell><StatusChip status={ex.status} /></TableCell>
-                <TableCell>{ex.sleepOnEnd ? 'Yes' : 'No'}</TableCell>
-                <TableCell>
-                  {ex.status === 'cancelled' && ex.cancelReason && (
-                    <Typography variant="caption" color="text.secondary">{ex.cancelReason}</Typography>
-                  )}
-                  {ex.startExecutionId && (
-                    <Typography variant="caption" color="text.disabled">exec #{ex.startExecutionId}</Typography>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {canEdit && ex.status === 'pending' && (
-                    <IconButton size="small" onClick={() => onEditException(ex)} aria-label="Edit exception">
-                      <EditOutlinedIcon fontSize="small" />
-                    </IconButton>
-                  )}
-                </TableCell>
-              </TableRow>
-              )
+                <TableRow key={ex.id}>
+                  <TableCell>
+                    <Chip label={typeLabel.label} size="small" sx={{ fontSize: 10, color: typeLabel.color, bgcolor: typeLabel.bg }} />
+                  </TableCell>
+                  <TableCell>{fmtDt(ex.startsAt)} \u2192 {fmtDt(ex.endsAt)}</TableCell>
+                  <TableCell>{ex.ticketRef || '\u2014'}</TableCell>
+                  <TableCell><StatusChip status={ex.status} /></TableCell>
+                  <TableCell>{ex.sleepOnEnd ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>
+                    {ex.status === 'cancelled' && ex.cancelReason && (
+                      <Typography variant="caption" sx={{
+                        color: "text.secondary"
+                      }}>{ex.cancelReason}</Typography>
+                    )}
+                    {ex.startExecutionId && (
+                      <Typography variant="caption" sx={{
+                        color: "text.disabled"
+                      }}>exec #{ex.startExecutionId}</Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {canEdit && ex.status === 'pending' && (
+                      <IconButton size="small" onClick={() => onEditException(ex)} aria-label="Edit exception">
+                        <EditOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
             })}
           </TableBody>
         </Table>
         </TableContainer>
       )}
     </Box>
-  )
+  );
 }

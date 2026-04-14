@@ -33,14 +33,16 @@ export default class ErrorBoundary extends Component<Props, State> {
       return (
         <Box sx={{ p: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minHeight: '50vh', justifyContent: 'center' }}>
           <Typography variant="h6" color="error">Something went wrong</Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             {this.state.error?.message ?? 'An unexpected error occurred.'}
           </Typography>
           <Button variant="outlined" onClick={() => this.setState({ hasError: false, error: null })}>
             Try again
           </Button>
         </Box>
-      )
+      );
     }
     return this.props.children
   }

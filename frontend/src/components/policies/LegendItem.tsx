@@ -24,9 +24,13 @@ export default function LegendItem({
       ) : (
         <Box sx={{ width: 10, height: 10, borderRadius: 0.5, bgcolor: color, opacity: 0.4 }} />
       )}
-      <Typography variant="caption" color="text.disabled" sx={variant === 'led' ? { fontSize: 11 } : undefined}>
+      <Typography
+        variant="caption"
+        sx={[{
+          color: "text.disabled"
+        }, variant === 'led' && { fontSize: 11 }]}>
         {label}
       </Typography>
     </Box>
-  )
+  );
 }

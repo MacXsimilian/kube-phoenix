@@ -28,7 +28,7 @@ import Tooltip from '@mui/material/Tooltip'
 import Avatar from '@mui/material/Avatar'
 import InputAdornment from '@mui/material/InputAdornment'
 import SearchIcon from '@mui/icons-material/Search'
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlineOutlined'
 import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined'
 import KeyOutlinedIcon from '@mui/icons-material/KeyOutlined'
 import StorageOutlinedIcon from '@mui/icons-material/StorageOutlined'
@@ -114,17 +114,19 @@ export default function UsersPage() {
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box>
-          <Typography variant="h5" fontWeight={700}>Users</Typography>
-          <Typography variant="body2" color="text.secondary">{users?.length ?? 0} users total</Typography>
+          <Typography variant="h5" sx={{
+            fontWeight: 700
+          }}>Users</Typography>
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>{users?.length ?? 0} users total</Typography>
         </Box>
         <Button variant="contained" startIcon={<PersonAddOutlinedIcon />} onClick={() => { setCreateOpen(true); setCreateError('') }}>
           Add User
         </Button>
       </Box>
-
       {isError && <Alert severity="error" sx={{ mb: 2 }}>Failed to load users. You may not have permission to view this page.</Alert>}
       {mutationError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setMutationError('')}>{mutationError}</Alert>}
-
       <TextField
         size="small"
         placeholder="Search by username or name…"
@@ -133,7 +135,6 @@ export default function UsersPage() {
         sx={{ mb: 2, width: 320 }}
         slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }}
       />
-
       <Card>
         <TableContainer>
           <Table size="small">
@@ -160,8 +161,18 @@ export default function UsersPage() {
                         {(u.givenName?.[0] ?? u.username[0]).toUpperCase()}
                       </Avatar>
                       <Box>
-                        <Typography variant="body2" fontWeight={600} fontSize={13}>{u.username}</Typography>
-                        <Typography variant="caption" color="text.secondary" fontSize={11}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 600,
+                            fontSize: 13
+                          }}>{u.username}</Typography>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: "text.secondary",
+                            fontSize: 11
+                          }}>
                           {[u.givenName, u.familyName].filter(Boolean).join(' ') || '—'}
                         </Typography>
                       </Box>
@@ -213,7 +224,12 @@ export default function UsersPage() {
                   </TableCell>
                   <TableCell>
                     <Tooltip title={u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : ''}>
-                      <Typography variant="caption" color="text.disabled" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "text.disabled",
+                          fontVariantNumeric: 'tabular-nums'
+                        }}>
                         {u.lastLoginAt ? relativeTime(u.lastLoginAt) : 'Never'}
                       </Typography>
                     </Tooltip>
@@ -231,7 +247,6 @@ export default function UsersPage() {
           </Table>
         </TableContainer>
       </Card>
-
       {/* Create user dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Add User</DialogTitle>
@@ -257,12 +272,13 @@ export default function UsersPage() {
           </Button>
         </DialogActions>
       </Dialog>
-
       {/* Delete confirmation dialog */}
       <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Delete user?</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             Are you sure you want to delete <strong>{deleteTarget?.username}</strong>?
             {deleteTarget?.source === 'oidc' && ' This user may be re-created on next SSO login. Consider disabling instead.'}
           </Typography>
@@ -275,5 +291,5 @@ export default function UsersPage() {
         </DialogActions>
       </Dialog>
     </Box>
-  )
+  );
 }

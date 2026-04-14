@@ -67,7 +67,9 @@ export default function ComponentDetail({ component }: { component: string }) {
         </IconButton>
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="h5" fontWeight={700}>{info.label}</Typography>
+            <Typography variant="h5" sx={{
+              fontWeight: 700
+            }}>{info.label}</Typography>
             {loading ? (
               <Skeleton variant="circular" width={10} height={10} />
             ) : (
@@ -77,45 +79,66 @@ export default function ComponentDetail({ component }: { component: string }) {
               </>
             )}
           </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mt: 0.5
+            }}>
             {info.description}
           </Typography>
           {info.goFile && (
-            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.secondary",
+                fontFamily: 'monospace'
+              }}>
               {info.goFile}
             </Typography>
           )}
         </Box>
       </Box>
-
       {/* Metric cards */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: `repeat(${Math.min(info.metrics.length, 4)}, 1fr)` }, gap: 2, mb: 3 }}>
         {info.metrics.map((m) => (
           <Card key={m.label} sx={{ p: 2 }}>
-            <Typography variant="caption" color="text.secondary" fontWeight={600}>{m.label}</Typography>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.secondary",
+                fontWeight: 600
+              }}>{m.label}</Typography>
             {loading ? (
               <Skeleton variant="text" width={80} sx={{ fontSize: '2.125rem' }} />
             ) : (
-              <Typography variant="h4" fontWeight={700}>
+              <Typography variant="h4" sx={{
+                fontWeight: 700
+              }}>
                 {m.unit === 'ms' ? (snap ? m.getValue(snap) : 0).toFixed(0) : (snap ? m.getValue(snap) : 0).toFixed(1)}
               </Typography>
             )}
-            <Typography variant="caption" color="text.secondary">{m.unit}</Typography>
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>{m.unit}</Typography>
           </Card>
         ))}
       </Box>
-
       {/* Metric charts */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 3 }}>
         {info.metrics.map((m) => (
           <MetricChart key={m.label} label={m.label} unit={m.unit} getValue={m.getValue} history={stream.history} />
         ))}
       </Box>
-
       {/* Related links */}
       {info.relatedLinks.length > 0 && (
         <Card sx={{ p: 2 }}>
-          <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Connected Components</Typography>
+          <Typography
+            variant="subtitle2"
+            sx={{
+              fontWeight: 700,
+              mb: 1
+            }}>Connected Components</Typography>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             {info.relatedLinks.map((link) => (
               <Chip
@@ -130,7 +153,7 @@ export default function ComponentDetail({ component }: { component: string }) {
         </Card>
       )}
     </Box>
-  )
+  );
 }
 
 // ── MetricChart ─────────────────────────────────────────────────────────────
@@ -187,10 +210,17 @@ function MetricChart({ label, unit, getValue, history }: { label: string; unit: 
 
   return (
     <Card sx={{ p: 2 }}>
-      <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          fontWeight: 600,
+          color: "text.secondary",
+          mb: 1,
+          display: 'block'
+        }}>
         {label} ({unit})
       </Typography>
       <Box ref={chartRef} sx={{ height: 200 }} />
     </Card>
-  )
+  );
 }

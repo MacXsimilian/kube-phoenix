@@ -126,12 +126,26 @@ function MonthView({ anchor, startDay, endDay, hoverDay, minDate, onPick, onHove
 
   return (
     <Box sx={{ flex: 1, minWidth: 240 }}>
-      <Typography variant="subtitle2" fontWeight={700} sx={{ textAlign: 'center', mb: 1 }}>
+      <Typography
+        variant="subtitle2"
+        sx={{
+          fontWeight: 700,
+          textAlign: 'center',
+          mb: 1
+        }}>
         {monthLabel(anchor)}
       </Typography>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.25 }}>
         {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(d => (
-          <Typography key={d} variant="caption" color="text.disabled" sx={{ textAlign: 'center', py: 0.5, fontWeight: 600 }}>
+          <Typography
+            key={d}
+            variant="caption"
+            sx={{
+              color: "text.disabled",
+              textAlign: 'center',
+              py: 0.5,
+              fontWeight: 600
+            }}>
             {d}
           </Typography>
         ))}
@@ -193,7 +207,7 @@ function MonthView({ anchor, startDay, endDay, hoverDay, minDate, onPick, onHove
         })}
       </Box>
     </Box>
-  )
+  );
 }
 
 type TimeStepperProps = {
@@ -215,7 +229,13 @@ function TimeStepper({ label, value, onChange }: TimeStepperProps) {
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-      <Typography variant="caption" color="text.secondary" sx={{ minWidth: 36, fontWeight: 600 }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          minWidth: 36,
+          fontWeight: 600
+        }}>
         {label}
       </Typography>
       <Tooltip title="−15 min">
@@ -227,7 +247,7 @@ function TimeStepper({ label, value, onChange }: TimeStepperProps) {
         value={hh}
         onChange={e => onChange(`${e.target.value}:${mm}`)}
         sx={{ width: 68 }}
-        slotProps={{ select: { MenuProps: { PaperProps: { sx: { maxHeight: 280 } } } } }}
+        slotProps={{ select: { MenuProps: { slotProps: { paper: { sx: { maxHeight: 280 } } } } } }}
       >
         {HOURS.map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
       </TextField>
@@ -238,7 +258,7 @@ function TimeStepper({ label, value, onChange }: TimeStepperProps) {
         value={mm}
         onChange={e => onChange(`${hh}:${e.target.value}`)}
         sx={{ width: 68 }}
-        slotProps={{ select: { MenuProps: { PaperProps: { sx: { maxHeight: 280 } } } } }}
+        slotProps={{ select: { MenuProps: { slotProps: { paper: { sx: { maxHeight: 280 } } } } } }}
       >
         {MINUTES.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
       </TextField>
@@ -246,7 +266,7 @@ function TimeStepper({ label, value, onChange }: TimeStepperProps) {
         <IconButton size="small" onClick={() => step(15)} sx={{ width: 24, height: 24, fontSize: 14 }}>+</IconButton>
       </Tooltip>
     </Box>
-  )
+  );
 }
 
 export default function ExceptionWindowPicker({ value, onChange, minDate }: Props) {
@@ -303,7 +323,9 @@ export default function ExceptionWindowPicker({ value, onChange, minDate }: Prop
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-        <Typography variant="subtitle2" fontWeight={700}>Exception Window</Typography>
+        <Typography variant="subtitle2" sx={{
+          fontWeight: 700
+        }}>Exception Window</Typography>
         <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
           {(startDay || endDay) && (
             <Button size="small" onClick={clearSelection} sx={{ color: 'text.secondary', mr: 1 }}>
@@ -327,7 +349,6 @@ export default function ExceptionWindowPicker({ value, onChange, minDate }: Prop
           </Tooltip>
         </Box>
       </Box>
-
       <Paper
         variant="outlined"
         sx={{
@@ -344,15 +365,31 @@ export default function ExceptionWindowPicker({ value, onChange, minDate }: Prop
         {startDate ? (
           <>
             <Box>
-              <Typography variant="caption" color="text.disabled" sx={{ display: 'block', lineHeight: 1 }}>FROM</Typography>
-              <Typography variant="body2" fontWeight={600}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.disabled",
+                  display: 'block',
+                  lineHeight: 1
+                }}>FROM</Typography>
+              <Typography variant="body2" sx={{
+                fontWeight: 600
+              }}>
                 {formatDateChip(startDate)} · {formatTime(startDate)}
               </Typography>
             </Box>
             <ArrowForwardIcon fontSize="small" sx={{ color: 'text.disabled' }} />
             <Box>
-              <Typography variant="caption" color="text.disabled" sx={{ display: 'block', lineHeight: 1 }}>TO</Typography>
-              <Typography variant="body2" fontWeight={600}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.disabled",
+                  display: 'block',
+                  lineHeight: 1
+                }}>TO</Typography>
+              <Typography variant="body2" sx={{
+                fontWeight: 600
+              }}>
                 {endDate ? `${formatDateChip(endDate)} · ${formatTime(endDate)}` : 'Pick end day…'}
               </Typography>
             </Box>
@@ -367,12 +404,13 @@ export default function ExceptionWindowPicker({ value, onChange, minDate }: Prop
             )}
           </>
         ) : (
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             Click a day on the calendar to start the window.
           </Typography>
         )}
       </Paper>
-
       <Box sx={{ display: 'flex', gap: 3 }}>
         <MonthView
           anchor={anchor}
@@ -393,17 +431,20 @@ export default function ExceptionWindowPicker({ value, onChange, minDate }: Prop
           onHover={setHoverDay}
         />
       </Box>
-
       <Divider sx={{ my: 2 }} />
-
       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
         <TimeStepper label="Start" value={startTime} onChange={setStartTime} />
         <TimeStepper label="End" value={endTime} onChange={setEndTime} />
       </Box>
-
-      <Typography variant="caption" color="text.disabled" sx={{ mt: 1.5, display: 'block' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.disabled",
+          mt: 1.5,
+          display: 'block'
+        }}>
         Timezone: {TZ}
       </Typography>
     </Paper>
-  )
+  );
 }

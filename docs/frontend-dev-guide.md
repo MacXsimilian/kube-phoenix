@@ -30,7 +30,7 @@ The kube-phoenix frontend is the operator-facing UI for managing Kubernetes slee
 |:------|:--------|:------|
 | Next.js | 16 (static export, `output: 'export'`) | |
 | React | 19 | |
-| MUI (Material UI) | v7 | |
+| MUI (Material UI) | v9 | |
 | TanStack Query | v5 | |
 | Emotion | v11 (MUI's styling engine) | |
 | Framer Motion | 12 | Sidebar morph, drawer slide, log animations |
@@ -1183,8 +1183,8 @@ sx={{ bgcolor: stateStyle.bg, color: stateStyle.color }}
 ### Typography and Spacing
 
 - **Font:** Inter (loaded via `next/font/google` with weights 300-700)
-- **Heading:** `variant="h5" fontWeight={700}` for page titles
-- **Subtitle:** `variant="subtitle1" fontWeight={700}` for section headers
+- **Heading:** `variant="h5" sx={{ fontWeight: 700 }}` for page titles
+- **Subtitle:** `variant="subtitle1" sx={{ fontWeight: 700 }}` for section headers
 - **Body:** `variant="body2"` for most content
 - **Monospace:** `fontFamily: 'monospace'` for pod names, node names, log lines, resource values
 - **Spacing:** MUI theme spacing unit (8px). Common values: `mb: 2` (16px), `gap: 1.5` (12px), `p: 2.5` (20px)
