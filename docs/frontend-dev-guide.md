@@ -111,6 +111,7 @@ frontend/
         PolicyCard.tsx          # Card for each policy in the list view
         CreatePolicyDialog.tsx  # Create/edit policy dialog with window picker + preview
         ExceptionDialog.tsx     # Create/edit scheduled exception
+        ExceptionWindowPicker.tsx # Inline two-month range calendar + time steppers for the exception window
         ExceptionsSection.tsx   # Exception table in policy detail
         WeeklyTimeline.tsx      # SVG 7-day bar chart timeline
         LedGlowTimeline.tsx     # SVG 7-day LED-strip timeline with glow filters
@@ -791,15 +792,32 @@ The execution log viewer is a resizable right-side drawer. Data fetching and Web
 
 `src/components/policies/ExceptionDialog.tsx`
 
-Handles both create and edit modes. When opened without a `defaultPolicyId` (e.g. from the standalone Exceptions page), a policy dropdown is shown, lazy-loaded via `useQuery`. When opened from a policy detail page, the policy is pre-selected and the dropdown is hidden.
+Handles both create and edit modes. When opened without a `defaultPolicyId` (e.g. from the standalone Exceptions page), a policy dropdown is shown, lazy-loaded via `useQuery`. When opened from a policy detail page, the policy is pre-selected and the dropdown is hidden. Dialog uses `maxWidth="md"` to fit the inline two-month calendar.
 
-Key datetime handling:
+The window itself is picked via the `ExceptionWindowPicker` component (see below). The dialog stores `startsAt`/`endsAt` as ISO strings directly on `form` and passes them straight to the picker — there is no separate local-format mirror state. Validation: policy must be selected, start must be in the future (for new exceptions), end must be after start.
 
-- The dialog stores dates in two formats: `startsAtLocal` (for the `datetime-local` input) and `startsAt` (ISO string for the API)
-- `toLocalDatetimeInput(iso)` converts an ISO string to `YYYY-MM-DDTHH:mm` format for the input
-- `toISO(localDT)` converts the local datetime-local value back to ISO via `new Date(localDT).toISOString()`
-- Times are always displayed with a note: "Times are in your browser's local timezone"
-- Validation checks: policy must be selected, start must be in the future (for new exceptions), end must be after start
+#### ExceptionWindowPicker
+
+`src/components/policies/ExceptionWindowPicker.tsx`
+
+Inline picker that combines a two-month range calendar with hour:minute steppers.
+
+Props:
+
+- `value: { startISO, endISO }` — current window as ISO strings (empty string when unset)
+- `onChange(next)` — emits a new value whenever the user picks a day or changes a time
+- `minDate?: Date` — earliest selectable day. The dialog passes `new Date()` for new exceptions and `undefined` for edits (so historic windows render).
+
+Behavior:
+
+- Click a day to set the start; click a second day to set the end. Clicking a day earlier than the current start re-anchors the range with the original start as the new end.
+- Hovering after picking a start shows a dashed-outline preview range.
+- Today is outlined in primary; days before `minDate` and out-of-month days are disabled and dimmed.
+- A "FROM … → TO …" header above the calendar shows the current selection plus a duration chip (e.g. `2d 5h`).
+- Time pickers are HH:MM dropdowns (1-hour / 5-min granularity) with ±15-min stepper buttons.
+- Picking the same day for start and end auto-bumps end-time to start-time + 1h if the times would invert.
+- Header actions: Clear (only when a selection exists), previous month, jump-to-today, next month.
+- Caption shows the user's local IANA timezone via `Intl.DateTimeFormat().resolvedOptions().timeZone`.
 
 #### ExceptionsSection
 
