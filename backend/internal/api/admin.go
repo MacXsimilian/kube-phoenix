@@ -163,61 +163,7 @@ func (h *Handler) emergencyScale(w http.ResponseWriter, r *http.Request) {
 	if len(snapshots) == 0 {
 		emit("step", "No sleeping workloads found — skipping scaling")
 	} else {
-		// Step 4: Group snapshots by policy and create synthetic wake executions.
-		policyExecs := map[uint]uint{} // policyID → executionID
-		for _, snap := range snapshots {
-			if _, ok := policyExecs[snap.PolicyID]; !ok {
-				now := time.Now()
-				exec := &store.PolicyExecution{
-					PolicyID:  snap.PolicyID,
-					Direction: "wake",
-					Trigger:   "emergency_scale",
-					StartedAt: now,
-					Status:    store.ExecStatusRunning,
-					Mode:      store.PolicyModeApply,
-				}
-				if err := h.store.CreatePolicyExecution(exec); err != nil {
-					slog.Error("admin: create emergency execution failed", "policyID", snap.PolicyID, "err", err)
-					emit("step", fmt.Sprintf("Warning: could not create execution record for policy %d", snap.PolicyID))
-					continue
-				}
-				policyExecs[snap.PolicyID] = exec.ID
-			}
-		}
-
-		// Step 5: Scale each workload to 1 replica and close the snapshot.
-		ctx := r.Context()
-		var scaled, failed int
-		for _, snap := range snapshots {
-			execID, ok := policyExecs[snap.PolicyID]
-			if !ok {
-				failed++
-				continue
-			}
-			if err := scaleWorkloadTo(ctx, h.k8s, snap, 1); err != nil {
-				slog.Error("admin: emergency scale workload failed",
-					"kind", snap.Kind, "namespace", snap.Namespace, "name", snap.Name, "err", err)
-				emit("step", fmt.Sprintf("Failed to scale %s %s/%s: %v", snap.Kind, snap.Namespace, snap.Name, err))
-				_ = h.store.MarkSnapshotDeletedAtWake(snap.ID, execID)
-				failed++
-				continue
-			}
-			if err := h.store.CloseSnapshot(snap.ID, execID, 1); err != nil {
-				slog.Error("admin: close snapshot failed", "snapID", snap.ID, "err", err)
-			}
-			emit("step", fmt.Sprintf("Scaled %s %s/%s to 1 replica", snap.Kind, snap.Namespace, snap.Name))
-			scaled++
-		}
-
-		// Step 6: Finish executions and update policy states to awake.
-		for policyID, execID := range policyExecs {
-			_ = h.store.FinishPolicyExecution(execID, store.ExecStatusSuccess, map[string]int{
-				"scaled": scaled, "errors": failed,
-			})
-			_ = h.store.UpdatePolicyState(policyID, store.PolicyStateAwake, nil)
-		}
-
-		emit("step", fmt.Sprintf("Scaling complete: %d succeeded, %d failed", scaled, failed))
+		h.emergencyScaleSnapshots(r.Context(), snapshots, emit)
 	}
 
 	// Step 7: Restart the scheduler (all policies are now disabled, so it idles).
@@ -229,6 +175,77 @@ func (h *Handler) emergencyScale(w http.ResponseWriter, r *http.Request) {
 	}
 
 	emit("done", "Emergency scale complete. All policies disabled, sleeping workloads scaled to 1 replica.")
+}
+
+// emergencyScaleSnapshots groups snapshots by policy, creates synthetic wake
+// executions, scales every workload to one replica, closes snapshots, and
+// finalises each execution. Progress is reported via emit.
+func (h *Handler) emergencyScaleSnapshots(
+	ctx context.Context,
+	snapshots []store.WorkloadSnapshot,
+	emit func(typ, msg string),
+) {
+	policyExecs := h.createEmergencyExecutions(snapshots, emit)
+
+	var scaled, failed int
+	for _, snap := range snapshots {
+		execID, ok := policyExecs[snap.PolicyID]
+		if !ok {
+			failed++
+			continue
+		}
+		if err := scaleWorkloadTo(ctx, h.k8s, snap, 1); err != nil {
+			slog.Error("admin: emergency scale workload failed",
+				"kind", snap.Kind, "namespace", snap.Namespace, "name", snap.Name, "err", err)
+			emit("step", fmt.Sprintf("Failed to scale %s %s/%s: %v", snap.Kind, snap.Namespace, snap.Name, err))
+			_ = h.store.MarkSnapshotDeletedAtWake(snap.ID, execID)
+			failed++
+			continue
+		}
+		if err := h.store.CloseSnapshot(snap.ID, execID, 1); err != nil {
+			slog.Error("admin: close snapshot failed", "snapID", snap.ID, "err", err)
+		}
+		emit("step", fmt.Sprintf("Scaled %s %s/%s to 1 replica", snap.Kind, snap.Namespace, snap.Name))
+		scaled++
+	}
+
+	for policyID, execID := range policyExecs {
+		_ = h.store.FinishPolicyExecution(execID, store.ExecStatusSuccess, map[string]int{
+			"scaled": scaled, "errors": failed,
+		})
+		_ = h.store.UpdatePolicyState(policyID, store.PolicyStateAwake, nil)
+	}
+
+	emit("step", fmt.Sprintf("Scaling complete: %d succeeded, %d failed", scaled, failed))
+}
+
+// createEmergencyExecutions returns a map of policyID → executionID, creating
+// one synthetic wake execution per distinct policy referenced by the snapshots.
+func (h *Handler) createEmergencyExecutions(
+	snapshots []store.WorkloadSnapshot,
+	emit func(typ, msg string),
+) map[uint]uint {
+	policyExecs := map[uint]uint{}
+	for _, snap := range snapshots {
+		if _, ok := policyExecs[snap.PolicyID]; ok {
+			continue
+		}
+		exec := &store.PolicyExecution{
+			PolicyID:  snap.PolicyID,
+			Direction: "wake",
+			Trigger:   "emergency_scale",
+			StartedAt: time.Now(),
+			Status:    store.ExecStatusRunning,
+			Mode:      store.PolicyModeApply,
+		}
+		if err := h.store.CreatePolicyExecution(exec); err != nil {
+			slog.Error("admin: create emergency execution failed", "policyID", snap.PolicyID, "err", err)
+			emit("step", fmt.Sprintf("Warning: could not create execution record for policy %d", snap.PolicyID))
+			continue
+		}
+		policyExecs[snap.PolicyID] = exec.ID
+	}
+	return policyExecs
 }
 
 // scaleWorkloadTo scales a Deployment or StatefulSet to the given replica count.
