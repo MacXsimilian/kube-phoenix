@@ -48,6 +48,16 @@ import { useSnackbar } from '@/lib/useSnackbar'
 import { canResetDB, canEmergencyScale } from '@/lib/rbac'
 import { TIMEZONES } from '@/lib/constants'
 import { podAge } from '@/lib/formatters'
+import pkg from '../../../package.json'
+
+const stripRange = (v: string) => v.replace(/^[\^~]/, '')
+const FRONTEND_VERSIONS = {
+  next: stripRange(pkg.dependencies.next),
+  typescript: stripRange(pkg.devDependencies.typescript),
+  mui: stripRange(pkg.dependencies['@mui/material']),
+  react: stripRange(pkg.dependencies.react),
+  tanstackQuery: stripRange(pkg.dependencies['@tanstack/react-query']),
+}
 import {
   getClusterInfo,
   getVersionInfo,
@@ -597,11 +607,11 @@ export default function SettingsPage() {
                 <FieldRow label="Uptime" value={versionInfo.uptime} />
                 <Divider sx={{ gridColumn: '1 / -1', my: 0.5 }} />
                 <FieldRow label="Go Version" value={versionInfo.goVersion} mono />
-                <FieldRow label="Next.js" value="16.0.0" mono />
-                <FieldRow label="TypeScript" value="6.0.0" mono />
-                <FieldRow label="MUI" value="7.1.0" mono />
-                <FieldRow label="React" value="19.1.0" mono />
-                <FieldRow label="TanStack Query" value="5.72.2" mono />
+                <FieldRow label="Next.js" value={FRONTEND_VERSIONS.next} mono />
+                <FieldRow label="TypeScript" value={FRONTEND_VERSIONS.typescript} mono />
+                <FieldRow label="MUI" value={FRONTEND_VERSIONS.mui} mono />
+                <FieldRow label="React" value={FRONTEND_VERSIONS.react} mono />
+                <FieldRow label="TanStack Query" value={FRONTEND_VERSIONS.tanstackQuery} mono />
               </Box>
 
               <Typography
