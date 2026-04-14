@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.38](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.37...v0.5.38) (2026-04-14)
+
+
+### Features
+
+* **exceptions:** replace datetime-local fields with calendar + time picker ([#359](https://github.com/MacXsimilian/kube-phoenix/issues/359)) ([329df9d](https://github.com/MacXsimilian/kube-phoenix/commit/329df9df119937cc02f383370bccbcb16110bdb3))
+
 ## [0.5.37](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.36...v0.5.37) (2026-04-07)
 
 
