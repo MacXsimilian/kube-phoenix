@@ -14,7 +14,7 @@ require (
 	k8s.io/client-go v0.35.3
 )
 
-require golang.org/x/crypto v0.49.0
+require golang.org/x/crypto v0.50.0
 
 require (
 	github.com/go-openapi/swag/cmdutils v0.25.5 // indirect
@@ -34,7 +34,7 @@ require (
 )
 
 require (
-	github.com/coreos/go-oidc/v3 v3.17.0
+	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 )
 
@@ -42,7 +42,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/prometheus/client_golang v1.23.2
-	github.com/prometheus/client_model v0.6.2 // indirect
+	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.67.5 // indirect
 	github.com/prometheus/procfs v0.20.1 // indirect
 )
@@ -75,9 +75,9 @@ require (
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/term v0.41.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/term v0.42.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools/godoc v0.1.0-deprecated // indirect; transitive via shurcooL/httpgzip → swaggest/swgui; no CVEs, not fixable without replacing swgui
 	google.golang.org/protobuf v1.36.11 // indirect
