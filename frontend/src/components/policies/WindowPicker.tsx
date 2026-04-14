@@ -10,7 +10,7 @@ import MenuItem from '@mui/material/MenuItem'
 import TextField from '@mui/material/TextField'
 import Switch from '@mui/material/Switch'
 import Chip from '@mui/material/Chip'
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlineOutlined'
 import AddIcon from '@mui/icons-material/Add'
 import { useIsDark } from '@/lib/useIsDark'
 import type { SleepWindow } from '@/lib/types'
@@ -172,11 +172,16 @@ function WindowCard({
           </IconButton>
         )}
       </Box>
-
       {/* Card body */}
       <Box sx={{ px: 2, py: 1.5 }}>
         {/* All-day toggle — slide switch */}
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{
+            alignItems: "center",
+            mb: 1.5
+          }}>
           <Switch
             checked={window.allDay}
             onChange={e => onUpdate(idx, { allDay: e.target.checked })}
@@ -187,7 +192,13 @@ function WindowCard({
             <Typography variant="body2" sx={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3 }}>
               All day
             </Typography>
-            <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11, lineHeight: 1.2 }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.disabled",
+                fontSize: 11,
+                lineHeight: 1.2
+              }}>
               No wake-up on selected days
             </Typography>
           </Box>
@@ -195,8 +206,20 @@ function WindowCard({
 
         {/* Compact time pickers — only shown when not all-day */}
         {!window.allDay && (
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontSize: 11 }}>
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{
+              alignItems: "center",
+              mb: 1.5
+            }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.secondary",
+                fontWeight: 600,
+                fontSize: 11
+              }}>
               Sleep
             </Typography>
             <TextField
@@ -207,7 +230,12 @@ function WindowCard({
             >
               {HOURS.map(h => <MenuItem key={h} value={h}>{String(h).padStart(2, '0')}</MenuItem>)}
             </TextField>
-            <Typography color="text.disabled" sx={{ fontSize: 13, mx: -0.5 }}>:</Typography>
+            <Typography
+              sx={{
+                color: "text.disabled",
+                fontSize: 13,
+                mx: -0.5
+              }}>:</Typography>
             <TextField
               select size="small" value={sM}
               onChange={e => onUpdate(idx, { startTime: toHM(sH, Number(e.target.value)) })}
@@ -219,7 +247,13 @@ function WindowCard({
 
             <Box sx={{ width: 12 }} />
 
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontSize: 11 }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.secondary",
+                fontWeight: 600,
+                fontSize: 11
+              }}>
               Wake
             </Typography>
             <TextField
@@ -230,7 +264,12 @@ function WindowCard({
             >
               {HOURS.map(h => <MenuItem key={h} value={h}>{String(h).padStart(2, '0')}</MenuItem>)}
             </TextField>
-            <Typography color="text.disabled" sx={{ fontSize: 13, mx: -0.5 }}>:</Typography>
+            <Typography
+              sx={{
+                color: "text.disabled",
+                fontSize: 13,
+                mx: -0.5
+              }}>:</Typography>
             <TextField
               select size="small" value={eM}
               onChange={e => onUpdate(idx, { endTime: toHM(eH, Number(e.target.value)) })}
@@ -249,7 +288,9 @@ function WindowCard({
         )}
 
         {/* Day buttons — slightly larger with active glow */}
-        <Stack direction="row" spacing={0.75} alignItems="center">
+        <Stack direction="row" spacing={0.75} sx={{
+          alignItems: "center"
+        }}>
           {DAYS.map(({ value, label }) => {
             const active = window.daysOfWeek.includes(value)
             return (
@@ -300,7 +341,7 @@ function WindowCard({
         </Stack>
       </Box>
     </Box>
-  )
+  );
 }
 
 // ── WindowPicker ─────────────────────────────────────────────────────────────
@@ -344,7 +385,14 @@ export default function WindowPicker({
   return (
     <Box>
       {/* Presets — pill buttons with dots */}
-      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 2 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{
+          flexWrap: "wrap",
+          mb: 2
+        }}>
         {PRESETS.map(preset => (
           <Button
             key={preset.label}
@@ -383,7 +431,6 @@ export default function WindowPicker({
           </Button>
         ))}
       </Stack>
-
       {/* Window cards */}
       {windows.map((w, idx) => (
         <WindowCard
@@ -396,24 +443,32 @@ export default function WindowPicker({
           onToggleDay={toggleDay}
         />
       ))}
-
       <Button size="small" startIcon={<AddIcon />} onClick={addWindow} disabled={windows.length >= MAX_WINDOWS} sx={{ mt: 0.5, mb: 1 }}>
         {windows.length >= MAX_WINDOWS ? `Limit reached (${MAX_WINDOWS})` : 'Add window'}
       </Button>
-
       {/* Summary */}
       {windows.length > 0 && windows.some(w => w.daysOfWeek.length > 0) && (
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            mt: 0.5
+          }}>
           {windowsToText(windows)}
         </Typography>
       )}
-
       {/* Never-wake warning */}
       {neverWakes && (
-        <Typography variant="caption" color="warning.main" sx={{ mt: 0.5, display: 'block' }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "warning.main",
+            mt: 0.5,
+            display: 'block'
+          }}>
           All 7 days are set to all-day sleep — workloads will never wake up automatically.
         </Typography>
       )}
     </Box>
-  )
+  );
 }

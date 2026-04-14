@@ -90,135 +90,182 @@ function PolicyDetailContent() {
 
   return (
     <ErrorBoundary>
-    <Box>
-      <PolicyHeroBand
-        policy={policy}
-        canEdit={canEdit}
-        canTrigger={canTrigger}
-        trigger={{
-          isBusy,
-          sleepPending: sleepMut.isPending,
-          wakePending: wakeMut.isPending,
-          onSleep: () => setTriggerDialog('sleep'),
-          onWake: () => setTriggerDialog('wake'),
-        }}
-        onBack={() => router.push('/policies')}
-        onEdit={() => { setExceptionOpen(false); setEditOpen(true) }}
-      />
+      <Box>
+        <PolicyHeroBand
+          policy={policy}
+          canEdit={canEdit}
+          canTrigger={canTrigger}
+          trigger={{
+            isBusy,
+            sleepPending: sleepMut.isPending,
+            wakePending: wakeMut.isPending,
+            onSleep: () => setTriggerDialog('sleep'),
+            onWake: () => setTriggerDialog('wake'),
+          }}
+          onBack={() => router.push('/policies')}
+          onEdit={() => { setExceptionOpen(false); setEditOpen(true) }}
+        />
 
-      {/* Timeline band */}
-      {hasSleepWindows(sleepWindows) && (
+        {/* Timeline band */}
+        {hasSleepWindows(sleepWindows) && (
+          <Box
+            sx={{
+              mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3,
+              borderBottom: '1px solid', borderColor: SUBTLE_BORDER,
+            }}
+          >
+            <Box sx={{ display: 'flex', gap: { xs: 2, md: 5 }, alignItems: 'flex-start', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "text.disabled",
+                    mb: 1,
+                    display: 'block',
+                    fontSize: 11,
+                    letterSpacing: 0.5
+                  }}>
+                  Weekly Schedule &middot; {policy.timezone || 'UTC'}
+                </Typography>
+                <LedGlowTimeline
+                  windows={sleepWindows}
+                  exceptions={exceptions}
+                  timezone={policy.timezone}
+                />
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: "text.secondary",
+                    mt: 1,
+                    fontSize: 12
+                  }}>
+                  {windowsToText(sleepWindows)}
+                </Typography>
+              </Box>
+
+              <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', flexShrink: 0, pt: 0.5 }}>
+                {weeklyStats && (
+                  <>
+                    <Box sx={{ textAlign: 'center' }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "text.disabled",
+                          fontSize: 11,
+                          letterSpacing: 0.5
+                        }}>Sleep/Week</Typography>
+                      <Typography
+                        variant="h5"
+                        sx={{
+                          fontWeight: 700,
+                          color: STATE_COLORS.sleeping.color
+                        }}>{weeklyStats.sleepHours}h</Typography>
+                    </Box>
+                    <Box sx={{ textAlign: 'center' }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "text.disabled",
+                          fontSize: 11,
+                          letterSpacing: 0.5
+                        }}>Awake/Week</Typography>
+                      <Typography
+                        variant="h5"
+                        sx={{
+                          fontWeight: 700,
+                          color: STATE_COLORS.awake.color
+                        }}>{weeklyStats.awakeHours}h</Typography>
+                    </Box>
+                  </>
+                )}
+                {policy.nextTransitionAt && (
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "text.disabled",
+                        fontSize: 11,
+                        letterSpacing: 0.5
+                      }}>
+                      {policy.currentState === 'sleeping' ? 'Next Wake' : 'Next Sleep'}
+                    </Typography>
+                    <Typography
+                      variant="h6"
+                      sx={{
+                        fontWeight: 700,
+                        color: policy.currentState === 'sleeping' ? STATE_COLORS.awake.color : STATE_COLORS.sleeping.color
+                      }}>
+                      {fmtDt(policy.nextTransitionAt)}
+                    </Typography>
+                    <Typography variant="caption" sx={{
+                      color: "text.disabled"
+                    }}>{timeUntil(policy.nextTransitionAt)}</Typography>
+                  </Box>
+                )}
+              </Box>
+            </Box>
+          </Box>
+        )}
+
+        {/* Metadata row (only if no windows) */}
+        {!hasSleepWindows(sleepWindows) && <PolicyMetadataRow policy={policy} />}
+
+        {/* Exceptions band */}
         <Box
           sx={{
             mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3,
+            bgcolor: isDark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.015)',
             borderBottom: '1px solid', borderColor: SUBTLE_BORDER,
           }}
         >
-          <Box sx={{ display: 'flex', gap: { xs: 2, md: 5 }, alignItems: 'flex-start', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="caption" color="text.disabled" sx={{ mb: 1, display: 'block', fontSize: 11, letterSpacing: 0.5 }}>
-                Weekly Schedule &middot; {policy.timezone || 'UTC'}
-              </Typography>
-              <LedGlowTimeline
-                windows={sleepWindows}
-                exceptions={exceptions}
-                timezone={policy.timezone}
-              />
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontSize: 12 }}>
-                {windowsToText(sleepWindows)}
-              </Typography>
-            </Box>
-
-            <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', flexShrink: 0, pt: 0.5 }}>
-              {weeklyStats && (
-                <>
-                  <Box sx={{ textAlign: 'center' }}>
-                    <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11, letterSpacing: 0.5 }}>Sleep/Week</Typography>
-                    <Typography variant="h5" fontWeight={700} sx={{ color: STATE_COLORS.sleeping.color }}>{weeklyStats.sleepHours}h</Typography>
-                  </Box>
-                  <Box sx={{ textAlign: 'center' }}>
-                    <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11, letterSpacing: 0.5 }}>Awake/Week</Typography>
-                    <Typography variant="h5" fontWeight={700} sx={{ color: STATE_COLORS.awake.color }}>{weeklyStats.awakeHours}h</Typography>
-                  </Box>
-                </>
-              )}
-              {policy.nextTransitionAt && (
-                <Box sx={{ textAlign: 'center' }}>
-                  <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11, letterSpacing: 0.5 }}>
-                    {policy.currentState === 'sleeping' ? 'Next Wake' : 'Next Sleep'}
-                  </Typography>
-                  <Typography variant="h6" fontWeight={700} sx={{
-                    color: policy.currentState === 'sleeping' ? STATE_COLORS.awake.color : STATE_COLORS.sleeping.color,
-                  }}>
-                    {fmtDt(policy.nextTransitionAt)}
-                  </Typography>
-                  <Typography variant="caption" color="text.disabled">{timeUntil(policy.nextTransitionAt)}</Typography>
-                </Box>
-              )}
-            </Box>
-          </Box>
+          <ExceptionsSection
+            exceptions={exceptions}
+            canEdit={canEdit}
+            onAddException={() => { setEditOpen(false); setEditingException(undefined); setExceptionOpen(true) }}
+            onEditException={(ex) => { setEditOpen(false); setEditingException(ex); setExceptionOpen(true) }}
+          />
         </Box>
-      )}
 
-      {/* Metadata row (only if no windows) */}
-      {!hasSleepWindows(sleepWindows) && <PolicyMetadataRow policy={policy} />}
+        {/* Execution History band */}
+        <Box sx={{ mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3 }}>
+          <ExecutionHistoryTable
+            executions={executions}
+            onRowClick={setSelectedExec}
+          />
+        </Box>
 
-      {/* Exceptions band */}
-      <Box
-        sx={{
-          mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3,
-          bgcolor: isDark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.015)',
-          borderBottom: '1px solid', borderColor: SUBTLE_BORDER,
-        }}
-      >
-        <ExceptionsSection
-          exceptions={exceptions}
-          canEdit={canEdit}
-          onAddException={() => { setEditOpen(false); setEditingException(undefined); setExceptionOpen(true) }}
-          onEditException={(ex) => { setEditOpen(false); setEditingException(ex); setExceptionOpen(true) }}
+        <LogViewer execution={selectedExec} onClose={() => setSelectedExec(null)} />
+
+        {/* Dialogs */}
+        <CreatePolicyDialog
+          open={editOpen}
+          onClose={() => setEditOpen(false)}
+          existing={policy}
+          onNotify={notify}
         />
-      </Box>
-
-      {/* Execution History band */}
-      <Box sx={{ mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3 }}>
-        <ExecutionHistoryTable
-          executions={executions}
-          onRowClick={setSelectedExec}
+        <ExceptionDialog
+          open={exceptionOpen}
+          onClose={() => { setExceptionOpen(false); setEditingException(undefined) }}
+          existing={editingException}
+          defaultPolicyId={policyId}
+          onNotify={notify}
         />
+
+        <TriggerModeDialog
+          open={triggerDialog !== null}
+          direction={triggerDialog ?? 'sleep'}
+          policyName={policy.name}
+          onConfirm={(mode) => {
+            if (triggerDialog === 'sleep') sleepMut.mutate(mode)
+            else wakeMut.mutate(mode)
+          }}
+          onClose={() => setTriggerDialog(null)}
+        />
+
+        {SnackbarAlert}
       </Box>
-
-      <LogViewer execution={selectedExec} onClose={() => setSelectedExec(null)} />
-
-      {/* Dialogs */}
-      <CreatePolicyDialog
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
-        existing={policy}
-        onNotify={notify}
-      />
-      <ExceptionDialog
-        open={exceptionOpen}
-        onClose={() => { setExceptionOpen(false); setEditingException(undefined) }}
-        existing={editingException}
-        defaultPolicyId={policyId}
-        onNotify={notify}
-      />
-
-      <TriggerModeDialog
-        open={triggerDialog !== null}
-        direction={triggerDialog ?? 'sleep'}
-        policyName={policy.name}
-        onConfirm={(mode) => {
-          if (triggerDialog === 'sleep') sleepMut.mutate(mode)
-          else wakeMut.mutate(mode)
-        }}
-        onClose={() => setTriggerDialog(null)}
-      />
-
-      {SnackbarAlert}
-    </Box>
     </ErrorBoundary>
-  )
+  );
 }
 
 export default function PolicyDetailPage() {

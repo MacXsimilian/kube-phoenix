@@ -14,18 +14,25 @@ import { getClusterInfo } from '@/lib/api'
 function InfoField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <Box>
-      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 500 }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          textTransform: 'uppercase',
+          letterSpacing: 0.4,
+          fontWeight: 500
+        }}>
         {label}
       </Typography>
       <Typography
         variant="body2"
-        fontWeight={500}
-        sx={mono ? { fontFamily: 'monospace', fontSize: 12.5, wordBreak: 'break-all' } : undefined}
-      >
+        sx={[{
+          fontWeight: 500
+        }, mono ? { fontFamily: 'monospace', fontSize: 12.5, wordBreak: 'break-all' } : null]}>
         {value}
       </Typography>
     </Box>
-  )
+  );
 }
 
 export default function ClusterConnectionCard() {
@@ -40,11 +47,18 @@ export default function ClusterConnectionCard() {
       <CardContent sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
           <LanguageIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
-          <Typography variant="subtitle1" fontWeight={700}>
+          <Typography variant="subtitle1" sx={{
+            fontWeight: 700
+          }}>
             Cluster Connection
           </Typography>
         </Box>
-        <Typography variant="body2" color="text.secondary" mb={2.5}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            mb: 2.5
+          }}>
           Kubernetes cluster information from the active kubeconfig or in-cluster service account.
         </Typography>
 
@@ -71,5 +85,5 @@ export default function ClusterConnectionCard() {
         )}
       </CardContent>
     </Card>
-  )
+  );
 }

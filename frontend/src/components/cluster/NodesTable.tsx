@@ -190,11 +190,12 @@ export default function NodesTable() {
           sx={{ ml: 0.5 }}
         />
         <Box sx={{ flex: 1 }} />
-        <Typography variant="caption" color="text.disabled">
+        <Typography variant="caption" sx={{
+          color: "text.disabled"
+        }}>
           {dataUpdatedAt ? `Updated ${sinceMs(dataUpdatedAt)}` : ''}
         </Typography>
       </Box>
-
       {isError ? (
         <Alert severity="error">
           Failed to load nodes: {formatError(error)}
@@ -220,7 +221,13 @@ export default function NodesTable() {
               {sorted.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={colCount}>
-                    <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: "text.secondary",
+                        py: 2,
+                        textAlign: 'center'
+                      }}>
                       {search ? 'No nodes match your search.' : 'No nodes found.'}
                     </Typography>
                   </TableCell>
@@ -234,7 +241,14 @@ export default function NodesTable() {
                       <TableRow sx={{ bgcolor: 'rgba(124,58,237,0.06)' }}>
                         <TableCell colSpan={7} sx={{ py: 1 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-                            <Typography variant="caption" fontWeight={700} sx={{ color: 'primary.light', textTransform: 'uppercase', letterSpacing: 1 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                fontWeight: 700,
+                                color: 'primary.light',
+                                textTransform: 'uppercase',
+                                letterSpacing: 1
+                              }}>
                               {zone}
                             </Typography>
                             <Chip label={`${stats.nodes.length} node${stats.nodes.length !== 1 ? 's' : ''}`} size="small" sx={{ height: 18, fontSize: 10 }} />
@@ -265,7 +279,7 @@ export default function NodesTable() {
                         />
                       ))}
                     </React.Fragment>
-                  )
+                  );
                 })
               ) : (
                 paginatedRows.map((node) => (
@@ -293,5 +307,5 @@ export default function NodesTable() {
       )}
       <NodeDetailDrawer node={selectedNode} onClose={() => setSelectedNode(null)} />
     </>
-  )
+  );
 }

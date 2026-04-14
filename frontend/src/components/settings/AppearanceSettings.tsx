@@ -24,11 +24,18 @@ export default function AppearanceSettings({
       <CardContent sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
           <LightModeOutlinedIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
-          <Typography variant="subtitle1" fontWeight={700}>
+          <Typography variant="subtitle1" sx={{
+            fontWeight: 700
+          }}>
             Appearance
           </Typography>
         </Box>
-        <Typography variant="body2" color="text.secondary" mb={2.5}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            mb: 2.5
+          }}>
           Choose how kube-phoenix looks. System follows your OS preference.
         </Typography>
         <ToggleButtonGroup
@@ -44,7 +51,9 @@ export default function AppearanceSettings({
             sx={{ flex: 1, gap: 1, px: 2, py: 1.5, flexDirection: 'column' }}
           >
             <LightModeOutlinedIcon />
-            <Typography variant="caption" fontWeight={600}>Light</Typography>
+            <Typography variant="caption" sx={{
+              fontWeight: 600
+            }}>Light</Typography>
           </ToggleButton>
           <ToggleButton
             value="system"
@@ -52,7 +61,9 @@ export default function AppearanceSettings({
             sx={{ flex: 1, gap: 1, px: 2, py: 1.5, flexDirection: 'column' }}
           >
             <SettingsBrightnessOutlinedIcon />
-            <Typography variant="caption" fontWeight={600}>System</Typography>
+            <Typography variant="caption" sx={{
+              fontWeight: 600
+            }}>System</Typography>
           </ToggleButton>
           <ToggleButton
             value="dark"
@@ -60,10 +71,12 @@ export default function AppearanceSettings({
             sx={{ flex: 1, gap: 1, px: 2, py: 1.5, flexDirection: 'column' }}
           >
             <DarkModeOutlinedIcon />
-            <Typography variant="caption" fontWeight={600}>Dark</Typography>
+            <Typography variant="caption" sx={{
+              fontWeight: 600
+            }}>Dark</Typography>
           </ToggleButton>
         </ToggleButtonGroup>
       </CardContent>
     </Card>
-  )
+  );
 }

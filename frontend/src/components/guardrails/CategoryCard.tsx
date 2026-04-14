@@ -41,8 +41,15 @@ export default function CategoryCard({
               {icon}
             </Box>
             <Box sx={{ flex: 1 }}>
-              <Typography variant="body1" fontWeight={700} fontSize={14}>{title}</Typography>
-              <Typography variant="caption" color="text.secondary">{subtitle}</Typography>
+              <Typography
+                variant="body1"
+                sx={{
+                  fontWeight: 700,
+                  fontSize: 14
+                }}>{title}</Typography>
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>{subtitle}</Typography>
             </Box>
             {!expanded && pills}
             <ExpandMoreIcon
@@ -59,5 +66,5 @@ export default function CategoryCard({
         </CardContent>
       </Collapse>
     </Card>
-  )
+  );
 }

@@ -45,12 +45,19 @@ export default function ProtectedChipInput({
     <>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1 }}>
         <ShieldOutlinedIcon sx={{ fontSize: 16, color: 'warning.main' }} />
-        <Typography variant="body2" fontWeight={600}>System-Protected Namespaces</Typography>
+        <Typography variant="body2" sx={{
+          fontWeight: 600
+        }}>System-Protected Namespaces</Typography>
       </Box>
-      <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          display: "block",
+          mb: 1.5
+        }}>
         Always-on namespaces. Only remove an entry if you know what you&apos;re doing.
       </Typography>
-
       <ChipInput
         id="protected-chip-input"
         values={values}
@@ -68,7 +75,6 @@ export default function ProtectedChipInput({
           '& .MuiChip-deleteIcon': { color: 'warning.main', opacity: 0.6, '&:hover': { opacity: 1 } },
         }}
       />
-
       <Dialog
         open={pendingRemove !== null}
         onClose={() => setPendingRemove(null)}
@@ -81,7 +87,9 @@ export default function ProtectedChipInput({
           Remove system-protected namespace?
         </DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             You are about to remove{' '}
             <Box component="span" sx={{ fontFamily: 'monospace', color: 'warning.main', fontWeight: 600 }}>
               {pendingRemove}
@@ -102,5 +110,5 @@ export default function ProtectedChipInput({
         </DialogActions>
       </Dialog>
     </>
-  )
+  );
 }

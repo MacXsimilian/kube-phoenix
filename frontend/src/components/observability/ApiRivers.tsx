@@ -888,10 +888,21 @@ export default function ApiRivers({ stream }: Props) {
         <ControlSection label="Status">
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, height: 32 }}>
             <FiberManualRecordIcon sx={{ fontSize: 10, color: statusColor }} />
-            <Typography variant="caption" fontWeight={600} sx={{ fontSize: '0.75rem' }}>
+            <Typography
+              variant="caption"
+              sx={{
+                fontWeight: 600,
+                fontSize: '0.75rem'
+              }}>
               {systemStatus === 'critical' ? 'Critical' : systemStatus === 'warning' ? 'Warning' : 'Healthy'}
             </Typography>
-            <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.6rem', fontFamily: 'monospace' }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.disabled",
+                fontSize: '0.6rem',
+                fontFamily: 'monospace'
+              }}>
               {particleCount}p · {effectiveLinks.size}/{ALL_LINKS.length}
             </Typography>
           </Box>
@@ -1245,12 +1256,25 @@ export default function ApiRivers({ stream }: Props) {
                   <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1.5, px: 1.5, py: 1, minWidth: 220, maxWidth: 380, boxShadow: 6 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.3 }}>
                       <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: CATEGORY_COLORS[link.category] }} />
-                      <Typography variant="caption" fontWeight={700} color="text.primary" sx={{ fontSize: '0.68rem' }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontWeight: 700,
+                          color: "text.primary",
+                          fontSize: '0.68rem'
+                        }}>
                         {src.label} {'\u2192'} {tgt.label}
                       </Typography>
                       <Chip label={link.category} size="small" sx={{ height: 15, fontSize: 8, ml: 'auto', bgcolor: alpha(CATEGORY_COLORS[link.category], 0.15), color: CATEGORY_COLORS[link.category] }} />
                     </Box>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.58rem', mb: 0.3 }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "text.secondary",
+                        display: 'block',
+                        fontSize: '0.58rem',
+                        mb: 0.3
+                      }}>
                       {link.label}
                     </Typography>
                     <Box sx={{ bgcolor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 0.5, px: 0.7, py: 0.3, mb: 0.4 }}>
@@ -1259,12 +1283,22 @@ export default function ApiRivers({ stream }: Props) {
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', gap: 1.5 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.52rem' }}>{liveRpsMap[link.id]?.rps ?? link.rps} RPS</Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.52rem' }}>{liveRpsMap[link.id]?.latencyMs ?? link.latencyMs}ms</Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "text.secondary",
+                          fontSize: '0.52rem'
+                        }}>{liveRpsMap[link.id]?.rps ?? link.rps} RPS</Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "text.secondary",
+                          fontSize: '0.52rem'
+                        }}>{liveRpsMap[link.id]?.latencyMs ?? link.latencyMs}ms</Typography>
                     </Box>
                   </Box>
                 </motion.div>
-              )
+              );
             })()}
           </AnimatePresence>
 

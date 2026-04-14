@@ -68,10 +68,17 @@ export default function LoginScreen() {
       >
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
           <Typography sx={{ fontSize: 56, lineHeight: 1, userSelect: 'none' }}>🐦‍🔥</Typography>
-          <Typography variant="h6" fontWeight={700} letterSpacing={-0.5}>
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: 700,
+              letterSpacing: -0.5
+            }}>
             kube-phoenix
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             Sign in to continue
           </Typography>
         </Box>
@@ -133,5 +140,5 @@ export default function LoginScreen() {
         </Box>
       </Paper>
     </Box>
-  )
+  );
 }

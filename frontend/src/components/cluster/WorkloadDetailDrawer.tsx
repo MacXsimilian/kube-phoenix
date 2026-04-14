@@ -29,7 +29,12 @@ function ReplicaBar({ ready, current, saved }: { ready: number; current: number;
           {ready}/{current} ready
         </Typography>
         {saved !== null && (
-          <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.disabled",
+              fontSize: 11
+            }}>
             saved: {saved}
           </Typography>
         )}
@@ -40,7 +45,7 @@ function ReplicaBar({ ready, current, saved }: { ready: number; current: number;
         sx={{ height: 4, borderRadius: 1, bgcolor: 'action.hover', '& .MuiLinearProgress-bar': { bgcolor: color, borderRadius: 1 } }}
       />
     </Box>
-  )
+  );
 }
 
 // ── main component ────────────────────────────────────────────────────────────
@@ -63,21 +68,40 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
     if (selectedPod) {
       return (
         <>
-          <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11, display: 'block', mb: 0.25 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.disabled",
+              fontSize: 11,
+              display: 'block',
+              mb: 0.25
+            }}>
             {workload.name}
           </Typography>
           <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 13, wordBreak: 'break-all', lineHeight: 1.4 }}>
             {selectedPod.name}
           </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              fontSize: 11
+            }}>
             {selectedPod.namespace}
           </Typography>
         </>
-      )
+      );
     }
     return (
       <>
-        <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11, display: 'block', mb: 0.25 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.disabled",
+            fontSize: 11,
+            display: 'block',
+            mb: 0.25
+          }}>
           {workload.namespace}
         </Typography>
         <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 13, wordBreak: 'break-all', lineHeight: 1.4 }}>
@@ -92,7 +116,7 @@ export default function WorkloadDetailDrawer({ workload, onClose }: { workload: 
           {statusColor && <Chip label={statusColor.label} size="small" sx={{ height: 18, fontSize: 10, bgcolor: statusColor.bgcolor, color: statusColor.color }} />}
         </Box>
       </>
-    )
+    );
   }
 
   const renderPodTableBody = (filteredPods: NodePod[], onSelectPod: (pod: NodePod) => void) =>

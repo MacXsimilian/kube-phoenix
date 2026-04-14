@@ -53,7 +53,9 @@ export default function ExceptionsPage() {
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h5" fontWeight={700}>Scheduled Exceptions</Typography>
+        <Typography variant="h5" sx={{
+          fontWeight: 700
+        }}>Scheduled Exceptions</Typography>
         <Tooltip title={!canEdit ? 'You do not have permission to create exceptions' : ''}>
           <span>
             <Button
@@ -67,16 +69,15 @@ export default function ExceptionsPage() {
           </span>
         </Tooltip>
       </Box>
-
       {isError && <Alert severity="error" sx={{ mb: 2 }}>Failed to load exceptions</Alert>}
       {isLoading && <CenteredSpinner />}
-
       {exceptions && exceptions.length === 0 && (
         <Box sx={{ border: '1px dashed', borderColor: 'divider', borderRadius: 2, p: 4, textAlign: 'center' }}>
-          <Typography variant="body2" color="text.secondary">No exceptions found.</Typography>
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>No exceptions found.</Typography>
         </Box>
       )}
-
       {exceptions && exceptions.length > 0 && (
         <ExceptionsCalendarStrip
           exceptions={exceptions}
@@ -86,14 +87,12 @@ export default function ExceptionsPage() {
           onCancel={(ex) => setPendingDelete(ex)}
         />
       )}
-
       <ExceptionDialog
         open={dialogOpen}
         onClose={() => { setDialogOpen(false); setEditing(undefined) }}
         existing={editing}
         onNotify={notify}
       />
-
       <ConfirmDialog
         open={!!pendingDelete}
         title="Cancel exception?"
@@ -104,8 +103,7 @@ export default function ExceptionsPage() {
         onConfirm={() => { if (pendingDelete) deleteMut.mutate(pendingDelete.id); setPendingDelete(null) }}
         onClose={() => setPendingDelete(null)}
       />
-
       {SnackbarAlert}
     </Box>
-  )
+  );
 }

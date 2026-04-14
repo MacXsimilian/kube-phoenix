@@ -22,7 +22,7 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import CloudOffIcon from '@mui/icons-material/CloudOff'
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlineOutlined'
 import ReportProblemIcon from '@mui/icons-material/ReportProblem'
 import Switch from '@mui/material/Switch'
 import FormControlLabel from '@mui/material/FormControlLabel'
@@ -621,7 +621,9 @@ export default function LogViewer({
                   ) : (
                     <WbSunnyIcon sx={{ color: 'warning.main', fontSize: 18 }} />
                   )}
-                  <Typography variant="subtitle1" fontWeight={700}>
+                  <Typography variant="subtitle1" sx={{
+                    fontWeight: 700
+                  }}>
                     {execution.direction === 'sleep' ? 'Sleep' : 'Wake'} #{execution.id}
                   </Typography>
                   {isRunning && !cleanClose && <CircularProgress size={14} />}
@@ -700,7 +702,14 @@ export default function LogViewer({
             {/* Log area */}
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
               <Box sx={{ minHeight: 40, px: 2.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid', borderColor: 'divider' }}>
-                <Typography variant="caption" fontWeight={700} letterSpacing={0.8} sx={{ color: 'text.secondary', textTransform: 'uppercase' }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 700,
+                    letterSpacing: 0.8,
+                    color: 'text.secondary',
+                    textTransform: 'uppercase'
+                  }}>
                   Logs
                 </Typography>
                 <FormControlLabel
@@ -741,7 +750,9 @@ export default function LogViewer({
               )}
               <Box ref={logContainerRef} role="log" aria-label="Execution logs" sx={{ flex: 1, overflow: 'auto', p: 2, bgcolor: 'background.default', minHeight: 0 }}>
                 {lines.length === 0 && !isRunning && !logsError && (
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" sx={{
+                    color: "text.secondary"
+                  }}>
                     No log lines found.
                   </Typography>
                 )}
@@ -756,14 +767,13 @@ export default function LogViewer({
           </>
         )}
       </Drawer>
-
       {/* WebSocket disconnect floating toast */}
       <Snackbar
         open={wsToastOpen}
         autoHideDuration={isConnected ? 3000 : undefined}
         onClose={() => setWsToastOpen(false)}
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-        TransitionComponent={Slide}
+        slots={{ transition: Slide }}
         sx={{ mt: 1 }}
       >
         <Alert
@@ -775,8 +785,7 @@ export default function LogViewer({
           Log stream disconnected — reconnecting...
         </Alert>
       </Snackbar>
-
       {SnackbarAlert}
     </>
-  )
+  );
 }

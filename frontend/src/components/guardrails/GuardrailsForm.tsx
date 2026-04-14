@@ -26,8 +26,8 @@ import CenteredSpinner from '@/components/common/CenteredSpinner'
 import { ChipInput } from '@/components/common/ChipInput'
 import CategoryCard from '@/components/guardrails/CategoryCard'
 import { AMBER_40, AMBER_03 } from '@/components/guardrails/ProtectedChipInput'
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlineOutlined'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlineOutlined'
 import SaveIcon from '@mui/icons-material/Save'
 import { getGuardrails, updateGuardrails } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -261,7 +261,6 @@ export default function GuardrailsForm() {
           Could not refresh guardrails — showing last known values.
         </Alert>
       )}
-
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
 
         {/* ── 1. System-Protected Namespaces ──────────────────────── */}
@@ -277,7 +276,13 @@ export default function GuardrailsForm() {
           cardSx={{ borderColor: AMBER_40, bgcolor: AMBER_03 }}
           dividerSx={{ borderColor: AMBER_40 }}
         >
-          <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              display: "block",
+              mb: 1.5
+            }}>
             Workloads in these namespaces are never scaled down or drained. Only remove an entry if you know what you are doing.
           </Typography>
           <ChipInput
@@ -313,13 +318,23 @@ export default function GuardrailsForm() {
             </Box>
           }
         >
-          <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              display: "block",
+              mb: 1.5
+            }}>
             Nodes matching these rules will never be drained, even if idle.
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
             <Box>
-              <Typography variant="body2" fontWeight={600}>Protect Critical Priority Pods</Typography>
-              <Typography variant="caption" color="text.secondary">Never drain nodes running system-critical pods</Typography>
+              <Typography variant="body2" sx={{
+                fontWeight: 600
+              }}>Protect Critical Priority Pods</Typography>
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>Never drain nodes running system-critical pods</Typography>
             </Box>
             <Switch checked={form.protectCriticalPodNodes} disabled={!hasEdit} onChange={(e) => setField('protectCriticalPodNodes', e.target.checked)} />
           </Box>
@@ -342,7 +357,13 @@ export default function GuardrailsForm() {
             <Chip label={`${form.priorityNs.length} priority ns`} size="small" sx={{ fontSize: 11 }} />
           }
         >
-          <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              display: "block",
+              mb: 1.5
+            }}>
             These namespaces are scaled first during wake-up, in listed order.
           </Typography>
           <ChipInput id="chip-input-priority-ns" label="Priority Namespaces" hint="Add namespaces in the order they should be scaled" values={form.priorityNs} onChange={(v) => setField('priorityNs', v)} readOnly={!hasEdit} />
@@ -365,56 +386,90 @@ export default function GuardrailsForm() {
             </Box>
           }
         >
-          <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              display: "block",
+              mb: 1.5
+            }}>
             Control how the policy evaluation loop runs.
           </Typography>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: '8px 8px 0 0' }}>
               <Box>
-                <Typography variant="body2" fontWeight={600}>Scaling Concurrency</Typography>
-                <Typography variant="caption" color="text.secondary">Max workloads scaled in parallel during sleep/wake (1–50)</Typography>
+                <Typography variant="body2" sx={{
+                  fontWeight: 600
+                }}>Scaling Concurrency</Typography>
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>Max workloads scaled in parallel during sleep/wake (1–50)</Typography>
               </Box>
               <TextField size="small" type="number" value={form.scalingConcurrency} disabled={!hasEdit} error={form.scalingConcurrency !== '' && (Number(form.scalingConcurrency) < 1 || Number(form.scalingConcurrency) > 50)} onChange={(e) => setField('scalingConcurrency', e.target.value)} onBlur={() => clampField('scalingConcurrency', 1, 50, 10)} slotProps={{ htmlInput: { min: 1, max: 50, style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} sx={{ '& input::-webkit-outer-spin-button, & input::-webkit-inner-spin-button': { WebkitAppearance: 'none', m: 0 }, '& input[type=number]': { MozAppearance: 'textfield' } }} />
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none' }}>
               <Box>
-                <Typography variant="body2" fontWeight={600}>Wake Wave Size</Typography>
-                <Typography variant="caption" color="text.secondary">Workloads per wave during wake-up, 0 = disabled (0–200)</Typography>
+                <Typography variant="body2" sx={{
+                  fontWeight: 600
+                }}>Wake Wave Size</Typography>
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>Workloads per wave during wake-up, 0 = disabled (0–200)</Typography>
               </Box>
               <TextField size="small" type="number" value={form.wakeWaveSize} disabled={!hasEdit} error={form.wakeWaveSize !== '' && (Number(form.wakeWaveSize) < 0 || Number(form.wakeWaveSize) > 200)} onChange={(e) => setField('wakeWaveSize', e.target.value)} onBlur={() => clampField('wakeWaveSize', 0, 200, 0)} slotProps={{ htmlInput: { min: 0, max: 200, style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} sx={{ '& input::-webkit-outer-spin-button, & input::-webkit-inner-spin-button': { WebkitAppearance: 'none', m: 0 }, '& input[type=number]': { MozAppearance: 'textfield' } }} />
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none', opacity: Number(form.wakeWaveSize) === 0 ? 0.5 : 1 }}>
               <Box>
-                <Typography variant="body2" fontWeight={600}>Wake Wave Pause</Typography>
-                <Typography variant="caption" color="text.secondary">Max seconds to wait for pod readiness between waves (10–600)</Typography>
+                <Typography variant="body2" sx={{
+                  fontWeight: 600
+                }}>Wake Wave Pause</Typography>
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>Max seconds to wait for pod readiness between waves (10–600)</Typography>
               </Box>
               <TextField size="small" type="number" value={form.wakeWavePauseSeconds} disabled={!hasEdit || Number(form.wakeWaveSize) === 0} error={Number(form.wakeWaveSize) > 0 && form.wakeWavePauseSeconds !== '' && (Number(form.wakeWavePauseSeconds) < 10 || Number(form.wakeWavePauseSeconds) > 600)} onChange={(e) => setField('wakeWavePauseSeconds', e.target.value)} onBlur={() => clampField('wakeWavePauseSeconds', 10, 600, 90)} slotProps={{ htmlInput: { min: 10, max: 600, style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} sx={{ '& input::-webkit-outer-spin-button, & input::-webkit-inner-spin-button': { WebkitAppearance: 'none', m: 0 }, '& input[type=number]': { MozAppearance: 'textfield' } }} />
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none' }}>
               <Box>
-                <Typography variant="body2" fontWeight={600}>Eval Interval</Typography>
-                <Typography variant="caption" color="text.secondary">How often the scheduler evaluates policy state (10s–15m)</Typography>
+                <Typography variant="body2" sx={{
+                  fontWeight: 600
+                }}>Eval Interval</Typography>
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>How often the scheduler evaluates policy state (10s–15m)</Typography>
               </Box>
               <TextField size="small" value={form.evalInterval} disabled={!hasEdit} error={!evalIntervalValid} onChange={(e) => setField('evalInterval', e.target.value)} slotProps={{ htmlInput: { style: { fontFamily: 'monospace', textAlign: 'center', width: 64 } } }} />
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none' }}>
               <Box>
-                <Typography variant="body2" fontWeight={600}>Auto Wake</Typography>
-                <Typography variant="caption" color="text.secondary">Automatically wake clusters when outside a sleep window</Typography>
+                <Typography variant="body2" sx={{
+                  fontWeight: 600
+                }}>Auto Wake</Typography>
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>Automatically wake clusters when outside a sleep window</Typography>
               </Box>
               <Switch checked={form.autoWake} disabled={!hasEdit} onChange={(e) => setField('autoWake', e.target.checked)} />
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none' }}>
               <Box>
-                <Typography variant="body2" fontWeight={600}>Reconcile While Awake</Typography>
-                <Typography variant="caption" color="text.secondary">Re-evaluate policies during awake windows to correct drift</Typography>
+                <Typography variant="body2" sx={{
+                  fontWeight: 600
+                }}>Reconcile While Awake</Typography>
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>Re-evaluate policies during awake windows to correct drift</Typography>
               </Box>
               <Switch checked={form.reconcileWhileAwake} disabled={!hasEdit} onChange={(e) => setField('reconcileWhileAwake', e.target.checked)} />
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, border: '1px solid', borderColor: 'divider', borderTop: 'none', borderRadius: '0 0 8px 8px' }}>
               <Box>
-                <Typography variant="body2" fontWeight={600}>Enforce Sleep</Typography>
-                <Typography variant="caption" color="text.secondary">When enabled, workloads manually scaled up during a sleep window are automatically scaled back to zero</Typography>
+                <Typography variant="body2" sx={{
+                  fontWeight: 600
+                }}>Enforce Sleep</Typography>
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>When enabled, workloads manually scaled up during a sleep window are automatically scaled back to zero</Typography>
               </Box>
               <Switch checked={form.enforceSleep} disabled={!hasEdit} onChange={(e) => setField('enforceSleep', e.target.checked)} />
             </Box>
@@ -422,7 +477,6 @@ export default function GuardrailsForm() {
         </CategoryCard>
 
       </Box>
-
       <Box
         sx={{
           mt: 3,
@@ -449,34 +503,58 @@ export default function GuardrailsForm() {
           </Alert>
         )}
       </Box>
-
       {SnackbarAlert}
-
       <Dialog open={!!nsToRemove} onClose={() => setNsToRemove(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Remove protected namespace?</DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 2, mb: 2, borderRadius: 2, bgcolor: 'rgba(239,68,68,0.06)', border: '1px solid', borderColor: 'rgba(239,68,68,0.2)' }}>
             <ErrorOutlineIcon sx={{ color: 'error.main', fontSize: 32, flexShrink: 0 }} />
             <Box>
-              <Typography variant="body2" fontWeight={600} color="error.main">
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
+                  color: "error.main"
+                }}>
                 {nsToRemove}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>
                 will lose system protection
               </Typography>
             </Box>
           </Box>
-          <Typography variant="body2" fontWeight={600} mb={0.5}>
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: 600,
+              mb: 0.5
+            }}>
             What this means:
           </Typography>
           <Box component="ul" sx={{ pl: 2.5, m: 0, mb: 1 }}>
-            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+            <Typography
+              component="li"
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+                mb: 0.5
+              }}>
               Workloads can be scaled to zero by sleep policies
             </Typography>
-            <Typography component="li" variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+            <Typography
+              component="li"
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+                mb: 0.5
+              }}>
               Nodes running only these workloads may be drained
             </Typography>
-            <Typography component="li" variant="body2" color="text.secondary">
+            <Typography component="li" variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               Changes apply after saving guardrails
             </Typography>
           </Box>
@@ -497,5 +575,5 @@ export default function GuardrailsForm() {
         </DialogActions>
       </Dialog>
     </>
-  )
+  );
 }

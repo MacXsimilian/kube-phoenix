@@ -114,8 +114,15 @@ function Section({ icon, title, subtitle, pills, expanded, onToggle, children, t
               {icon}
             </Box>
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="body1" fontWeight={700} fontSize={14}>{title}</Typography>
-              <Typography variant="caption" color="text.secondary">{subtitle}</Typography>
+              <Typography
+                variant="body1"
+                sx={{
+                  fontWeight: 700,
+                  fontSize: 14
+                }}>{title}</Typography>
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>{subtitle}</Typography>
             </Box>
             {!expanded && pills && (
               <Box sx={{ display: { xs: 'none', sm: 'flex' }, gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -136,7 +143,7 @@ function Section({ icon, title, subtitle, pills, expanded, onToggle, children, t
         </CardContent>
       </Collapse>
     </Card>
-  )
+  );
 }
 
 /* ─── Shared sub-components ───────────────────────────────────────────────── */
@@ -175,22 +182,45 @@ function LedDot({ state }: { state: keyof typeof LED_COLORS }) {
 function FieldRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <Box>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>{label}</Typography>
-      <Typography variant="body2" fontWeight={500} sx={{ fontFamily: mono ? 'monospace' : undefined, fontSize: mono ? 12 : 13, wordBreak: 'break-all' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          display: 'block',
+          mb: 0.25
+        }}>{label}</Typography>
+      <Typography
+        variant="body2"
+        sx={{
+          fontWeight: 500,
+          fontFamily: mono ? 'monospace' : undefined,
+          fontSize: mono ? 12 : 13,
+          wordBreak: 'break-all'
+        }}>
         {value}
       </Typography>
     </Box>
-  )
+  );
 }
 
 function PulseStat({ label, value }: { label: string; value: string }) {
   const isDark = useIsDark()
   return (
     <Box sx={{ p: 1.5, borderRadius: 1, bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', border: '1px solid', borderColor: 'divider', textAlign: 'center' }}>
-      <Typography variant="h6" fontWeight={700} fontSize={16}>{value}</Typography>
-      <Typography variant="caption" color="text.secondary" fontSize={10}>{label}</Typography>
+      <Typography
+        variant="h6"
+        sx={{
+          fontWeight: 700,
+          fontSize: 16
+        }}>{value}</Typography>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.secondary",
+          fontSize: 10
+        }}>{label}</Typography>
     </Box>
-  )
+  );
 }
 
 /* ─── Main Page ─���─────────────────────────────────────────────────────────── */
@@ -259,11 +289,20 @@ export default function SettingsPage() {
 
   return (
     <>
-      <Typography variant="h5" fontWeight={700} mb={1}>Settings</Typography>
-      <Typography variant="body2" color="text.secondary" mb={3}>
+      <Typography
+        variant="h5"
+        sx={{
+          fontWeight: 700,
+          mb: 1
+        }}>Settings</Typography>
+      <Typography
+        variant="body2"
+        sx={{
+          color: "text.secondary",
+          mb: 3
+        }}>
         Manage your account, appearance, and system configuration.
       </Typography>
-
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {/* ── Profile & Identity ────────────────────────────────────── */}
         {user && user.id !== 0 && (
@@ -286,7 +325,13 @@ export default function SettingsPage() {
               <FieldRow label="Role" value={user.role} />
               <FieldRow label="Auth Source" value={user.source === 'oidc' ? 'SSO (OIDC)' : 'Local'} />
               <Box>
-                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>Timezone</Typography>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "text.secondary",
+                    mb: 0.5,
+                    display: 'block'
+                  }}>Timezone</Typography>
                 <Select
                   size="small"
                   value={user.defaultTimezone ?? 'UTC'}
@@ -294,7 +339,7 @@ export default function SettingsPage() {
                   disabled={timezoneMut.isPending}
                   fullWidth
                   sx={{ fontSize: 13 }}
-                  MenuProps={{ PaperProps: { sx: { maxHeight: 300 } } }}
+                  MenuProps={{ slotProps: { paper: { sx: { maxHeight: 300 } } } }}
                 >
                   {TIMEZONES.map((tz) => (
                     <MenuItem key={tz} value={tz} sx={{ fontSize: 13 }}>{tz}</MenuItem>
@@ -307,7 +352,9 @@ export default function SettingsPage() {
             {oidcMounted && (
               <Box sx={{ mt: 2, pt: 2, borderTop: `1px solid ${subtleBorder(isDark)}` }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  <Typography variant="body2" fontWeight={600}>OIDC Connection</Typography>
+                  <Typography variant="body2" sx={{
+                    fontWeight: 600
+                  }}>OIDC Connection</Typography>
                   <LedDot state={oidcEnabled ? 'awake' : 'unknown'} />
                 </Box>
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.5 }}>
@@ -362,7 +409,12 @@ export default function SettingsPage() {
           expanded={expanded.appearance}
           onToggle={() => toggle('appearance')}
         >
-          <Typography variant="body2" fontWeight={600} sx={{ mb: 1.5 }}>Theme</Typography>
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: 600,
+              mb: 1.5
+            }}>Theme</Typography>
           <ToggleButtonGroup
             value={mode}
             exclusive
@@ -435,7 +487,9 @@ export default function SettingsPage() {
               </TableBody>
             </Table>
           ) : (
-            <Typography variant="body2" color="text.secondary">No active sessions found.</Typography>
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>No active sessions found.</Typography>
           )}
         </Section>
 
@@ -515,12 +569,29 @@ export default function SettingsPage() {
           ) : versionInfo ? (
             <>
               <Box sx={{ textAlign: 'center', py: 2, mb: 2, borderBottom: `1px solid ${subtleBorder(isDark)}` }}>
-                <Typography variant="h5" fontWeight={900} sx={{ mb: 0.5 }}>🐦‍🔥 kube-phoenix</Typography>
-                <Typography variant="h6" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{versionInfo.version}</Typography>
-                <Typography variant="caption" color="text.secondary">Kubernetes cluster sleep/wake policy engine</Typography>
+                <Typography
+                  variant="h5"
+                  sx={{
+                    fontWeight: 900,
+                    mb: 0.5
+                  }}>🐦‍🔥 kube-phoenix</Typography>
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: "text.secondary",
+                    fontFamily: 'monospace'
+                  }}>{versionInfo.version}</Typography>
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>Kubernetes cluster sleep/wake policy engine</Typography>
               </Box>
 
-              <Typography variant="body2" fontWeight={700} sx={{ mb: 1.5 }}>Build Information</Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 700,
+                  mb: 1.5
+                }}>Build Information</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.5, mb: 2.5 }}>
                 <FieldRow label="Version" value={versionInfo.version} mono />
                 <FieldRow label="Uptime" value={versionInfo.uptime} />
@@ -533,7 +604,12 @@ export default function SettingsPage() {
                 <FieldRow label="TanStack Query" value="5.72.2" mono />
               </Box>
 
-              <Typography variant="body2" fontWeight={700} sx={{ mb: 1 }}>Links</Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 700,
+                  mb: 1
+                }}>Links</Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {[
                   { label: 'GitHub Repository', icon: <GitHubIcon fontSize="small" />, href: 'https://github.com/MacXsimilian/kube-phoenix' },
@@ -554,7 +630,9 @@ export default function SettingsPage() {
                     }}
                   >
                     {link.icon}
-                    <Typography variant="body2" fontSize={13}>{link.label}</Typography>
+                    <Typography variant="body2" sx={{
+                      fontSize: 13
+                    }}>{link.label}</Typography>
                   </Box>
                 ))}
               </Box>
@@ -564,8 +642,7 @@ export default function SettingsPage() {
           )}
         </Section>
       </Box>
-
       {SnackbarAlert}
     </>
-  )
+  );
 }

@@ -325,7 +325,9 @@ function HeaderBar({ callCount, callsPerSec, latencyBuckets, filter, onFilterCha
       display: 'flex', alignItems: 'center', gap: 1,
       px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider', flexWrap: 'wrap',
     }}>
-      <Typography variant="subtitle2" fontWeight={700}>
+      <Typography variant="subtitle2" sx={{
+        fontWeight: 700
+      }}>
         Live API & Function Calls
       </Typography>
       <LiveCallCount count={callCount} />
@@ -347,7 +349,7 @@ function HeaderBar({ callCount, callsPerSec, latencyBuckets, filter, onFilterCha
         {errorCount > 0 && <ErrorCountBadge count={errorCount} />}
       </Box>
     </Box>
-  )
+  );
 }
 
 // ── LiveCallCount ──────────────────────────────────────────────────────────
@@ -358,11 +360,13 @@ function LiveCallCount({ count }: { count: number }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
       <FiberManualRecordIcon sx={{ fontSize: 8, color: theme.palette.success.main, ...livePulseAnimation }} />
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" sx={{
+        color: "text.secondary"
+      }}>
         last {count}
       </Typography>
     </Box>
-  )
+  );
 }
 
 // ── SearchInput ───────────────────────────────────────────────────────────
@@ -508,12 +512,19 @@ function TableHeader() {
       borderBottom: 1, borderColor: 'divider',
     }}>
       {COLUMN_HEADERS.map((h) => (
-        <Typography key={h} variant="caption" color="text.secondary" fontWeight={700} sx={{ fontSize: 10 }}>
+        <Typography
+          key={h}
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            fontWeight: 700,
+            fontSize: 10
+          }}>
           {h}
         </Typography>
       ))}
     </Box>
-  )
+  );
 }
 
 // ── CallRow ────────────────────────────────────────────────────────────────
@@ -809,12 +820,19 @@ function GroupedTableHeader() {
       borderBottom: 1, borderColor: 'divider',
     }}>
       {GROUPED_HEADERS.map((h) => (
-        <Typography key={h} variant="caption" color="text.secondary" fontWeight={700} sx={{ fontSize: 10 }}>
+        <Typography
+          key={h}
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            fontWeight: 700,
+            fontSize: 10
+          }}>
           {h}
         </Typography>
       ))}
     </Box>
-  )
+  );
 }
 
 function GroupedRow({ group }: { group: CallGroup }) {

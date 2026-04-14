@@ -8,7 +8,7 @@ import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import { alpha, useTheme } from '@mui/material/styles'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlineOutlined'
 import type { Theme } from '@mui/material/styles'
 import type { MetricSnapshot, IncidentEvent, TimeRange } from '@/lib/observability-types'
 import { TIME_RANGE_OPTIONS } from '@/lib/observability-types'
@@ -129,14 +129,20 @@ function HealthSection({
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
       <StatusDot color={statusColor} pulse={isCritical} />
-      <Typography variant="body2" fontWeight={600} sx={{ minWidth: 52 }} aria-live="polite">
+      <Typography
+        variant="body2"
+        aria-live="polite"
+        sx={{
+          fontWeight: 600,
+          minWidth: 52
+        }}>
         {statusLabel}
       </Typography>
       <LiveClock tick={tick} />
       <LastUpdatedIndicator snapshot={snapshot} tick={tick} />
       <UptimeCounter snapshot={snapshot} tick={tick} />
     </Box>
-  )
+  );
 }
 
 // -- Status Dot --------------------------------------------------------------

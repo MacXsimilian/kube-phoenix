@@ -134,7 +134,7 @@ export default function ExceptionDialog({
       maxWidth="md"
       slotProps={{ paper: { sx: { bgcolor: 'background.paper' } } }}
     >
-      <DialogTitle fontWeight={700}>{existing ? 'Edit Exception' : 'New Exception'}</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 700 }}>{existing ? 'Edit Exception' : 'New Exception'}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '20px !important' }}>
         {error && <Alert severity="error">{error}</Alert>}
 
@@ -191,7 +191,9 @@ export default function ExceptionDialog({
           rows={2}
         />
 
-        <Divider><Typography variant="caption" color="text.disabled">Targeting (optional — defaults to policy scope)</Typography></Divider>
+        <Divider><Typography variant="caption" sx={{
+          color: "text.disabled"
+        }}>Targeting (optional — defaults to policy scope)</Typography></Divider>
 
         <TextField
           label="Namespace Filter"
@@ -229,5 +231,5 @@ export default function ExceptionDialog({
         </Button>
       </DialogActions>
     </Dialog>
-  )
+  );
 }

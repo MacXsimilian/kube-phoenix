@@ -78,7 +78,11 @@ export default function PodRow({
               />
             </Tooltip>
           ) : (
-            <Typography color="text.disabled" sx={{ fontSize: 12 }}>—</Typography>
+            <Typography
+              sx={{
+                color: "text.disabled",
+                fontSize: 12
+              }}>—</Typography>
           )}
         </TableCell>
       )}
@@ -103,5 +107,5 @@ export default function PodRow({
         </Typography>
       </TableCell>
     </TableRow>
-  )
+  );
 }

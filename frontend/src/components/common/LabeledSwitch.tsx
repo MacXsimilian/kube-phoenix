@@ -17,10 +17,14 @@ export default function LabeledSwitch({ label, description, checked, disabled, o
       control={<Switch checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />}
       label={
         <Box>
-          <Typography variant="body2" fontWeight={600}>{label}</Typography>
-          <Typography variant="caption" color="text.secondary">{description}</Typography>
+          <Typography variant="body2" sx={{
+            fontWeight: 600
+          }}>{label}</Typography>
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>{description}</Typography>
         </Box>
       }
     />
-  )
+  );
 }

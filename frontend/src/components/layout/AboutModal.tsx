@@ -39,7 +39,13 @@ export default function AboutModal({ open, onClose }: { open: boolean; onClose: 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
           <Box sx={{ fontSize: 32, lineHeight: 0, userSelect: 'none', mt: -0.5 }}>🐦‍🔥</Box>
           <Box>
-            <Typography variant="h6" fontWeight={700} letterSpacing={-0.5} lineHeight={1.2}>
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
+                letterSpacing: -0.5,
+                lineHeight: 1.2
+              }}>
               kube-phoenix
             </Typography>
             <Chip
@@ -60,7 +66,12 @@ export default function AboutModal({ open, onClose }: { open: boolean; onClose: 
         <Divider sx={{ mb: 2 }} />
 
         {/* Description */}
-        <Typography variant="body2" color="text.secondary" lineHeight={1.65}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            lineHeight: 1.65
+          }}>
           Schedule-driven Kubernetes cluster sleep/wake manager. Replaces manual cronjob scaling
           with a web-based scheduler, live cluster visibility, and a full execution audit trail.
         </Typography>
@@ -88,5 +99,5 @@ export default function AboutModal({ open, onClose }: { open: boolean; onClose: 
         </Box>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

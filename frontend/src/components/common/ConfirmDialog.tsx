@@ -30,7 +30,7 @@ export default function ConfirmDialog({
       onClose={onClose}
       slotProps={{ paper: { sx: { bgcolor: 'background.paper', minWidth: 320 } } }}
     >
-      <DialogTitle fontWeight={700}>{title}</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 700 }}>{title}</DialogTitle>
       <DialogContent>
         <DialogContentText>{message}</DialogContentText>
       </DialogContent>

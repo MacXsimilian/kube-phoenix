@@ -21,10 +21,17 @@ function durationLabel(startsAt: string, endsAt: string): string {
 function DetailField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <Box>
-      <Typography variant="caption" color="text.disabled" sx={{ textTransform: 'uppercase', fontSize: 9, letterSpacing: 0.5 }}>{label}</Typography>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.disabled",
+          textTransform: 'uppercase',
+          fontSize: 9,
+          letterSpacing: 0.5
+        }}>{label}</Typography>
       <Typography variant="body2" sx={mono ? { fontFamily: 'monospace', fontSize: 12, fontVariantNumeric: 'tabular-nums' } : { fontSize: 12 }}>{value}</Typography>
     </Box>
-  )
+  );
 }
 
 export default function ExceptionDetailPanel({ ex }: { ex: ScheduledException }) {
@@ -41,11 +48,25 @@ export default function ExceptionDetailPanel({ ex }: { ex: ScheduledException })
         {ex.labelSelector && <DetailField label="Label Selector" value={ex.labelSelector} mono />}
       </Box>
       {ex.reason && (
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>{ex.reason}</Typography>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            mt: 1.5
+          }}>{ex.reason}</Typography>
       )}
       {ex.workloadTargets && ex.workloadTargets.length > 0 && (
         <Box sx={{ mt: 1.5 }}>
-          <Typography variant="caption" color="text.disabled" sx={{ textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.5, display: 'block', mb: 0.5 }}>Workload Targets</Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.disabled",
+              textTransform: 'uppercase',
+              fontSize: 10,
+              letterSpacing: 0.5,
+              display: 'block',
+              mb: 0.5
+            }}>Workload Targets</Typography>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
             {ex.workloadTargets.map((t, j) => (
               <Chip key={j} label={`${t.kind}/${t.namespace}/${t.name}`} size="small" sx={{ fontFamily: 'monospace', fontSize: 10, height: 20 }} />
@@ -54,5 +75,5 @@ export default function ExceptionDetailPanel({ ex }: { ex: ScheduledException })
         </Box>
       )}
     </Box>
-  )
+  );
 }

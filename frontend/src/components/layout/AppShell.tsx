@@ -56,16 +56,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </IconButton>
           <Typography
             variant="subtitle1"
-            fontWeight={700}
-            letterSpacing={-0.5}
             onClick={() => setAboutOpen(true)}
-            sx={{ cursor: 'pointer', '&:hover': { color: 'primary.light' } }}
-          >
+            sx={{
+              fontWeight: 700,
+              letterSpacing: -0.5,
+              cursor: 'pointer',
+              '&:hover': { color: 'primary.light' }
+            }}>
             kube-phoenix
           </Typography>
         </Toolbar>
       </AppBar>
-
       <Sidebar
         expandedWidth={DRAWER_WIDTH}
         collapsedWidth={COLLAPSED_WIDTH}
@@ -75,9 +76,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         onMobileClose={() => setMobileOpen(false)}
         onAboutClick={() => setAboutOpen(true)}
       />
-
       <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
-
       <Box
         component="main"
         sx={{
@@ -91,5 +90,5 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {children}
       </Box>
     </Box>
-  )
+  );
 }

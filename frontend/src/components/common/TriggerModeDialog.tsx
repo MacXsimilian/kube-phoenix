@@ -43,14 +43,20 @@ export default function TriggerModeDialog({
         <DirectionIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
         {label} Now
       </DialogTitle>
-
       <DialogContent sx={{ pt: 1 }}>
         {policyName && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mb: 2
+            }}>
             Policy: <strong>{policyName}</strong>
           </Typography>
         )}
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           Choose how to run this action:
         </Typography>
 
@@ -76,8 +82,16 @@ export default function TriggerModeDialog({
             }}
           >
             <Box>
-              <Typography variant="subtitle2" fontWeight={600}>Plan (dry-run)</Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+              <Typography variant="subtitle2" sx={{
+                fontWeight: 600
+              }}>Plan (dry-run)</Typography>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  display: 'block',
+                  mt: 0.25
+                }}>
                 Preview what would change — no resources affected
               </Typography>
             </Box>
@@ -111,9 +125,11 @@ export default function TriggerModeDialog({
             <Box>
               <Typography
                 variant="subtitle2"
-                fontWeight={600}
-                sx={{ transition: 'color 0.15s ease', color: hoverApply ? 'warning.dark' : 'text.primary' }}
-              >
+                sx={{
+                  fontWeight: 600,
+                  transition: 'color 0.15s ease',
+                  color: hoverApply ? 'warning.dark' : 'text.primary'
+                }}>
                 Apply (live)
               </Typography>
               <Typography
@@ -126,10 +142,9 @@ export default function TriggerModeDialog({
           </Button>
         </Box>
       </DialogContent>
-
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} sx={{ color: 'text.secondary' }}>Cancel</Button>
       </DialogActions>
     </Dialog>
-  )
+  );
 }

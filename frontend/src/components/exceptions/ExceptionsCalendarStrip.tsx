@@ -157,7 +157,12 @@ export default function ExceptionsCalendarStrip({
             }}
           >
             <HistoryIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
-            <Typography variant="body2" fontWeight={600} color="text.secondary">History</Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 600,
+                color: "text.secondary"
+              }}>History</Typography>
             <Typography variant="caption" sx={{ bgcolor: 'action.hover', borderRadius: 1, px: 0.75, fontWeight: 600, fontSize: 11, color: 'text.disabled' }}>
               {past.length}
             </Typography>
@@ -171,13 +176,12 @@ export default function ExceptionsCalendarStrip({
           </Collapse>
         </>
       )}
-
       {/* ── Active + Upcoming ─────────────────────────────────── */}
       {currentRows.length > 0 && (
         <RowList rows={currentRows} todayKey={todayStr} isDark={isDark} canEdit={canEdit} onEdit={onEdit} onCancel={onCancel} expandedId={expandedId} onToggleExpand={setExpandedId} />
       )}
     </>
-  )
+  );
 }
 
 // ── Row list ─────────────────────────────────────────────────────────────────
@@ -261,15 +265,28 @@ function ExceptionBlock({
         <Chip label={`${ex.workloadTargets!.length} targets`} size="small" sx={{ fontSize: 10, height: 18 }} />
       )}
       <Tooltip title={`${fmtDt(ex.startsAt)} → ${fmtDt(ex.endsAt)}`}>
-        <Typography variant="caption" color="text.secondary" noWrap sx={{ flex: 1 }}>{ex.reason || '—'}</Typography>
+        <Typography
+          variant="caption"
+          noWrap
+          sx={{
+            color: "text.secondary",
+            flex: 1
+          }}>{ex.reason || '—'}</Typography>
       </Tooltip>
-      <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap', fontSize: 11, fontFamily: 'monospace' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          color: "text.disabled",
+          whiteSpace: 'nowrap',
+          fontSize: 11,
+          fontFamily: 'monospace'
+        }}>
         {timeOfDay(ex.startsAt)}–{timeOfDay(ex.endsAt)}
       </Typography>
       <ExceptionActions ex={ex} canEdit={canEdit} onEdit={onEdit} onCancel={onCancel} />
       <ExpandMoreIcon sx={{ fontSize: 16, color: 'text.disabled', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: '.2s' }} />
     </Box>
-  )
+  );
 }
 
 // ── Single-day row ──────────────────────────────────────────────────────────
@@ -286,8 +303,16 @@ function DayRow({
     <>
       <Box sx={{ display: 'flex', gap: 0, borderBottom: '1px solid', borderColor: 'divider', bgcolor: isToday ? 'rgba(108,140,255,0.03)' : 'transparent' }}>
         <Box sx={{ width: 120, flexShrink: 0, py: 1.5, pr: 2, textAlign: 'right', borderRight: '2px solid', borderColor: isToday ? 'primary.main' : 'divider' }}>
-          <Typography variant="body2" fontWeight={isToday ? 700 : 500} color={isToday ? 'primary.main' : 'text.secondary'} fontSize={13}>{dayLabel(date)}</Typography>
-          <Typography variant="caption" color="text.disabled">{shortDate(date)}</Typography>
+          <Typography
+            variant="body2"
+            color={isToday ? 'primary.main' : 'text.secondary'}
+            sx={{
+              fontWeight: isToday ? 700 : 500,
+              fontSize: 13
+            }}>{dayLabel(date)}</Typography>
+          <Typography variant="caption" sx={{
+            color: "text.disabled"
+          }}>{shortDate(date)}</Typography>
         </Box>
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1, py: 1.5, pl: 2, pr: 1 }}>
           {exceptions.map(ex => (
@@ -306,7 +331,7 @@ function DayRow({
         </Collapse>
       ))}
     </>
-  )
+  );
 }
 
 // ── Multi-day span row ──────────────────────────────────────────────────────
@@ -328,11 +353,35 @@ function SpanRow({
           borderRight: '3px solid', borderColor: TYPE_ACCENT[ex.exceptionType] ?? 'divider',
           display: 'flex', flexDirection: 'column', justifyContent: 'center',
         }}>
-          <Typography variant="body2" fontWeight={600} color="text.secondary" fontSize={13} lineHeight={1.3}>{dayLabel(startDate)}</Typography>
-          <Typography variant="caption" color="text.disabled" fontSize={10}>{shortDate(startDate)}</Typography>
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: 600,
+              color: "text.secondary",
+              fontSize: 13,
+              lineHeight: 1.3
+            }}>{dayLabel(startDate)}</Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.disabled",
+              fontSize: 10
+            }}>{shortDate(startDate)}</Typography>
           <Box sx={{ borderTop: '1px dashed', borderColor: 'divider', my: 0.5, width: '60%', ml: 'auto' }} />
-          <Typography variant="body2" fontWeight={600} color="text.secondary" fontSize={13} lineHeight={1.3}>{dayLabel(endDate)}</Typography>
-          <Typography variant="caption" color="text.disabled" fontSize={10}>{shortDate(endDate)}</Typography>
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: 600,
+              color: "text.secondary",
+              fontSize: 13,
+              lineHeight: 1.3
+            }}>{dayLabel(endDate)}</Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.disabled",
+              fontSize: 10
+            }}>{shortDate(endDate)}</Typography>
         </Box>
         <Box sx={{ flex: 1, py: 1.5, pl: 2, pr: 1 }}>
           <ExceptionBlock
@@ -347,5 +396,5 @@ function SpanRow({
         <ExceptionDetailPanel ex={ex} />
       </Collapse>
     </>
-  )
+  );
 }

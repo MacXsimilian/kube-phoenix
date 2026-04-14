@@ -18,7 +18,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
 }
 
 export function formatActionLabel(action: string): string {
-  return (ACTION_LABELS as Record<string, string>)[action] ?? action.replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return (ACTION_LABELS as Record<string, string>)[action] ?? action.replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 export function actionColor(action: string): 'error' | 'warning' | 'info' | 'success' | 'default' {

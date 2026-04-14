@@ -13,7 +13,7 @@ import Tooltip from '@mui/material/Tooltip'
 
 import CircularProgress from '@mui/material/CircularProgress'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlineOutlined'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
@@ -170,7 +170,14 @@ export default function PolicyCard({
                     }),
                   }}
                 />
-                <Typography variant="body1" fontWeight={600} noWrap sx={{ fontSize: 15, color: 'text.primary' }}>
+                <Typography
+                  variant="body1"
+                  noWrap
+                  sx={{
+                    fontWeight: 600,
+                    fontSize: 15,
+                    color: 'text.primary'
+                  }}>
                   {policy.name}
                 </Typography>
                 <Chip
@@ -317,7 +324,6 @@ export default function PolicyCard({
           </Box>
         </Box>
       </Paper>
-
       <ConfirmDialog
         open={deleteDialog}
         title="Delete Policy?"
@@ -326,7 +332,6 @@ export default function PolicyCard({
         onConfirm={() => deleteMut.mutate()}
         onClose={() => setDeleteDialog(false)}
       />
-
       <TriggerModeDialog
         open={triggerDialog !== null}
         direction={triggerDialog ?? 'sleep'}
@@ -338,5 +343,5 @@ export default function PolicyCard({
         onClose={() => setTriggerDialog(null)}
       />
     </>
-  )
+  );
 }

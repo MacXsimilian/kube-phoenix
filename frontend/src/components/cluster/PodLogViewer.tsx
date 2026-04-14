@@ -150,13 +150,21 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       {/* Header */}
       <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: containers.length > 1 ? 1 : 0 }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{
+            alignItems: "center",
+            mb: containers.length > 1 ? 1 : 0
+          }}>
           <Tooltip title="Back to pod details">
             <IconButton size="small" onClick={onBack} aria-label="Back to pod details">
               <ArrowBackIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
-          <Typography variant="body2" fontWeight={700}>
+          <Typography variant="body2" sx={{
+            fontWeight: 700
+          }}>
             Container Logs
           </Typography>
           {containers.length === 1 && (
@@ -192,11 +200,12 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
           </Select>
         )}
       </Box>
-
       {/* Previous container banner */}
       {hasPreviousInstance && selectedContainer && mode === 'live' && (
         <Box sx={{ px: 2, py: 1, bgcolor: 'rgba(245,158,11,0.06)', borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Stack direction="row" alignItems="center" spacing={1}>
+          <Stack direction="row" spacing={1} sx={{
+            alignItems: "center"
+          }}>
             <Typography variant="caption" sx={{ color: 'warning.main', flex: 1 }}>
               Container restarted (last state: {selectedContainer.lastState})
             </Typography>
@@ -211,11 +220,12 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
           </Stack>
         </Box>
       )}
-
       {/* Previous mode header */}
       {mode === 'previous' && (
         <Box sx={{ px: 2, py: 1, bgcolor: 'rgba(245,158,11,0.06)', borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Stack direction="row" alignItems="center" spacing={1}>
+          <Stack direction="row" spacing={1} sx={{
+            alignItems: "center"
+          }}>
             <Typography variant="caption" sx={{ color: 'warning.main', flex: 1 }}>
               Viewing previous container instance
             </Typography>
@@ -230,10 +240,11 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
           </Stack>
         </Box>
       )}
-
       {/* Search + actions toolbar */}
       <Box sx={{ px: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-        <Stack direction="row" spacing={1} alignItems="center">
+        <Stack direction="row" spacing={1} sx={{
+          alignItems: "center"
+        }}>
           <LogSearchBar
             search={search}
             onSearchChange={setSearch}
@@ -270,7 +281,6 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
           </Tooltip>
         </Stack>
       </Box>
-
       {/* Error state */}
       {hasError && (
         <Alert
@@ -289,7 +299,6 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
           {errorMsg}
         </Alert>
       )}
-
       {/* Log lines */}
       <Box
         ref={logRef}
@@ -312,7 +321,13 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={24} /></Box>
         )}
         {!isLoading && lines.length === 0 && !hasError && (
-          <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>No log lines found.</Typography>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              py: 2,
+              textAlign: 'center'
+            }}>No log lines found.</Typography>
         )}
         {lines.map((line, i) => {
           const isMatch = search && matchSet.has(i)
@@ -343,10 +358,14 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
           )
         })}
       </Box>
-
       {/* Status bar */}
       <Box sx={{ px: 2, py: 0.75, borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
+        <Stack
+          direction="row"
+          sx={{
+            justifyContent: "space-between",
+            alignItems: "center"
+          }}>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
             {lines.length} lines
             {search && ` (${matchIndices.length} match${matchIndices.length !== 1 ? 'es' : ''})`}
@@ -356,8 +375,7 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
           )}
         </Stack>
       </Box>
-
       {SnackbarAlert}
     </Box>
-  )
+  );
 }

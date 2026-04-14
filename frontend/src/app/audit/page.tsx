@@ -99,8 +99,12 @@ export default function AuditLogPage() {
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3 }}>
         <Box>
-          <Typography variant="h5" fontWeight={700} gutterBottom>Audit Log</Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="h5" gutterBottom sx={{
+            fontWeight: 700
+          }}>Audit Log</Typography>
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             Track who did what and when.
           </Typography>
         </Box>
@@ -114,7 +118,6 @@ export default function AuditLogPage() {
           Export CSV
         </Button>
       </Box>
-
       <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           label="User"
@@ -161,7 +164,6 @@ export default function AuditLogPage() {
           slotProps={{ inputLabel: { shrink: true } }}
         />
       </Box>
-
       {isError && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error instanceof Error ? error.message : 'Failed to load audit logs'}
@@ -172,7 +174,6 @@ export default function AuditLogPage() {
           Export failed: {exportError}
         </Alert>
       )}
-
       <Card>
         <TableContainer>
           <Table size="small">
@@ -201,7 +202,12 @@ export default function AuditLogPage() {
               {!isLoading && !isError && data?.items?.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={TABLE_COLS} align="center">
-                    <Typography variant="body2" color="text.secondary" py={4}>No audit log entries found.</Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: "text.secondary",
+                        py: 4
+                      }}>No audit log entries found.</Typography>
                   </TableCell>
                 </TableRow>
               )}
@@ -219,5 +225,5 @@ export default function AuditLogPage() {
         />
       </Card>
     </Box>
-  )
+  );
 }

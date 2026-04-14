@@ -9,7 +9,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
+import HelpOutlineIcon from '@mui/icons-material/HelpOutlineOutlined'
 import { useIsDark } from '@/lib/useIsDark'
 import {
   stateColors, getModeStyle, SMALL_CHIP_SX,
@@ -68,7 +68,6 @@ export default function PolicyHeroBand({
           <ArrowBackIcon />
         </IconButton>
       </Box>
-
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap' }}>
         <Box
           sx={{
@@ -87,13 +86,26 @@ export default function PolicyHeroBand({
         </Box>
 
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="h4" fontWeight={700} noWrap>
+          <Typography variant="h4" noWrap sx={{
+            fontWeight: 700
+          }}>
             {policy.name}
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mt: 0.25
+            }}>
             {policy.description || 'No description'}
             {policy.namespaceFilter && (
-              <Typography component="span" fontFamily="monospace" sx={{ ml: 1, color: 'text.disabled' }}>
+              <Typography
+                component="span"
+                sx={{
+                  fontFamily: "monospace",
+                  ml: 1,
+                  color: 'text.disabled'
+                }}>
                 {policy.namespaceFilter}
               </Typography>
             )}
@@ -103,9 +115,12 @@ export default function PolicyHeroBand({
         <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
           <Typography
             variant="h4"
-            fontWeight={800}
-            sx={{ color: stateStyle.color, textTransform: 'uppercase', lineHeight: 1.2 }}
-          >
+            sx={{
+              fontWeight: 800,
+              color: stateStyle.color,
+              textTransform: 'uppercase',
+              lineHeight: 1.2
+            }}>
             {stateStyle.label}
           </Typography>
           <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', mt: 0.5 }}>
@@ -122,7 +137,6 @@ export default function PolicyHeroBand({
           </Box>
         </Box>
       </Box>
-
       <Box sx={{ display: 'flex', gap: 1.5, mt: 2.5, flexWrap: 'wrap' }}>
         <Tooltip title={canTrigger ? '' : 'No permission'}>
           <span>
@@ -159,5 +173,5 @@ export default function PolicyHeroBand({
         )}
       </Box>
     </Box>
-  )
+  );
 }

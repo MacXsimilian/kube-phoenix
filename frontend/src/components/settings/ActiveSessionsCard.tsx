@@ -76,10 +76,17 @@ function SessionRow({ session }: { session: SessionInfo }) {
           {deviceIcon(type)}
         </Box>
         <Box>
-          <Typography variant="body2" fontWeight={600} sx={{ fontSize: 13 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: 600,
+              fontSize: 13
+            }}>
             {label}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             {session.ipAddress} &middot; {podAge(session.createdAt)}
           </Typography>
         </Box>
@@ -100,7 +107,7 @@ function SessionRow({ session }: { session: SessionInfo }) {
         </Box>
       )}
     </Box>
-  )
+  );
 }
 
 export default function ActiveSessionsCard() {
@@ -114,11 +121,18 @@ export default function ActiveSessionsCard() {
       <CardContent sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
           <MonitorIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
-          <Typography variant="subtitle1" fontWeight={700}>
+          <Typography variant="subtitle1" sx={{
+            fontWeight: 700
+          }}>
             Active Sessions
           </Typography>
         </Box>
-        <Typography variant="body2" color="text.secondary" mb={2}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            mb: 2
+          }}>
           Devices currently signed in to your account.
         </Typography>
 
@@ -133,12 +147,14 @@ export default function ActiveSessionsCard() {
           ) : sessions && sessions.length > 0 ? (
             sessions.map((s) => <SessionRow key={s.id} session={s} />)
           ) : (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               No active sessions found.
             </Typography>
           )}
         </Box>
       </CardContent>
     </Card>
-  )
+  );
 }

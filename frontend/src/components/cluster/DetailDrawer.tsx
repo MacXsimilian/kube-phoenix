@@ -125,7 +125,6 @@ export default function DetailDrawer({
           display: { xs: 'none', md: 'block' },
         }}
       />
-
       {open && (
         <AnimatePresence mode="wait">
           {/* ── Pod detail view ──────────────────────────────────────── */}
@@ -165,7 +164,7 @@ export default function DetailDrawer({
             </motion.div>
           ) : (
             /* ── Parent view (workload/node + pod list) ────────────── */
-            <motion.div
+            (<motion.div
               key="parent"
               variants={STAGGER}
               initial="hidden"
@@ -186,9 +185,7 @@ export default function DetailDrawer({
                   {children}
                 </Box>
               </motion.div>
-
               <Divider />
-
               {/* Search toolbar */}
               <motion.div variants={FADE_UP}>
                 <Box sx={{ px: 2.5, py: 1.25, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -200,14 +197,18 @@ export default function DetailDrawer({
                     sx={{ flex: 1 }}
                     slotProps={{ htmlInput: { sx: { fontSize: 13, py: 0.75 } } }}
                   />
-                  <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap', fontSize: 11 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "text.disabled",
+                      whiteSpace: 'nowrap',
+                      fontSize: 11
+                    }}>
                     {dataUpdatedAt ? sinceMs(dataUpdatedAt) : ''}
                   </Typography>
                 </Box>
               </motion.div>
-
               <Divider />
-
               {/* Pod list */}
               <motion.div variants={FADE_UP} style={{ flex: 1, overflow: 'auto' }}>
                 {isErrorPods ? (
@@ -217,7 +218,13 @@ export default function DetailDrawer({
                 ) : isLoadingPods ? (
                   <CenteredSpinner size={28} />
                 ) : filtered.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ py: 5, textAlign: 'center' }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: "text.secondary",
+                      py: 5,
+                      textAlign: 'center'
+                    }}>
                     {search ? 'No pods match your search.' : emptyMessage}
                   </Typography>
                 ) : (
@@ -237,10 +244,10 @@ export default function DetailDrawer({
                   </Table>
                 )}
               </motion.div>
-            </motion.div>
+            </motion.div>)
           )}
         </AnimatePresence>
       )}
     </Drawer>
-  )
+  );
 }

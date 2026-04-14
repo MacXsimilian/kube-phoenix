@@ -94,7 +94,14 @@ export default function ExecutionSummary({ lines }: { lines: LogLine[] }) {
         expandIcon={<ExpandMoreIcon sx={{ fontSize: 16 }} />}
         sx={{ minHeight: 40, px: 2.5, py: 0, '& .MuiAccordionSummary-content': { my: 0, display: 'flex', alignItems: 'center', gap: 1 } }}
       >
-        <Typography variant="caption" fontWeight={700} letterSpacing={0.8} sx={{ color: 'text.secondary', textTransform: 'uppercase' }}>
+        <Typography
+          variant="caption"
+          sx={{
+            fontWeight: 700,
+            letterSpacing: 0.8,
+            color: 'text.secondary',
+            textTransform: 'uppercase'
+          }}>
           Summary
         </Typography>
         {errors.length > 0 && (
@@ -106,14 +113,18 @@ export default function ExecutionSummary({ lines }: { lines: LogLine[] }) {
         )}
         {stats && <StatsBar stats={stats} nodes={nodes} />}
       </AccordionSummary>
-
       <AccordionDetails sx={{ p: 0, pb: 1.5, maxHeight: 320, overflowY: 'auto' }}>
         {/* Workloads */}
         {workloads.length > 0 && (
           <Box sx={{ px: 2.5, pt: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
               <DnsIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
-              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  fontWeight: 600
+                }}>
                 WORKLOADS ({workloads.length})
               </Typography>
             </Box>
@@ -160,7 +171,12 @@ export default function ExecutionSummary({ lines }: { lines: LogLine[] }) {
           <Box sx={{ px: 2.5, pt: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
               <StorageIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
-              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  fontWeight: 600
+                }}>
                 NODES ({nodes.length})
               </Typography>
             </Box>
@@ -202,5 +218,5 @@ export default function ExecutionSummary({ lines }: { lines: LogLine[] }) {
         )}
       </AccordionDetails>
     </Accordion>
-  )
+  );
 }
