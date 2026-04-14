@@ -137,7 +137,7 @@ Exceptions are one-time windows for planned events such as release weekends or o
 | Field | Description |
 | :---- | :---------- |
 | Exception Type | `stay_awake` or `force_sleep` |
-| Starts At / Ends At | Window boundaries (must be in the future at creation) |
+| Exception Window | Start and end of the window (must be in the future at creation). Picked from an inline two-month calendar with hour:minute steppers; times are in the browser's local timezone. |
 | Ticket Ref | External ticket reference (e.g., `JIRA-1234`, `GH#567`) |
 | Reason | Free-text reason |
 | Sleep on End | If true (default), triggers a sleep run when the window ends |

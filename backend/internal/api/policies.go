@@ -522,9 +522,25 @@ func policyAuditSnapshot(p store.Policy) map[string]interface{} {
 	return m
 }
 
+var policyUpdateStringChecks = []struct {
+	key      string
+	validate func(string) string
+}{
+	{"name", validatePolicyName},
+	{"mode", validatePolicyMode},
+	{"timezone", validatePolicyTimezone},
+	{"namespace_filter", validateNamespaceFilter},
+	{"description", validatePolicyDescription},
+	{"label_selector", validatePolicyLabelSelector},
+}
+
 func validatePolicyUpdates(updates map[string]interface{}) string {
-	if v, ok := updates["name"]; ok {
-		if msg := validatePolicyName(fmt.Sprintf("%v", v)); msg != "" {
+	for _, check := range policyUpdateStringChecks {
+		v, ok := updates[check.key]
+		if !ok {
+			continue
+		}
+		if msg := check.validate(fmt.Sprintf("%v", v)); msg != "" {
 			return msg
 		}
 	}
@@ -533,31 +549,6 @@ func validatePolicyUpdates(updates map[string]interface{}) string {
 			if msg := validatePolicyTimeout(int(f)); msg != "" {
 				return msg
 			}
-		}
-	}
-	if v, ok := updates["mode"]; ok {
-		if msg := validatePolicyMode(fmt.Sprintf("%v", v)); msg != "" {
-			return msg
-		}
-	}
-	if v, ok := updates["timezone"]; ok {
-		if msg := validatePolicyTimezone(fmt.Sprintf("%v", v)); msg != "" {
-			return msg
-		}
-	}
-	if v, ok := updates["namespace_filter"]; ok {
-		if msg := validateNamespaceFilter(fmt.Sprintf("%v", v)); msg != "" {
-			return msg
-		}
-	}
-	if v, ok := updates["description"]; ok {
-		if msg := validatePolicyDescription(fmt.Sprintf("%v", v)); msg != "" {
-			return msg
-		}
-	}
-	if v, ok := updates["label_selector"]; ok {
-		if msg := validatePolicyLabelSelector(fmt.Sprintf("%v", v)); msg != "" {
-			return msg
 		}
 	}
 	return ""

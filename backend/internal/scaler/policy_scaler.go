@@ -696,55 +696,7 @@ func (r *PolicyRunner) RunPolicySleepReconcile(
 	emit(logCh, "info", fmt.Sprintf("Enforce sleep — checking %d open snapshots for drift", len(snaps)))
 
 	for _, snap := range snaps {
-		wl := formatWorkload(snap.Kind, snap.Namespace, snap.Name)
-
-		if skipNS[snap.Namespace] || exceptionNS[snap.Namespace] {
-			emit(logCh, "info", fmt.Sprintf("Skipping %s — namespace protected", wl))
-			counts.Skipped++
-			continue
-		}
-
-		exists, currentReplicas, err := r.lookupWorkload(ctx, snap.Kind, snap.Namespace, snap.Name)
-		counts.AddRequests(1) // GET for lookup
-		if err != nil {
-			emit(logCh, "error", fmt.Sprintf("Failed to look up %s: %s", wl, err))
-			counts.Errors++
-			continue
-		}
-		if !exists {
-			emit(logCh, "info", fmt.Sprintf("Workload %s no longer exists — skipping", wl))
-			counts.Skipped++
-			continue
-		}
-		if currentReplicas == 0 {
-			counts.Skipped++
-			continue
-		}
-
-		if !isApply(p.Mode) {
-			emit(logCh, "plan", fmt.Sprintf("Would enforce sleep %s → 0 (currently %d replicas)", wl, currentReplicas))
-			counts.Scaled++
-			continue
-		}
-
-		_, scale, opsErr := r.workloadOps(snap.Kind)
-		if opsErr != nil {
-			emit(logCh, "error", fmt.Sprintf("Unsupported kind for %s: %s", wl, opsErr))
-			counts.Errors++
-			continue
-		}
-		if err := scale(ctx, snap.Namespace, snap.Name, 0); err != nil {
-			emit(logCh, "error", fmt.Sprintf("Failed to enforce sleep on %s: %s", wl, err))
-			counts.AddRequests(2) // GET + UPDATE for scale
-			counts.Errors++
-			continue
-		}
-		counts.AddRequests(2) // GET + UPDATE for scale
-		if err := r.store.MarkSnapshotExternallyScaled(snap.ID); err != nil {
-			slog.Warn("enforce sleep: failed to mark snapshot as externally scaled", "snapshotID", snap.ID, "err", err)
-		}
-		emit(logCh, "ok", fmt.Sprintf("Enforced sleep on %s (was %d replicas)", wl, currentReplicas))
-		counts.Scaled++
+		r.reconcileSnapshotSleep(ctx, p, snap, skipNS, exceptionNS, logCh, counts)
 	}
 
 	emit(logCh, "info", fmt.Sprintf("Enforce sleep complete in %s — scaled %d workloads, %d skipped, %d errors, %d K8s API calls (%.1f req/s)",
@@ -753,6 +705,67 @@ func (r *PolicyRunner) RunPolicySleepReconcile(
 		return counts, fmt.Errorf("enforce sleep failed: all %d workloads errored", counts.Errors)
 	}
 	return counts, nil
+}
+
+// reconcileSnapshotSleep enforces a single workload back to zero replicas during
+// a sleep window, updating counts in place.
+func (r *PolicyRunner) reconcileSnapshotSleep(
+	ctx context.Context,
+	p store.Policy,
+	snap store.WorkloadSnapshot,
+	skipNS, exceptionNS map[string]bool,
+	logCh chan<- LogLine,
+	counts *Counts,
+) {
+	wl := formatWorkload(snap.Kind, snap.Namespace, snap.Name)
+
+	if skipNS[snap.Namespace] || exceptionNS[snap.Namespace] {
+		emit(logCh, "info", fmt.Sprintf("Skipping %s — namespace protected", wl))
+		counts.Skipped++
+		return
+	}
+
+	exists, currentReplicas, err := r.lookupWorkload(ctx, snap.Kind, snap.Namespace, snap.Name)
+	counts.AddRequests(1) // GET for lookup
+	if err != nil {
+		emit(logCh, "error", fmt.Sprintf("Failed to look up %s: %s", wl, err))
+		counts.Errors++
+		return
+	}
+	if !exists {
+		emit(logCh, "info", fmt.Sprintf("Workload %s no longer exists — skipping", wl))
+		counts.Skipped++
+		return
+	}
+	if currentReplicas == 0 {
+		counts.Skipped++
+		return
+	}
+
+	if !isApply(p.Mode) {
+		emit(logCh, "plan", fmt.Sprintf("Would enforce sleep %s → 0 (currently %d replicas)", wl, currentReplicas))
+		counts.Scaled++
+		return
+	}
+
+	_, scale, opsErr := r.workloadOps(snap.Kind)
+	if opsErr != nil {
+		emit(logCh, "error", fmt.Sprintf("Unsupported kind for %s: %s", wl, opsErr))
+		counts.Errors++
+		return
+	}
+	if err := scale(ctx, snap.Namespace, snap.Name, 0); err != nil {
+		emit(logCh, "error", fmt.Sprintf("Failed to enforce sleep on %s: %s", wl, err))
+		counts.AddRequests(2) // GET + UPDATE for scale
+		counts.Errors++
+		return
+	}
+	counts.AddRequests(2) // GET + UPDATE for scale
+	if err := r.store.MarkSnapshotExternallyScaled(snap.ID); err != nil {
+		slog.Warn("enforce sleep: failed to mark snapshot as externally scaled", "snapshotID", snap.ID, "err", err)
+	}
+	emit(logCh, "ok", fmt.Sprintf("Enforced sleep on %s (was %d replicas)", wl, currentReplicas))
+	counts.Scaled++
 }
 
 // buildSnapshotedSet returns the set of workload keys that already have DB snapshots.

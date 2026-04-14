@@ -7,7 +7,6 @@ import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
-import Box from '@mui/material/Box'
 import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
 import LabeledSwitch from '@/components/common/LabeledSwitch'
@@ -19,18 +18,7 @@ import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
 import { createException, updateException, getPolicies } from '@/lib/api'
 import type { ScheduledException, ScheduledExceptionInput } from '@/lib/types'
-
-function isoToLocalInput(iso: string | undefined): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-function localInputToISO(local: string): string {
-  if (!local) return ''
-  return new Date(local).toISOString()
-}
+import ExceptionWindowPicker from './ExceptionWindowPicker'
 
 const EMPTY_FORM: ScheduledExceptionInput = {
   exceptionType: 'stay_awake',
@@ -66,7 +54,6 @@ export default function ExceptionDialog({
   })
 
   const [form, setForm] = useState<ScheduledExceptionInput>({ ...EMPTY_FORM })
-  const [localTimes, setLocalTimes] = useState({ startsAt: '', endsAt: '' })
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -83,13 +70,8 @@ export default function ExceptionDialog({
         namespaceFilter: existing.namespaceFilter || '',
         labelSelector: existing.labelSelector || '',
       })
-      setLocalTimes({
-        startsAt: isoToLocalInput(existing.startsAt),
-        endsAt: isoToLocalInput(existing.endsAt),
-      })
     } else {
       setForm({ ...EMPTY_FORM, policyId: defaultPolicyId })
-      setLocalTimes({ startsAt: '', endsAt: '' })
     }
     setError('')
   }, [open, existing, defaultPolicyId])
@@ -98,17 +80,12 @@ export default function ExceptionDialog({
     setForm(f => ({ ...f, [key]: val }))
   }
 
-  function setLocalTime(field: 'startsAt' | 'endsAt', local: string) {
-    setLocalTimes(t => ({ ...t, [field]: local }))
-    setForm(f => ({ ...f, [field]: localInputToISO(local) }))
-  }
-
   function validate(): string {
     if (!form.policyId) return 'Policy is required'
-    if (!localTimes.startsAt) return 'Start time is required'
-    if (!localTimes.endsAt) return 'End time is required'
-    const start = new Date(localTimes.startsAt)
-    const end = new Date(localTimes.endsAt)
+    if (!form.startsAt) return 'Start time is required'
+    if (!form.endsAt) return 'End time is required'
+    const start = new Date(form.startsAt)
+    const end = new Date(form.endsAt)
     if (end <= start) return 'End time must be after start time'
     if (!existing && start <= new Date()) return 'Start time must be in the future'
     return ''
@@ -154,7 +131,7 @@ export default function ExceptionDialog({
       open={open}
       onClose={onClose}
       fullWidth
-      maxWidth="sm"
+      maxWidth="md"
       slotProps={{ paper: { sx: { bgcolor: 'background.paper' } } }}
     >
       <DialogTitle fontWeight={700}>{existing ? 'Edit Exception' : 'New Exception'}</DialogTitle>
@@ -190,31 +167,11 @@ export default function ExceptionDialog({
           <MenuItem value="force_sleep">Force Sleep — put workloads to sleep despite policy</MenuItem>
         </TextField>
 
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <TextField
-            label="Starts At"
-            type="datetime-local"
-            value={localTimes.startsAt}
-            onChange={e => setLocalTime('startsAt', e.target.value)}
-            fullWidth
-            size="small"
-            slotProps={{ inputLabel: { shrink: true } }}
-            required
-          />
-          <TextField
-            label="Ends At"
-            type="datetime-local"
-            value={localTimes.endsAt}
-            onChange={e => setLocalTime('endsAt', e.target.value)}
-            fullWidth
-            size="small"
-            slotProps={{ inputLabel: { shrink: true } }}
-            required
-          />
-        </Box>
-        <Typography variant="caption" color="text.disabled" sx={{ mt: 0.5 }}>
-          Times are in your browser&#39;s local timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone})
-        </Typography>
+        <ExceptionWindowPicker
+          value={{ startISO: form.startsAt, endISO: form.endsAt }}
+          onChange={v => setForm(f => ({ ...f, startsAt: v.startISO, endsAt: v.endISO }))}
+          minDate={existing ? undefined : new Date()}
+        />
 
         <TextField
           label="Ticket Reference"

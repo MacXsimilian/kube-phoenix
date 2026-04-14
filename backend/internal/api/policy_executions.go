@@ -200,24 +200,8 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Send replay lines that are not yet in the DB (dedup by seq on the
-	// frontend handles any overlap with the DB result).
-	maxDBSeq := 0
-	for _, line := range existing {
-		if line.Seq > maxDBSeq {
-			maxDBSeq = line.Seq
-		}
-	}
-	for _, line := range replayLines {
-		if line.Seq <= maxDBSeq {
-			continue
-		}
-		if err := conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout)); err != nil {
-			return
-		}
-		if err := conn.WriteJSON(line); err != nil {
-			return
-		}
+	if !wsSendReplayAfterDB(conn, existing, replayLines) {
+		return
 	}
 
 	// Re-check: may have finished between initial check and Subscribe.

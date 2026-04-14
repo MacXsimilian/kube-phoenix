@@ -45,7 +45,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 **Purpose:** Bootstrap the application, wire dependencies, start background goroutines, and handle graceful shutdown.
 
 **Key responsibilities:**
-- Parse `DATABASE_URL` from env, initialize `store.Store`, run `SeedDefaults()`, `MarkInterruptedPolicyExecutions()`, and `ResetStuckTransitioningPolicies()`.
+- Parse `DATABASE_URL` from env, initialize `store.Store`, run `SeedDefaults()`, and recover interrupted state via `recoverInterruptedState()` (which wraps `MarkInterruptedPolicyExecutions()` and `ResetStuckTransitioningPolicies()`).
 - Create the Kubernetes client (`k8s.New()`), tolerating its absence (sets `k8s = nil`).
 - Start `ClusterCache`, `PolicyScheduler`, and maintenance tickers (session cleanup every 15m, audit retention daily).
 - Build the Chi router via `api.NewRouter()` and start `http.Server` with `ReadTimeout=15s`, `WriteTimeout=0` (disabled for WebSocket/SSE), `IdleTimeout=60s`.
@@ -89,7 +89,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 | `users.go` | `listUsers`, `createUser`, `updateUser`, `deleteUser` |
 | `audit.go` | `AuditWriter.Start()`, `Handler.audit()`, `Handler.auditDeniedMiddleware()`, `marshalOrNull()`, `clientIP()`, `listAuditLogs` |
 | `admin.go` | `resetDB` -- streams NDJSON progress events while dropping/recreating all tables; `emergencyScale` -- disables all policies, cancels active exceptions, scales sleeping workloads to 1 replica, streams NDJSON progress |
-| `ws.go` | `wsReadPump`, `wsSendLines`, `wsDrainChannel`, `wsStreamLoop` -- WebSocket helpers |
+| `ws.go` | `wsReadPump`, `wsSendLines`, `wsSendReplayAfterDB`, `wsDrainChannel`, `wsStreamLoop` -- WebSocket helpers |
 | `helpers.go` | `jsonOK`, `jsonCreated`, `jsonError`, `jsonInternalError`, `parseID`, `parsePageSize`, `reloadScheduler`, `handleStoreError`, `requireUser`, `nonNilMap` |
 | `cluster_info.go` | `getClusterInfo` -- returns Kubernetes API server URL, version, auth mode, and cluster name |
 | `version.go` | `getVersion` -- returns build version (set via `-ldflags`), Go version, and server uptime. No auth required. |
