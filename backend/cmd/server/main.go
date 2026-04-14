@@ -54,16 +54,7 @@ func main() {
 		slog.Error("seed failed", "err", err)
 		os.Exit(1)
 	}
-	if n, err := st.MarkInterruptedPolicyExecutions(); err != nil {
-		slog.Error("startup: failed to mark interrupted policy executions", "err", err)
-	} else if n > 0 {
-		slog.Warn("startup: marked policy executions as interrupted", "count", n)
-	}
-	if n, err := st.ResetStuckTransitioningPolicies(); err != nil {
-		slog.Error("startup: failed to reset stuck transitioning policies", "err", err)
-	} else if n > 0 {
-		slog.Warn("startup: reset stuck transitioning policies to unknown", "count", n)
-	}
+	recoverInterruptedState(st)
 
 	// ── Kubernetes client ─────────────────────────────────────────────────
 	k8s, err := k8sclient.New()
@@ -155,6 +146,21 @@ func main() {
 		slog.Error("shutdown error", "err", err)
 	}
 	slog.Info("bye")
+}
+
+// recoverInterruptedState clears any policy executions and transitions left
+// hanging by a previous crash or unclean shutdown.
+func recoverInterruptedState(st *store.Store) {
+	if n, err := st.MarkInterruptedPolicyExecutions(); err != nil {
+		slog.Error("startup: failed to mark interrupted policy executions", "err", err)
+	} else if n > 0 {
+		slog.Warn("startup: marked policy executions as interrupted", "count", n)
+	}
+	if n, err := st.ResetStuckTransitioningPolicies(); err != nil {
+		slog.Error("startup: failed to reset stuck transitioning policies", "err", err)
+	} else if n > 0 {
+		slog.Warn("startup: reset stuck transitioning policies to unknown", "count", n)
+	}
 }
 
 func startMaintenanceTickers(ctx context.Context, st *store.Store, retentionDays int, wg *sync.WaitGroup) {
