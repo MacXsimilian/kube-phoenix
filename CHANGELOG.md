@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.38...v0.6.0) (2026-04-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* **deps:** @mui/material and @mui/icons-material major bump. Consumers relying on v7 system props on Typography/Box must move them into sx. See https://mui.com/material-ui/migration/ for details.
+
+### Miscellaneous Chores
+
+* **deps:** upgrade mui to v9, bump backend deps, refresh frontend tooling ([#361](https://github.com/MacXsimilian/kube-phoenix/issues/361)) ([8eb054e](https://github.com/MacXsimilian/kube-phoenix/commit/8eb054ee134afef3af419e8ede571c4500cac0db))
+
 ## [0.5.38](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.37...v0.5.38) (2026-04-14)
 
 
