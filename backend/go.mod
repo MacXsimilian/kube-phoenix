@@ -6,12 +6,12 @@ require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
-	github.com/swaggest/swgui v1.8.5
+	github.com/swaggest/swgui v1.8.7
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
-	k8s.io/api v0.35.3
-	k8s.io/apimachinery v0.35.3
-	k8s.io/client-go v0.35.3
+	k8s.io/api v0.35.4
+	k8s.io/apimachinery v0.35.4
+	k8s.io/client-go v0.35.4
 )
 
 require golang.org/x/crypto v0.50.0
