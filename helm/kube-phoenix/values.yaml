@@ -225,7 +225,9 @@ startupProbe:
   failureThreshold: 30
   periodSeconds: 5
 
-terminationGracePeriodSeconds: 30
+# Must accommodate the worst-case shutdown sequence in cmd/server/main.go:
+# httpReadTimeout/in-flight handlers (≤30s) + audit-writer drain (≤5s) + buffer.
+terminationGracePeriodSeconds: 45
 
 nodeSelector: {}
 tolerations: []

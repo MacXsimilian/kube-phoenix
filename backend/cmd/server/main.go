@@ -63,20 +63,25 @@ func main() {
 		k8s = nil
 	}
 
-	// ── Cancellable context for all background work ─────��────────────────
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Two contexts so HTTP shutdown can finish (handlers may still produce
+	// audit entries) before we cancel the AuditWriter and let it drain.
+	bgCtx, bgCancel := context.WithCancel(context.Background())
+	defer bgCancel()
+	auditCtx, auditCancel := context.WithCancel(context.Background())
+	defer auditCancel()
+
+	// Single WaitGroup tracks every background goroutine so shutdown can wait
+	// for all of them — including the AuditWriter drain — before closing the
+	// store. New workers must register here, never via bare `go fn(ctx)`.
+	var wg sync.WaitGroup
 
 	// ── Cluster cache ─────────────────────────────────────────────────────
 	var cache *k8sclient.ClusterCache
 	if k8s != nil {
 		cache = k8sclient.NewClusterCache(k8s.Clientset())
-		cache.Start(ctx)
+		cache.Start(bgCtx)
 		defer cache.Stop()
 	}
-
-	// ── Background maintenance tickers ────────────────────────────────────
-	var tickerWg sync.WaitGroup
 
 	// ── Policy scheduler ──────────────────────────────────────────────────
 	g, err := st.GetGuardrails()
@@ -91,7 +96,7 @@ func main() {
 		EnforceSleep:        g.SchedulerEnforceSleep,
 	})
 	if k8s != nil {
-		if err := policySched.Start(ctx); err != nil {
+		if err := policySched.Start(bgCtx); err != nil {
 			slog.Error("policy scheduler failed to start", "err", err)
 			os.Exit(1)
 		}
@@ -104,17 +109,21 @@ func main() {
 		slog.Error("observability collector init failed", "err", err)
 		os.Exit(1)
 	}
-	go obsCollector.Start(ctx)
+	runTracked(&wg, "observability-collector", func() { obsCollector.Start(bgCtx) })
 
 	if k8s != nil {
 		k8s.SetCallRecorder(obsCollector.CallRecorder())
 	}
 
+	// ── Audit writer (separate ctx — must drain after HTTP shutdown) ──────
+	auditWriter := api.NewAuditWriter(st, 4096)
+	runTracked(&wg, "audit-writer", func() { auditWriter.Start(auditCtx) })
+
 	retentionDays := parseIntEnv("AUDIT_RETENTION_DAYS", 90)
-	startMaintenanceTickers(ctx, st, retentionDays, &tickerWg)
+	startMaintenanceTickers(bgCtx, st, retentionDays, &wg)
 
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(ctx, st, k8s, policySched, cache, obsCollector)
+	router := api.NewRouter(bgCtx, st, k8s, policySched, cache, obsCollector, auditWriter)
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
 		Handler:      router,
@@ -132,20 +141,47 @@ func main() {
 	}()
 
 	// ── Graceful shutdown ─────────────────────────────────────────────────
+	// Order matters:
+	//   1. Stop accepting new requests; let in-flight handlers finish (they
+	//      may still enqueue audit entries on the writer's channel).
+	//   2. Cancel background workers (collector, scheduler, tickers).
+	//   3. Cancel the audit writer last so its drain loop sees every entry
+	//      produced during step 1.
+	//   4. wg.Wait, then defer st.Close() — only safe to drop the DB now.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	slog.Info("shutting down...")
-	cancel() // stop background tickers
-	tickerWg.Wait()
-	slog.Info("background tickers stopped")
 
+	slog.Info("shutdown: stopping HTTP server")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("shutdown error", "err", err)
+		slog.Error("shutdown: HTTP server error", "err", err)
 	}
+
+	slog.Info("shutdown: stopping background workers")
+	bgCancel()
+
+	slog.Info("shutdown: draining audit writer")
+	auditCancel()
+
+	wg.Wait()
 	slog.Info("bye")
+}
+
+// runTracked launches fn in a goroutine bound to wg, recovering from panics so
+// a crash in any worker can never leak a WaitGroup count.
+func runTracked(wg *sync.WaitGroup, name string, fn func()) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("background worker panicked (recovered)", "worker", name, "panic", r)
+			}
+		}()
+		fn()
+	}()
 }
 
 // recoverInterruptedState clears any policy executions and transitions left

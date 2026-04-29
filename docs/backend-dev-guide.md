@@ -47,13 +47,24 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 **Key responsibilities:**
 - Parse `DATABASE_URL` from env, initialize `store.Store`, run `SeedDefaults()`, and recover interrupted state via `recoverInterruptedState()` (which wraps `MarkInterruptedPolicyExecutions()` and `ResetStuckTransitioningPolicies()`).
 - Create the Kubernetes client (`k8s.New()`), tolerating its absence (sets `k8s = nil`).
-- Start `ClusterCache`, `PolicyScheduler`, and maintenance tickers (session cleanup every 15m, audit retention daily).
+- Start `ClusterCache`, `PolicyScheduler`, the observability collector, the `AuditWriter`, and maintenance tickers (session cleanup every 15m, audit retention daily). Every background goroutine is tracked by a single `sync.WaitGroup` -- most through the `runTracked` helper, the maintenance tickers via direct `wg.Add(1)` -- so shutdown can join them all.
 - Build the Chi router via `api.NewRouter()` and start `http.Server` with `ReadTimeout=15s`, `WriteTimeout=0` (disabled for WebSocket/SSE), `IdleTimeout=60s`.
-- Listen for `SIGINT`/`SIGTERM`, cancel background context, wait for tickers, then `srv.Shutdown()` with 30s timeout.
+- Listen for `SIGINT`/`SIGTERM` and run the shutdown sequence below.
+
+**Shutdown sequence:** order matters and is enforced by code, not by deferred cleanup. Two cancellation contexts (`bgCtx` for collector/scheduler/cache/tickers, `auditCtx` for the `AuditWriter`) let the audit writer outlive HTTP shutdown so it captures entries produced by handlers that are still finishing.
+
+1. `srv.Shutdown(shutdownCtx)` -- stop accepting new requests and wait up to 30s for in-flight handlers to return. They may still enqueue audit entries onto the writer's channel during this window.
+2. `bgCancel()` -- stop the collector, scheduler tickers, cache, and maintenance tickers.
+3. `auditCancel()` -- triggers the `AuditWriter` drain loop, which flushes queued entries until the channel is empty or `drainTimeout` (5s) elapses.
+4. `wg.Wait()` -- block until every background goroutine has returned.
+5. `defer st.Close()` -- only now safe to drop the database connection.
+
+The Helm chart's `terminationGracePeriodSeconds` (45s) is sized to fit `srv.Shutdown` + audit drain + buffer.
 
 **Key functions:**
 - `main()` -- orchestrates all of the above.
-- `startMaintenanceTickers(ctx, st, retentionDays, wg)` -- spawns session cleanup and data retention goroutines (audit logs, old executions).
+- `runTracked(wg, name, fn)` -- launches `fn` in a goroutine bound to `wg`, recovering from panics so a crash in any worker cannot leak a `WaitGroup` count. New background workers must join the same `WaitGroup` (either through this helper or via explicit `wg.Add(1)`/`wg.Done()`), never via bare `go fn(ctx)`.
+- `startMaintenanceTickers(ctx, st, retentionDays, wg)` -- spawns session cleanup and data retention goroutines (audit logs, old executions) onto the same `WaitGroup`.
 - `runTicker(ctx, interval, name, fn)` -- generic ticker loop used by all background tasks. Each tick is wrapped in `safeTick` with panic recovery.
 - `parseIntEnv(key, fallback)` -- reads an integer from the environment with a default.
 
@@ -65,7 +76,7 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 
 **Key types:**
 - `Handler` -- central struct holding `*store.Store`, `*k8s.Client`, `*scheduler.PolicyScheduler`, `*k8s.ClusterCache`, `*observability.Collector`, rate limiters, session timeouts (`idleTimeout`, `maxLifetime`), `*AuditWriter`, OIDC config, and `cookieSecure` (derived from `COOKIE_SECURE` env var, defaults to true). Every handler method is a method on `Handler`.
-- `AuditWriter` -- async buffered writer that drains a 4096-entry channel and persists `store.AuditLog` records in the background. Security-critical actions (`auth.*`, `user.*`, `admin.*`) bypass the channel and write synchronously via `WriteSync` to guarantee delivery.
+- `AuditWriter` -- async buffered writer that drains a 4096-entry channel and persists `store.AuditLog` records in the background. Depends on a one-method `auditLogSink` interface (satisfied by `*store.Store`) so its lifecycle can be unit-tested without a real database. Security-critical actions (`auth.*`, `user.*`, `admin.*`) bypass the channel and write synchronously via `WriteSync` to guarantee delivery. Constructed in `cmd/server/main.go` and passed into `NewRouter` so `main` owns the lifecycle and can drain the channel during graceful shutdown.
 - `policyResponse` -- wraps `store.Policy` with computed `NextTransitionAt` and deserialized `SleepWindows`.
 - `WorkloadResponse` -- typed JSON response shape for cluster workloads (in `cluster.go`).
 - `NodeResponse`, `NodeTaintResponse` -- typed JSON response shapes for cluster nodes (in `cluster_nodes.go`).
@@ -499,6 +510,7 @@ type AuditLog struct {
 
 - Written asynchronously via `AuditWriter` (buffered channel, capacity 4096). Security-critical actions (`auth.*`, `user.*`, `admin.*`) bypass the buffer and write synchronously to guarantee delivery.
 - If the buffer is full for non-critical actions, the writer blocks up to 500ms before dropping and incrementing `kube_phoenix_audit_drops_total`.
+- On graceful shutdown, the writer's drain loop flushes queued entries until the channel is empty or `drainTimeout` (5s) elapses. The drain budget is checked at the top of each iteration so a slow database cannot stall shutdown for more than one in-flight write past the budget. Final `flushed` and `dropped` counts are logged.
 - Retention is configurable via `AUDIT_RETENTION_DAYS` (default 90). A daily maintenance ticker deletes audit logs and finished policy executions (cascading to log lines and snapshots) older than the threshold. Executions with open (un-restored) snapshots are preserved regardless of age.
 
 #### Policy
@@ -1098,7 +1110,7 @@ Chi middleware adds request-level logging (via `chiMiddleware.Logger`).
    - If buffer has room: entry is queued.
    - If buffer is full: entry is dropped, `kube_phoenix_audit_drops_total` is incremented, warning logged.
 4. `AuditWriter.Start()` goroutine drains the channel and persists entries to PostgreSQL.
-5. On context cancellation (shutdown), remaining entries are flushed.
+5. On context cancellation (shutdown), the drain loop flushes queued entries until the channel is empty or `drainTimeout` (5s) elapses, then logs `flushed`/`dropped` counts. `main` cancels the audit context only *after* `srv.Shutdown` returns, so audit entries produced by handlers that finish during HTTP shutdown are still captured.
 
 **`marshalOrNull(v interface{}) string`:** Serialises `v` to a JSON string. Returns the literal string `"null"` when `v` is nil or marshalling fails. This is important because the `before`/`after` columns are `jsonb` in PostgreSQL, which rejects empty strings — `"null"` is the correct JSON representation of an absent value.
 
