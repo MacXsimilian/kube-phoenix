@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/MacXsimilian/kube-phoenix/compare/v0.6.0...v0.6.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* **server:** track background workers and bound graceful-shutdown drain ([#370](https://github.com/MacXsimilian/kube-phoenix/issues/370)) ([689da7e](https://github.com/MacXsimilian/kube-phoenix/commit/689da7e3cbea693e317f10e1e03ab8cfbe6c37c6))
+
 ## [0.6.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.5.38...v0.6.0) (2026-04-14)
 
 
