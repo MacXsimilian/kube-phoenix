@@ -51,12 +51,12 @@ type Handler struct {
 	cookieSecure    bool
 }
 
-func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, policySched *scheduler.PolicyScheduler, cache *k8s.ClusterCache, obsCollector *observability.Collector) *chi.Mux {
+// NewRouter wires the HTTP handler stack. The provided AuditWriter must already
+// be running — main owns its lifecycle so the drain loop can outlive HTTP
+// shutdown and capture audit entries from in-flight handlers.
+func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, policySched *scheduler.PolicyScheduler, cache *k8s.ClusterCache, obsCollector *observability.Collector, aw *AuditWriter) *chi.Mux {
 	idleTimeout := parseDuration("SESSION_IDLE_TIMEOUT", 8*time.Hour)
 	maxLifetime := parseDuration("SESSION_MAX_LIFETIME", 24*time.Hour)
-
-	aw := NewAuditWriter(st, 4096)
-	go aw.Start(ctx)
 
 	// Initialize OIDC provider if configured.
 	var oidcProv *auth.OIDCProvider
