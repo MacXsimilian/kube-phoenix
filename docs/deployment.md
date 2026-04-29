@@ -301,7 +301,7 @@ kubectl delete namespace kube-phoenix
 | `startupProbe.periodSeconds` | `5` | Startup probe interval |
 | `livenessProbe.initialDelaySeconds` | `15` | Liveness probe delay |
 | `readinessProbe.initialDelaySeconds` | `5` | Readiness probe delay |
-| `terminationGracePeriodSeconds` | `30` | Graceful shutdown timeout |
+| `terminationGracePeriodSeconds` | `45` | Graceful shutdown timeout. Sized to fit `srv.Shutdown` (≤30s) + audit-writer drain (≤5s) + buffer. Lower values risk truncating the audit drain on busy shutdowns. |
 | `nodeSelector` | `{}` | Node selector |
 | `tolerations` | `[]` | Tolerations |
 | `affinity` | `{}` | Affinity rules |
