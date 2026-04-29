@@ -19,39 +19,69 @@ import (
 
 const systemUser = "system"
 
+// auditLogSink persists a single audit entry. *store.Store satisfies it; tests
+// substitute a fake.
+type auditLogSink interface {
+	CreateAuditLog(entry *store.AuditLog) error
+}
+
 // AuditWriter drains a buffered channel and persists audit entries in the background.
 type AuditWriter struct {
-	ch    chan *store.AuditLog
-	store *store.Store
+	ch   chan *store.AuditLog
+	sink auditLogSink
 }
 
 // NewAuditWriter creates an audit writer with the given buffer size.
 func NewAuditWriter(s *store.Store, bufSize int) *AuditWriter {
 	return &AuditWriter{
-		ch:    make(chan *store.AuditLog, bufSize),
-		store: s,
+		ch:   make(chan *store.AuditLog, bufSize),
+		sink: s,
 	}
 }
 
-// Start drains the channel and writes entries to the database. Blocks until ctx is cancelled.
-// Recovers from panics to prevent a single bad entry from killing the audit pipeline.
+// drainTimeout bounds how long Start will spend draining queued entries after
+// ctx is cancelled. Prevents a wedged database from blocking process exit.
+const drainTimeout = 5 * time.Second
+
+// Start drains the channel and writes entries to the database. Blocks until ctx
+// is cancelled, then drains any queued entries (bounded by drainTimeout) before
+// returning. Recovers from panics to prevent a single bad entry from killing
+// the audit pipeline.
 func (aw *AuditWriter) Start(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			// Drain remaining entries before exiting.
-			for {
-				select {
-				case entry := <-aw.ch:
-					if err := aw.store.CreateAuditLog(entry); err != nil {
-						slog.Error("audit-writer: flush failed", "action", entry.Action, "err", err)
-					}
-				default:
-					return
-				}
-			}
+			aw.drain()
+			return
 		case entry := <-aw.ch:
 			aw.safeWrite(entry)
+		}
+	}
+}
+
+// drain flushes queued entries until the channel is empty or drainTimeout elapses.
+// Each iteration checks the wall-clock deadline before issuing the next write so
+// a slow sink cannot push the total drain time past the budget by more than one
+// in-flight call.
+func (aw *AuditWriter) drain() {
+	deadline := time.Now().Add(drainTimeout)
+	flushed := 0
+	for {
+		if time.Now().After(deadline) {
+			dropped := len(aw.ch)
+			slog.Warn("audit-writer: drain deadline exceeded, dropping queued entries",
+				"flushed", flushed, "dropped", dropped, "timeout", drainTimeout)
+			return
+		}
+		select {
+		case entry := <-aw.ch:
+			aw.safeWrite(entry)
+			flushed++
+		default:
+			if flushed > 0 {
+				slog.Info("audit-writer: drained queued entries", "flushed", flushed)
+			}
+			return
 		}
 	}
 }
@@ -59,7 +89,7 @@ func (aw *AuditWriter) Start(ctx context.Context) {
 // WriteSync persists an audit entry synchronously, bypassing the channel.
 // Used for security-critical actions that must never be dropped.
 func (aw *AuditWriter) WriteSync(entry *store.AuditLog) error {
-	return aw.store.CreateAuditLog(entry)
+	return aw.sink.CreateAuditLog(entry)
 }
 
 func (aw *AuditWriter) safeWrite(entry *store.AuditLog) {
@@ -68,7 +98,7 @@ func (aw *AuditWriter) safeWrite(entry *store.AuditLog) {
 			slog.Error("audit-writer: panic during write (recovered)", "action", entry.Action, "panic", r)
 		}
 	}()
-	if err := aw.store.CreateAuditLog(entry); err != nil {
+	if err := aw.sink.CreateAuditLog(entry); err != nil {
 		slog.Error("audit-writer: write failed", "action", entry.Action, "err", err)
 	}
 }
