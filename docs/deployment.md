@@ -138,6 +138,104 @@ targetGroupBinding:
 
 > **Tip:** Do not create a `LoadBalancer` service or Ingress on top of a TargetGroupBinding deployment. The chart deploys a `ClusterIP` service, which is sufficient.
 
+## GitOps with ArgoCD
+
+kube-phoenix is compatible with ArgoCD and other GitOps controllers, but it scales workloads by mutating `spec.replicas` on Deployments and StatefulSets via the Scale subresource. Any workload that ArgoCD also manages will go `OutOfSync` the moment a sleep window fires, and an auto-sync will rewrite the replicas back to the value in git -- waking the workload that kube-phoenix just put to sleep.
+
+Pick one of the two patterns below for every Application whose workloads kube-phoenix manages.
+
+### Option A -- Ignore replica drift (recommended)
+
+Add `spec.replicas` to the Application's `ignoreDifferences` and enable `RespectIgnoreDifferences=true` so auto-sync also honours the rule. This is the same pattern HPA users already apply.
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-workloads
+spec:
+  source:
+    repoURL: https://github.com/example/manifests
+    path: workloads
+  destination:
+    namespace: my-app
+    server: https://kubernetes.default.svc
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers: ["/spec/replicas"]
+    - group: apps
+      kind: StatefulSet
+      jsonPointers: ["/spec/replicas"]
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - RespectIgnoreDifferences=true
+```
+
+> **Warning:** Without `RespectIgnoreDifferences=true`, auto-sync still rewrites `replicas` even though the diff view hides it. Both flags are required.
+
+### Option B -- Strip replicas from git
+
+Omit `spec.replicas` from the Deployment/StatefulSet manifests entirely. With no value in git, ArgoCD treats the field as unmanaged and never reconciles it. Cleaner long-term and matches HPA conventions, but requires every workload owner adopting kube-phoenix to update their manifests.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  # spec.replicas intentionally omitted -- managed by kube-phoenix
+  selector:
+    matchLabels: { app: my-app }
+  template: { ... }
+```
+
+### Deploying kube-phoenix itself via ArgoCD
+
+The chart works as a standard ArgoCD Helm Application. Use an external database in production and disable pruning of the database resources so a sync error cannot delete the PostgreSQL PVC.
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-phoenix
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: ghcr.io/macxsimilian/helm
+    chart: kube-phoenix
+    targetRevision: 0.3.19
+    helm:
+      values: |
+        postgresql:
+          enabled: false
+        externalDatabase:
+          host: my-rds.example.com
+          password: ${DB_PASSWORD}
+        secret:
+          existingSecret: kube-phoenix-secret
+  destination:
+    namespace: kube-phoenix
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+```
+
+### Caveats
+
+- **Node operations are out-of-band.** kube-phoenix cordons, drains, and deletes nodes during sleep cycles. These are not tracked in git. If cluster-autoscaler or Karpenter is itself ArgoCD-managed, there is no conflict; just be aware that node state during a sleep window will not match anything in a repo.
+- **Bundled PostgreSQL StatefulSet.** If you keep `postgresql.enabled=true` under ArgoCD, set `prune: false` (or use `Prune=false` per-resource) so a sync failure cannot remove the PVC. For production, prefer an external managed database -- see [External Database](#external-database).
+- **First-run admin secret.** `secret.adminPassword` only seeds the admin user on first startup. Storing it in git is acceptable for the bootstrap, but rotate it via the UI or a `secret.existingSecret` afterwards.
+
 ## Observability
 
 kube-phoenix exposes Prometheus metrics at `/metrics` (unauthenticated, suitable for in-cluster scraping).
