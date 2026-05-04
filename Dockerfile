@@ -6,7 +6,8 @@ FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf1
 ARG NEXT_PUBLIC_APP_VERSION=dev
 
 WORKDIR /app/frontend
-COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
+COPY frontend/patches ./patches
 
 # Cache node_modules across builds; invalidated only when package-lock.json changes.
 RUN --mount=type=cache,target=/root/.npm \
