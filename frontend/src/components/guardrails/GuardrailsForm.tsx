@@ -350,7 +350,7 @@ export default function GuardrailsForm() {
         <CategoryCard
           icon={<SwapVertIcon sx={{ color: 'text.secondary' }} />}
           title="Scaling Priority"
-          subtitle="Wake-up order for namespaces"
+          subtitle="Scaling order for namespaces"
           expanded={expanded === SECTION.SCALING}
           onToggle={() => toggle(SECTION.SCALING)}
           pills={
@@ -364,7 +364,7 @@ export default function GuardrailsForm() {
               display: "block",
               mb: 1.5
             }}>
-            These namespaces are scaled first during wake-up, in listed order.
+            These namespaces are scaled first during sleep and wake runs, in listed order.
           </Typography>
           <ChipInput id="chip-input-priority-ns" label="Priority Namespaces" hint="Add namespaces in the order they should be scaled" values={form.priorityNs} onChange={(v) => setField('priorityNs', v)} readOnly={!hasEdit} />
         </CategoryCard>
