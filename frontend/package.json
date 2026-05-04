@@ -12,7 +12,8 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write 'src/**/*.{ts,tsx,json,css}'",
-    "format:check": "prettier --check 'src/**/*.{ts,tsx,json,css}'"
+    "format:check": "prettier --check 'src/**/*.{ts,tsx,json,css}'",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -35,10 +36,11 @@
     "@types/node": "^25.6.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^9.39.4",
+    "eslint": "^10.2.1",
     "eslint-config-prettier": "^10",
     "eslint-plugin-react": "^7",
     "eslint-plugin-react-hooks": "^7.0.1",
+    "patch-package": "^8.0.1",
     "prettier": "^3.8.2",
     "typescript": "^6",
     "typescript-eslint": "^8.58.2",
