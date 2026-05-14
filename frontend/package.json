@@ -18,33 +18,33 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
-    "@mui/icons-material": "^9.0.0",
-    "@mui/material": "^9.0.0",
-    "@tanstack/react-query": "^5.99.0",
+    "@mui/icons-material": "^9.0.1",
+    "@mui/material": "^9.0.1",
+    "@tanstack/react-query": "^5.100.10",
     "echarts": "^6.0.0",
     "echarts-for-react": "^3.0.6",
     "framer-motion": "^12.38.0",
     "gsap": "^3.15.0",
-    "next": "^16.2.3",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "next": "^16.2.6",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
-    "@next/bundle-analyzer": "^16.2.3",
-    "@next/eslint-plugin-next": "^16.2.3",
-    "@types/node": "^25.6.0",
+    "@next/bundle-analyzer": "^16.2.6",
+    "@next/eslint-plugin-next": "^16.2.6",
+    "@types/node": "^25.7.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^10.2.1",
+    "eslint": "^10.3.0",
     "eslint-config-prettier": "^10",
     "eslint-plugin-react": "^7",
     "eslint-plugin-react-hooks": "^7.0.1",
     "patch-package": "^8.0.1",
     "prettier": "^3.8.2",
     "typescript": "^6",
-    "typescript-eslint": "^8.58.2",
-    "ws": "^8.20.0"
+    "typescript-eslint": "^8.59.3",
+    "ws": "^8.20.1"
   },
   "overrides": {
     "postcss": "^8.5.10"
