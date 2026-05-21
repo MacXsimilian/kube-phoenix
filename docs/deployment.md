@@ -317,7 +317,7 @@ kubectl delete namespace kube-phoenix
 | :---- | :------ | :---------- |
 | `postgresql.enabled` | `true` | Deploy in-cluster PostgreSQL StatefulSet |
 | `postgresql.image.repository` | `postgres` | PostgreSQL image |
-| `postgresql.image.tag` | `17.7-alpine` | PostgreSQL version |
+| `postgresql.image.tag` | `17.10-alpine` | PostgreSQL version |
 | `postgresql.auth.username` | `kube_phoenix` | PostgreSQL username |
 | `postgresql.auth.password` | `kube_phoenix` | PostgreSQL password |
 | `postgresql.auth.database` | `kube_phoenix` | PostgreSQL database name |
