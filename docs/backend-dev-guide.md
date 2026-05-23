@@ -435,7 +435,7 @@ type Guardrails struct {
     SchedulerReconcileWhileAwake bool      // default true
     SchedulerEnforceSleep        bool      // default false; re-enforce sleep on drifted workloads
     ScalingConcurrency           int       // default 10; max concurrent workload scale operations
-    ProtectCriticalPodNodes      bool      // default true; protect nodes running system-node-critical / system-cluster-critical pods
+    ProtectCriticalPodNodes      bool      // default false; opt-in protection for nodes running non-DaemonSet system-node-critical / system-cluster-critical pods
     UpdatedAt                   time.Time
 }
 ```
@@ -884,8 +884,8 @@ During sleep, after workloads are scaled to 0:
 
 1. List all nodes.
 2. List all pods to identify:
-   - Nodes hosting pods in `SkipNsNode` namespaces (critical nodes).
-   - When `ProtectCriticalPodNodes` is enabled (default), nodes hosting pods with `system-node-critical` or `system-cluster-critical` PriorityClassName.
+   - Nodes hosting non-DaemonSet pods in `SkipNsNode` namespaces (critical nodes).
+   - When `ProtectCriticalPodNodes` is enabled (opt-in, default off), nodes hosting non-DaemonSet pods with `system-node-critical` or `system-cluster-critical` PriorityClassName.
    - Non-DaemonSet pod count per node.
 3. For each node:
    - If protected by label match (`SkipNodeLabels`) -> skip.

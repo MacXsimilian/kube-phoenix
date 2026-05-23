@@ -180,8 +180,9 @@ operations, persisting workload snapshots for reliable restoration.
   truth -- there is no on-cluster annotation fallback. Nodes are not managed;
   Karpenter provisions new nodes in response to pending pods.
 - Respect guardrails: skip protected namespaces, labeled nodes, tainted nodes,
-  nodes hosting critical-namespace pods, and (when `ProtectCriticalPodNodes` is
-  enabled) nodes running `system-node-critical` or `system-cluster-critical` pods.
+  nodes hosting non-DaemonSet pods in critical namespaces, and (when
+  `ProtectCriticalPodNodes` is enabled — opt-in, default off) nodes running
+  non-DaemonSet `system-node-critical` or `system-cluster-critical` pods.
 - Deduplicate Deployment/StatefulSet dispatch via `workloadOps()` helper, which returns the appropriate get-replicas and scale functions for a given kind.
 - Emit structured log lines to a channel for real-time streaming via the Broker.
   Summary lines include wall-clock duration, total K8s API calls, and req/s.
