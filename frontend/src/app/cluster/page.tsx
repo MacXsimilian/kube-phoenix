@@ -4,10 +4,9 @@ import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/queryKeys'
-import Typography from '@mui/material/Typography'
 import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
-import Box from '@mui/material/Box'
+import PageHeader from '@/components/shared/PageHeader'
 import WorkloadsTable from '@/components/cluster/WorkloadsTable'
 import NodesTable from '@/components/cluster/NodesTable'
 import { getWorkloads, getNodes } from '@/lib/api'
@@ -29,12 +28,15 @@ function ClusterTabs() {
 
   return (
     <>
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-          <Tab label={workloadLabel} />
-          <Tab label={nodeLabel} />
-        </Tabs>
-      </Box>
+      <PageHeader
+        title="Cluster State"
+        tabs={
+          <Tabs value={tab} onChange={(_, v) => setTab(v)}>
+            <Tab label={workloadLabel} />
+            <Tab label={nodeLabel} />
+          </Tabs>
+        }
+      />
       {tab === 0 && <WorkloadsTable />}
       {tab === 1 && <NodesTable />}
     </>
@@ -43,18 +45,8 @@ function ClusterTabs() {
 
 export default function ClusterPage() {
   return (
-    <>
-      <Typography
-        variant="h5"
-        sx={{
-          fontWeight: 700,
-          mb: 3
-        }}>
-        Cluster State
-      </Typography>
-      <Suspense>
-        <ClusterTabs />
-      </Suspense>
-    </>
+    <Suspense fallback={<PageHeader title="Cluster State" />}>
+      <ClusterTabs />
+    </Suspense>
   );
 }

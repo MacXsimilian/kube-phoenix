@@ -9,6 +9,7 @@ import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
 import AddIcon from '@mui/icons-material/Add'
+import PageHeader from '@/components/shared/PageHeader'
 import { getPolicies } from '@/lib/api'
 import type { Policy } from '@/lib/types'
 import PolicyCard from '@/components/policies/PolicyCard'
@@ -51,23 +52,23 @@ export default function PoliciesPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h5" sx={{
-          fontWeight: 700
-        }}>Policies</Typography>
-        <Tooltip title={!canEdit ? 'You do not have permission to create policies' : ''}>
-          <span>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleCreate}
-              disabled={!canEdit}
-            >
-              New Policy
-            </Button>
-          </span>
-        </Tooltip>
-      </Box>
+      <PageHeader
+        title="Policies"
+        actions={
+          <Tooltip title={!canEdit ? 'You do not have permission to create policies' : ''}>
+            <span>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={handleCreate}
+                disabled={!canEdit}
+              >
+                New Policy
+              </Button>
+            </span>
+          </Tooltip>
+        }
+      />
       {isLoading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
           <CircularProgress />

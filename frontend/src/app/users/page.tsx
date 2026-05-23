@@ -33,6 +33,7 @@ import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined'
 import KeyOutlinedIcon from '@mui/icons-material/KeyOutlined'
 import StorageOutlinedIcon from '@mui/icons-material/StorageOutlined'
 import { useRouter } from 'next/navigation'
+import PageHeader from '@/components/shared/PageHeader'
 import { getUsers, createUserAPI, updateUserAPI, deleteUserAPI } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { canManageUsers } from '@/lib/rbac'
@@ -112,19 +113,15 @@ export default function UsersPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-        <Box>
-          <Typography variant="h5" sx={{
-            fontWeight: 700
-          }}>Users</Typography>
-          <Typography variant="body2" sx={{
-            color: "text.secondary"
-          }}>{users?.length ?? 0} users total</Typography>
-        </Box>
-        <Button variant="contained" startIcon={<PersonAddOutlinedIcon />} onClick={() => { setCreateOpen(true); setCreateError('') }}>
-          Add User
-        </Button>
-      </Box>
+      <PageHeader
+        title="Users"
+        subtitle={`${users?.length ?? 0} users total`}
+        actions={
+          <Button variant="contained" startIcon={<PersonAddOutlinedIcon />} onClick={() => { setCreateOpen(true); setCreateError('') }}>
+            Add User
+          </Button>
+        }
+      />
       {isError && <Alert severity="error" sx={{ mb: 2 }}>Failed to load users. You may not have permission to view this page.</Alert>}
       {mutationError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setMutationError('')}>{mutationError}</Alert>}
       <TextField
