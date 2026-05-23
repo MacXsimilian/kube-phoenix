@@ -200,7 +200,7 @@ function RowList({
   dimmed?: boolean
 }) {
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0, opacity: dimmed ? 0.55 : 1 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0, opacity: dimmed ? 0.6 : 1 }}>
       {rows.map((row) => {
         if (row.type === 'day') {
           return (
