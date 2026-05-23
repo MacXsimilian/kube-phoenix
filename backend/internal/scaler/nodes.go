@@ -27,30 +27,36 @@ type drainTarget struct {
 }
 
 // classifyNodes groups pods by node, identifying which nodes run critical
-// workloads (pods in protected namespaces) and how many evictable (non-DaemonSet)
-// pods each node has.
+// workloads (pods in protected namespaces or with critical priority) and how
+// many evictable pods each node has. DaemonSet pods are ignored entirely:
+// they exist on every node by design, get filtered out of eviction, and would
+// otherwise cause every node to be classified as critical.
 func classifyNodes(pods []corev1.Pod, skipNsNode map[string]bool, protectCriticalPodNodes bool) (criticalNodes map[string]bool, podCountPerNode map[string]int) {
 	criticalNodes = map[string]bool{}
 	podCountPerNode = map[string]int{}
 	for _, pod := range pods {
+		if isDaemonOwnedPod(pod) {
+			continue
+		}
+		podCountPerNode[pod.Spec.NodeName]++
 		if skipNsNode[pod.Namespace] {
 			criticalNodes[pod.Spec.NodeName] = true
+			continue
 		}
 		if protectCriticalPodNodes && nodeutil.IsCriticalPod(pod.Spec.PriorityClassName) {
 			criticalNodes[pod.Spec.NodeName] = true
 		}
-		isDaemon := false
-		for _, ref := range pod.OwnerReferences {
-			if ref.Kind == "DaemonSet" {
-				isDaemon = true
-				break
-			}
-		}
-		if !isDaemon {
-			podCountPerNode[pod.Spec.NodeName]++
-		}
 	}
 	return criticalNodes, podCountPerNode
+}
+
+func isDaemonOwnedPod(pod corev1.Pod) bool {
+	for _, ref := range pod.OwnerReferences {
+		if ref.Kind == "DaemonSet" {
+			return true
+		}
+	}
+	return false
 }
 
 // drainNodes handles node draining and deletion during scale-down. Nodes are
