@@ -81,6 +81,7 @@ frontend/
       observability/layout.tsx  # /observability layout -- wraps all observability routes in ObservabilityStreamProvider
       observability/page.tsx    # /observability -- observability center
       observability/[component]/page.tsx  # /observability/{component} -- component drill-down
+      prototypes/                 # /prototypes/* -- in-app mockup gallery for shared components (committed, not gated)
     components/
       layout/
         Sidebar.tsx             # Navigation sidebar: collapsible/expandable with framer-motion, collapsed state persisted to localStorage, width 220px expanded / 64px collapsed
@@ -144,6 +145,8 @@ frontend/
       shared/
         StatusChip.tsx          # Reusable status chip with color mapping; supports hideSpinner prop (pulse animation for running state instead of spinner)
         TriggerChip.tsx         # Reusable chip displaying execution trigger type with icon and color
+        PageHeader.tsx          # Unified page-title chrome: title, subtitle, breadcrumbs, actions, meta, tabs slots
+        EmptyState.tsx          # Dashed-border placeholder card with title, optional description, icon, and action slot
       exceptions/
         ExceptionsCalendarStrip.tsx  # Calendar strip layout: day rows, span rows for multi-day, history split
         ExceptionDetailPanel.tsx     # Expandable detail grid (dates, duration, namespace filter, workload targets)
@@ -666,8 +669,8 @@ Bands (top to bottom):
 1. **Hero band** -- `PolicyHeroBand`
 2. **Metadata row** -- `PolicyMetadataRow`
 3. **Timeline band** -- `LedGlowTimeline` filling the left, weekly stats (Sleep/Week, Awake/Week, Next Transition with countdown) on the right
-4. **Exceptions band** -- subtle alternating background, `ExceptionsSection` (wraps on mobile)
-5. **Execution History band** -- `ExecutionHistoryTable` at full width with status filter dropdown. Clicking a row opens the log viewer drawer inline (same behaviour as the History page), using `selectedExec` state and the `LogViewer` component.
+4. **Exceptions band** -- subtle alternating background, `ExceptionsSection` (wraps on mobile). The table renders the first 5 rows by default; if more exist, a centered "Show all N / Show fewer" toggle expands the list in place.
+5. **Execution History band** -- `ExecutionHistoryTable` at full width with status filter dropdown. The table renders the first 10 of the 20 fetched rows by default; if more match the current filter, a centered "Show all N / Show fewer" toggle expands the list. Clicking a row opens the log viewer drawer inline (same behaviour as the History page), using `selectedExec` state and the `LogViewer` component.
 
 #### WindowPicker
 
@@ -869,6 +872,50 @@ A summary line above the panel shows the count of changed fields.
 | `classifyLine(key, before?, after?)` | Classifies a single key as `added`, `removed`, `changed`, or `unchanged` |
 | `computeDiff(beforeJson?, afterJson?)` | Orchestrates snapshot parsing and line classification; returns `null` when both snapshots are empty |
 | `downloadCSV(logs)` | Exports the current audit log view as a CSV file |
+
+---
+
+### Shared Page Chrome
+
+Two cross-cutting primitives live in `src/components/shared/` and are used by every top-level page. They exist so page-level markup stays uniform and design changes happen in one place rather than nine.
+
+#### PageHeader
+
+`src/components/shared/PageHeader.tsx`
+
+Renders the standard title block above every page. Props:
+
+| Prop | Type | Purpose |
+|:-----|:-----|:--------|
+| `title` | `string` (required) | Rendered as `h5`, weight 700 |
+| `subtitle` | `ReactNode` (optional) | Muted body2 line under the title |
+| `breadcrumbs` | `Crumb[]` (optional) | Caption-sized trail above the title; entries with `href` render as Next.js links |
+| `actions` | `ReactNode` (optional) | Right-aligned slot for buttons (e.g. `New Policy`, `Export CSV`) |
+| `meta` | `ReactNode` (optional) | Slot under the title for freshness indicators, count chips, etc. |
+| `tabs` | `ReactNode` (optional) | Tab bar slot rendered with a bottom border; used by Cluster State and Observability |
+
+All slots are mobile-responsive (the title/actions row wraps to two lines on `xs`). Bottom margin is fixed at `mb: 3`; pages should not add their own margin.
+
+Adopted in: `/overview`, `/cluster`, `/policies`, `/policies/detail`, `/exceptions`, `/guardrails`, `/history`, `/users`, `/audit`, `/settings`, `/observability`.
+
+#### EmptyState
+
+`src/components/shared/EmptyState.tsx`
+
+Dashed-border centered placeholder card used when a list has no data. Props:
+
+| Prop | Type | Purpose |
+|:-----|:-----|:--------|
+| `title` | `string` (required) | Rendered as `subtitle1`, weight 600 |
+| `description` | `ReactNode` (optional) | Muted body2 line under the title; max-width 420px for readability |
+| `icon` | `ReactNode` (optional) | Rendered above the title at `fontSize: 40` in `text.disabled` |
+| `action` | `ReactNode` (optional) | Slot below the description for a CTA (e.g. "Create policy") |
+
+Adopted in: `/policies` ("No policies yet"), `/exceptions` ("No exceptions found.").
+
+#### Prototype gallery
+
+The two shared primitives above are documented visually under `/prototypes/page-header` and `/prototypes/empty-state`. These are full Next.js pages with every variant rendered inline (minimal → kitchen-sink) plus before/after comparisons. Use the same convention when adding new shared primitives: build a mockup page at `/prototypes/<name>` so reviewers can compare variants without spinning up Storybook.
 
 ---
 
@@ -1183,7 +1230,8 @@ sx={{ bgcolor: stateStyle.bg, color: stateStyle.color }}
 ### Typography and Spacing
 
 - **Font:** Inter (loaded via `next/font/google` with weights 300-700)
-- **Heading:** `variant="h5" sx={{ fontWeight: 700 }}` for page titles
+- **Page title:** use the shared `<PageHeader title=... />` component (see [Shared Page Chrome](#shared-page-chrome)) instead of raw `Typography` — every top-level page renders through it
+- **Heading:** `variant="h5" sx={{ fontWeight: 700 }}` for in-page section headers that are not the page title
 - **Subtitle:** `variant="subtitle1" sx={{ fontWeight: 700 }}` for section headers
 - **Body:** `variant="body2"` for most content
 - **Monospace:** `fontFamily: 'monospace'` for pod names, node names, log lines, resource values
@@ -1345,13 +1393,15 @@ No TanStack Query is used on this page. All data arrives via SSE push rather tha
 ### Adding a New Page
 
 1. Create `src/app/<route>/page.tsx` with `'use client'` directive
-2. Add a navigation entry to the `NAV` array in `src/components/layout/Sidebar.tsx`:
+2. Render the page title via `<PageHeader title="My Feature" />` from `@/components/shared/PageHeader` (see [Shared Page Chrome](#shared-page-chrome)). Pass `actions`, `subtitle`, `tabs`, or `meta` slots as needed -- do not hand-roll a `Typography h5`
+3. For empty/no-data states, use `<EmptyState title="..." />` from `@/components/shared/EmptyState` rather than building a one-off dashed `Box`
+4. Add a navigation entry to the `NAV` array in `src/components/layout/Sidebar.tsx`:
    ```typescript
    { label: 'My Feature', href: '/my-feature', icon: <SomeIcon fontSize="small" /> }
    ```
    If the page requires a permission, add `requirePerm: canDoSomething`
-3. The page gets the full `AppShell` layout (sidebar + header) automatically via the provider stack
-4. Use `useAuth()` for permission checks, `useQuery()` for data fetching
+5. The page gets the full `AppShell` layout (sidebar + header) automatically via the provider stack
+6. Use `useAuth()` for permission checks, `useQuery()` for data fetching
 
 ### Adding a New API Endpoint
 
