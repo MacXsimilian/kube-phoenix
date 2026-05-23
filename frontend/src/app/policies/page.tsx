@@ -10,6 +10,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
 import AddIcon from '@mui/icons-material/Add'
 import PageHeader from '@/components/shared/PageHeader'
+import EmptyState from '@/components/shared/EmptyState'
 import { getPolicies } from '@/lib/api'
 import type { Policy } from '@/lib/types'
 import PolicyCard from '@/components/policies/PolicyCard'
@@ -78,21 +79,10 @@ export default function PoliciesPage() {
         <Alert severity="error">{error instanceof Error ? error.message : 'Failed to load policies'}</Alert>
       )}
       {policies && policies.length === 0 && (
-        <Box
-          sx={{
-            border: '1px dashed',
-            borderColor: 'divider',
-            borderRadius: 2,
-            p: 4,
-            textAlign: 'center',
-          }}
-        >
-          <Typography variant="body2" sx={{
-            color: "text.secondary"
-          }}>
-            No policies yet. Create one to define when workloads sleep and wake.
-          </Typography>
-        </Box>
+        <EmptyState
+          title="No policies yet"
+          description="Create one to define when workloads sleep and wake."
+        />
       )}
       {policies && policies.length > 0 && (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
