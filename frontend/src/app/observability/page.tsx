@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import Box from '@mui/material/Box'
 import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
+import PageHeader from '@/components/shared/PageHeader'
 import { useSharedObservabilityStream } from '@/lib/ObservabilityStreamContext'
 import MetricsDashboard from '@/components/observability/MetricsDashboard'
 import ApiRivers from '@/components/observability/ApiRivers'
@@ -86,20 +87,22 @@ export default function ObservabilityPage() {
 
   return (
     <Box id="observability-root" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Tabs
-        value={activeTab}
-        onChange={(_, v) => handleTabChange(v)}
-        sx={{
-          borderBottom: 1,
-          borderColor: 'divider',
-          px: 2,
-          minHeight: 44,
-          '& .MuiTab-root': { minHeight: 44, textTransform: 'none', fontWeight: 600 },
-        }}
-      >
-        <Tab label="Metrics Dashboard" />
-        <Tab label="API Rivers" />
-      </Tabs>
+      <PageHeader
+        title="Observability"
+        tabs={
+          <Tabs
+            value={activeTab}
+            onChange={(_, v) => handleTabChange(v)}
+            sx={{
+              minHeight: 44,
+              '& .MuiTab-root': { minHeight: 44, textTransform: 'none', fontWeight: 600 },
+            }}
+          >
+            <Tab label="Metrics Dashboard" />
+            <Tab label="API Rivers" />
+          </Tabs>
+        }
+      />
 
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         {activeTab === 0 && (
