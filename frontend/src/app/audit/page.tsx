@@ -20,6 +20,7 @@ import Skeleton from '@mui/material/Skeleton'
 import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import DownloadIcon from '@mui/icons-material/Download'
+import PageHeader from '@/components/shared/PageHeader'
 import { getAuditLogs } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { canViewAudit } from '@/lib/rbac'
@@ -97,27 +98,21 @@ export default function AuditLogPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3 }}>
-        <Box>
-          <Typography variant="h5" gutterBottom sx={{
-            fontWeight: 700
-          }}>Audit Log</Typography>
-          <Typography variant="body2" sx={{
-            color: "text.secondary"
-          }}>
-            Track who did what and when.
-          </Typography>
-        </Box>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<DownloadIcon />}
-          onClick={handleExport}
-          disabled={isLoading}
-        >
-          Export CSV
-        </Button>
-      </Box>
+      <PageHeader
+        title="Audit Log"
+        subtitle="Track who did what and when."
+        actions={
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            onClick={handleExport}
+            disabled={isLoading}
+          >
+            Export CSV
+          </Button>
+        }
+      />
       <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           label="User"

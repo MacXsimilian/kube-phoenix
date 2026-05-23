@@ -549,7 +549,7 @@ kube-phoenix/
 │   │   │   ├── overview/            # Overview/dashboard page components
 │   │   │   ├── policies/            # PolicyCard, timelines, WindowPicker, PolicyHeroBand, TimelineLegend, timelineSegments
 │   │   │   ├── settings/            # AccountSettings, AppearanceSettings, DatabaseSettings, OIDCStatusCard, ActiveSessionsCard (live data), ClusterConnectionCard, AboutBar
-│   │   │   └── shared/              # StatusChip, TriggerChip
+│   │   │   └── shared/              # StatusChip, TriggerChip, PageHeader, EmptyState
 │   │   ├── lib/                     # API client (apiFetch), auth, types, query client, formatters, statusColors, SortHeader, tableStyles, shared hooks (useSnackbar, useIsDark, useTriStateSort, usePolicyTriggers, useUnsavedChanges, useObservabilityStream, useClusterStream, useDebouncedValue, layoutConstants), rbac, colors, constants, motion/, observability-types
 │   │   └── theme/                   # MUI theme (dark + light mode)
 │   ├── next.config.mjs              # Static export, trailing slash

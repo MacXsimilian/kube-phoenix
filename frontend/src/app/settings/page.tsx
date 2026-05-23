@@ -67,6 +67,7 @@ import {
   updateUserSettings,
 } from '@/lib/api'
 import DatabaseSettings from '@/components/settings/DatabaseSettings'
+import PageHeader from '@/components/shared/PageHeader'
 
 /* ─── Helpers ───────────────────────────────────────────────────────────���─── */
 
@@ -299,20 +300,10 @@ export default function SettingsPage() {
 
   return (
     <>
-      <Typography
-        variant="h5"
-        sx={{
-          fontWeight: 700,
-          mb: 1
-        }}>Settings</Typography>
-      <Typography
-        variant="body2"
-        sx={{
-          color: "text.secondary",
-          mb: 3
-        }}>
-        Manage your account, appearance, and system configuration.
-      </Typography>
+      <PageHeader
+        title="Settings"
+        subtitle="Manage your account, appearance, and system configuration."
+      />
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {/* ── Profile & Identity ────────────────────────────────────── */}
         {user && user.id !== 0 && (

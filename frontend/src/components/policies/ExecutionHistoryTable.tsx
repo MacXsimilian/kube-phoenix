@@ -13,6 +13,7 @@ import TableCell from '@mui/material/TableCell'
 import { TABLE_HEAD_CELL_SX } from '@/lib/tableStyles'
 import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
+import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
@@ -24,6 +25,7 @@ import { getModeStyle, SMALL_CHIP_SX } from '@/lib/statusColors'
 import type { PolicyExecution, PolicyExecutionPage } from '@/lib/types'
 
 const STATUS_OPTIONS = ['all', 'running', 'success', 'failed'] as const
+const DEFAULT_VISIBLE = 10
 
 export default function ExecutionHistoryTable({
   executions,
@@ -34,12 +36,17 @@ export default function ExecutionHistoryTable({
 }) {
   const isDark = useIsDark()
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [showAll, setShowAll] = useState(false)
 
   const filtered = useMemo(() => {
     if (!executions) return undefined
     if (statusFilter === 'all') return executions.items
     return executions.items.filter(ex => ex.status === statusFilter)
   }, [executions, statusFilter])
+
+  const visible = showAll ? filtered : filtered?.slice(0, DEFAULT_VISIBLE)
+  const filteredCount = filtered?.length ?? 0
+  const isTruncated = filteredCount > DEFAULT_VISIBLE && !showAll
 
   return (
     <Box>
@@ -70,7 +77,7 @@ export default function ExecutionHistoryTable({
           {statusFilter === 'all' ? 'No executions yet.' : `No ${statusFilter} executions.`}
         </Typography>
       )}
-      {filtered && filtered.length > 0 && (
+      {visible && visible.length > 0 && (
         <TableContainer>
         <Table size="small">
           <TableHead>
@@ -86,7 +93,7 @@ export default function ExecutionHistoryTable({
             </TableRow>
           </TableHead>
           <TableBody>
-            {filtered.map(ex => {
+            {visible.map(ex => {
               const counts = [
                 ex.countScaled > 0 && `${ex.countScaled} scaled`,
                 ex.countDrained > 0 && `${ex.countDrained} drained`,
@@ -126,6 +133,13 @@ export default function ExecutionHistoryTable({
           </TableBody>
         </Table>
         </TableContainer>
+      )}
+      {filteredCount > DEFAULT_VISIBLE && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
+          <Button size="small" onClick={() => setShowAll(s => !s)}>
+            {isTruncated ? `Show all ${filteredCount}` : 'Show fewer'}
+          </Button>
+        </Box>
       )}
     </Box>
   );

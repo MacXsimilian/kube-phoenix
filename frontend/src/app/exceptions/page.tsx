@@ -11,6 +11,8 @@ import CenteredSpinner from '@/components/common/CenteredSpinner'
 import Alert from '@mui/material/Alert'
 import Tooltip from '@mui/material/Tooltip'
 import AddIcon from '@mui/icons-material/Add'
+import PageHeader from '@/components/shared/PageHeader'
+import EmptyState from '@/components/shared/EmptyState'
 import ConfirmDialog from '@/components/common/ConfirmDialog'
 import { getExceptions, deleteException } from '@/lib/api'
 import type { ScheduledException } from '@/lib/types'
@@ -52,31 +54,27 @@ export default function ExceptionsPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h5" sx={{
-          fontWeight: 700
-        }}>Scheduled Exceptions</Typography>
-        <Tooltip title={!canEdit ? 'You do not have permission to create exceptions' : ''}>
-          <span>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => { setEditing(undefined); setDialogOpen(true) }}
-              disabled={!canEdit}
-            >
-              New Exception
-            </Button>
-          </span>
-        </Tooltip>
-      </Box>
+      <PageHeader
+        title="Scheduled Exceptions"
+        actions={
+          <Tooltip title={!canEdit ? 'You do not have permission to create exceptions' : ''}>
+            <span>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => { setEditing(undefined); setDialogOpen(true) }}
+                disabled={!canEdit}
+              >
+                New Exception
+              </Button>
+            </span>
+          </Tooltip>
+        }
+      />
       {isError && <Alert severity="error" sx={{ mb: 2 }}>Failed to load exceptions</Alert>}
       {isLoading && <CenteredSpinner />}
       {exceptions && exceptions.length === 0 && (
-        <Box sx={{ border: '1px dashed', borderColor: 'divider', borderRadius: 2, p: 4, textAlign: 'center' }}>
-          <Typography variant="body2" sx={{
-            color: "text.secondary"
-          }}>No exceptions found.</Typography>
-        </Box>
+        <EmptyState title="No exceptions found." />
       )}
       {exceptions && exceptions.length > 0 && (
         <ExceptionsCalendarStrip
