@@ -2,8 +2,8 @@ apiVersion: v2
 name: kube-phoenix
 description: Kubernetes cluster sleep/wake schedule manager
 type: application
-version: 0.6.1
-appVersion: 0.6.1
+version: 0.7.0
+appVersion: 0.7.0
 kubeVersion: '>=1.25.0-0'
 keywords:
   - kubernetes

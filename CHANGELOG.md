@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.7.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.6.1...v0.7.0) (2026-05-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **scaler:** New installs default ProtectCriticalPodNodes to false. To preserve the previous behavior, enable the toggle in Settings > Guardrails.
+
+### Features
+
+* **frontend:** unify page chrome and bound policy detail lists ([#389](https://github.com/MacXsimilian/kube-phoenix/issues/389)) ([5abd93b](https://github.com/MacXsimilian/kube-phoenix/commit/5abd93bceef5ed79f43210ffcba9c17b54e3cf2a))
+
+
+### Bug Fixes
+
+* **exceptions:** soften history dropdown row dimming ([#388](https://github.com/MacXsimilian/kube-phoenix/issues/388)) ([573f702](https://github.com/MacXsimilian/kube-phoenix/commit/573f702e283b61016f9712a56d09ec1212deaf0b))
+* **exceptions:** soften history row dimming for chip legibility ([573f702](https://github.com/MacXsimilian/kube-phoenix/commit/573f702e283b61016f9712a56d09ec1212deaf0b))
+* **scaler:** ignore DaemonSets in node protection, flip default off ([#384](https://github.com/MacXsimilian/kube-phoenix/issues/384)) ([a583b3f](https://github.com/MacXsimilian/kube-phoenix/commit/a583b3f46c20afeed04c9c950d1a9ddbab1cf59a))
+
 ## [0.6.1](https://github.com/MacXsimilian/kube-phoenix/compare/v0.6.0...v0.6.1) (2026-04-29)
 
 
