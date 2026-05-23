@@ -25,3 +25,4 @@ linters:
       excludes:
         - G104  # unhandled errors (already caught by errcheck)
         - G706  # log injection false positive — slog key-value structured logging is safe
+        - G124  # cookie security false positive — Secure is config-driven via h.cookieSecure (defaults true); CSRF cookie is intentionally JS-readable
