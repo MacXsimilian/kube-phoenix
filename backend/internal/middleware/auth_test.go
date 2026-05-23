@@ -43,7 +43,7 @@ func TestCSRFProtect_POSTWithMismatch(t *testing.T) {
 	}))
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/schedules", nil)
-	req.AddCookie(&http.Cookie{Name: "__kp_csrf", Value: "token-a"})
+	req.AddCookie(&http.Cookie{Name: "__kp_csrf", Value: "token-a"}) //nolint:gosec // G124: request-side cookie in test; browser security attributes don't apply
 	req.Header.Set("X-CSRF-Token", "token-b")
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
@@ -59,7 +59,7 @@ func TestCSRFProtect_POSTWithValidToken(t *testing.T) {
 	}))
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/schedules", nil)
-	req.AddCookie(&http.Cookie{Name: "__kp_csrf", Value: "valid-token"})
+	req.AddCookie(&http.Cookie{Name: "__kp_csrf", Value: "valid-token"}) //nolint:gosec // G124: request-side cookie in test; browser security attributes don't apply
 	req.Header.Set("X-CSRF-Token", "valid-token")
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)

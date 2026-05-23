@@ -87,7 +87,7 @@ func GenerateCSRFToken() (string, error) {
 
 // SetCSRFCookie sets the JS-readable CSRF cookie on the response.
 func SetCSRFCookie(w http.ResponseWriter, token string, secure bool) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: double-submit CSRF cookie must be JS-readable (HttpOnly=false by design)
 		Name:     csrfCookieName,
 		Value:    token,
 		Path:     "/",
