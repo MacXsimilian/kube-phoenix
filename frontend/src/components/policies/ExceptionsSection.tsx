@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
@@ -20,6 +21,8 @@ import { useIsDark } from '@/lib/useIsDark'
 import { getTypeLabel } from '@/lib/statusColors'
 import type { ScheduledException } from '@/lib/types'
 
+const DEFAULT_VISIBLE = 5
+
 export default function ExceptionsSection({
   exceptions,
   canEdit,
@@ -32,6 +35,10 @@ export default function ExceptionsSection({
   onEditException: (ex: ScheduledException) => void
 }) {
   const isDark = useIsDark()
+  const [showAll, setShowAll] = useState(false)
+  const total = exceptions?.length ?? 0
+  const visible = showAll ? exceptions : exceptions?.slice(0, DEFAULT_VISIBLE)
+  const isTruncated = total > DEFAULT_VISIBLE && !showAll
 
   return (
     <Box sx={{ mb: 3 }}>
@@ -50,7 +57,7 @@ export default function ExceptionsSection({
           color: "text.secondary"
         }}>No exceptions scheduled.</Typography>
       )}
-      {exceptions && exceptions.length > 0 && (
+      {visible && visible.length > 0 && (
         <TableContainer>
         <Table size="small">
           <TableHead>
@@ -65,7 +72,7 @@ export default function ExceptionsSection({
             </TableRow>
           </TableHead>
           <TableBody>
-            {exceptions.map(ex => {
+            {visible.map(ex => {
               const typeLabel = getTypeLabel(isDark, ex.exceptionType)
               return (
                 <TableRow key={ex.id}>
@@ -101,6 +108,13 @@ export default function ExceptionsSection({
           </TableBody>
         </Table>
         </TableContainer>
+      )}
+      {total > DEFAULT_VISIBLE && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
+          <Button size="small" onClick={() => setShowAll(s => !s)}>
+            {isTruncated ? `Show all ${total}` : 'Show fewer'}
+          </Button>
+        </Box>
       )}
     </Box>
   );
