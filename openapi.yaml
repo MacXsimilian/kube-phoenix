@@ -130,7 +130,7 @@ components:
           description: When true, workloads manually scaled up during a sleep window are automatically scaled back to zero. Default true.
         protectCriticalPodNodes:
           type: boolean
-          description: When true, nodes running system-node-critical or system-cluster-critical pods are never drained. Default true.
+          description: When true, nodes running non-DaemonSet pods with system-node-critical or system-cluster-critical priority class are never drained. Default false; existing installs retain their stored value.
         updatedAt:
           type: string
           format: date-time

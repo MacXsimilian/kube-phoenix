@@ -93,7 +93,7 @@ const INITIAL_FORM: FormState = {
   autoWake: true,
   reconcileWhileAwake: true,
   enforceSleep: true,
-  protectCriticalPodNodes: true,
+  protectCriticalPodNodes: false,
 }
 
 type FormAction =

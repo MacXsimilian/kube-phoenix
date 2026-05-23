@@ -55,7 +55,7 @@ func (s *Store) SeedDefaults() error {
 				ScalingConcurrency:           10,
 				WakeWaveSize:                 0,
 				WakeWavePauseSeconds:         90,
-				ProtectCriticalPodNodes:      true,
+				ProtectCriticalPodNodes:      false,
 			}
 			if err := tx.Create(&g).Error; err != nil {
 				return fmt.Errorf("seed: create guardrails: %w", err)

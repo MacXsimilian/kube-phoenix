@@ -102,14 +102,16 @@ func buildNodeResponse(nodes []corev1.Node, allPods []corev1.Pod, g *store.Guard
 	skipNsNode := stringutil.SplitCSVSet(g.SkipNsNode)
 
 	for _, pod := range allPods {
-		if !isDaemonOwned(pod.OwnerReferences) {
-			podCounts[pod.Spec.NodeName]++
-			cpu, mem := podResources(pod.Spec.Containers)
-			cpuRequested[pod.Spec.NodeName] += cpu
-			memRequested[pod.Spec.NodeName] += mem
+		if isDaemonOwned(pod.OwnerReferences) {
+			continue
 		}
+		podCounts[pod.Spec.NodeName]++
+		cpu, mem := podResources(pod.Spec.Containers)
+		cpuRequested[pod.Spec.NodeName] += cpu
+		memRequested[pod.Spec.NodeName] += mem
 		if skipNsNode[pod.Namespace] {
 			criticalNodes[pod.Spec.NodeName] = true
+			continue
 		}
 		if g.ProtectCriticalPodNodes && nodeutil.IsCriticalPod(pod.Spec.PriorityClassName) {
 			criticalNodes[pod.Spec.NodeName] = true
