@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
@@ -18,10 +19,13 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// Defaults for the database connection pool. These values keep the pool small
+// because kube-phoenix is a low-QPS internal tool; operators can override them
+// via DB_MAX_OPEN_CONNS, DB_MAX_IDLE_CONNS, and DB_CONN_MAX_LIFETIME_MIN.
 const (
-	DBMaxOpenConns    = 10
-	DBMaxIdleConns    = 5
-	DBConnMaxLifetime = 5 * time.Minute
+	DBMaxOpenConns           = 10
+	DBMaxIdleConns           = 5
+	DBConnMaxLifetimeMinutes = 5
 )
 
 var allModels = []interface{}{
@@ -47,14 +51,17 @@ func New(dsn string) (*Store, error) {
 
 	// Configure the underlying connection pool to avoid exhausting PostgreSQL
 	// max_connections (default: 100). Keep the pool small — this is a low-QPS
-	// internal tool.
+	// internal tool. Operators can override the defaults via env vars.
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, err
 	}
-	sqlDB.SetMaxOpenConns(DBMaxOpenConns)
-	sqlDB.SetMaxIdleConns(DBMaxIdleConns)
-	sqlDB.SetConnMaxLifetime(DBConnMaxLifetime)
+	maxOpen := intEnvOr("DB_MAX_OPEN_CONNS", DBMaxOpenConns)
+	maxIdle := intEnvOr("DB_MAX_IDLE_CONNS", DBMaxIdleConns)
+	lifetimeMin := intEnvOr("DB_CONN_MAX_LIFETIME_MIN", DBConnMaxLifetimeMinutes)
+	sqlDB.SetMaxOpenConns(maxOpen)
+	sqlDB.SetMaxIdleConns(maxIdle)
+	sqlDB.SetConnMaxLifetime(time.Duration(lifetimeMin) * time.Minute)
 	sqlDB.SetConnMaxIdleTime(2 * time.Minute)
 
 	if err := runMigrations(db); err != nil {
@@ -206,6 +213,21 @@ func (s *Store) Ping() error {
 		return err
 	}
 	return db.Ping()
+}
+
+// intEnvOr returns the integer value of the named env var, or def if the var
+// is unset or unparseable (a warning is logged on parse failure).
+func intEnvOr(name string, def int) int {
+	v := os.Getenv(name)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		slog.Warn("invalid int env var, using default", "key", name, "value", v, "default", def)
+		return def
+	}
+	return n
 }
 
 // UpdatePoolMetrics publishes current sql.DBStats to Prometheus gauges.
