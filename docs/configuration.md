@@ -19,6 +19,9 @@
 | `K8S_QPS` | `100` | No | Sustained K8s API requests per second (client-go default: 5). Higher values speed up large scaling events but increase control plane load. |
 | `K8S_BURST` | `200` | No | Short spike allowance above `K8S_QPS` (client-go default: 10). The K8s API server's own APF throttling acts as a server-side safety net. |
 | `AUTO_MIGRATE` | `true` (implicit) | No | Set to `false` to skip GORM AutoMigrate on startup. Useful for production deployments with versioned migrations. |
+| `DB_MAX_OPEN_CONNS` | `10` | No | Maximum number of open database connections. Raise for clusters with many parallel policies or large workload counts. |
+| `DB_MAX_IDLE_CONNS` | `5` | No | Maximum number of idle database connections retained in the pool. |
+| `DB_CONN_MAX_LIFETIME_MIN` | `5` | No | Connection maximum lifetime in minutes. Connections older than this are closed and replaced. |
 
 ### OIDC Variables
 
