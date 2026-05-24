@@ -5,7 +5,6 @@ package store
 import (
 	"fmt"
 	"log/slog"
-	"os"
 
 	"gorm.io/gorm"
 )
@@ -37,7 +36,7 @@ func (s *Store) UpdateGuardrails(updates map[string]interface{}) (*Guardrails, e
 
 // ─── Seeds ────────────────────────────────────────────────────────────────────
 
-func (s *Store) SeedDefaults() error {
+func (s *Store) SeedDefaults(adminUser, adminPass string) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		var gCount int64
 		if err := tx.Model(&Guardrails{}).Count(&gCount).Error; err != nil {
@@ -67,8 +66,6 @@ func (s *Store) SeedDefaults() error {
 			return fmt.Errorf("seed: count users: %w", err)
 		}
 		if userCount == 0 {
-			adminUser := os.Getenv("ADMIN_USER")
-			adminPass := os.Getenv("ADMIN_PASSWORD")
 			if adminUser != "" && adminPass != "" {
 				hash, err := HashPassword(adminPass)
 				if err != nil {

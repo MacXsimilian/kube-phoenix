@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
@@ -43,11 +42,11 @@ func (h *Handler) getObservabilityConfig(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	k8sQPS := envOrDefault("K8S_QPS", "100")
-	k8sBurst := envOrDefault("K8S_BURST", "200")
-	dbMaxOpen := envOrDefault("DB_MAX_OPEN_CONNS", strconv.Itoa(store.DBMaxOpenConns))
-	dbMaxIdle := envOrDefault("DB_MAX_IDLE_CONNS", strconv.Itoa(store.DBMaxIdleConns))
-	dbLifetime := envOrDefault("DB_CONN_MAX_LIFETIME_MIN", strconv.Itoa(store.DBConnMaxLifetimeMinutes)) + "m"
+	k8sQPS := strconv.Itoa(h.k8sQPS)
+	k8sBurst := strconv.Itoa(h.k8sBurst)
+	dbMaxOpen := strconv.Itoa(h.dbMaxOpenConns)
+	dbMaxIdle := strconv.Itoa(h.dbMaxIdleConns)
+	dbLifetime := strconv.Itoa(h.dbConnMaxLifetimeMinutes) + "m"
 
 	cfg := RuntimeConfig{
 		Components: map[string][]RuntimeLimit{
@@ -63,13 +62,6 @@ func (h *Handler) getObservabilityConfig(w http.ResponseWriter, r *http.Request)
 		},
 	}
 	jsonOK(w, cfg)
-}
-
-func envOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }
 
 func fmtRateLimit(limit int, window time.Duration) string {

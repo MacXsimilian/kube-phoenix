@@ -10,12 +10,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/api"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/config"
 	k8sclient "github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/observability"
@@ -38,26 +38,38 @@ func main() {
 	port := flag.Int("port", 8080, "HTTP listen port")
 	flag.Parse()
 
-	// ── Store (PostgreSQL) ────────────────────────────────────────────────
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		slog.Error("DATABASE_URL environment variable is required")
+	// ── Config ────────────────────────────────────────────────────────────
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("config load failed", "err", err)
 		os.Exit(1)
 	}
-	st, err := store.New(dsn)
+
+	// ── Store (PostgreSQL) ────────────────────────────────────────────────
+	st, err := store.New(cfg.DatabaseURL, store.PoolConfig{
+		MaxOpenConns:           cfg.DBMaxOpenConns,
+		MaxIdleConns:           cfg.DBMaxIdleConns,
+		ConnMaxLifetimeMinutes: cfg.DBConnMaxLifetimeMinutes,
+		AutoMigrate:            cfg.AutoMigrate,
+	})
 	if err != nil {
 		slog.Error("store init failed", "err", err)
 		os.Exit(1)
 	}
 	defer st.Close()
-	if err := st.SeedDefaults(); err != nil {
+	if err := st.SeedDefaults(cfg.AdminUser, cfg.AdminPassword); err != nil {
 		slog.Error("seed failed", "err", err)
 		os.Exit(1)
 	}
 	recoverInterruptedState(st)
 
 	// ── Kubernetes client ─────────────────────────────────────────────────
-	k8s, err := k8sclient.New()
+	k8s, err := k8sclient.New(k8sclient.Config{
+		Kubeconfig:  cfg.Kubeconfig,
+		ClusterName: cfg.ClusterName,
+		QPS:         cfg.K8sQPS,
+		Burst:       cfg.K8sBurst,
+	})
 	if err != nil {
 		slog.Warn("k8s client unavailable — cluster endpoints will be non-functional", "err", err)
 		k8s = nil
@@ -119,11 +131,10 @@ func main() {
 	auditWriter := api.NewAuditWriter(st, 4096)
 	runTracked(&wg, "audit-writer", func() { auditWriter.Start(auditCtx) })
 
-	retentionDays := parseIntEnv("AUDIT_RETENTION_DAYS", 90)
-	startMaintenanceTickers(bgCtx, st, retentionDays, &wg)
+	startMaintenanceTickers(bgCtx, st, cfg.AuditRetentionDays, &wg)
 
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(bgCtx, st, k8s, policySched, cache, obsCollector, auditWriter)
+	router := api.NewRouter(bgCtx, cfg, st, k8s, policySched, cache, obsCollector, auditWriter)
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
 		Handler:      router,
@@ -263,15 +274,3 @@ func safeTick(name string, fn func()) {
 	fn()
 }
 
-func parseIntEnv(key string, fallback int) int {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		slog.Warn("invalid int env var, using default", "key", key, "value", v, "default", fallback)
-		return fallback
-	}
-	return n
-}

@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 
@@ -35,10 +34,22 @@ type CallRecorder interface {
 	Record(method, path string, statusCode int, durationMs float64)
 }
 
+// Config carries the kube-client tunables that callers populate at startup.
+// Kubeconfig is the path to the kubeconfig file (used only when out-of-cluster).
+// ClusterName overrides the auto-derived cluster name (empty falls back to the
+// API server hostname).
+type Config struct {
+	Kubeconfig  string
+	ClusterName string
+	QPS         int
+	Burst       int
+}
+
 type Client struct {
 	cs           *kubernetes.Clientset
 	apiServer    string
 	inCluster    bool
+	clusterName  string
 	callRecorder CallRecorder
 
 	// Cached cluster info to avoid hitting k8s Discovery on every request.
@@ -75,13 +86,13 @@ func (c *Client) SetCallRecorder(cr CallRecorder) {
 	c.callRecorder = cr
 }
 
-func New() (*Client, error) {
+func New(kcfg Config) (*Client, error) {
 	inCluster := true
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
 		inCluster = false
 		// Fall back to kubeconfig
-		kubeconfig := os.Getenv("KUBECONFIG")
+		kubeconfig := kcfg.Kubeconfig
 		if kubeconfig == "" {
 			home, homeErr := os.UserHomeDir()
 			if homeErr != nil {
@@ -96,31 +107,18 @@ func New() (*Client, error) {
 	}
 	// Raise client-side rate limits from the client-go defaults (5 QPS / 10 Burst)
 	// which are far too low for a controller that scales hundreds of workloads
-	// concurrently. Configurable via K8S_QPS and K8S_BURST env vars; the K8s API
-	// server has its own server-side throttling (APF, default 600 inflight) as a
-	// safety net.
-	cfg.QPS = float32(intEnvOrDefault("K8S_QPS", 100))
-	cfg.Burst = intEnvOrDefault("K8S_BURST", 200)
+	// concurrently. Configurable via K8S_QPS and K8S_BURST env vars (parsed by
+	// the config package); the K8s API server has its own server-side throttling
+	// (APF, default 600 inflight) as a safety net.
+	cfg.QPS = float32(kcfg.QPS)
+	cfg.Burst = kcfg.Burst
 
 	cs, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("k8s client: %w", err)
 	}
 	slog.Info("k8s client configured", "qps", cfg.QPS, "burst", cfg.Burst, "inCluster", inCluster)
-	return &Client{cs: cs, apiServer: cfg.Host, inCluster: inCluster}, nil
-}
-
-func intEnvOrDefault(key string, fallback int) int {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		slog.Warn("invalid int env var, using default", "key", key, "value", v, "default", fallback)
-		return fallback
-	}
-	return n
+	return &Client{cs: cs, apiServer: cfg.Host, inCluster: inCluster, clusterName: kcfg.ClusterName}, nil
 }
 
 // clusterInfoTTL controls how long we cache the Discovery call. Kubernetes
@@ -147,7 +145,7 @@ func (c *Client) ClusterInfo(ctx context.Context) (ClusterInfoResult, error) {
 		authMode = "in-cluster"
 	}
 
-	clusterName := os.Getenv("CLUSTER_NAME")
+	clusterName := c.clusterName
 	if clusterName == "" {
 		if u, err := url.Parse(c.apiServer); err == nil && u.Hostname() != "" {
 			clusterName = u.Hostname()

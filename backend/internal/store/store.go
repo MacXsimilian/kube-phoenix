@@ -8,8 +8,6 @@ package store
 import (
 	"encoding/json"
 	"log/slog"
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
@@ -21,12 +19,21 @@ import (
 
 // Defaults for the database connection pool. These values keep the pool small
 // because kube-phoenix is a low-QPS internal tool; operators can override them
-// via DB_MAX_OPEN_CONNS, DB_MAX_IDLE_CONNS, and DB_CONN_MAX_LIFETIME_MIN.
+// via DB_MAX_OPEN_CONNS, DB_MAX_IDLE_CONNS, and DB_CONN_MAX_LIFETIME_MIN
+// (parsed once by the config package and passed in via PoolConfig).
 const (
 	DBMaxOpenConns           = 10
 	DBMaxIdleConns           = 5
 	DBConnMaxLifetimeMinutes = 5
 )
+
+// PoolConfig groups the connection-pool tunables that callers may override.
+type PoolConfig struct {
+	MaxOpenConns           int
+	MaxIdleConns           int
+	ConnMaxLifetimeMinutes int
+	AutoMigrate            bool
+}
 
 var allModels = []interface{}{
 	&Guardrails{},
@@ -40,7 +47,7 @@ type Store struct {
 	db *gorm.DB
 }
 
-func New(dsn string) (*Store, error) {
+func New(dsn string, pool PoolConfig) (*Store, error) {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
@@ -51,27 +58,25 @@ func New(dsn string) (*Store, error) {
 
 	// Configure the underlying connection pool to avoid exhausting PostgreSQL
 	// max_connections (default: 100). Keep the pool small — this is a low-QPS
-	// internal tool. Operators can override the defaults via env vars.
+	// internal tool. Tunables come from PoolConfig (populated by the config
+	// package from env vars at startup).
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, err
 	}
-	maxOpen := intEnvOr("DB_MAX_OPEN_CONNS", DBMaxOpenConns)
-	maxIdle := intEnvOr("DB_MAX_IDLE_CONNS", DBMaxIdleConns)
-	lifetimeMin := intEnvOr("DB_CONN_MAX_LIFETIME_MIN", DBConnMaxLifetimeMinutes)
-	sqlDB.SetMaxOpenConns(maxOpen)
-	sqlDB.SetMaxIdleConns(maxIdle)
-	sqlDB.SetConnMaxLifetime(time.Duration(lifetimeMin) * time.Minute)
+	sqlDB.SetMaxOpenConns(pool.MaxOpenConns)
+	sqlDB.SetMaxIdleConns(pool.MaxIdleConns)
+	sqlDB.SetConnMaxLifetime(time.Duration(pool.ConnMaxLifetimeMinutes) * time.Minute)
 	sqlDB.SetConnMaxIdleTime(2 * time.Minute)
 
-	if err := runMigrations(db); err != nil {
+	if err := runMigrations(db, pool.AutoMigrate); err != nil {
 		return nil, err
 	}
 
 	return &Store{db: db}, nil
 }
 
-func runMigrations(db *gorm.DB) error {
+func runMigrations(db *gorm.DB, autoMigrate bool) error {
 	// Drop legacy unique index on username alone (replaced by composite username+source).
 	if err := db.Exec("DROP INDEX IF EXISTS idx_users_username").Error; err != nil {
 		slog.Warn("migration: drop legacy username index failed (non-fatal)", "err", err)
@@ -93,7 +98,7 @@ func runMigrations(db *gorm.DB) error {
 		slog.Warn("migration: drop policy_overrides table failed (non-fatal)", "err", err)
 	}
 
-	if os.Getenv("AUTO_MIGRATE") == "false" {
+	if !autoMigrate {
 		slog.Info("store: auto-migration skipped (AUTO_MIGRATE=false)")
 	} else {
 		slog.Info("store: running auto-migration")
@@ -213,21 +218,6 @@ func (s *Store) Ping() error {
 		return err
 	}
 	return db.Ping()
-}
-
-// intEnvOr returns the integer value of the named env var, or def if the var
-// is unset or unparseable (a warning is logged on parse failure).
-func intEnvOr(name string, def int) int {
-	v := os.Getenv(name)
-	if v == "" {
-		return def
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		slog.Warn("invalid int env var, using default", "key", name, "value", v, "default", def)
-		return def
-	}
-	return n
 }
 
 // UpdatePoolMetrics publishes current sql.DBStats to Prometheus gauges.
