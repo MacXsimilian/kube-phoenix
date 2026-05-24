@@ -103,6 +103,12 @@ spec:
               value: {{ .Values.k8s.qps | quote }}
             - name: K8S_BURST
               value: {{ .Values.k8s.burst | quote }}
+            - name: DB_MAX_OPEN_CONNS
+              value: {{ .Values.db.maxOpenConns | quote }}
+            - name: DB_MAX_IDLE_CONNS
+              value: {{ .Values.db.maxIdleConns | quote }}
+            - name: DB_CONN_MAX_LIFETIME_MIN
+              value: {{ .Values.db.connMaxLifetimeMinutes | quote }}
             {{- if .Values.oidc.enabled }}
             - name: OIDC_ISSUER_URL
               value: {{ .Values.oidc.issuerURL | quote }}

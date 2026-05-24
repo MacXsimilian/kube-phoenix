@@ -73,7 +73,7 @@ func (h *Handler) resetDB(w http.ResponseWriter, r *http.Request) {
 	}
 
 	emit("step", "Seeding default data...")
-	if err := h.store.SeedDefaults(); err != nil {
+	if err := h.store.SeedDefaults(h.adminUser, h.adminPassword); err != nil {
 		slog.Error("admin: seed failed", "err", err)
 		emit("error", "Seed failed — see server logs for details")
 		return

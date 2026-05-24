@@ -189,11 +189,11 @@ type WorkloadSnapshot struct {
 // executes automatically later.
 type ScheduledException struct {
 	ID            uint      `gorm:"primaryKey" json:"id"`
-	PolicyID      *uint     `gorm:"index" json:"policyId"` // optional — can be freestanding
+	PolicyID      *uint     `gorm:"index;index:idx_se_policy_status_window,priority:1" json:"policyId"` // optional — can be freestanding
 	Policy        *Policy   `gorm:"foreignKey:PolicyID;constraint:OnDelete:CASCADE" json:"-"`
 	ExceptionType string    `gorm:"size:20" json:"exceptionType"` // "stay_awake" | "force_sleep"
-	StartsAt      time.Time `gorm:"index;index:idx_se_status_starts,priority:2" json:"startsAt"`
-	EndsAt        time.Time `gorm:"index:idx_se_status_ends" json:"endsAt"`
+	StartsAt      time.Time `gorm:"index;index:idx_se_status_starts,priority:2;index:idx_se_policy_status_window,priority:3" json:"startsAt"`
+	EndsAt        time.Time `gorm:"index:idx_se_status_ends;index:idx_se_policy_status_window,priority:4" json:"endsAt"`
 	TicketRef     string    `gorm:"size:255" json:"ticketRef"` // JIRA-123, GH-456, etc.
 	Reason        string    `gorm:"size:1024" json:"reason"`
 	SleepOnEnd    *bool     `gorm:"default:true" json:"sleepOnEnd"` // return to policy state at EndsAt
@@ -206,7 +206,7 @@ type ScheduledException struct {
 	WorkloadTargets string `gorm:"type:jsonb;default:'[]'" json:"-"`
 
 	// Lifecycle
-	Status           string           `gorm:"index;size:20;default:pending;index:idx_se_status_starts,priority:1;index:idx_se_status_ends,priority:1" json:"status"` // pending|active|completed|cancelled
+	Status           string           `gorm:"index;size:20;default:pending;index:idx_se_status_starts,priority:1;index:idx_se_status_ends,priority:1;index:idx_se_policy_status_window,priority:2" json:"status"` // pending|active|completed|cancelled
 	StartExecutionID *uint            `json:"startExecutionId"`
 	StartExecution   *PolicyExecution `gorm:"foreignKey:StartExecutionID;constraint:OnDelete:SET NULL" json:"-"`
 	EndExecutionID   *uint            `json:"endExecutionId"`

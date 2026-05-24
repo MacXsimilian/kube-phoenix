@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
@@ -43,15 +42,18 @@ func (h *Handler) getObservabilityConfig(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	k8sQPS := envOrDefault("K8S_QPS", "100")
-	k8sBurst := envOrDefault("K8S_BURST", "200")
+	k8sQPS := strconv.Itoa(h.k8sQPS)
+	k8sBurst := strconv.Itoa(h.k8sBurst)
+	dbMaxOpen := strconv.Itoa(h.dbMaxOpenConns)
+	dbMaxIdle := strconv.Itoa(h.dbMaxIdleConns)
+	dbLifetime := strconv.Itoa(h.dbConnMaxLifetimeMinutes) + "m"
 
 	cfg := RuntimeConfig{
 		Components: map[string][]RuntimeLimit{
 			"chi":        {{Label: "Max body", Value: "1 MB"}},
 			"auth":       {{Label: "Rate limit (IP)", Value: fmtRateLimit(rateLimitPerIP, rateLimitWindow)}, {Label: "Rate limit (user)", Value: fmtRateLimit(rateLimitPerUser, rateLimitWindow)}},
 			"k8s-client": {{Label: "QPS", Value: k8sQPS}, {Label: "Burst", Value: k8sBurst}},
-			"store":      {{Label: "Pool size", Value: strconv.Itoa(store.DBMaxOpenConns)}, {Label: "Idle conns", Value: strconv.Itoa(store.DBMaxIdleConns)}, {Label: "Conn lifetime", Value: store.DBConnMaxLifetime.String()}},
+			"store":      {{Label: "Pool size", Value: dbMaxOpen}, {Label: "Idle conns", Value: dbMaxIdle}, {Label: "Conn lifetime", Value: dbLifetime}},
 			"cache":      {{Label: "Resync", Value: "5m"}, {Label: "Max subscribers", Value: "100"}},
 			"broker":     {{Label: "Channel buffer", Value: "256"}},
 			"audit":      {{Label: "Write buffer", Value: "4096"}},
@@ -60,13 +62,6 @@ func (h *Handler) getObservabilityConfig(w http.ResponseWriter, r *http.Request)
 		},
 	}
 	jsonOK(w, cfg)
-}
-
-func envOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }
 
 func fmtRateLimit(limit int, window time.Duration) string {

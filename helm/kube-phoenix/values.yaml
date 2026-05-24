@@ -92,6 +92,16 @@ secret:
   # IMPORTANT: change adminPassword before deploying to any non-local environment.
   adminPassword: "kube-phoenix"
 
+# ── Database connection pool ──────────────────────────────────────────────────
+#
+# Controls the size and freshness of the connection pool to PostgreSQL.
+# Defaults are tuned for a low-QPS internal tool; raise them only if you see
+# pool exhaustion in the DB pool Prometheus metrics.
+db:
+  maxOpenConns: 10           # max concurrent open connections
+  maxIdleConns: 5            # max idle connections retained in the pool
+  connMaxLifetimeMinutes: 5  # max connection lifetime before recycling
+
 # ── Kubernetes API client ─────────────────────────────────────────────────────
 #
 # Controls the client-side rate limiter for requests to the Kubernetes API

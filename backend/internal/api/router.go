@@ -8,7 +8,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/auth"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/config"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/docs"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/metrics"
@@ -49,15 +49,21 @@ type Handler struct {
 	oidcProvider    *auth.OIDCProvider
 	oidcCfg         *auth.OIDCConfig
 	cookieSecure    bool
+	// Admin bootstrap credentials, replayed when an operator resets the DB.
+	adminUser     string
+	adminPassword string
+	// Runtime tunables surfaced by the observability dashboard.
+	k8sQPS                   int
+	k8sBurst                 int
+	dbMaxOpenConns           int
+	dbMaxIdleConns           int
+	dbConnMaxLifetimeMinutes int
 }
 
 // NewRouter wires the HTTP handler stack. The provided AuditWriter must already
 // be running — main owns its lifecycle so the drain loop can outlive HTTP
 // shutdown and capture audit entries from in-flight handlers.
-func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, policySched *scheduler.PolicyScheduler, cache *k8s.ClusterCache, obsCollector *observability.Collector, aw *AuditWriter) *chi.Mux {
-	idleTimeout := parseDuration("SESSION_IDLE_TIMEOUT", 8*time.Hour)
-	maxLifetime := parseDuration("SESSION_MAX_LIFETIME", 24*time.Hour)
-
+func NewRouter(ctx context.Context, cfg *config.AppConfig, st *store.Store, k8sClient *k8s.Client, policySched *scheduler.PolicyScheduler, cache *k8s.ClusterCache, obsCollector *observability.Collector, aw *AuditWriter) *chi.Mux {
 	// Initialize OIDC provider if configured.
 	var oidcProv *auth.OIDCProvider
 	oidcCfg := auth.OIDCConfigFromEnv()
@@ -75,19 +81,26 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 	}
 
 	h := &Handler{
-		store:           st,
-		k8s:             k8sClient,
-		policyScheduler: policySched,
-		cache:           cache,
-		obsCollector:    obsCollector,
-		ipLimiter:       auth.NewRateLimiter(rateLimitPerIP, rateLimitWindow),
-		userLimiter:     auth.NewRateLimiter(rateLimitPerUser, rateLimitWindow),
-		idleTimeout:     idleTimeout,
-		maxLifetime:     maxLifetime,
-		auditWriter:     aw,
-		oidcProvider:    oidcProv,
-		oidcCfg:         oidcCfg,
-		cookieSecure:    os.Getenv("COOKIE_SECURE") != "false",
+		store:                    st,
+		k8s:                      k8sClient,
+		policyScheduler:          policySched,
+		cache:                    cache,
+		obsCollector:             obsCollector,
+		ipLimiter:                auth.NewRateLimiter(rateLimitPerIP, rateLimitWindow),
+		userLimiter:              auth.NewRateLimiter(rateLimitPerUser, rateLimitWindow),
+		idleTimeout:              cfg.SessionIdleTimeout,
+		maxLifetime:              cfg.SessionMaxLifetime,
+		auditWriter:              aw,
+		oidcProvider:             oidcProv,
+		oidcCfg:                  oidcCfg,
+		cookieSecure:             cfg.CookieSecure,
+		adminUser:                cfg.AdminUser,
+		adminPassword:            cfg.AdminPassword,
+		k8sQPS:                   cfg.K8sQPS,
+		k8sBurst:                 cfg.K8sBurst,
+		dbMaxOpenConns:           cfg.DBMaxOpenConns,
+		dbMaxIdleConns:           cfg.DBMaxIdleConns,
+		dbConnMaxLifetimeMinutes: cfg.DBConnMaxLifetimeMinutes,
 	}
 
 	r := chi.NewRouter()
@@ -97,7 +110,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 	r.Use(prometheusMiddleware)
 	r.Use(callRecorderMiddleware(obsCollector.CallRecorder()))
 	r.Use(securityHeaders)
-	r.Use(corsHandler())
+	r.Use(corsHandler(cfg))
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			req.Body = http.MaxBytesReader(w, req.Body, 1<<20) // 1 MB
@@ -129,7 +142,7 @@ func NewRouter(ctx context.Context, st *store.Store, k8sClient *k8s.Client, poli
 
 	// ── Authenticated routes ─────────────────────────────────────────────
 	r.Group(func(r chi.Router) {
-		r.Use(authmw.SessionAuth(st, idleTimeout))
+		r.Use(authmw.SessionAuth(st, cfg.SessionIdleTimeout))
 		r.Use(authmw.CSRFProtect)
 		r.Use(h.auditDeniedMiddleware)
 
@@ -271,16 +284,17 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-func corsHandler() func(http.Handler) http.Handler {
+func corsHandler(cfg *config.AppConfig) func(http.Handler) http.Handler {
 	var allowedOrigins []string
-	if origin := os.Getenv("CORS_ALLOWED_ORIGIN"); origin != "" {
-		allowedOrigins = []string{origin}
-	} else if os.Getenv("ADMIN_USER") != "" {
+	switch {
+	case cfg.CORSAllowedOrigin != "":
+		allowedOrigins = []string{cfg.CORSAllowedOrigin}
+	case cfg.AdminUser != "":
 		// Production mode (ADMIN_USER is set) without an explicit CORS origin:
 		// default to same-origin only (no origins allowed via CORS).
 		slog.Warn("CORS_ALLOWED_ORIGIN is not set while ADMIN_USER is set — CORS will block all cross-origin requests (same-origin only). Set CORS_ALLOWED_ORIGIN if your frontend is served from a different origin.")
 		allowedOrigins = []string{}
-	} else {
+	default:
 		// Dev mode — allow all origins for convenience.
 		allowedOrigins = []string{"*"}
 	}
@@ -334,15 +348,3 @@ func callRecorderMiddleware(recorder *observability.CallRecorder) func(http.Hand
 	}
 }
 
-func parseDuration(envKey string, fallback time.Duration) time.Duration {
-	v := os.Getenv(envKey)
-	if v == "" {
-		return fallback
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil {
-		slog.Warn("invalid duration env var, using default", "key", envKey, "value", v, "default", fallback)
-		return fallback
-	}
-	return d
-}

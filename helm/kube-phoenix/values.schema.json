@@ -126,6 +126,15 @@
         "adminPassword": { "type": "string" }
       }
     },
+    "db": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxOpenConns": { "type": "integer", "minimum": 1 },
+        "maxIdleConns": { "type": "integer", "minimum": 0 },
+        "connMaxLifetimeMinutes": { "type": "integer", "minimum": 1 }
+      }
+    },
     "k8s": {
       "type": "object",
       "additionalProperties": false,
