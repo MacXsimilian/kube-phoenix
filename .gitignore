@@ -6,7 +6,7 @@ backend/internal/docs/openapi.yaml
 
 # ── Node ──────────────────────────────────────────────────────────────────────
 frontend/node_modules/
-frontend/.next/
+**/.next/
 frontend/out/
 frontend/tsconfig.tsbuildinfo
 
