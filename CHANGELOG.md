@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.0...v0.7.1) (2026-05-23)
+
+
+### Bug Fixes
+
+* **deps:** patch 21 OSV advisories and refresh all dependencies ([#390](https://github.com/MacXsimilian/kube-phoenix/issues/390)) ([c83e3bb](https://github.com/MacXsimilian/kube-phoenix/commit/c83e3bb3bbd456f727698c2f85dd250bd1eaf347))
+
 ## [0.7.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.6.1...v0.7.0) (2026-05-23)
 
 
