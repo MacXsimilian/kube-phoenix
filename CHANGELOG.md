@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.1...v0.7.2) (2026-05-24)
+
+
+### Features
+
+* env-tunable DB pool and architecture cleanup ([#393](https://github.com/MacXsimilian/kube-phoenix/issues/393)) ([9c4a4d6](https://github.com/MacXsimilian/kube-phoenix/commit/9c4a4d6263cc84d0070dc755ab436d87a1de8847))
+
 ## [0.7.1](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.0...v0.7.1) (2026-05-23)
 
 
