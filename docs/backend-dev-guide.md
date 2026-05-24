@@ -45,10 +45,11 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 **Purpose:** Bootstrap the application, wire dependencies, start background goroutines, and handle graceful shutdown.
 
 **Key responsibilities:**
-- Parse `DATABASE_URL` from env, initialize `store.Store`, run `SeedDefaults()`, and recover interrupted state via `recoverInterruptedState()` (which wraps `MarkInterruptedPolicyExecutions()` and `ResetStuckTransitioningPolicies()`).
-- Create the Kubernetes client (`k8s.New()`), tolerating its absence (sets `k8s = nil`).
+- Load `*config.AppConfig` via `config.Load()` -- a single startup-time parse of every backend env var (database, K8s, sessions, admin seed, retention, etc.). All downstream constructors receive their slice of `cfg` rather than reading `os.Getenv` themselves.
+- Initialize `store.Store` via `store.New(cfg.DatabaseURL, store.PoolConfig{...})` populated from `cfg.DB*` fields, run `SeedDefaults(cfg.AdminUser, cfg.AdminPassword)`, and recover interrupted state via `recoverInterruptedState()` (which wraps `MarkInterruptedPolicyExecutions()` and `ResetStuckTransitioningPolicies()`).
+- Create the Kubernetes client via `k8s.New(k8sclient.Config{...})` populated from `cfg.Kubeconfig`, `cfg.ClusterName`, `cfg.K8sQPS`, `cfg.K8sBurst`; tolerate its absence (sets `k8s = nil`).
 - Start `ClusterCache`, `PolicyScheduler`, the observability collector, the `AuditWriter`, and maintenance tickers (session cleanup every 15m, audit retention daily). Every background goroutine is tracked by a single `sync.WaitGroup` -- most through the `runTracked` helper, the maintenance tickers via direct `wg.Add(1)` -- so shutdown can join them all.
-- Build the Chi router via `api.NewRouter()` and start `http.Server` with `ReadTimeout=15s`, `WriteTimeout=0` (disabled for WebSocket/SSE), `IdleTimeout=60s`.
+- Build the Chi router via `api.NewRouter(ctx, cfg, ...)` and start `http.Server` with `ReadTimeout=15s`, `WriteTimeout=0` (disabled for WebSocket/SSE), `IdleTimeout=60s`.
 - Listen for `SIGINT`/`SIGTERM` and run the shutdown sequence below.
 
 **Shutdown sequence:** order matters and is enforced by code, not by deferred cleanup. Two cancellation contexts (`bgCtx` for collector/scheduler/cache/tickers, `auditCtx` for the `AuditWriter`) let the audit writer outlive HTTP shutdown so it captures entries produced by handlers that are still finishing.
@@ -66,7 +67,25 @@ The Helm chart's `terminationGracePeriodSeconds` (45s) is sized to fit `srv.Shut
 - `runTracked(wg, name, fn)` -- launches `fn` in a goroutine bound to `wg`, recovering from panics so a crash in any worker cannot leak a `WaitGroup` count. New background workers must join the same `WaitGroup` (either through this helper or via explicit `wg.Add(1)`/`wg.Done()`), never via bare `go fn(ctx)`.
 - `startMaintenanceTickers(ctx, st, retentionDays, wg)` -- spawns session cleanup and data retention goroutines (audit logs, old executions) onto the same `WaitGroup`.
 - `runTicker(ctx, interval, name, fn)` -- generic ticker loop used by all background tasks. Each tick is wrapped in `safeTick` with panic recovery.
-- `parseIntEnv(key, fallback)` -- reads an integer from the environment with a default.
+
+---
+
+### `internal/config` -- Application Configuration
+
+**File:** `backend/internal/config/config.go`
+
+**Purpose:** Single source of truth for backend environment variables. Loaded once at startup; downstream packages receive typed fields instead of calling `os.Getenv` directly. OIDC settings stay in `internal/auth/oidc.go` (already cohesive); scheduler tunables come from guardrails in the database.
+
+**Key types:**
+- `AppConfig` -- flat struct with typed fields grouped by concern (Database, HTTP/sessions, Kubernetes, Admin/auth bootstrap, Maintenance).
+
+**Key functions:**
+- `Load() (*AppConfig, error)` -- parses every supported env var, applies defaults that match historical behavior, and returns the populated config.
+- `intEnvOr`, `durationEnvOr` -- private helpers that read an env var with a default, logging a warning on parse failure.
+
+Downstream constructors take their own typed inputs (`store.PoolConfig`, `k8sclient.Config`); `main` builds those structs inline from the relevant `cfg` fields rather than the config package exporting per-consumer adapters.
+
+**Dependencies:** Standard library only.
 
 ---
 
@@ -86,10 +105,11 @@ The Helm chart's `terminationGracePeriodSeconds` (45s) is sized to fit `srv.Shut
 
 | File | Handlers |
 |:-----|:---------|
-| `router.go` | `NewRouter()` -- builds the full Chi router with middleware stack; delegates to `registerAuthRoutes`, `registerPolicyRoutes`, `registerClusterRoutes`, `registerAdminRoutes`, `registerObservabilityRoutes` |
+| `router.go` | `NewRouter(ctx, cfg, ...)` -- builds the full Chi router with middleware stack; delegates to `registerAuthRoutes`, `registerPolicyRoutes`, `registerClusterRoutes`, `registerAdminRoutes`, `registerObservabilityRoutes`. Pulls cookie/CORS/session/admin/K8s tunables off `cfg` and stores them on the `Handler`. |
 | `auth.go` | `login` (delegates to `loginRateLimited`, `verifyCredentials`, `completeLogin`), `logout`, `me`, `listSessions`, `changePassword`, `updateUserSettings`, `createSessionCookies`, `clearSessionCookies` |
 | `oidc.go` | `oidcConfig`, `oidcLogin`, `oidcCallback`, `oidcExchangeAndVerify`, `oidcExtractClaims` |
-| `policies.go` | `listPolicies`, `getPolicy`, `createPolicy`, `updatePolicy`, `deletePolicy`, `triggerPolicySleep`, `triggerPolicyWake`, `cancelPolicyExecution`, `requirePolicy`, `triggerPolicyAction` (shared helper for manual sleep/wake triggers) |
+| `policies.go` | `listPolicies`, `getPolicy`, `createPolicy`, `updatePolicy`, `deletePolicy`, `triggerPolicySleep`, `triggerPolicyWake`, `cancelPolicyExecution`, `requirePolicy`, `triggerPolicyAction` (shared helper for manual sleep/wake triggers). Inline `policyAuditSnapshot` helper builds the audit payload for create/update events. |
+| `policies_validation.go` | Cross-cutting input validators called from `createPolicy`/`updatePolicy` (`validateAndPreparePolicy`, `validatePolicyMode/Timezone/Name/Description/LabelSelector/Timeout`, `validatePolicyFields`, `validatePolicyUpdates`, `validateNamespaceFilter`) and the apply-mode overlap check (`checkPolicyOverlap`). |
 | `exceptions.go` | `listExceptions`, `getException`, `createException`, `updateException`, `deleteException` |
 | `policy_executions.go` | `listPolicyExecutions`, `getPolicyExecution`, `getPolicyExecutionLogs`, `getPolicyExecutionSnapshots`, `getPolicySnapshots`, `wsPolicyExecutionLogs` |
 | `cluster.go` | `getWorkloads`, `buildWorkloadResponse` |
@@ -266,7 +286,7 @@ The Helm chart's `terminationGracePeriodSeconds` (45s) is sized to fit `srv.Shut
 | `models.go` | All GORM model struct definitions with tags. |
 | `status.go` | String constants: `PolicyState*`, `PolicyMode*`, `ExecStatus*`, `ExceptionStatus*`, `ExceptionType*`. |
 | `policies.go` | `ListPolicies`, `ListEnabledPolicies` (SQL-filtered, used by scheduler), `GetPolicy`, `CreatePolicy`, `UpdatePolicy`, `UpdatePolicyState`, `SetPolicyTransitioning` (atomic conditional update, sets both `current_state` and `state_since`, returns `ErrTransitionAlreadyClaimed` on race), `DeletePolicy` (transactional cascade), `HasApplyPolicyOverlap`. Execution CRUD: `CreatePolicyExecution`, `GetPolicyExecution`, `ListPolicyExecutions`, `FinishPolicyExecution`, `MarkInterruptedPolicyExecutions`, `ResetStuckTransitioningPolicies`. Retention: `CleanOldExecutions` (deletes finished executions older than threshold, preserving those with open snapshots; cascades to log lines and snapshots via FK). Log lines: `AppendPolicyLogLine` (single insert), `AppendPolicyLogLines` (batch insert, used by the scheduler for flushing up to 50 lines at a time), `GetPolicyLogLines` (capped at 5000 rows). Snapshots: `CreateWorkloadSnapshot`, `GetOpenSnapshots`, `CountOpenSnapshotsForRestore`, `GetSnapshotsForExecution`, `GetSnapshotsForPolicy` (capped at 5000 rows), `CloseSnapshot`, `MarkSnapshotDeletedAtWake`, `MarkSnapshotExternallyScaled`, `DeleteWorkloadSnapshot`. Exceptions: `Create/Get/List/Update ScheduledException`, `HasOverlappingException` (checks for time-overlapping exceptions of opposite type on the same policy, used during create and update validation), `CancelScheduledException` (atomic status + cancelled_at + cancel_reason, guarded by `WHERE status IN ('pending','active')`), `ListOpenExceptions`, `ListActiveExceptionsForPolicies` (batch fetch of active exceptions by policy IDs and time range, used by scheduler tick), `ListActiveExceptionsForPolicy` (single-policy variant, used by startup recovery), `UpdateScheduledExceptionStatus` (atomic conditional transition: requires `expectedStatus` to match current row state, prevents concurrent double-transitions). |
-| `queries.go` | `GetGuardrails`, `UpdateGuardrails`, `SeedDefaults`, `DropAllTables`, `MigrateSchema`. |
+| `queries.go` | `GetGuardrails`, `UpdateGuardrails`, `SeedDefaults(adminUser, adminPassword)`, `DropAllTables`, `MigrateSchema`. |
 | `store_helpers.go` | `selectiveUpdate` -- shared GORM helper that applies only allowed fields from an update map. Used by `UpdateUser`. |
 | `users.go` | `OIDCUserInfo` struct (bundles OIDC claims for `GetOrCreateOIDCUser`), `CreateUser`, `GetUserByID`, `GetUserByUsername` (scoped to `source=local`), `ListUsers`, `UpdateUser`, `DeleteUser` (relies on FK CASCADE for session cleanup), `UpdateLastLogin`, `ChangePassword`, `UpdateUserTimezone`, `GetOrCreateOIDCUser(OIDCUserInfo)`, `HashPassword`, `CheckPassword`, `DeleteUserSessions`. |
 | `sessions.go` | `GenerateToken`, `CreateSession`, `GetSessionByToken` (with expiry check), `ExtendSession` (sliding window capped at `max_expires_at`), `DeleteSession`, `DeleteUserSessions`, `CleanExpiredSessions`, `CountActiveSessions`. |

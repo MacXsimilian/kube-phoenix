@@ -463,11 +463,14 @@ kube-phoenix/
 ├── backend/
 │   ├── cmd/server/main.go           # Entry point: bootstrap, crash recovery, graceful shutdown
 │   ├── internal/
+│   │   ├── config/                  # AppConfig: env vars parsed once at startup
+│   │   │   └── config.go            # AppConfig struct + Load() + int/duration env helpers
 │   │   ├── api/                     # HTTP handlers and Chi router construction
 │   │   │   ├── router.go            # NewRouter + registerAuthRoutes/registerPolicyRoutes/registerClusterRoutes/registerAdminRoutes, middleware stack
 │   │   │   ├── auth.go              # Login, logout, OIDC callbacks
 │   │   │   ├── oidc.go              # OIDC discovery and SSO endpoints
-│   │   │   ├── policies.go          # Policy CRUD, sleep/wake triggers
+│   │   │   ├── policies.go          # Policy CRUD, sleep/wake triggers (handlers + policyAuditSnapshot)
+│   │   │   ├── policies_validation.go # Cross-cutting policy input validators and overlap check
 │   │   │   ├── policy_executions.go # Execution list, logs, snapshots, WebSocket
 │   │   │   ├── cluster.go           # Workload list handlers
 │   │   │   ├── cluster_nodes.go     # Node list and detail handlers
