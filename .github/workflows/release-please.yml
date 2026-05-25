@@ -67,5 +67,5 @@ jobs:
     steps:
       - name: Trigger rescan
         run: |
-          curl -s -X POST https://goreportcard.com/checks \
+          curl -fsS -X POST https://goreportcard.com/checks \
             -d "repo=github.com/macxsimilian/kube-phoenix/backend"
