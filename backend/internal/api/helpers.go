@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -15,6 +16,11 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	"gorm.io/gorm"
 )
+
+// maxRecordID bounds parsed record IDs before narrowing uint64 → uint. Record
+// IDs are stored as gorm uint and never exceed 2^32-1 in practice; rejecting
+// larger values prevents silent truncation on 32-bit platforms.
+const maxRecordID = math.MaxUint32
 
 func jsonOK(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
@@ -49,7 +55,7 @@ func parseID(r *http.Request, param string) (uint, error) {
 	if err != nil {
 		return 0, err
 	}
-	if id == 0 {
+	if id == 0 || id > maxRecordID {
 		return 0, strconv.ErrRange
 	}
 	return uint(id), nil

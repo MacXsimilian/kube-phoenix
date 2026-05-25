@@ -406,7 +406,7 @@ func parseIDFromString(s string) (uint, error) {
 	if err != nil {
 		return 0, err
 	}
-	if id == 0 {
+	if id == 0 || id > maxRecordID {
 		return 0, strconv.ErrRange
 	}
 	return uint(id), nil
