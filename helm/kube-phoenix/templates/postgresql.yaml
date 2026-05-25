@@ -60,6 +60,8 @@ spec:
         app.kubernetes.io/component: postgresql
     spec:
       securityContext:
+        runAsUser: 70
+        runAsGroup: 70
         fsGroup: 70
         seccompProfile:
           type: RuntimeDefault
@@ -68,9 +70,22 @@ spec:
           image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
           imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
           command: ["sh", "-c", "mkdir -p /var/lib/postgresql/data/pgdata && chown 70:70 /var/lib/postgresql/data/pgdata && chmod 700 /var/lib/postgresql/data/pgdata"]
+          # runAsUser: 0 is required to chown a freshly provisioned PV. fsGroup
+          # alone is not sufficient on storage drivers that do not honour it.
           securityContext:
             runAsUser: 0
+            runAsGroup: 0
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
@@ -80,8 +95,10 @@ spec:
           imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
           securityContext:
             runAsUser: 70
+            runAsGroup: 70
             runAsNonRoot: true
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
           ports:
@@ -121,11 +138,19 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
-      {{- if not .Values.postgresql.persistence.enabled }}
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
       volumes:
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        {{- if not .Values.postgresql.persistence.enabled }}
         - name: data
           emptyDir: {}
-      {{- end }}
+        {{- end }}
   {{- if .Values.postgresql.persistence.enabled }}
   volumeClaimTemplates:
     - metadata:
