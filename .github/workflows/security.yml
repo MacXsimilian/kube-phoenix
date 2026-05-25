@@ -26,38 +26,37 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-    defaults:
-      run:
-        working-directory: backend
+      security-events: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version: "1.26"
-          cache-dependency-path: backend/go.sum
-
       - name: Copy OpenAPI spec into embed path
-        run: cp ../openapi.yaml internal/docs/openapi.yaml
+        run: cp openapi.yaml backend/internal/docs/openapi.yaml
 
       - name: govulncheck
         id: govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
-          govulncheck ./... 2>&1 | tee /tmp/govulncheck.out && STATUS="clean" || STATUS="found"
-          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
-          VULN_COUNT=$(grep -c '^Vulnerability' /tmp/govulncheck.out || true)
-          echo "count=${VULN_COUNT:-0}" >> "$GITHUB_OUTPUT"
+        uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1.0.4
+        with:
+          go-version-input: "1.26"
+          work-dir: backend
+          cache-dependency-path: backend/go.sum
+          output-format: sarif
+          output-file: govulncheck.sarif
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        if: always()
+        with:
+          sarif_file: backend/govulncheck.sarif
 
       - name: govulncheck summary
         if: always()
         run: |
-          STATUS="${{ steps.govulncheck.outputs.status }}"
-          COUNT="${{ steps.govulncheck.outputs.count }}"
-          if [ "$STATUS" = "clean" ]; then
-            RESULT="✅ No known vulnerabilities"
+          RESULT="${{ steps.govulncheck.outcome }}"
+          if [ "$RESULT" = "success" ]; then
+            STATUS="✅ Scan completed (results uploaded to Security tab)"
           else
-            RESULT="🔴 ${COUNT} vulnerabilit$([ "$COUNT" = "1" ] && echo 'y' || echo 'ies') found"
+            STATUS="🔴 Scan failed"
           fi
 
           {
@@ -65,9 +64,9 @@ jobs:
             echo ""
             echo "| Item | Value |"
             echo "|:-----|:------|"
-            echo "| Go | $(go version | awk '{print $3}') |"
             echo "| Scanner | govulncheck (call-graph analysis) |"
-            echo "| Result | ${RESULT} |"
+            echo "| Result | ${STATUS} |"
+            echo "| SARIF | Uploaded to GitHub Security tab |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── npm audit ───────────────────────────────────────────────────────────────
