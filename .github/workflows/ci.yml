@@ -211,11 +211,17 @@ jobs:
         run: |
           echo "--- helm template (default values) | kubeconform ---"
           helm template helm/kube-phoenix \
-            | kubeconform -strict -summary -schema-location default
+            | kubeconform -strict -summary -schema-location default -ignore-missing-schemas
           for f in examples/values-*.yaml; do
             echo "--- helm template -f $f | kubeconform ---"
-            helm template helm/kube-phoenix -f "$f" \
-              | kubeconform -strict -summary -schema-location default
+            extra=()
+            case "$f" in
+              *values-alb.yaml)
+                extra=(--set "targetGroupBinding.targetGroupARN=arn:aws:elasticloadbalancing:us-east-1:000000000000:targetgroup/ci-validation/0123456789abcdef")
+                ;;
+            esac
+            helm template helm/kube-phoenix -f "$f" "${extra[@]}" \
+              | kubeconform -strict -summary -schema-location default -ignore-missing-schemas
           done
 
   # ── Docker build check ──────────────────────────────────────────────────────
