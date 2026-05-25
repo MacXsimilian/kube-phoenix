@@ -7,6 +7,7 @@ on:
     branches: [master]
   schedule:
     - cron: "0 6 * * 1" # Every Monday at 06:00 UTC
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -14,9 +15,6 @@ concurrency:
 
 permissions:
   contents: read
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ── Go vulnerability check ──────────────────────────────────────────────────
@@ -26,38 +24,37 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-    defaults:
-      run:
-        working-directory: backend
+      security-events: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version: "1.26"
-          cache-dependency-path: backend/go.sum
-
       - name: Copy OpenAPI spec into embed path
-        run: cp ../openapi.yaml internal/docs/openapi.yaml
+        run: cp openapi.yaml backend/internal/docs/openapi.yaml
 
       - name: govulncheck
         id: govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
-          govulncheck ./... 2>&1 | tee /tmp/govulncheck.out && STATUS="clean" || STATUS="found"
-          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
-          VULN_COUNT=$(grep -c '^Vulnerability' /tmp/govulncheck.out || true)
-          echo "count=${VULN_COUNT:-0}" >> "$GITHUB_OUTPUT"
+        uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1.0.4
+        with:
+          go-version-input: "1.26"
+          work-dir: backend
+          output-format: sarif
+          output-file: govulncheck.sarif
+          repo-checkout: false
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        if: always()
+        with:
+          sarif_file: govulncheck.sarif
 
       - name: govulncheck summary
         if: always()
         run: |
-          STATUS="${{ steps.govulncheck.outputs.status }}"
-          COUNT="${{ steps.govulncheck.outputs.count }}"
-          if [ "$STATUS" = "clean" ]; then
-            RESULT="✅ No known vulnerabilities"
+          RESULT="${{ steps.govulncheck.outcome }}"
+          if [ "$RESULT" = "success" ]; then
+            STATUS="✅ Scan completed (results uploaded to Security tab)"
           else
-            RESULT="🔴 ${COUNT} vulnerabilit$([ "$COUNT" = "1" ] && echo 'y' || echo 'ies') found"
+            STATUS="🔴 Scan failed"
           fi
 
           {
@@ -65,9 +62,9 @@ jobs:
             echo ""
             echo "| Item | Value |"
             echo "|:-----|:------|"
-            echo "| Go | $(go version | awk '{print $3}') |"
             echo "| Scanner | govulncheck (call-graph analysis) |"
-            echo "| Result | ${RESULT} |"
+            echo "| Result | ${STATUS} |"
+            echo "| SARIF | Uploaded to GitHub Security tab |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── npm audit ───────────────────────────────────────────────────────────────
@@ -99,10 +96,12 @@ jobs:
           HIGH=$(echo "$AUDIT" | grep -oP '\d+ high' | grep -oP '\d+' || echo 0)
           CRITICAL=$(echo "$AUDIT" | grep -oP '\d+ critical' | grep -oP '\d+' || echo 0)
           MODERATE=$(echo "$AUDIT" | grep -oP '\d+ moderate' | grep -oP '\d+' || echo 0)
-          echo "high=${HIGH}" >> "$GITHUB_OUTPUT"
-          echo "critical=${CRITICAL}" >> "$GITHUB_OUTPUT"
-          echo "moderate=${MODERATE}" >> "$GITHUB_OUTPUT"
-          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+          {
+            echo "high=${HIGH}"
+            echo "critical=${CRITICAL}"
+            echo "moderate=${MODERATE}"
+            echo "status=${STATUS}"
+          } >> "$GITHUB_OUTPUT"
           # Fail only on high+
           if [ "$HIGH" -gt 0 ] || [ "$CRITICAL" -gt 0 ]; then exit 1; fi
 
@@ -158,32 +157,53 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Trivy image scan
-        id: trivy_image
+      - name: Trivy image vuln scan
+        id: trivy_image_vuln
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: kube-phoenix:scan
           scanners: vuln
           format: sarif
-          output: trivy-image.sarif
+          output: trivy-image-vuln.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
 
-      - name: Upload SARIF to GitHub Security
+      - name: Trivy image misconfig scan
+        id: trivy_image_misconfig
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: kube-phoenix:scan
+          scanners: misconfig
+          format: sarif
+          output: trivy-image-misconfig.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+          trivy-config: .github/trivy.yaml
+
+      - name: Upload vuln SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
         if: always()
         with:
-          sarif_file: trivy-image.sarif
+          sarif_file: trivy-image-vuln.sarif
+          category: trivy-image-vuln
+
+      - name: Upload misconfig SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        if: always()
+        with:
+          sarif_file: trivy-image-misconfig.sarif
+          category: trivy-image-misconfig
 
       - name: Trivy image summary
         if: always()
         run: |
-          RESULT="${{ steps.trivy_image.outcome }}"
-          if [ "$RESULT" = "success" ]; then
-            STATUS="✅ No critical/high vulnerabilities"
+          VULN="${{ steps.trivy_image_vuln.outcome }}"
+          if [ "$VULN" = "success" ]; then
+            VULN_STATUS="✅ No critical/high vulnerabilities"
           else
-            STATUS="🔴 Vulnerabilities found (see Security tab)"
+            VULN_STATUS="🔴 Vulnerabilities found (see Security tab)"
           fi
 
           {
@@ -193,8 +213,8 @@ jobs:
             echo "|:-----|:------|"
             echo "| Image | kube-phoenix:scan |"
             echo "| Severity filter | CRITICAL, HIGH |"
-            echo "| Result | ${STATUS} |"
-            echo "| SARIF | Uploaded to GitHub Security tab |"
+            echo "| Vulnerabilities (gating) | ${VULN_STATUS} |"
+            echo "| Misconfigurations (informational) | SARIF uploaded to Security tab |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Trivy filesystem scan (IaC + deps) ─────────────────────────────────────
@@ -208,33 +228,55 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Trivy filesystem scan
-        id: trivy_fs
+      - name: Trivy filesystem vuln scan
+        id: trivy_fs_vuln
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
           scanners: vuln
           format: sarif
-          output: trivy-fs.sarif
+          output: trivy-fs-vuln.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
 
-      - name: Upload SARIF to GitHub Security
+      - name: Trivy filesystem misconfig scan
+        id: trivy_fs_misconfig
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: misconfig
+          format: sarif
+          output: trivy-fs-misconfig.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+          trivy-config: .github/trivy.yaml
+
+      - name: Upload vuln SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
         if: always()
         with:
-          sarif_file: trivy-fs.sarif
+          sarif_file: trivy-fs-vuln.sarif
+          category: trivy-fs-vuln
+
+      - name: Upload misconfig SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        if: always()
+        with:
+          sarif_file: trivy-fs-misconfig.sarif
+          category: trivy-fs-misconfig
 
       - name: Trivy filesystem summary
         if: always()
         run: |
-          RESULT="${{ steps.trivy_fs.outcome }}"
-          if [ "$RESULT" = "success" ]; then
-            STATUS="✅ No critical/high vulnerabilities"
+          VULN="${{ steps.trivy_fs_vuln.outcome }}"
+          if [ "$VULN" = "success" ]; then
+            VULN_STATUS="✅ No critical/high vulnerabilities"
           else
-            STATUS="🔴 Vulnerabilities found (see Security tab)"
+            VULN_STATUS="🔴 Vulnerabilities found (see Security tab)"
           fi
 
           {
@@ -244,8 +286,8 @@ jobs:
             echo "|:-----|:------|"
             echo "| Scope | IaC + dependencies |"
             echo "| Severity filter | CRITICAL, HIGH |"
-            echo "| Result | ${STATUS} |"
-            echo "| SARIF | Uploaded to GitHub Security tab |"
+            echo "| Vulnerabilities (gating) | ${VULN_STATUS} |"
+            echo "| Misconfigurations (informational) | SARIF uploaded to Security tab |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Go static security analysis ─────────────────────────────────────────────
@@ -255,6 +297,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      security-events: write
     defaults:
       run:
         working-directory: backend
@@ -271,22 +314,24 @@ jobs:
 
       - name: gosec
         id: gosec
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.25.0
-          gosec -exclude-generated ./... 2>&1 | tee /tmp/gosec.out && STATUS="clean" || STATUS="found"
-          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
-          ISSUE_COUNT=$(grep -c '^\[' /tmp/gosec.out || true)
-          echo "count=${ISSUE_COUNT:-0}" >> "$GITHUB_OUTPUT"
+        uses: securego/gosec@4a3bd8af174872c778439083ded7adbf3747e770 # v2.26.1
+        with:
+          args: -no-fail -exclude-generated -fmt sarif -out backend/gosec.sarif ./backend/...
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        if: always()
+        with:
+          sarif_file: backend/gosec.sarif
 
       - name: gosec summary
         if: always()
         run: |
-          STATUS="${{ steps.gosec.outputs.status }}"
-          COUNT="${{ steps.gosec.outputs.count }}"
-          if [ "$STATUS" = "clean" ]; then
-            RESULT="✅ No issues found"
+          RESULT="${{ steps.gosec.outcome }}"
+          if [ "$RESULT" = "success" ]; then
+            STATUS="✅ Scan completed (results uploaded to Security tab)"
           else
-            RESULT="🔴 ${COUNT} issue$([ "$COUNT" = "1" ] && echo '' || echo 's') found"
+            STATUS="🔴 Scan failed"
           fi
 
           {
@@ -297,7 +342,8 @@ jobs:
             echo "| Go | $(go version | awk '{print $3}') |"
             echo "| Scanner | gosec (static analysis) |"
             echo "| Scope | backend/ |"
-            echo "| Result | ${RESULT} |"
+            echo "| Result | ${STATUS} |"
+            echo "| SARIF | Uploaded to GitHub Security tab |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Secret scanning ─────────────────────────────────────────────────────────

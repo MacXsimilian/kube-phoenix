@@ -35,9 +35,6 @@ concurrency:
   group: release-build-${{ inputs.tag }}
   cancel-in-progress: false
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   # ── Docker build, sign, and push ────────────────────────────────────────────
   docker:
@@ -57,7 +54,7 @@ jobs:
         id: tag
         run: |
           TAG="${{ inputs.tag }}"
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
@@ -82,7 +79,7 @@ jobs:
       - name: Compute image name
         id: image
         run: |
-          echo "name=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/kube-phoenix" >> $GITHUB_OUTPUT
+          echo "name=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/kube-phoenix" >> "$GITHUB_OUTPUT"
 
       - name: Extract metadata
         id: meta
@@ -149,7 +146,7 @@ jobs:
         id: tag
         run: |
           TAG="${{ inputs.tag }}"
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
@@ -172,7 +169,7 @@ jobs:
       - name: Push chart to GHCR
         run: |
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          helm push /tmp/chart/kube-phoenix-*.tgz oci://ghcr.io/${OWNER}/helm
+          helm push /tmp/chart/kube-phoenix-*.tgz "oci://ghcr.io/${OWNER}/helm"
 
   # ── Sign and attach release artifacts ──────────────────────────────────────
   release-assets:
