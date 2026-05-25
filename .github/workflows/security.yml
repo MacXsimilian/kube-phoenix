@@ -96,10 +96,12 @@ jobs:
           HIGH=$(echo "$AUDIT" | grep -oP '\d+ high' | grep -oP '\d+' || echo 0)
           CRITICAL=$(echo "$AUDIT" | grep -oP '\d+ critical' | grep -oP '\d+' || echo 0)
           MODERATE=$(echo "$AUDIT" | grep -oP '\d+ moderate' | grep -oP '\d+' || echo 0)
-          echo "high=${HIGH}" >> "$GITHUB_OUTPUT"
-          echo "critical=${CRITICAL}" >> "$GITHUB_OUTPUT"
-          echo "moderate=${MODERATE}" >> "$GITHUB_OUTPUT"
-          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+          {
+            echo "high=${HIGH}"
+            echo "critical=${CRITICAL}"
+            echo "moderate=${MODERATE}"
+            echo "status=${STATUS}"
+          } >> "$GITHUB_OUTPUT"
           # Fail only on high+
           if [ "$HIGH" -gt 0 ] || [ "$CRITICAL" -gt 0 ]; then exit 1; fi
 
