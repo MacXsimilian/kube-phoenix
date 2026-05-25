@@ -1,0 +1,33 @@
+# Trivy findings accepted as design decisions or upstream constraints.
+# Format: one rule ID per line. Add a comment above each entry explaining
+# why the finding is accepted and what would need to change to fix it.
+#
+# Re-evaluate this file when:
+#   • the upstream postgres image changes its built-in UID/GID
+#   • the kube-phoenix RBAC model is split into read-only and mutating roles
+#   • Trivy's trusted-registry policy gains support for ghcr.io
+
+# postgres:alpine ships with a built-in 'postgres' user at UID/GID 70. The
+# container cannot start with runAsUser/runAsGroup > 10000 without rebuilding
+# the image. The container still runs non-root with all capabilities dropped,
+# read-only root filesystem and seccomp=RuntimeDefault.
+AVD-KSV-0020
+AVD-KSV-0021
+
+# init-permissions runs as UID 0 to chown a freshly provisioned PV. fsGroup
+# alone is not honoured by every CSI driver, so root is required for the
+# one-shot mkdir/chown/chmod. The container drops all capabilities, mounts
+# only the data volume, and has allowPrivilegeEscalation=false.
+AVD-KSV-0012
+
+# The kube-phoenix ClusterRole intentionally grants write verbs on workload
+# resources (deployments, statefulsets, deployments/scale, statefulsets/scale,
+# pods/eviction) — scaling and pod eviction are core product features. Node
+# delete is required for cluster downscaling. See helm/kube-phoenix/templates/
+# clusterrole.yaml for the inline rationale.
+AVD-KSV-0048
+
+# The chart's default image is ghcr.io/macxsimilian/kube-phoenix — our own
+# registry. Trivy's KSV-0125 trusted-registry list is configurable and does
+# not include ghcr.io by default.
+AVD-KSV-0125
