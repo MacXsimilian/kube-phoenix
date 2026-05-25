@@ -1,0 +1,37 @@
+name: actionlint
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/**"
+  pull_request:
+    branches: [master]
+    paths:
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: Lint workflows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run actionlint
+        run: |
+          docker run --rm \
+            -v "${PWD}:/repo" \
+            -w /repo \
+            docker.io/rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 \
+            -color
