@@ -1,0 +1,3 @@
+misconfiguration:
+  helm:
+    kube-version: "1.30"

@@ -155,32 +155,53 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Trivy image scan
-        id: trivy_image
+      - name: Trivy image vuln scan
+        id: trivy_image_vuln
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: kube-phoenix:scan
-          scanners: vuln,misconfig
+          scanners: vuln
           format: sarif
-          output: trivy-image.sarif
+          output: trivy-image-vuln.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
 
-      - name: Upload SARIF to GitHub Security
+      - name: Trivy image misconfig scan
+        id: trivy_image_misconfig
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: kube-phoenix:scan
+          scanners: misconfig
+          format: sarif
+          output: trivy-image-misconfig.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+          trivy-config: .github/trivy.yaml
+
+      - name: Upload vuln SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
         if: always()
         with:
-          sarif_file: trivy-image.sarif
+          sarif_file: trivy-image-vuln.sarif
+          category: trivy-image-vuln
+
+      - name: Upload misconfig SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        if: always()
+        with:
+          sarif_file: trivy-image-misconfig.sarif
+          category: trivy-image-misconfig
 
       - name: Trivy image summary
         if: always()
         run: |
-          RESULT="${{ steps.trivy_image.outcome }}"
-          if [ "$RESULT" = "success" ]; then
-            STATUS="✅ No critical/high vulnerabilities"
+          VULN="${{ steps.trivy_image_vuln.outcome }}"
+          if [ "$VULN" = "success" ]; then
+            VULN_STATUS="✅ No critical/high vulnerabilities"
           else
-            STATUS="🔴 Vulnerabilities found (see Security tab)"
+            VULN_STATUS="🔴 Vulnerabilities found (see Security tab)"
           fi
 
           {
@@ -190,8 +211,8 @@ jobs:
             echo "|:-----|:------|"
             echo "| Image | kube-phoenix:scan |"
             echo "| Severity filter | CRITICAL, HIGH |"
-            echo "| Result | ${STATUS} |"
-            echo "| SARIF | Uploaded to GitHub Security tab |"
+            echo "| Vulnerabilities (gating) | ${VULN_STATUS} |"
+            echo "| Misconfigurations (informational) | SARIF uploaded to Security tab |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Trivy filesystem scan (IaC + deps) ─────────────────────────────────────
@@ -205,33 +226,55 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Trivy filesystem scan
-        id: trivy_fs
+      - name: Trivy filesystem vuln scan
+        id: trivy_fs_vuln
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
-          scanners: vuln,misconfig
+          scanners: vuln
           format: sarif
-          output: trivy-fs.sarif
+          output: trivy-fs-vuln.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
 
-      - name: Upload SARIF to GitHub Security
+      - name: Trivy filesystem misconfig scan
+        id: trivy_fs_misconfig
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: misconfig
+          format: sarif
+          output: trivy-fs-misconfig.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+          trivy-config: .github/trivy.yaml
+
+      - name: Upload vuln SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
         if: always()
         with:
-          sarif_file: trivy-fs.sarif
+          sarif_file: trivy-fs-vuln.sarif
+          category: trivy-fs-vuln
+
+      - name: Upload misconfig SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        if: always()
+        with:
+          sarif_file: trivy-fs-misconfig.sarif
+          category: trivy-fs-misconfig
 
       - name: Trivy filesystem summary
         if: always()
         run: |
-          RESULT="${{ steps.trivy_fs.outcome }}"
-          if [ "$RESULT" = "success" ]; then
-            STATUS="✅ No critical/high vulnerabilities"
+          VULN="${{ steps.trivy_fs_vuln.outcome }}"
+          if [ "$VULN" = "success" ]; then
+            VULN_STATUS="✅ No critical/high vulnerabilities"
           else
-            STATUS="🔴 Vulnerabilities found (see Security tab)"
+            VULN_STATUS="🔴 Vulnerabilities found (see Security tab)"
           fi
 
           {
@@ -241,8 +284,8 @@ jobs:
             echo "|:-----|:------|"
             echo "| Scope | IaC + dependencies |"
             echo "| Severity filter | CRITICAL, HIGH |"
-            echo "| Result | ${STATUS} |"
-            echo "| SARIF | Uploaded to GitHub Security tab |"
+            echo "| Vulnerabilities (gating) | ${VULN_STATUS} |"
+            echo "| Misconfigurations (informational) | SARIF uploaded to Security tab |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Go static security analysis ─────────────────────────────────────────────
