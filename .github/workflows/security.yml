@@ -255,6 +255,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      security-events: write
     defaults:
       run:
         working-directory: backend
@@ -271,22 +272,24 @@ jobs:
 
       - name: gosec
         id: gosec
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.25.0
-          gosec -exclude-generated ./... 2>&1 | tee /tmp/gosec.out && STATUS="clean" || STATUS="found"
-          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
-          ISSUE_COUNT=$(grep -c '^\[' /tmp/gosec.out || true)
-          echo "count=${ISSUE_COUNT:-0}" >> "$GITHUB_OUTPUT"
+        uses: securego/gosec@4a3bd8af174872c778439083ded7adbf3747e770 # v2.26.1
+        with:
+          args: -no-fail -exclude-generated -fmt sarif -out backend/gosec.sarif ./backend/...
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        if: always()
+        with:
+          sarif_file: backend/gosec.sarif
 
       - name: gosec summary
         if: always()
         run: |
-          STATUS="${{ steps.gosec.outputs.status }}"
-          COUNT="${{ steps.gosec.outputs.count }}"
-          if [ "$STATUS" = "clean" ]; then
-            RESULT="✅ No issues found"
+          RESULT="${{ steps.gosec.outcome }}"
+          if [ "$RESULT" = "success" ]; then
+            STATUS="✅ Scan completed (results uploaded to Security tab)"
           else
-            RESULT="🔴 ${COUNT} issue$([ "$COUNT" = "1" ] && echo '' || echo 's') found"
+            STATUS="🔴 Scan failed"
           fi
 
           {
@@ -297,7 +300,8 @@ jobs:
             echo "| Go | $(go version | awk '{print $3}') |"
             echo "| Scanner | gosec (static analysis) |"
             echo "| Scope | backend/ |"
-            echo "| Result | ${RESULT} |"
+            echo "| Result | ${STATUS} |"
+            echo "| SARIF | Uploaded to GitHub Security tab |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── Secret scanning ─────────────────────────────────────────────────────────
