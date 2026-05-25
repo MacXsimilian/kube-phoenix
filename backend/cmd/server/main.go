@@ -36,7 +36,15 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
 	port := flag.Int("port", 8080, "HTTP listen port")
+	healthcheck := flag.Bool("healthcheck", false, "perform an in-container health probe and exit 0/1")
 	flag.Parse()
+
+	// Distroless images have no shell or curl/wget, so the container healthcheck
+	// re-invokes this binary with -healthcheck to probe /healthz on the loopback
+	// port. Run before any heavy initialisation.
+	if *healthcheck {
+		os.Exit(runHealthCheck(*port))
+	}
 
 	// ── Config ────────────────────────────────────────────────────────────
 	cfg, err := config.Load()
@@ -274,3 +282,21 @@ func safeTick(name string, fn func()) {
 	fn()
 }
 
+func runHealthCheck(port int) int {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	url := fmt.Sprintf("http://127.0.0.1:%d/healthz", port)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 1
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 1
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return 1
+	}
+	return 0
+}

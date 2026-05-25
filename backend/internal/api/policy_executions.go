@@ -23,10 +23,12 @@ func (h *Handler) listPolicyExecutions(w http.ResponseWriter, r *http.Request) {
 
 	if pid := query.Get("policy_id"); pid != "" {
 		id, err := strconv.ParseUint(pid, 10, 64)
-		if err == nil {
-			uid := uint(id)
-			filter.PolicyID = &uid
+		if err != nil || id == 0 || id > maxRecordID {
+			jsonError(w, "policy_id must be a positive 32-bit integer", http.StatusBadRequest)
+			return
 		}
+		uid := uint(id)
+		filter.PolicyID = &uid
 	}
 	if s := query.Get("status"); s != "" {
 		if !validExecStatuses[s] {

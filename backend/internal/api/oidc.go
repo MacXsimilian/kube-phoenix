@@ -204,8 +204,8 @@ func (h *Handler) oidcValidateAndClearCookies(w http.ResponseWriter, r *http.Req
 		return "", false
 	}
 
-	http.SetCookie(w, &http.Cookie{Name: "__kp_oidc_state", Value: "", Path: "/api/auth/oidc", MaxAge: -1})
-	http.SetCookie(w, &http.Cookie{Name: "__kp_oidc_verifier", Value: "", Path: "/api/auth/oidc", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "__kp_oidc_state", Value: "", Path: "/api/auth/oidc", MaxAge: -1, HttpOnly: true, Secure: h.cookieSecure, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "__kp_oidc_verifier", Value: "", Path: "/api/auth/oidc", MaxAge: -1, HttpOnly: true, Secure: h.cookieSecure, SameSite: http.SameSiteLaxMode})
 	return verifierCookie.Value, true
 }
 

@@ -58,5 +58,16 @@ FROM gcr.io/distroless/static-debian13:nonroot@sha256:963fa6c544fe5ce420f1f54fb8
 
 COPY --from=backend-builder /bin/kube-phoenix /usr/local/bin/kube-phoenix
 
+# Explicit non-root user (65532 = `nonroot` in distroless). Declared so static
+# analysers detect a non-root runtime and image scanners do not flag DS-0002.
+USER 65532:65532
+
 EXPOSE 8080
+
+# Distroless has no shell or curl, so the binary itself exposes a -healthcheck
+# flag that probes /healthz on the loopback port and exits 0/1. start-period
+# is generous because schema migrations on first boot can take a few seconds.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD ["/usr/local/bin/kube-phoenix", "-healthcheck"]
+
 ENTRYPOINT ["/usr/local/bin/kube-phoenix"]
