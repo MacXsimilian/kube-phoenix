@@ -97,13 +97,26 @@ try {
   }
 } catch { /* ws not installed or file missing — skip */ }
 
+// Allowlist of origins permitted to talk to the dev mock API. Reflecting an
+// arbitrary Origin header while Access-Control-Allow-Credentials is true is
+// a CORS credential-leak vulnerability (CodeQL js/cors-misconfiguration-for-
+// credentials), so requests from any other origin get no CORS headers.
+const ALLOWED_ORIGINS = new Set(
+  (process.env.MOCK_CORS_ORIGINS ?? 'http://localhost:3000,http://127.0.0.1:3000')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean),
+)
+
 const server = createServer(async (req, res) => {
-  // CORS
-  const origin = req.headers.origin || 'http://localhost:3000'
-  res.setHeader('Access-Control-Allow-Origin', origin)
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token')
-  res.setHeader('Access-Control-Allow-Credentials', 'true')
+  const origin = req.headers.origin
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Vary', 'Origin')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token')
+    res.setHeader('Access-Control-Allow-Credentials', 'true')
+  }
 
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return }
 
