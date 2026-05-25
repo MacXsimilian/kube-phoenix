@@ -140,7 +140,7 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 		userID = &user.ID
 	}
 	h.audit(r, "auth.logout", "user", userID, nil, map[string]string{"method": method})
-	clearSessionCookies(w)
+	h.clearSessionCookies(w)
 
 	// For OIDC users, return the Keycloak end_session URL so the browser can
 	// terminate the SSO session (RP-initiated logout). Without this, Keycloak's
@@ -346,13 +346,14 @@ func (h *Handler) createSessionCookies(w http.ResponseWriter, r *http.Request, u
 	return nil
 }
 
-func clearSessionCookies(w http.ResponseWriter) {
+func (h *Handler) clearSessionCookies(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "__kp_session",
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   h.cookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	})
 	http.SetCookie(w, &http.Cookie{
@@ -360,6 +361,7 @@ func clearSessionCookies(w http.ResponseWriter) {
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
+		Secure:   h.cookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	})
 }
