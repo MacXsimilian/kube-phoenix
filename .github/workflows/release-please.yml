@@ -22,9 +22,6 @@ concurrency:
   group: release-please-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   release-please:
     name: Release please
