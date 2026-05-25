@@ -347,4 +347,3 @@ func callRecorderMiddleware(recorder *observability.CallRecorder) func(http.Hand
 		})
 	}
 }
-
