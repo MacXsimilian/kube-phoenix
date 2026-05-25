@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.3](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.2...v0.7.3) (2026-05-25)
+
+
+### Bug Fixes
+
+* **helm:** harden chart security context and resources ([#396](https://github.com/MacXsimilian/kube-phoenix/issues/396)) ([9ff378a](https://github.com/MacXsimilian/kube-phoenix/commit/9ff378a3ea891efc36667552c2f63024caeecba8))
+* resolve open code-scanning alerts and gofmt drift ([#398](https://github.com/MacXsimilian/kube-phoenix/issues/398)) ([955af8f](https://github.com/MacXsimilian/kube-phoenix/commit/955af8feedcd7f9ab6d6da9aca7512d525e773c9))
+
 ## [0.7.2](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.1...v0.7.2) (2026-05-24)
 
 
