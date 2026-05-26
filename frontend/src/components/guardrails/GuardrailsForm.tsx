@@ -30,8 +30,10 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlineOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlineOutlined'
 import SaveIcon from '@mui/icons-material/Save'
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
+import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
 import { getGuardrails, updateGuardrails, exportGuardrails } from '@/lib/api'
 import ExportMenu from '@/components/import/ExportMenu'
+import ImportDialog from '@/components/import/ImportDialog'
 import { useAuth } from '@/lib/auth'
 import { canEditGuardrails } from '@/lib/rbac'
 import { useSnackbar } from '@/lib/useSnackbar'
@@ -165,6 +167,7 @@ export default function GuardrailsForm() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [nsToRemove, setNsToRemove] = useState<string | null>(null)
   const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
   const initialised = useRef(false)
   const savedSnapshot = useRef<Snapshot>(buildSnapshot(INITIAL_FORM))
 
@@ -507,6 +510,18 @@ export default function GuardrailsForm() {
         >
           Export
         </Button>
+        <Tooltip title={hasEdit ? '' : 'You do not have permission to import guardrails'}>
+          <span>
+            <Button
+              variant="outlined"
+              startIcon={<FileUploadOutlinedIcon fontSize="small" />}
+              disabled={!hasEdit}
+              onClick={() => setImportOpen(true)}
+            >
+              Import
+            </Button>
+          </span>
+        </Tooltip>
         {saveError && (
           <Alert severity="error" sx={{ py: 0.5 }}>
             {saveError}
@@ -519,6 +534,12 @@ export default function GuardrailsForm() {
         onClose={() => setExportAnchor(null)}
         fetchPayload={exportGuardrails}
         downloadName="kube-phoenix-guardrails"
+        onNotify={notify}
+      />
+      <ImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        kind="guardrails"
         onNotify={notify}
       />
       {SnackbarAlert}

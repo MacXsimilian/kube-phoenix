@@ -11,12 +11,14 @@ import CenteredSpinner from '@/components/common/CenteredSpinner'
 import Alert from '@mui/material/Alert'
 import Tooltip from '@mui/material/Tooltip'
 import AddIcon from '@mui/icons-material/Add'
+import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
 import PageHeader from '@/components/shared/PageHeader'
 import EmptyState from '@/components/shared/EmptyState'
 import ConfirmDialog from '@/components/common/ConfirmDialog'
 import { getExceptions, deleteException } from '@/lib/api'
 import type { ScheduledException } from '@/lib/types'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
+import ImportDialog from '@/components/import/ImportDialog'
 import ExceptionsCalendarStrip from '@/components/exceptions/ExceptionsCalendarStrip'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules } from '@/lib/rbac'
@@ -31,6 +33,7 @@ export default function ExceptionsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ScheduledException | undefined>()
   const [pendingDelete, setPendingDelete] = useState<ScheduledException | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
   const { notify, SnackbarAlert } = useSnackbar()
 
   const canEdit = canEditSchedules(user?.permissions)
@@ -57,18 +60,32 @@ export default function ExceptionsPage() {
       <PageHeader
         title="Scheduled Exceptions"
         actions={
-          <Tooltip title={!canEdit ? 'You do not have permission to create exceptions' : ''}>
-            <span>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => { setEditing(undefined); setDialogOpen(true) }}
-                disabled={!canEdit}
-              >
-                New Exception
-              </Button>
-            </span>
-          </Tooltip>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Tooltip title={!canEdit ? 'You do not have permission to import exceptions' : ''}>
+              <span>
+                <Button
+                  variant="outlined"
+                  startIcon={<FileUploadOutlinedIcon />}
+                  onClick={() => setImportOpen(true)}
+                  disabled={!canEdit}
+                >
+                  Import
+                </Button>
+              </span>
+            </Tooltip>
+            <Tooltip title={!canEdit ? 'You do not have permission to create exceptions' : ''}>
+              <span>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => { setEditing(undefined); setDialogOpen(true) }}
+                  disabled={!canEdit}
+                >
+                  New Exception
+                </Button>
+              </span>
+            </Tooltip>
+          </Box>
         }
       />
       {isError && <Alert severity="error" sx={{ mb: 2 }}>Failed to load exceptions</Alert>}
@@ -89,6 +106,12 @@ export default function ExceptionsPage() {
         open={dialogOpen}
         onClose={() => { setDialogOpen(false); setEditing(undefined) }}
         existing={editing}
+        onNotify={notify}
+      />
+      <ImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        kind="exception"
         onNotify={notify}
       />
       <ConfirmDialog
