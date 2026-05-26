@@ -46,7 +46,7 @@ export default function WorkloadsTable() {
 
   const { data: guardrails } = useQuery({ queryKey: queryKeys.guardrails(), queryFn: getGuardrails })
   const protectedNamespaces = useMemo(
-    () => new Set(guardrails?.systemNamespaces.split(',').map((s) => s.trim()).filter(Boolean) ?? []),
+    () => new Set(guardrails?.protectedNamespaces.split(',').map((s) => s.trim()).filter(Boolean) ?? []),
     [guardrails],
   )
 

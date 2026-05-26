@@ -84,7 +84,7 @@ Two worker nodes allow testing node drain where workloads migrate from one worke
 
 3. **Cross-namespace policy:** Create a policy targeting `team-data,team-web`. Test multi-namespace sleep/wake in a single operation.
 
-4. **Guardrails:** Add `team-qa` to guardrails system-protected namespaces. Verify policies cannot scale it.
+4. **Guardrails:** Add `team-qa` to guardrails Protected Namespaces. Verify policies cannot scale it.
 
 5. **Node drain:** Sleep a policy with node drain enabled. Verify worker nodes are cordoned (`SchedulingDisabled`). Wake. Nodes uncordoned.
 

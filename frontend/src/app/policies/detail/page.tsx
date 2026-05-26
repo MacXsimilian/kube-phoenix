@@ -12,7 +12,9 @@ import {
   getPolicy,
   getPolicyExecutions,
   getExceptions,
+  exportPolicy,
 } from '@/lib/api'
+import ExportMenu from '@/components/import/ExportMenu'
 import type { PolicyExecution, ScheduledException } from '@/lib/types'
 import CreatePolicyDialog from '@/components/policies/CreatePolicyDialog'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
@@ -74,6 +76,7 @@ function PolicyDetailContent() {
 
   const { sleepMut, wakeMut, isBusy } = usePolicyTriggers(policyId, notify)
   const [triggerDialog, setTriggerDialog] = useState<TriggerDirection | null>(null)
+  const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null)
 
   if (isNaN(policyId)) {
     return <Alert severity="error">No policy ID provided.</Alert>
@@ -104,6 +107,7 @@ function PolicyDetailContent() {
           }}
           onBack={() => router.push('/policies')}
           onEdit={() => { setExceptionOpen(false); setEditOpen(true) }}
+          onExport={(anchor) => setExportAnchor(anchor)}
         />
 
         {/* Timeline band */}
@@ -223,6 +227,7 @@ function PolicyDetailContent() {
             canEdit={canEdit}
             onAddException={() => { setEditOpen(false); setEditingException(undefined); setExceptionOpen(true) }}
             onEditException={(ex) => { setEditOpen(false); setEditingException(ex); setExceptionOpen(true) }}
+            onNotify={notify}
           />
         </Box>
 
@@ -260,6 +265,15 @@ function PolicyDetailContent() {
             else wakeMut.mutate(mode)
           }}
           onClose={() => setTriggerDialog(null)}
+        />
+
+        <ExportMenu
+          anchorEl={exportAnchor}
+          open={Boolean(exportAnchor)}
+          onClose={() => setExportAnchor(null)}
+          fetchPayload={() => exportPolicy(policyId)}
+          downloadName={`kube-phoenix-policy-${policy.name}`}
+          onNotify={notify}
         />
 
         {SnackbarAlert}

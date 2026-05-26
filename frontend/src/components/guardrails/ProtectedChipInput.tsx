@@ -47,7 +47,7 @@ export default function ProtectedChipInput({
         <ShieldOutlinedIcon sx={{ fontSize: 16, color: 'warning.main' }} />
         <Typography variant="body2" sx={{
           fontWeight: 600
-        }}>System-Protected Namespaces</Typography>
+        }}>Protected Namespaces</Typography>
       </Box>
       <Typography
         variant="caption"

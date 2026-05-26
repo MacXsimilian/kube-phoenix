@@ -9,11 +9,11 @@ import (
 )
 
 type Guardrails struct {
-	ID               uint   `gorm:"primaryKey" json:"id"`
-	SystemNamespaces string `json:"systemNamespaces"` // comma-separated — protected system defaults, requires confirmation to remove
-	SkipNsNode       string `json:"skipNsNode"`       // comma-separated — namespaces whose pods protect nodes
-	SkipNodeLabels   string `json:"skipNodeLabels"`   // comma-separated key=value
-	SkipNodeTaints   string `json:"skipNodeTaints"`   // comma-separated key=value:effect
+	ID                  uint   `gorm:"primaryKey" json:"id"`
+	ProtectedNamespaces string `gorm:"column:protected_namespaces" json:"protectedNamespaces"` // comma-separated — namespaces this app never scales down or drains; requires confirmation to remove
+	SkipNsNode          string `json:"skipNsNode"`                                             // comma-separated — namespaces whose pods protect nodes
+	SkipNodeLabels      string `json:"skipNodeLabels"`                                         // comma-separated key=value
+	SkipNodeTaints      string `json:"skipNodeTaints"`                                         // comma-separated key=value:effect
 
 	// Scaling priority — namespaces listed here are scaled first, in order.
 	ScalingPriorityNamespaces string `json:"scalingPriorityNamespaces"` // comma-separated, ordered

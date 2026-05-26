@@ -89,7 +89,7 @@ components:
         id:
           type: integer
           readOnly: true
-        systemNamespaces:
+        protectedNamespaces:
           type: string
           example: "kube-system,kube-public,kube-node-lease,kube-phoenix"
           description: Protected system namespaces — always skipped. Comma-separated.
@@ -109,6 +109,12 @@ components:
           type: string
           example: "payments,checkout,api-gateway"
           description: Ordered list of namespaces to scale first during sleep and wake. Comma-separated.
+        scalingConcurrency:
+          type: integer
+          minimum: 1
+          maximum: 50
+          example: 10
+          description: Max workloads scaled in parallel during sleep/wake. Default 10.
         schedulerEvalInterval:
           type: string
           example: "30s"
@@ -124,7 +130,7 @@ components:
           description: When true, workloads manually scaled up during a sleep window are automatically scaled back to zero. Default true.
         protectCriticalPodNodes:
           type: boolean
-          description: When true, nodes running system-node-critical or system-cluster-critical pods are never drained. Default true.
+          description: When true, nodes running non-DaemonSet pods with system-node-critical or system-cluster-critical priority class are never drained. Default false; existing installs retain their stored value.
         updatedAt:
           type: string
           format: date-time
@@ -134,7 +140,7 @@ components:
       description: Partial update for guardrails. Only provided fields are written.
       type: object
       properties:
-        systemNamespaces:
+        protectedNamespaces:
           type: string
         skipNsNode:
           type: string
@@ -144,6 +150,10 @@ components:
           type: string
         scalingPriorityNamespaces:
           type: string
+        scalingConcurrency:
+          type: integer
+          minimum: 1
+          maximum: 50
         schedulerEvalInterval:
           type: string
         schedulerAutoWake:
@@ -903,6 +913,9 @@ components:
           type: integer
         countErrors:
           type: integer
+        countRequests:
+          type: integer
+          description: Total K8s API calls made during this execution.
 
     PaginatedPolicyExecutions:
       description: Paginated list of policy executions.
@@ -1117,6 +1130,15 @@ components:
           type: integer
         totalErrorRate:
           type: number
+        dbPoolOpen:
+          type: integer
+          description: Number of open database connections.
+        dbPoolInUse:
+          type: integer
+          description: Number of database connections currently in use.
+        dbPoolIdle:
+          type: integer
+          description: Number of idle database connections.
 
     ObservabilityThreshold:
       description: A configurable warning/critical threshold for a dashboard panel.
@@ -1235,6 +1257,91 @@ components:
                   type: string
                 value:
                   type: string
+
+    GuardrailsExportBody:
+      type: object
+      description: Sanitised guardrails fields. All persistence metadata is stripped.
+      properties:
+        protectedNamespaces: { type: string }
+        skipNsNode: { type: string }
+        skipNodeLabels: { type: string }
+        skipNodeTaints: { type: string }
+        scalingPriorityNamespaces: { type: string }
+        schedulerEvalInterval: { type: string }
+        schedulerAutoWake: { type: boolean }
+        schedulerReconcileWhileAwake: { type: boolean }
+        schedulerEnforceSleep: { type: boolean }
+        scalingConcurrency: { type: integer }
+        wakeWaveSize: { type: integer }
+        wakeWavePauseSeconds: { type: integer }
+        protectCriticalPodNodes: { type: boolean }
+
+    GuardrailsExport:
+      type: object
+      required: [schemaVersion, kind, guardrails]
+      properties:
+        schemaVersion: { type: integer, enum: [1] }
+        kind: { type: string, enum: [guardrails] }
+        guardrails:
+          $ref: "#/components/schemas/GuardrailsExportBody"
+
+    PolicyExportBody:
+      type: object
+      description: Sanitised policy fields. id, derived state, and timestamps are stripped.
+      properties:
+        name: { type: string }
+        description: { type: string }
+        namespaceFilter: { type: string }
+        labelSelector: { type: string }
+        timezone: { type: string }
+        mode: { type: string, enum: [plan, apply] }
+        enabled: { type: boolean }
+        timeoutMinutes: { type: integer }
+        sleepWindows:
+          type: array
+          items:
+            $ref: "#/components/schemas/SleepWindow"
+
+    PolicyExport:
+      type: object
+      required: [schemaVersion, kind, policy]
+      properties:
+        schemaVersion: { type: integer, enum: [1] }
+        kind: { type: string, enum: [policy] }
+        policy:
+          $ref: "#/components/schemas/PolicyExportBody"
+
+    ExceptionExportBody:
+      type: object
+      description: Sanitised exception fields. Parent policy is referenced by name; lifecycle fields are stripped.
+      properties:
+        policyName:
+          type: string
+          nullable: true
+          description: Parent policy name. Null for freestanding exceptions.
+        exceptionType: { type: string, enum: [stay_awake, force_sleep] }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        ticketRef: { type: string }
+        reason: { type: string }
+        sleepOnEnd:
+          type: boolean
+          nullable: true
+        namespaceFilter: { type: string }
+        labelSelector: { type: string }
+        workloadTargets:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkloadTarget"
+
+    ExceptionExport:
+      type: object
+      required: [schemaVersion, kind, exception]
+      properties:
+        schemaVersion: { type: integer, enum: [1] }
+        kind: { type: string, enum: [exception] }
+        exception:
+          $ref: "#/components/schemas/ExceptionExportBody"
 
 paths:
   /healthz:
@@ -1497,8 +1604,10 @@ paths:
       description: |
         Proxies the Kubernetes pod logs API. Returns plain-text log output.
         When `follow=true`, the response uses chunked transfer encoding and
-        streams new log lines as the container writes them. The connection
-        stays open until the client disconnects or the container terminates.
+        streams new log lines as the container writes them. The response
+        includes `X-Accel-Buffering: no` to prevent reverse-proxy buffering.
+        The connection stays open until the client disconnects or the
+        container terminates.
         No database involvement — logs are streamed directly from the K8s API.
       tags: [Cluster]
       parameters:
@@ -1509,10 +1618,10 @@ paths:
             type: string
         - name: tailLines
           in: query
-          description: Number of lines from the end to start from (default 500, max 10000)
+          description: Number of lines from the end to start from (default 250, max 10000)
           schema:
             type: integer
-            default: 500
+            default: 250
         - name: follow
           in: query
           description: Stream live logs (chunked transfer encoding)
@@ -1681,6 +1790,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /api/guardrails/export:
+    get:
+      operationId: exportGuardrails
+      summary: Export guardrails as a sanitised JSON envelope
+      description: Returns the current guardrails wrapped in a schemaVersion/kind envelope, with id and updatedAt stripped. Use to copy configuration between environments.
+      tags: [Guardrails]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardrailsExport"
+
+  /api/guardrails/import/preview:
+    post:
+      operationId: previewGuardrailsImport
+      summary: Preview a guardrails import
+      description: Returns the before/after diff that an apply would produce. Does not mutate state.
+      tags: [Guardrails]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuardrailsExport"
+      responses:
+        "200":
+          description: Preview
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid envelope or validation error
+
+  /api/guardrails/import/apply:
+    post:
+      operationId: applyGuardrailsImport
+      summary: Apply a guardrails import
+      description: Overwrites guardrails with the imported envelope. `conflictResolution` is optional; the only accepted value is `overwrite` (default).
+      tags: [Guardrails]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/GuardrailsExport"
+                - type: object
+                  properties:
+                    conflictResolution:
+                      type: string
+                      enum: [overwrite]
+      responses:
+        "200":
+          description: Applied
+        "400":
+          description: Invalid envelope or validation error
 
   /api/danger/reset-db:
     post:
@@ -2348,6 +2517,75 @@ paths:
                 items:
                   $ref: "#/components/schemas/WorkloadSnapshot"
 
+  /api/policies/{id}/export:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: exportPolicy
+      summary: Export a policy as a sanitised JSON envelope
+      description: Returns the policy wrapped in a schemaVersion/kind envelope, with id, derived state, and timestamps stripped.
+      tags: [Policies]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyExport"
+
+  /api/policies/import/preview:
+    post:
+      operationId: previewPolicyImport
+      summary: Preview a policy import
+      description: Returns conflict info (name collision) and which fields the apply step would force off (enabled, mode). Does not mutate state.
+      tags: [Policies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyExport"
+      responses:
+        "200":
+          description: Preview
+        "400":
+          description: Invalid envelope or validation error
+
+  /api/policies/import/apply:
+    post:
+      operationId: applyPolicyImport
+      summary: Apply a policy import
+      description: Imports the policy. Forces enabled=false and mode="plan". On name collision the operator chooses overwrite or rename (newName required).
+      tags: [Policies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/PolicyExport"
+                - type: object
+                  properties:
+                    conflictResolution:
+                      type: string
+                      enum: [overwrite, rename]
+                    newName:
+                      type: string
+                      description: Required when conflictResolution is "rename".
+      responses:
+        "200":
+          description: Applied (overwrite)
+        "201":
+          description: Created (create or rename)
+        "400":
+          description: Invalid envelope or validation error
+        "409":
+          description: newName already in use
+
   # ── Policy executions ─────────────────────────────────────────────────────
 
   /api/policy-executions:
@@ -2559,6 +2797,70 @@ paths:
         "404":
           description: Not found
 
+  /api/exceptions/{id}/export:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: exportException
+      summary: Export a scheduled exception as a sanitised JSON envelope
+      description: Returns the exception with lifecycle fields stripped. The parent policy FK is replaced with policyName for cross-environment portability.
+      tags: [Exceptions]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExceptionExport"
+
+  /api/exceptions/import/preview:
+    post:
+      operationId: previewExceptionImport
+      summary: Preview an exception import
+      description: Validates the payload, resolves the parent policy by name, and runs the same overlap check as the manual create endpoint. Rejects with 422 when the parent policy name does not exist, 409 when the window collides with an existing opposite-type exception on the same policy.
+      tags: [Exceptions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExceptionExport"
+      responses:
+        "200":
+          description: Preview
+        "400":
+          description: Invalid envelope or validation error
+        "409":
+          description: Time window overlaps with an existing exception of the opposite type on this policy
+        "422":
+          description: Parent policy not found or window already in the past
+
+  /api/exceptions/import/apply:
+    post:
+      operationId: applyExceptionImport
+      summary: Apply an exception import
+      description: Always creates a new exception. Exceptions have no name and are never overwritten. Runs the same overlap check as the preview endpoint and rejects with 409 when the window collides with an existing opposite-type exception on the same policy.
+      tags: [Exceptions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExceptionExport"
+      responses:
+        "201":
+          description: Created
+        "400":
+          description: Invalid envelope or validation error
+        "409":
+          description: Time window overlaps with an existing exception of the opposite type on this policy
+        "422":
+          description: Parent policy not found or window already in the past
+
   # ── Observability ────────────────────────────────────────────────────────
 
   /api/observability/stream:
@@ -2643,7 +2945,7 @@ paths:
     put:
       operationId: updateObservabilityThreshold
       summary: Create or update a threshold
-      description: Upserts an observability threshold by panel key. Returns the saved threshold.
+      description: Upserts an observability threshold by panel key. Returns the saved threshold. Negative values for warnVal or critVal are rejected with 400.
       tags: [Observability]
       requestBody:
         required: true

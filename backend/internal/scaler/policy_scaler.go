@@ -195,7 +195,7 @@ func (r *PolicyRunner) RunPolicySleep(
 	if err != nil {
 		return nil, fmt.Errorf("guardrails: %w", err)
 	}
-	skipNS := stringutil.SplitCSVSet(guardrails.SystemNamespaces)
+	skipNS := stringutil.SplitCSVSet(guardrails.ProtectedNamespaces)
 
 	emit(logCh, "info", fmt.Sprintf("Policy sleep — namespace filter: %q  label selector: %q", policy.NamespaceFilter, policy.LabelSelector))
 
@@ -639,7 +639,7 @@ func (r *PolicyRunner) HasDriftedFromSleep(ctx context.Context, policyID uint) (
 	if err != nil {
 		return false, fmt.Errorf("guardrails: %w", err)
 	}
-	skipNS := stringutil.SplitCSVSet(guardrails.SystemNamespaces)
+	skipNS := stringutil.SplitCSVSet(guardrails.ProtectedNamespaces)
 
 	exceptions, err := r.store.ListActiveExceptionsForPolicy(policyID, time.Now())
 	if err != nil {
@@ -684,7 +684,7 @@ func (r *PolicyRunner) RunPolicySleepReconcile(
 	if err != nil {
 		return nil, fmt.Errorf("guardrails: %w", err)
 	}
-	skipNS := stringutil.SplitCSVSet(guardrails.SystemNamespaces)
+	skipNS := stringutil.SplitCSVSet(guardrails.ProtectedNamespaces)
 
 	exceptions, err := r.store.ListActiveExceptionsForPolicy(p.ID, time.Now())
 	if err != nil {

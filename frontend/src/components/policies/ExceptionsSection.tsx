@@ -15,11 +15,16 @@ import { TABLE_HEAD_CELL_SX } from '@/lib/tableStyles'
 import IconButton from '@mui/material/IconButton'
 import AddIcon from '@mui/icons-material/Add'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
+import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
 import StatusChip from '@/components/shared/StatusChip'
 import { fmtDt } from '@/lib/formatters'
 import { useIsDark } from '@/lib/useIsDark'
 import { getTypeLabel } from '@/lib/statusColors'
-import type { ScheduledException } from '@/lib/types'
+import { exportException } from '@/lib/api'
+import ExportMenu from '@/components/import/ExportMenu'
+import ImportDialog from '@/components/import/ImportDialog'
+import type { ScheduledException, SnackMessage } from '@/lib/types'
 
 const DEFAULT_VISIBLE = 5
 
@@ -28,14 +33,18 @@ export default function ExceptionsSection({
   canEdit,
   onAddException,
   onEditException,
+  onNotify,
 }: {
   exceptions: ScheduledException[] | undefined
   canEdit: boolean
   onAddException: () => void
   onEditException: (ex: ScheduledException) => void
+  onNotify?: (msg: string, severity: SnackMessage['severity']) => void
 }) {
   const isDark = useIsDark()
   const [showAll, setShowAll] = useState(false)
+  const [exportTarget, setExportTarget] = useState<{ anchor: HTMLElement; ex: ScheduledException } | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
   const total = exceptions?.length ?? 0
   const visible = showAll ? exceptions : exceptions?.slice(0, DEFAULT_VISIBLE)
   const isTruncated = total > DEFAULT_VISIBLE && !showAll
@@ -47,9 +56,14 @@ export default function ExceptionsSection({
           fontWeight: 600
         }}>Scheduled Exceptions</Typography>
         {canEdit && (
-          <Button size="small" startIcon={<AddIcon />} onClick={onAddException}>
-            Add Exception
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button size="small" startIcon={<FileDownloadOutlinedIcon />} onClick={() => setImportOpen(true)}>
+              Import
+            </Button>
+            <Button size="small" startIcon={<AddIcon />} onClick={onAddException}>
+              Add Exception
+            </Button>
+          </Box>
         )}
       </Box>
       {exceptions && exceptions.length === 0 && (
@@ -95,12 +109,19 @@ export default function ExceptionsSection({
                       }}>exec #{ex.startExecutionId}</Typography>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell align="right">
                     {canEdit && ex.status === 'pending' && (
                       <IconButton size="small" onClick={() => onEditException(ex)} aria-label="Edit exception">
                         <EditOutlinedIcon fontSize="small" />
                       </IconButton>
                     )}
+                    <IconButton
+                      size="small"
+                      onClick={(e) => setExportTarget({ anchor: e.currentTarget, ex })}
+                      aria-label="Export exception"
+                    >
+                      <FileUploadOutlinedIcon fontSize="small" />
+                    </IconButton>
                   </TableCell>
                 </TableRow>
               );
@@ -116,6 +137,20 @@ export default function ExceptionsSection({
           </Button>
         </Box>
       )}
+      <ExportMenu
+        anchorEl={exportTarget?.anchor ?? null}
+        open={Boolean(exportTarget)}
+        onClose={() => setExportTarget(null)}
+        fetchPayload={() => exportException(exportTarget!.ex.id)}
+        downloadName={`kube-phoenix-exception-${exportTarget?.ex.ticketRef || exportTarget?.ex.id || 'export'}`}
+        onNotify={onNotify}
+      />
+      <ImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        kind="exception"
+        onNotify={onNotify}
+      />
     </Box>
   );
 }

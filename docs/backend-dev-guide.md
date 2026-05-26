@@ -445,7 +445,7 @@ All models are defined in `backend/internal/store/models.go`. GORM's `AutoMigrat
 ```go
 type Guardrails struct {
     ID               uint      // always 1
-    SystemNamespaces string    // CSV: "kube-system,kube-public,..." -- protected by default
+    ProtectedNamespaces string    // CSV: "kube-system,kube-public,..." -- protected by default
     SkipNsNode       string    // CSV: namespaces whose pods protect the node from draining
     SkipNodeLabels   string    // CSV key=value pairs: nodes with these labels are protected
     SkipNodeTaints               string    // CSV key=value:effect: nodes with these taints are protected
@@ -1140,10 +1140,10 @@ Chi middleware adds request-level logging (via `chiMiddleware.Logger`).
 - `auth.login` — `after: {"username": "...", "method": "local"|"oidc"}`
 - `auth.logout` — `after: {"method": "local"|"oidc"}`
 - `auth.password_change` — `after: {"method": "self-service"}`
-- `policy.create`, `policy.update`, `policy.delete`, `policy.sleep`, `policy.wake`, `policy.cancel`
-- `exception.create`, `exception.update`, `exception.delete`
+- `policy.create`, `policy.update`, `policy.delete`, `policy.sleep`, `policy.wake`, `policy.cancel`, `policy.export`, `policy.import`
+- `exception.create`, `exception.update`, `exception.delete`, `exception.export`, `exception.import`
 - `user.create`, `user.update`, `user.delete`
-- `guardrail.update`
+- `guardrail.update`, `guardrail.export`, `guardrail.import`
 - `admin.reset_db`
 
 Each entry records `before` and `after` state as JSONB. Creates store `before = "null"`, deletes store `after = "null"`. The frontend diff view uses these to classify each field as added, removed, changed, or unchanged.

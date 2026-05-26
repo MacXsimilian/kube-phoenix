@@ -29,6 +29,14 @@ func (s *Store) GetPolicy(id uint) (*Policy, error) {
 	return &p, s.db.First(&p, id).Error
 }
 
+// GetPolicyByName returns the policy with the given name. Used by the import
+// flow to resolve cross-environment policy references that travel by name
+// rather than FK ID.
+func (s *Store) GetPolicyByName(name string) (*Policy, error) {
+	var p Policy
+	return &p, s.db.Where("name = ?", name).First(&p).Error
+}
+
 func (s *Store) CreatePolicy(p *Policy) error {
 	return s.db.Create(p).Error
 }

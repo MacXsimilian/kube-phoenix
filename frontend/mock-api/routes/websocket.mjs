@@ -75,11 +75,11 @@ function formatWorkload(kind, namespace, name) {
 }
 
 function findMatchingWorkloads(policy) {
-  const systemNamespaces = new Set(
-    (db.guardrails.systemNamespaces || '').split(',').map((s) => s.trim()).filter(Boolean),
+  const protectedNamespaces = new Set(
+    (db.guardrails.protectedNamespaces || '').split(',').map((s) => s.trim()).filter(Boolean),
   )
   return db.workloads.filter((w) => {
-    if (systemNamespaces.has(w.namespace)) return false
+    if (protectedNamespaces.has(w.namespace)) return false
     return matchesNamespaceFilter(w.namespace, policy.namespaceFilter)
   })
 }

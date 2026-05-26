@@ -36,7 +36,7 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 
 	// Map camelCase JSON keys to snake_case GORM column names.
 	fieldMap := map[string]string{
-		"systemNamespaces":             "system_namespaces",
+		"protectedNamespaces":          "protected_namespaces",
 		"skipNsNode":                   "skip_ns_node",
 		"skipNodeLabels":               "skip_node_labels",
 		"skipNodeTaints":               "skip_node_taints",
@@ -94,7 +94,7 @@ type guardrailStringCheck struct {
 var guardrailStringChecks = []guardrailStringCheck{
 	{"skipNodeLabels", validateSkipNodeLabels},
 	{"skipNodeTaints", validateSkipNodeTaints},
-	{"systemNamespaces", validateSystemNamespaces},
+	{"protectedNamespaces", validateProtectedNamespaces},
 	{"scalingPriorityNamespaces", validateScalingPriorityNamespaces},
 	{"schedulerEvalInterval", validateSchedulerEvalInterval},
 }
@@ -165,9 +165,9 @@ func validateSkipNodeTaints(s string) string {
 	return ""
 }
 
-func validateSystemNamespaces(s string) string {
+func validateProtectedNamespaces(s string) string {
 	if strings.TrimSpace(s) == "" {
-		return "systemNamespaces cannot be empty"
+		return "protectedNamespaces cannot be empty"
 	}
 	return ""
 }

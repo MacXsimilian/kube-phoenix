@@ -426,7 +426,7 @@ Verify the environment is ready before running any policy tests.
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 12.1.1 | Add `team-payments` to guardrails system-protected namespaces | Guardrails updated |
+| 12.1.1 | Add `team-payments` to guardrails Protected Namespaces | Guardrails updated |
 | 12.1.2 | Create policy targeting `team-payments` (or all namespaces) | Policy created (no error at creation) |
 | 12.1.3 | Trigger sleep (apply mode) | team-payments deployments skipped. Execution log shows `countProtected` for those deployments |
 | 12.1.4 | Verify `kubectl get pods -n team-payments` | All 25 pods still running |

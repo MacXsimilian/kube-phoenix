@@ -379,6 +379,55 @@ export const updateException = (id: number, data: Partial<ScheduledExceptionInpu
 export const deleteException = (id: number): Promise<void> =>
   apiFetch<void>(`/api/exceptions/${id}`, { method: 'DELETE' })
 
+// ── Export / Import (cross-environment config sync) ───────────────────────────
+
+export type ImportKind = 'guardrails' | 'policy' | 'exception'
+
+export const exportGuardrails = (): Promise<unknown> =>
+  apiFetch<unknown>('/api/guardrails/export')
+
+export const exportPolicy = (id: number): Promise<unknown> =>
+  apiFetch<unknown>(`/api/policies/${id}/export`)
+
+export const exportException = (id: number): Promise<unknown> =>
+  apiFetch<unknown>(`/api/exceptions/${id}/export`)
+
+export const previewGuardrailsImport = (payload: unknown): Promise<unknown> =>
+  apiFetch<unknown>('/api/guardrails/import/preview', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+export const applyGuardrailsImport = (payload: unknown): Promise<unknown> =>
+  apiFetch<unknown>('/api/guardrails/import/apply', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+export const previewPolicyImport = (payload: unknown): Promise<unknown> =>
+  apiFetch<unknown>('/api/policies/import/preview', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+export const applyPolicyImport = (payload: unknown): Promise<unknown> =>
+  apiFetch<unknown>('/api/policies/import/apply', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+export const previewExceptionImport = (payload: unknown): Promise<unknown> =>
+  apiFetch<unknown>('/api/exceptions/import/preview', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+export const applyExceptionImport = (payload: unknown): Promise<unknown> =>
+  apiFetch<unknown>('/api/exceptions/import/apply', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
 // ── WebSocket URL helper ──────────────────────────────────────────────────────
 
 export const wsPolicyLogsUrl = (executionId: number): string => {

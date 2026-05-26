@@ -192,6 +192,7 @@ func (h *Handler) registerAuthRoutes(r chi.Router) {
 // wrapped in a RequirePermission group — never add a mutation at the top level.
 func (h *Handler) registerClusterRoutes(r chi.Router) {
 	r.Get("/guardrails", h.getGuardrails)
+	r.Get("/guardrails/export", h.exportGuardrails)
 	r.Get("/overview", h.getOverview)
 	r.Get("/cluster/stream", h.streamCluster)
 	r.Get("/cluster/workloads", h.getWorkloads)
@@ -210,6 +211,8 @@ func (h *Handler) registerClusterRoutes(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(authmw.RequirePermission(auth.PermGuardrailEdit))
 		r.Put("/guardrails", h.updateGuardrails)
+		r.Post("/guardrails/import/preview", h.previewGuardrailsImport)
+		r.Post("/guardrails/import/apply", h.applyGuardrailsImport)
 	})
 }
 
@@ -221,6 +224,7 @@ func (h *Handler) registerPolicyRoutes(r chi.Router) {
 	// Read-only (all authenticated users)
 	r.Get("/policies", h.listPolicies)
 	r.Get("/policies/{id}", h.getPolicy)
+	r.Get("/policies/{id}/export", h.exportPolicy)
 	r.Get("/policies/{id}/snapshots", h.getPolicySnapshots)
 	r.Get("/policy-executions", h.listPolicyExecutions)
 	r.Get("/policy-executions/{id}", h.getPolicyExecution)
@@ -228,6 +232,7 @@ func (h *Handler) registerPolicyRoutes(r chi.Router) {
 	r.Get("/policy-executions/{id}/snapshots", h.getPolicyExecutionSnapshots)
 	r.Get("/exceptions", h.listExceptions)
 	r.Get("/exceptions/{id}", h.getException)
+	r.Get("/exceptions/{id}/export", h.exportException)
 
 	// Mutations (admin + operator)
 	r.Group(func(r chi.Router) {
@@ -235,9 +240,13 @@ func (h *Handler) registerPolicyRoutes(r chi.Router) {
 		r.Post("/policies", h.createPolicy)
 		r.Put("/policies/{id}", h.updatePolicy)
 		r.Delete("/policies/{id}", h.deletePolicy)
+		r.Post("/policies/import/preview", h.previewPolicyImport)
+		r.Post("/policies/import/apply", h.applyPolicyImport)
 		r.Post("/exceptions", h.createException)
 		r.Put("/exceptions/{id}", h.updateException)
 		r.Delete("/exceptions/{id}", h.deleteException)
+		r.Post("/exceptions/import/preview", h.previewExceptionImport)
+		r.Post("/exceptions/import/apply", h.applyExceptionImport)
 	})
 
 	// Manual trigger (admin + operator)

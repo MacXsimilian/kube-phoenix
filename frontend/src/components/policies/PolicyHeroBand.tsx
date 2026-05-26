@@ -6,6 +6,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
+import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
@@ -40,11 +41,12 @@ interface PolicyHeroBandProps {
   trigger: TriggerActions
   onBack: () => void
   onEdit: () => void
+  onExport?: (anchor: HTMLElement) => void
 }
 
 export default function PolicyHeroBand({
   policy, canEdit, canTrigger, trigger,
-  onBack, onEdit,
+  onBack, onEdit, onExport,
 }: PolicyHeroBandProps) {
   const { isBusy, sleepPending, wakePending, onSleep, onWake } = trigger
   const isDark = useIsDark()
@@ -169,6 +171,15 @@ export default function PolicyHeroBand({
         {canEdit && (
           <Button size="small" startIcon={<EditOutlinedIcon />} onClick={onEdit}>
             Edit Policy
+          </Button>
+        )}
+        {onExport && (
+          <Button
+            size="small"
+            startIcon={<FileUploadOutlinedIcon />}
+            onClick={(e) => onExport(e.currentTarget)}
+          >
+            Export
           </Button>
         )}
       </Box>
