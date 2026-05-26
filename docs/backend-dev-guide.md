@@ -1140,10 +1140,10 @@ Chi middleware adds request-level logging (via `chiMiddleware.Logger`).
 - `auth.login` — `after: {"username": "...", "method": "local"|"oidc"}`
 - `auth.logout` — `after: {"method": "local"|"oidc"}`
 - `auth.password_change` — `after: {"method": "self-service"}`
-- `policy.create`, `policy.update`, `policy.delete`, `policy.sleep`, `policy.wake`, `policy.cancel`
-- `exception.create`, `exception.update`, `exception.delete`
+- `policy.create`, `policy.update`, `policy.delete`, `policy.sleep`, `policy.wake`, `policy.cancel`, `policy.export`, `policy.import`
+- `exception.create`, `exception.update`, `exception.delete`, `exception.export`, `exception.import`
 - `user.create`, `user.update`, `user.delete`
-- `guardrail.update`
+- `guardrail.update`, `guardrail.export`, `guardrail.import`
 - `admin.reset_db`
 
 Each entry records `before` and `after` state as JSONB. Creates store `before = "null"`, deletes store `after = "null"`. The frontend diff view uses these to classify each field as added, removed, changed, or unchanged.
