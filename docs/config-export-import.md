@@ -28,8 +28,9 @@ The feature is intentionally narrow:
 
 1. In the source environment, click **Export** next to the resource. Choose
    "Copy JSON to clipboard" or "Download .json".
-2. In the target environment, click **Import** on the same surface. Paste
-   the JSON and click **Preview**.
+2. In the target environment, click **Import** on the same surface. Paste the
+   JSON into the textarea, or drag a `.json` file onto it, then click
+   **Preview**.
 3. Resolve any conflict that the preview surfaces, then click **Apply**.
 
 ## JSON envelopes
@@ -66,7 +67,7 @@ Conflicts are matched **by name**.
 | :-- | :-- |
 | Guardrails (singleton) | Overwrite (only option) |
 | Policy | Overwrite · Rename (new name) |
-| Exception | Always create (no name to match on) |
+| Exception | Always create (no name to match on), rejected with 409 when the window overlaps an existing opposite-type exception on the same parent policy |
 
 If an exception import names a parent policy that does not exist in the
 target environment, the backend returns:
@@ -79,6 +80,13 @@ target environment, the backend returns:
 - Imported policies are forced to `enabled: false` and `mode: "plan"`
   regardless of the source JSON. The operator must explicitly enable
   the policy after reviewing it.
+- Policy `mode` is validated on import — only `"plan"` and `"apply"`
+  are accepted; any other value is rejected with 400 before the forced
+  coercion runs.
+- Exception imports run the same overlap check as the manual create
+  endpoint — a window that collides with an existing opposite-type
+  exception on the same policy is rejected with 409 in both preview
+  and apply.
 - Every apply produces an audit entry: `guardrail.import`,
   `policy.import`, or `exception.import`.
 - The guardrails apply path reloads the scheduler if the timing or

@@ -69,7 +69,7 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 | `PUT` | `/api/guardrails` | Update guardrails |
 | `GET` | `/api/guardrails/export` | Export guardrails as a sanitised JSON envelope |
 | `POST` | `/api/guardrails/import/preview` | Preview a guardrails import (returns before/after diff) |
-| `POST` | `/api/guardrails/import/apply` | Apply a guardrails import (resolutions: `skip`, `overwrite`) |
+| `POST` | `/api/guardrails/import/apply` | Apply a guardrails import (resolution: `overwrite` — only accepted value) |
 
 ### Policies -- viewer reads, operator writes
 
@@ -83,7 +83,7 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 | `GET` | `/api/policies/{id}/snapshots` | Workload snapshots for a policy (`?open=true` for un-restored only) |
 | `GET` | `/api/policies/{id}/export` | Export a policy as a sanitised JSON envelope |
 | `POST` | `/api/policies/import/preview` | Preview a policy import (reports name conflicts) |
-| `POST` | `/api/policies/import/apply` | Apply a policy import (resolutions: `skip`, `overwrite`, `rename` + `newName`). Forces `enabled=false` and `mode="plan"` on the resulting policy. |
+| `POST` | `/api/policies/import/apply` | Apply a policy import (resolutions: `overwrite`, `rename` + `newName`). Forces `enabled=false` and `mode="plan"` on the resulting policy. Rejects invalid `mode` values with 400. |
 
 ### Policy Operations -- operator and above
 
@@ -113,8 +113,8 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 | `PUT` | `/api/exceptions/{id}` | Update an exception (pending status only) |
 | `DELETE` | `/api/exceptions/{id}` | Cancel an exception (triggers revert action if active with `sleepOnEnd`) |
 | `GET` | `/api/exceptions/{id}/export` | Export an exception (references parent by `policyName`) |
-| `POST` | `/api/exceptions/import/preview` | Preview an exception import (rejects with 422 when parent policy name is unresolved) |
-| `POST` | `/api/exceptions/import/apply` | Apply an exception import (always creates a new row) |
+| `POST` | `/api/exceptions/import/preview` | Preview an exception import (rejects with 422 when parent policy name is unresolved; rejects with 409 when the window overlaps an existing opposite-type exception on the same policy) |
+| `POST` | `/api/exceptions/import/apply` | Apply an exception import (always creates a new row; same 422 and 409 rules as preview) |
 
 ### Audit Logs -- requires `audit.view` permission (viewer and above)
 

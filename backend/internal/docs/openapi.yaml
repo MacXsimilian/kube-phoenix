@@ -2821,7 +2821,7 @@ paths:
     post:
       operationId: previewExceptionImport
       summary: Preview an exception import
-      description: Validates the payload and resolves the parent policy by name. Rejects with 422 when the parent policy name does not exist in this environment.
+      description: Validates the payload, resolves the parent policy by name, and runs the same overlap check as the manual create endpoint. Rejects with 422 when the parent policy name does not exist, 409 when the window collides with an existing opposite-type exception on the same policy.
       tags: [Exceptions]
       requestBody:
         required: true
@@ -2834,6 +2834,8 @@ paths:
           description: Preview
         "400":
           description: Invalid envelope or validation error
+        "409":
+          description: Time window overlaps with an existing exception of the opposite type on this policy
         "422":
           description: Parent policy not found or window already in the past
 
@@ -2841,7 +2843,7 @@ paths:
     post:
       operationId: applyExceptionImport
       summary: Apply an exception import
-      description: Always creates a new exception. Exceptions have no name and are never overwritten.
+      description: Always creates a new exception. Exceptions have no name and are never overwritten. Runs the same overlap check as the preview endpoint and rejects with 409 when the window collides with an existing opposite-type exception on the same policy.
       tags: [Exceptions]
       requestBody:
         required: true
@@ -2854,6 +2856,8 @@ paths:
           description: Created
         "400":
           description: Invalid envelope or validation error
+        "409":
+          description: Time window overlaps with an existing exception of the opposite type on this policy
         "422":
           description: Parent policy not found or window already in the past
 

@@ -148,14 +148,17 @@ frontend/
         PageHeader.tsx          # Unified page-title chrome: title, subtitle, breadcrumbs, actions, meta, tabs slots
         EmptyState.tsx          # Dashed-border placeholder card with title, optional description, icon, and action slot
       exceptions/
-        ExceptionsCalendarStrip.tsx  # Calendar strip layout: day rows, span rows for multi-day, history split
+        ExceptionsCalendarStrip.tsx  # Calendar strip layout: day rows, span rows for multi-day, history split. Threads optional onExport down to each row.
         ExceptionDetailPanel.tsx     # Expandable detail grid (dates, duration, namespace filter, workload targets)
         ExceptionChips.tsx           # TypeChip (stay_awake/force_sleep) and StatusChipEx renderers
-        ExceptionActions.tsx         # Edit/cancel icon buttons with stopPropagation
+        ExceptionActions.tsx         # Edit / Export / Cancel icon buttons with stopPropagation
       guardrails/
-        GuardrailsForm.tsx      # Collapsible category cards with stat pills (uses useReducer, CategoryCard)
+        GuardrailsForm.tsx      # Collapsible category cards with stat pills (uses useReducer, CategoryCard). Toolbar has Save / Export / Import buttons.
         CategoryCard.tsx        # Reusable collapsible card: icon header, stat pills, chevron, expand body
         ProtectedChipInput.tsx  # ChipInput variant with removal confirmation dialog
+      import/
+        ImportDialog.tsx        # Kind-parameterised three-step dialog (paste/drag-drop → preview → apply). Renders kind-specific rich preview cards (changed-fields table for guardrails, side-by-side card for policy with green/amber highlights, structured card for exceptions). Resolves overwrite/rename for policy, single Apply for guardrails and exception.
+        ExportMenu.tsx          # Shared anchor-positioned popover offering "Copy JSON to clipboard" and "Download .json" for every Export trigger site.
       settings/
         AccountSettings.tsx     # Timezone selector (defaults from user preference)
         DatabaseSettings.tsx    # Multi-step DB reset with confirmation phrase
@@ -401,6 +404,9 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T>
 |:---------|:-------|:---------|
 | `getGuardrails()` | GET | `/api/guardrails` |
 | `updateGuardrails(data)` | PUT | `/api/guardrails` |
+| `exportGuardrails()` | GET | `/api/guardrails/export` |
+| `previewGuardrailsImport(payload)` | POST | `/api/guardrails/import/preview` |
+| `applyGuardrailsImport(payload)` | POST | `/api/guardrails/import/apply` |
 
 **Overview:**
 
@@ -433,6 +439,9 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T>
 | `deletePolicy(id)` | DELETE | `/api/policies/{id}` |
 | `triggerPolicySleep(id, mode?: 'plan' \| 'apply')` | POST | `/api/policies/{id}/sleep` |
 | `triggerPolicyWake(id, mode?: 'plan' \| 'apply')` | POST | `/api/policies/{id}/wake` |
+| `exportPolicy(id)` | GET | `/api/policies/{id}/export` |
+| `previewPolicyImport(payload)` | POST | `/api/policies/import/preview` |
+| `applyPolicyImport(payload)` | POST | `/api/policies/import/apply` |
 
 **Policy Executions:**
 
@@ -449,6 +458,9 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T>
 | `createException(data)` | POST | `/api/exceptions` |
 | `updateException(id, data)` | PUT | `/api/exceptions/{id}` |
 | `deleteException(id)` | DELETE | `/api/exceptions/{id}` |
+| `exportException(id)` | GET | `/api/exceptions/{id}/export` |
+| `previewExceptionImport(payload)` | POST | `/api/exceptions/import/preview` |
+| `applyExceptionImport(payload)` | POST | `/api/exceptions/import/apply` |
 
 **Users:**
 
@@ -964,6 +976,8 @@ A multi-step destructive action flow:
 
 The guardrails editor uses collapsible category cards — each section (Protected Namespaces, Node Protection, Scaling Priority, Scheduler Behaviour) is a `CategoryCard` with an icon header, summary stat pills (hidden when expanded), and a chevron toggle. Form state is managed with `useReducer` and a typed `FormState` interface. Dirty tracking uses `buildSnapshot()` / `isDirty()` helpers that compare current state against the last saved snapshot, feeding into the `useUnsavedChanges` context to intercept navigation.
 
+The toolbar below the cards has three actions: **Save Guardrails** persists the current form via `PUT /api/guardrails`; **Export** opens an `ExportMenu` (Copy JSON / Download .json) backed by `GET /api/guardrails/export`; **Import** opens the shared `ImportDialog` with `kind="guardrails"`. The dialog accepts pasted text or a dropped `.json` file, runs the import through `/api/guardrails/import/preview`, renders a changed-fields table when fields differ from the live environment, and applies via `/api/guardrails/import/apply`. The same `ImportDialog` + `ExportMenu` pair is reused on the policies list page, policy detail hero, the scheduled-exceptions page, and the exceptions table inside policy detail — with the kind switched to `"policy"` or `"exception"` and a different rich preview card rendered for each.
+
 **`CategoryCard`** (`components/guardrails/CategoryCard.tsx`): A reusable collapsible card accepting `icon`, `title`, `subtitle`, `pills`, `expanded`, `onToggle`, `children`, and optional `cardSx`/`dividerSx` props. Renders a clickable header with icon box, title, subtitle, conditional pills, and chevron. Body content renders inside a `Collapse` below a `Divider`.
 
 **`ChipInput`** (`components/common/ChipInput.tsx`): A reusable tag input component:
@@ -973,7 +987,7 @@ The guardrails editor uses collapsible category cards — each section (Protecte
 - `onBlur` also commits the current input value
 - Values are stored as `string[]` locally and serialized to CSV for the API
 
-**`ProtectedChipInput`** (`components/guardrails/ProtectedChipInput.tsx`): A `ChipInput` variant for system namespaces that adds a confirmation dialog when removing a chip, warning that removing a system-protected namespace could affect critical infrastructure. Note: the main `GuardrailsForm` uses `ChipInput` directly with amber styling for the namespace section (not `ProtectedChipInput`) to avoid a duplicate heading.
+**`ProtectedChipInput`** (`components/guardrails/ProtectedChipInput.tsx`): A `ChipInput` variant for the Protected Namespaces list that adds a confirmation dialog when removing a chip, warning that removing a protected namespace could affect critical infrastructure. Note: the main `GuardrailsForm` uses `ChipInput` directly with amber styling for the namespace section (not `ProtectedChipInput`) to avoid a duplicate heading.
 
 Data is loaded from the API as CSV strings and split with `splitCommaList()`. On save, arrays are joined back with `joinCommaList()`.
 

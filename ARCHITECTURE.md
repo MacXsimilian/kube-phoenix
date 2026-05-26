@@ -282,11 +282,14 @@ erDiagram
         text skip_ns_node "CSV"
         text skip_node_labels "CSV"
         text skip_node_taints "CSV"
-        text scaling_priority_ns "CSV"
-        varchar eval_interval "30s"
-        boolean auto_wake "true"
-        boolean reconcile_awake "true"
+        text scaling_priority_namespaces "CSV"
+        varchar scheduler_eval_interval "30s"
+        boolean scheduler_auto_wake "true"
+        boolean scheduler_reconcile_while_awake "true"
+        boolean scheduler_enforce_sleep "true"
         int scaling_concurrency "10"
+        int wake_wave_size "0"
+        int wake_wave_pause_seconds "90"
         boolean protect_critical_pod_nodes "true"
     }
 
@@ -478,6 +481,9 @@ kube-phoenix/
 │   │   │   ├── overview.go          # Pre-aggregated dashboard overview endpoint
 │   │   │   ├── exceptions.go        # Scheduled exception CRUD
 │   │   │   ├── guardrails.go        # Guardrails get/update
+│   │   │   ├── export.go            # Sanitised JSON envelope export for guardrails, policies, exceptions
+│   │   │   ├── import.go            # Import preview + apply for all three resources (skip removed, overlap-checked)
+│   │   │   ├── import_validation.go # Envelope schema/kind checks and per-resource validators shared by preview and apply
 │   │   │   ├── users.go             # User CRUD (admin only)
 │   │   │   ├── audit.go             # AuditWriter, audit() enqueue, auditDeniedMiddleware, statusCapture response wrapper
 │   │   │   ├── cluster_info.go       # Cluster metadata (API server, K8s version, auth mode, name)
