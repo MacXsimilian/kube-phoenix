@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.5](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.4...v0.7.5) (2026-05-26)
+
+
+### Features
+
+* add config export/import for guardrails, policies, and exceptions ([#401](https://github.com/MacXsimilian/kube-phoenix/issues/401)) ([98112bd](https://github.com/MacXsimilian/kube-phoenix/commit/98112bd0dc3851dfc3c54c7f950ff81d51e63bcd))
+
 ## [0.7.4](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.3...v0.7.4) (2026-05-26)
 
 
