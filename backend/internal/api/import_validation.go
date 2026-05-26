@@ -93,6 +93,7 @@ func validatePolicyImportFields(b policyExportBody) string {
 		validatePolicyDescription(b.Description),
 		validatePolicyLabelSelector(b.LabelSelector),
 		validatePolicyTimeout(b.TimeoutMinutes),
+		validatePolicyMode(b.Mode),
 		validatePolicyTimezone(b.Timezone),
 		validateNamespaceFilter(b.NamespaceFilter),
 	} {

@@ -109,7 +109,7 @@ All `/api/*` and `/ws/*` endpoints require session-based authentication unless n
 | :----- | :--- | :---------- |
 | `GET` | `/api/exceptions` | List exceptions (filters: `policy_id`, `status`) |
 | `GET` | `/api/exceptions/{id}` | Get a single exception |
-| `POST` | `/api/exceptions` | Create an exception (`policyId` is required) |
+| `POST` | `/api/exceptions` | Create an exception (`policyId` is required on this endpoint; the import flow accepts freestanding exceptions via `policyName: null`) |
 | `PUT` | `/api/exceptions/{id}` | Update an exception (pending status only) |
 | `DELETE` | `/api/exceptions/{id}` | Cancel an exception (triggers revert action if active with `sleepOnEnd`) |
 | `GET` | `/api/exceptions/{id}/export` | Export an exception (references parent by `policyName`) |

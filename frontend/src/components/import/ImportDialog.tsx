@@ -164,8 +164,7 @@ export default function ImportDialog({ open, onClose, kind, onNotify }: ImportDi
       const result = await previewByKind(kind, payload)
       setPreview(result as PreviewResp)
       if (kind === 'policy') {
-        const policyPreview = result as PolicyPreviewResp
-        setResolution(policyPreview.status === 'conflict' ? 'overwrite' : 'overwrite')
+        setResolution('overwrite')
         setNewName('')
       }
     } catch (err) {

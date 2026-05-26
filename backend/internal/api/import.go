@@ -280,6 +280,11 @@ func (h *Handler) applyExceptionImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if msg, status := h.checkImportedExceptionOverlap(policyID, req.Exception); msg != "" {
+		jsonError(w, msg, status)
+		return
+	}
+
 	ex, err := newExceptionFromImport(req.Exception, policyID, r)
 	if err != nil {
 		jsonInternalError(w, err, "build imported exception failed")
@@ -356,7 +361,7 @@ func (h *Handler) buildPolicyPreview(body policyExportBody) (policyImportPreview
 		Status:           statusCreate,
 		Incoming:         body,
 		ForcedEnabledOff: body.Enabled,
-		ForcedModeToPlan: body.Mode == store.PolicyModeApply,
+		ForcedModeToPlan: body.Mode != "" && body.Mode != store.PolicyModePlan,
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return preview, ""
@@ -379,6 +384,9 @@ func (h *Handler) buildExceptionPreview(body exceptionExportBody) (exceptionImpo
 	if msg != "" {
 		return exceptionImportPreview{Incoming: body, ValidationError: msg}, status, msg
 	}
+	if msg, status := h.checkImportedExceptionOverlap(policyID, body); msg != "" {
+		return exceptionImportPreview{Incoming: body, ValidationError: msg}, status, msg
+	}
 	preview := exceptionImportPreview{
 		Status:           statusCreate,
 		Incoming:         body,
@@ -386,6 +394,24 @@ func (h *Handler) buildExceptionPreview(body exceptionExportBody) (exceptionImpo
 		ParentPolicyName: body.PolicyName,
 	}
 	return preview, http.StatusOK, ""
+}
+
+// checkImportedExceptionOverlap mirrors the create-path overlap guard from
+// exceptions.go: an exception cannot land on top of an existing opposite-type
+// window on the same policy. Freestanding exceptions (policyID == nil) are not
+// checked because the overlap query is scoped to a policy.
+func (h *Handler) checkImportedExceptionOverlap(policyID *uint, body exceptionExportBody) (string, int) {
+	if policyID == nil {
+		return "", http.StatusOK
+	}
+	overlap, err := h.store.HasOverlappingException(*policyID, body.ExceptionType, body.StartsAt, body.EndsAt, 0)
+	if err != nil {
+		return "overlap check failed", http.StatusInternalServerError
+	}
+	if overlap {
+		return "time window overlaps with an existing exception of the opposite type on this policy", http.StatusConflict
+	}
+	return "", http.StatusOK
 }
 
 // resolveExceptionParent looks up a policy by name or returns nil for a freestanding
