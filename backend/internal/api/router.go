@@ -211,6 +211,8 @@ func (h *Handler) registerClusterRoutes(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(authmw.RequirePermission(auth.PermGuardrailEdit))
 		r.Put("/guardrails", h.updateGuardrails)
+		r.Post("/guardrails/import/preview", h.previewGuardrailsImport)
+		r.Post("/guardrails/import/apply", h.applyGuardrailsImport)
 	})
 }
 
@@ -238,9 +240,13 @@ func (h *Handler) registerPolicyRoutes(r chi.Router) {
 		r.Post("/policies", h.createPolicy)
 		r.Put("/policies/{id}", h.updatePolicy)
 		r.Delete("/policies/{id}", h.deletePolicy)
+		r.Post("/policies/import/preview", h.previewPolicyImport)
+		r.Post("/policies/import/apply", h.applyPolicyImport)
 		r.Post("/exceptions", h.createException)
 		r.Put("/exceptions/{id}", h.updateException)
 		r.Delete("/exceptions/{id}", h.deleteException)
+		r.Post("/exceptions/import/preview", h.previewExceptionImport)
+		r.Post("/exceptions/import/apply", h.applyExceptionImport)
 	})
 
 	// Manual trigger (admin + operator)
