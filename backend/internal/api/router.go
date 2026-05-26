@@ -192,6 +192,7 @@ func (h *Handler) registerAuthRoutes(r chi.Router) {
 // wrapped in a RequirePermission group — never add a mutation at the top level.
 func (h *Handler) registerClusterRoutes(r chi.Router) {
 	r.Get("/guardrails", h.getGuardrails)
+	r.Get("/guardrails/export", h.exportGuardrails)
 	r.Get("/overview", h.getOverview)
 	r.Get("/cluster/stream", h.streamCluster)
 	r.Get("/cluster/workloads", h.getWorkloads)
@@ -221,6 +222,7 @@ func (h *Handler) registerPolicyRoutes(r chi.Router) {
 	// Read-only (all authenticated users)
 	r.Get("/policies", h.listPolicies)
 	r.Get("/policies/{id}", h.getPolicy)
+	r.Get("/policies/{id}/export", h.exportPolicy)
 	r.Get("/policies/{id}/snapshots", h.getPolicySnapshots)
 	r.Get("/policy-executions", h.listPolicyExecutions)
 	r.Get("/policy-executions/{id}", h.getPolicyExecution)
@@ -228,6 +230,7 @@ func (h *Handler) registerPolicyRoutes(r chi.Router) {
 	r.Get("/policy-executions/{id}/snapshots", h.getPolicyExecutionSnapshots)
 	r.Get("/exceptions", h.listExceptions)
 	r.Get("/exceptions/{id}", h.getException)
+	r.Get("/exceptions/{id}/export", h.exportException)
 
 	// Mutations (admin + operator)
 	r.Group(func(r chi.Router) {
