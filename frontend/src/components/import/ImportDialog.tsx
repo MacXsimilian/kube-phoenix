@@ -33,7 +33,7 @@ import {
   type ImportKind,
 } from '@/lib/api'
 
-type Resolution = 'skip' | 'overwrite' | 'rename'
+type Resolution = 'overwrite' | 'rename'
 
 interface SleepWindowLite {
   name?: string
@@ -331,7 +331,7 @@ function PreviewStep({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
       {kind === 'guardrails' && (
-        <GuardrailsPreview preview={preview as GuardrailsPreviewResp} resolution={resolution} onResolutionChange={onResolutionChange} />
+        <GuardrailsPreview preview={preview as GuardrailsPreviewResp} />
       )}
       {kind === 'policy' && (
         <PolicyPreview
@@ -350,13 +350,7 @@ function PreviewStep({
   )
 }
 
-function GuardrailsPreview({
-  preview, resolution, onResolutionChange,
-}: {
-  preview: GuardrailsPreviewResp
-  resolution: Resolution
-  onResolutionChange: (r: Resolution) => void
-}) {
+function GuardrailsPreview({ preview }: { preview: GuardrailsPreviewResp }) {
   const changes = diffGuardrails(preview.before, preview.after)
   return (
     <>
@@ -387,13 +381,6 @@ function GuardrailsPreview({
           </Table>
         </Box>
       )}
-      <RadioGroup
-        value={resolution}
-        onChange={(_, v) => onResolutionChange(v as Resolution)}
-      >
-        <FormControlLabel value="overwrite" control={<Radio />} label="Overwrite — replace current guardrails" />
-        <FormControlLabel value="skip" control={<Radio />} label="Skip — do nothing, just audit the attempt" />
-      </RadioGroup>
     </>
   )
 }
@@ -443,7 +430,6 @@ function PolicyPreview({
           <RadioGroup value={resolution} onChange={(_, v) => onResolutionChange(v as Resolution)}>
             <FormControlLabel value="overwrite" control={<Radio />} label="Overwrite — replace the existing policy in place" />
             <FormControlLabel value="rename" control={<Radio />} label="Rename — import as a new policy with a different name" />
-            <FormControlLabel value="skip" control={<Radio />} label="Skip — do nothing, just audit the attempt" />
           </RadioGroup>
           {resolution === 'rename' && (
             <TextField

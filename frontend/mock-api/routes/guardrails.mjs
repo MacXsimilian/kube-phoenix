@@ -59,11 +59,8 @@ export function register(router) {
     const msg = validateEnvelope(req.body)
     if (msg) return res.json(400, { error: msg })
     const resolution = req.body.conflictResolution ?? 'overwrite'
-    if (resolution !== 'overwrite' && resolution !== 'skip') {
-      return res.json(400, { error: "conflictResolution must be 'overwrite' or 'skip' for guardrails" })
-    }
-    if (resolution === 'skip') {
-      return res.json(200, { status: 'skipped' })
+    if (resolution !== 'overwrite') {
+      return res.json(400, { error: "conflictResolution must be 'overwrite' for guardrails" })
     }
     Object.assign(db.guardrails, req.body.guardrails, { updatedAt: new Date().toISOString() })
     res.json(200, { status: 'overwritten', guardrails: db.guardrails })

@@ -64,8 +64,8 @@ Conflicts are matched **by name**.
 
 | Resource | Resolutions |
 | :-- | :-- |
-| Guardrails (singleton) | Skip · Overwrite |
-| Policy | Skip · Overwrite · Rename (new name) |
+| Guardrails (singleton) | Overwrite (only option) |
+| Policy | Overwrite · Rename (new name) |
 | Exception | Always create (no name to match on) |
 
 If an exception import names a parent policy that does not exist in the

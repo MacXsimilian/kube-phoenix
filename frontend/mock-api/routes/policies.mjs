@@ -152,11 +152,8 @@ export function register(router) {
     if (msg) return res.json(400, { error: msg })
     const incoming = req.body.policy
     const existing = db.policies.find((p) => p.name === incoming.name)
-    const resolution = req.body.conflictResolution ?? (existing ? 'overwrite' : 'overwrite')
+    const resolution = req.body.conflictResolution ?? 'overwrite'
 
-    if (existing && resolution === 'skip') {
-      return res.json(200, { status: 'skipped', existingId: existing.id })
-    }
     if (existing && resolution === 'overwrite') {
       Object.assign(existing, policyImportFields(incoming), { updatedAt: new Date().toISOString() })
       return res.json(200, { status: 'overwritten', policy: existing })

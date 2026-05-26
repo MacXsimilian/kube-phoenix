@@ -1831,7 +1831,7 @@ paths:
     post:
       operationId: applyGuardrailsImport
       summary: Apply a guardrails import
-      description: Overwrites guardrails when conflictResolution is `overwrite` (default). When `skip`, no change is applied but an audit entry is written.
+      description: Overwrites guardrails with the imported envelope. `conflictResolution` is optional; the only accepted value is `overwrite` (default).
       tags: [Guardrails]
       requestBody:
         required: true
@@ -1844,7 +1844,7 @@ paths:
                   properties:
                     conflictResolution:
                       type: string
-                      enum: [skip, overwrite]
+                      enum: [overwrite]
       responses:
         "200":
           description: Applied
@@ -2559,7 +2559,7 @@ paths:
     post:
       operationId: applyPolicyImport
       summary: Apply a policy import
-      description: Imports the policy. Forces enabled=false and mode="plan". On name collision the operator chooses skip, overwrite, or rename (newName required).
+      description: Imports the policy. Forces enabled=false and mode="plan". On name collision the operator chooses overwrite or rename (newName required).
       tags: [Policies]
       requestBody:
         required: true
@@ -2572,13 +2572,13 @@ paths:
                   properties:
                     conflictResolution:
                       type: string
-                      enum: [skip, overwrite, rename]
+                      enum: [overwrite, rename]
                     newName:
                       type: string
                       description: Required when conflictResolution is "rename".
       responses:
         "200":
-          description: Applied (skip or overwrite)
+          description: Applied (overwrite)
         "201":
           description: Created (create or rename)
         "400":

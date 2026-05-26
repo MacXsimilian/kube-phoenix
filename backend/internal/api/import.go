@@ -17,7 +17,6 @@ import (
 
 // Conflict resolutions accepted on the apply endpoint.
 const (
-	resolveSkip      = "skip"
 	resolveOverwrite = "overwrite"
 	resolveRename    = "rename"
 )
@@ -26,7 +25,6 @@ const (
 const (
 	statusCreate    = "create"
 	statusConflict  = "conflict"
-	statusSkipped   = "skipped"
 	statusOverwrote = "overwritten"
 	statusRenamed   = "renamed"
 )
@@ -75,20 +73,14 @@ func (h *Handler) applyGuardrailsImport(w http.ResponseWriter, r *http.Request) 
 	if resolution == "" {
 		resolution = resolveOverwrite
 	}
-	if resolution != resolveOverwrite && resolution != resolveSkip {
-		jsonError(w, "conflictResolution must be 'overwrite' or 'skip' for guardrails", http.StatusBadRequest)
+	if resolution != resolveOverwrite {
+		jsonError(w, "conflictResolution must be 'overwrite' for guardrails", http.StatusBadRequest)
 		return
 	}
 
 	old, err := h.store.GetGuardrails()
 	if err != nil {
 		jsonInternalError(w, err, "get existing guardrails failed")
-		return
-	}
-
-	if resolution == resolveSkip {
-		h.audit(r, "guardrail.import", "guardrail", nil, old, map[string]string{"resolution": resolveSkip})
-		jsonOK(w, map[string]string{"status": statusSkipped})
 		return
 	}
 
@@ -176,15 +168,12 @@ func (h *Handler) applyPolicyCreate(w http.ResponseWriter, r *http.Request, body
 
 func (h *Handler) applyPolicyConflict(w http.ResponseWriter, r *http.Request, req policyImportRequest, existing *store.Policy) {
 	switch req.Resolution {
-	case resolveSkip:
-		h.audit(r, "policy.import", "policy", &existing.ID, existing, map[string]string{"resolution": resolveSkip})
-		jsonOK(w, map[string]any{"status": statusSkipped, "existingId": existing.ID})
 	case resolveOverwrite:
 		h.overwritePolicy(w, r, req.Policy, existing)
 	case resolveRename:
 		h.renamePolicyImport(w, r, req)
 	default:
-		jsonError(w, "conflictResolution must be 'skip', 'overwrite', or 'rename' for policy", http.StatusBadRequest)
+		jsonError(w, "conflictResolution must be 'overwrite' or 'rename' for policy", http.StatusBadRequest)
 	}
 }
 
