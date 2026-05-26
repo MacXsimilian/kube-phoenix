@@ -4,6 +4,11 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "global": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Reserved for Helm parent-chart global values. Helm injects this key automatically when kube-phoenix is used as a subchart; it is not consumed by this chart."
+    },
     "nameOverride": {
       "type": "string",
       "description": "Override the chart name."
