@@ -94,7 +94,7 @@ func TestExceptionExport_StripsLifecycleFields(t *testing.T) {
 // drops every persistence/derived field; only configurable fields survive.
 func TestPolicyModelToBody_OmitsDerivedFields(t *testing.T) {
 	now := time.Now()
-	p := &store.Policy{
+	p := &store.Policy{ //nolint:gosec // G101 false positive — test struct literal of policy fields, no credentials
 		ID:               42,
 		Name:             "n",
 		Mode:             store.PolicyModePlan,
