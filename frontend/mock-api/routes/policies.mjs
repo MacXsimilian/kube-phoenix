@@ -1,5 +1,34 @@
 import { db, nextId } from '../data.mjs'
 
+const EXPORT_SCHEMA_VERSION = 1
+const EXPORT_KIND = 'policy'
+
+const POLICY_EXPORT_FIELDS = [
+  'name', 'description', 'namespaceFilter', 'labelSelector',
+  'timezone', 'mode', 'enabled', 'timeoutMinutes', 'sleepWindows',
+]
+
+function policyExportBody(p) {
+  const body = {}
+  for (const key of POLICY_EXPORT_FIELDS) body[key] = p[key]
+  return body
+}
+
+function validatePolicyEnvelope(payload) {
+  if (!payload || typeof payload !== 'object') return 'invalid body'
+  if (payload.schemaVersion !== EXPORT_SCHEMA_VERSION) {
+    return `schemaVersion ${payload.schemaVersion} is not supported; expected ${EXPORT_SCHEMA_VERSION}`
+  }
+  if (payload.kind !== EXPORT_KIND) {
+    return `kind "${payload.kind}" does not match endpoint (expected "${EXPORT_KIND}")`
+  }
+  if (!payload.policy || typeof payload.policy !== 'object') return 'policy payload is required'
+  const p = payload.policy
+  if (!p.name) return 'name is required'
+  if (!Array.isArray(p.sleepWindows) || p.sleepWindows.length === 0) return 'sleepWindows is required'
+  return ''
+}
+
 export function register(router) {
   router.add('GET', '/api/policies', (_req, res) => {
     res.json(200, db.policies)
@@ -87,6 +116,94 @@ export function register(router) {
     const snaps = db.snapshots.filter((s) => s.policyId === Number(req.params.id))
     res.json(200, snaps)
   })
+
+  // ── Export / Import ──────────────────────────────────────────────────────
+
+  router.add('GET', '/api/policies/:id/export', (req, res) => {
+    const p = db.policies.find((p) => p.id === Number(req.params.id))
+    if (!p) return res.json(404, { error: 'Policy not found' })
+    res.json(200, {
+      schemaVersion: EXPORT_SCHEMA_VERSION,
+      kind: EXPORT_KIND,
+      policy: policyExportBody(p),
+    })
+  })
+
+  router.add('POST', '/api/policies/import/preview', (req, res) => {
+    const msg = validatePolicyEnvelope(req.body)
+    if (msg) return res.json(400, { error: msg })
+    const incoming = req.body.policy
+    const existing = db.policies.find((p) => p.name === incoming.name)
+    const preview = {
+      status: existing ? 'conflict' : 'create',
+      incoming,
+      forcedEnabledOff: !!incoming.enabled,
+      forcedModeToPlan: incoming.mode === 'apply',
+    }
+    if (existing) {
+      preview.existingPolicy = policyExportBody(existing)
+      preview.conflictByName = incoming.name
+    }
+    res.json(200, preview)
+  })
+
+  router.add('POST', '/api/policies/import/apply', (req, res) => {
+    const msg = validatePolicyEnvelope(req.body)
+    if (msg) return res.json(400, { error: msg })
+    const incoming = req.body.policy
+    const existing = db.policies.find((p) => p.name === incoming.name)
+    const resolution = req.body.conflictResolution ?? (existing ? 'overwrite' : 'overwrite')
+
+    if (existing && resolution === 'skip') {
+      return res.json(200, { status: 'skipped', existingId: existing.id })
+    }
+    if (existing && resolution === 'overwrite') {
+      Object.assign(existing, policyImportFields(incoming), { updatedAt: new Date().toISOString() })
+      return res.json(200, { status: 'overwritten', policy: existing })
+    }
+    if (existing && resolution === 'rename') {
+      if (!req.body.newName) return res.json(400, { error: "newName is required when conflictResolution is 'rename'" })
+      if (db.policies.some((p) => p.name === req.body.newName)) {
+        return res.json(409, { error: 'newName already exists; pick a different name' })
+      }
+      const created = newPolicyFromImport({ ...incoming, name: req.body.newName })
+      db.policies.push(created)
+      return res.json(201, { status: 'renamed', policy: created })
+    }
+    const created = newPolicyFromImport(incoming)
+    db.policies.push(created)
+    res.json(201, { status: 'create', policy: created })
+  })
+}
+
+function policyImportFields(incoming) {
+  return {
+    description: incoming.description ?? '',
+    namespaceFilter: incoming.namespaceFilter ?? '',
+    labelSelector: incoming.labelSelector ?? '',
+    timezone: incoming.timezone || 'UTC',
+    timeoutMinutes: incoming.timeoutMinutes ?? 0,
+    sleepWindows: incoming.sleepWindows ?? [],
+    // Locked design: imported policies are forced into plan mode and disabled.
+    mode: 'plan',
+    enabled: false,
+  }
+}
+
+function newPolicyFromImport(incoming) {
+  const now = new Date().toISOString()
+  return {
+    id: nextId('policy'),
+    name: incoming.name,
+    ...policyImportFields(incoming),
+    currentState: 'unknown',
+    stateSince: now,
+    lastSleepAt: null,
+    lastWakeAt: null,
+    createdAt: now,
+    updatedAt: now,
+    nextTransitionAt: null,
+  }
 }
 
 function createExecution(policy, direction, mode, trigger) {
