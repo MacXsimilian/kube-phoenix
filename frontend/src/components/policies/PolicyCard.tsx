@@ -17,8 +17,10 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlineOutlined'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
 import { useIsDark } from '@/lib/useIsDark'
-import { deletePolicy } from '@/lib/api'
+import { deletePolicy, exportPolicy } from '@/lib/api'
+import ExportMenu from '@/components/import/ExportMenu'
 import { formatError } from '@/lib/formatters'
 import type { Policy, SnackMessage } from '@/lib/types'
 import { windowsToText, hasSleepWindows } from '@/lib/windowUtils'
@@ -97,6 +99,7 @@ export default function PolicyCard({
   const isDark = useIsDark()
   const [deleteDialog, setDeleteDialog] = useState(false)
   const [triggerDialog, setTriggerDialog] = useState<TriggerDirection | null>(null)
+  const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null)
   const STATE_COLORS = stateColors(isDark)
   const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
   const led = LED_COLORS[policy.currentState] ?? LED_COLORS.unknown
@@ -301,6 +304,16 @@ export default function PolicyCard({
                 </IconButton>
               </span>
             </Tooltip>
+            <Tooltip title="Export" placement="left">
+              <IconButton
+                size="small"
+                onClick={(e) => setExportAnchor(e.currentTarget)}
+                aria-label="Export policy"
+                sx={actionBtnSx}
+              >
+                <FileDownloadOutlinedIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Tooltip>
             <Tooltip title={canEdit ? 'Edit' : 'No permission'} placement="left">
               <span>
                 <IconButton size="small" onClick={onEdit} disabled={!canEdit} aria-label="Edit policy" sx={actionBtnSx}>
@@ -341,6 +354,14 @@ export default function PolicyCard({
           else wakeMut.mutate(mode)
         }}
         onClose={() => setTriggerDialog(null)}
+      />
+      <ExportMenu
+        anchorEl={exportAnchor}
+        open={Boolean(exportAnchor)}
+        onClose={() => setExportAnchor(null)}
+        fetchPayload={() => exportPolicy(policy.id)}
+        downloadName={`kube-phoenix-policy-${policy.name}`}
+        onNotify={onNotify}
       />
     </>
   );

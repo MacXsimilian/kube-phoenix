@@ -29,7 +29,9 @@ import { AMBER_40, AMBER_03 } from '@/components/guardrails/ProtectedChipInput'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlineOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlineOutlined'
 import SaveIcon from '@mui/icons-material/Save'
-import { getGuardrails, updateGuardrails } from '@/lib/api'
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
+import { getGuardrails, updateGuardrails, exportGuardrails } from '@/lib/api'
+import ExportMenu from '@/components/import/ExportMenu'
 import { useAuth } from '@/lib/auth'
 import { canEditGuardrails } from '@/lib/rbac'
 import { useSnackbar } from '@/lib/useSnackbar'
@@ -162,6 +164,7 @@ export default function GuardrailsForm() {
   const { setDirty } = useUnsavedChanges()
   const [saveError, setSaveError] = useState<string | null>(null)
   const [nsToRemove, setNsToRemove] = useState<string | null>(null)
+  const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null)
   const initialised = useRef(false)
   const savedSnapshot = useRef<Snapshot>(buildSnapshot(INITIAL_FORM))
 
@@ -497,12 +500,27 @@ export default function GuardrailsForm() {
             </Button>
           </span>
         </Tooltip>
+        <Button
+          variant="outlined"
+          startIcon={<FileDownloadOutlinedIcon fontSize="small" />}
+          onClick={(e) => setExportAnchor(e.currentTarget)}
+        >
+          Export
+        </Button>
         {saveError && (
           <Alert severity="error" sx={{ py: 0.5 }}>
             {saveError}
           </Alert>
         )}
       </Box>
+      <ExportMenu
+        anchorEl={exportAnchor}
+        open={Boolean(exportAnchor)}
+        onClose={() => setExportAnchor(null)}
+        fetchPayload={exportGuardrails}
+        downloadName="kube-phoenix-guardrails"
+        onNotify={notify}
+      />
       {SnackbarAlert}
       <Dialog open={!!nsToRemove} onClose={() => setNsToRemove(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Remove protected namespace?</DialogTitle>
