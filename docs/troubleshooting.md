@@ -13,7 +13,7 @@
 3. Confirm the policy is **enabled**.
 4. Check the **Namespace Filter**. If set, only matching namespaces are targeted.
 5. Check the **Label Selector**. If set, only matching workloads are targeted.
-6. Verify the target namespaces are not in **Guardrails > System-Protected Namespaces**.
+6. Verify the target namespaces are not in **Guardrails > Protected Namespaces**.
 
 ## Policy is stuck in `transitioning` state
 

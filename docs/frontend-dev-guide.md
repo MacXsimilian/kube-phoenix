@@ -962,7 +962,7 @@ A multi-step destructive action flow:
 
 `src/components/guardrails/GuardrailsForm.tsx`
 
-The guardrails editor uses collapsible category cards — each section (System-Protected Namespaces, Node Protection, Scaling Priority, Scheduler Behaviour) is a `CategoryCard` with an icon header, summary stat pills (hidden when expanded), and a chevron toggle. Form state is managed with `useReducer` and a typed `FormState` interface. Dirty tracking uses `buildSnapshot()` / `isDirty()` helpers that compare current state against the last saved snapshot, feeding into the `useUnsavedChanges` context to intercept navigation.
+The guardrails editor uses collapsible category cards — each section (Protected Namespaces, Node Protection, Scaling Priority, Scheduler Behaviour) is a `CategoryCard` with an icon header, summary stat pills (hidden when expanded), and a chevron toggle. Form state is managed with `useReducer` and a typed `FormState` interface. Dirty tracking uses `buildSnapshot()` / `isDirty()` helpers that compare current state against the last saved snapshot, feeding into the `useUnsavedChanges` context to intercept navigation.
 
 **`CategoryCard`** (`components/guardrails/CategoryCard.tsx`): A reusable collapsible card accepting `icon`, `title`, `subtitle`, `pills`, `expanded`, `onToggle`, `children`, and optional `cardSx`/`dividerSx` props. Renders a clickable header with icon box, title, subtitle, conditional pills, and chevron. Body content renders inside a `Collapse` below a `Divider`.
 

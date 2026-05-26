@@ -445,7 +445,7 @@ All models are defined in `backend/internal/store/models.go`. GORM's `AutoMigrat
 ```go
 type Guardrails struct {
     ID               uint      // always 1
-    SystemNamespaces string    // CSV: "kube-system,kube-public,..." -- protected by default
+    ProtectedNamespaces string    // CSV: "kube-system,kube-public,..." -- protected by default
     SkipNsNode       string    // CSV: namespaces whose pods protect the node from draining
     SkipNodeLabels   string    // CSV key=value pairs: nodes with these labels are protected
     SkipNodeTaints               string    // CSV key=value:effect: nodes with these taints are protected

@@ -424,7 +424,7 @@ func (h *Handler) applySchedulerSettings(g *store.Guardrails) {
 // map expected by store.UpdateGuardrails.
 func guardrailsBodyToUpdates(b guardrailsExportBody) map[string]interface{} {
 	return map[string]interface{}{
-		"system_namespaces":               b.SystemNamespaces,
+		"protected_namespaces":            b.ProtectedNamespaces,
 		"skip_ns_node":                    b.SkipNsNode,
 		"skip_node_labels":                b.SkipNodeLabels,
 		"skip_node_taints":                b.SkipNodeTaints,
@@ -442,7 +442,7 @@ func guardrailsBodyToUpdates(b guardrailsExportBody) map[string]interface{} {
 
 func guardrailsModelToBody(g *store.Guardrails) guardrailsExportBody {
 	return guardrailsExportBody{
-		SystemNamespaces:             g.SystemNamespaces,
+		ProtectedNamespaces:          g.ProtectedNamespaces,
 		SkipNsNode:                   g.SkipNsNode,
 		SkipNodeLabels:               g.SkipNodeLabels,
 		SkipNodeTaints:               g.SkipNodeTaints,

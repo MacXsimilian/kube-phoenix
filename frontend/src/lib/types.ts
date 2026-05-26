@@ -1,6 +1,6 @@
 export interface Guardrails {
   id: number
-  systemNamespaces: string
+  protectedNamespaces: string
   skipNsNode: string
   skipNodeLabels: string
   skipNodeTaints: string

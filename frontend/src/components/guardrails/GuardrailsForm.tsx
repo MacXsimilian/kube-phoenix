@@ -69,7 +69,7 @@ function validateEvalInterval(value: string): string | undefined {
 // ── Form state ───────────────────────────────────────────────────────────────
 
 interface FormState {
-  systemNs: string[]
+  protectedNs: string[]
   skipNsNode: string[]
   skipLabels: string[]
   skipTaints: string[]
@@ -85,7 +85,7 @@ interface FormState {
 }
 
 const INITIAL_FORM: FormState = {
-  systemNs: [],
+  protectedNs: [],
   skipNsNode: [],
   skipLabels: [],
   skipTaints: [],
@@ -112,7 +112,7 @@ function formReducer(state: FormState, action: FormAction): FormState {
 }
 
 interface Snapshot {
-  systemNs: string
+  protectedNs: string
   skipNsNode: string
   skipLabels: string
   skipTaints: string
@@ -129,7 +129,7 @@ interface Snapshot {
 
 function buildSnapshot(form: FormState): Snapshot {
   return {
-    systemNs: joinCommaList(form.systemNs),
+    protectedNs: joinCommaList(form.protectedNs),
     skipNsNode: joinCommaList(form.skipNsNode),
     skipLabels: joinCommaList(form.skipLabels),
     skipTaints: joinCommaList(form.skipTaints),
@@ -184,7 +184,7 @@ export default function GuardrailsForm() {
     if (guardrails && !initialised.current) {
       initialised.current = true
       const loaded: FormState = {
-        systemNs: splitCommaList(guardrails.systemNamespaces).sort(),
+        protectedNs: splitCommaList(guardrails.protectedNamespaces).sort(),
         skipNsNode: splitCommaList(guardrails.skipNsNode),
         skipLabels: splitCommaList(guardrails.skipNodeLabels),
         skipTaints: splitCommaList(guardrails.skipNodeTaints),
@@ -217,7 +217,7 @@ export default function GuardrailsForm() {
       if (!evalIntervalValid) return Promise.reject(new Error(evalIntervalError))
       const snapshot = buildSnapshot(form)
       return updateGuardrails({
-        systemNamespaces: snapshot.systemNs,
+        protectedNamespaces: snapshot.protectedNs,
         skipNsNode: snapshot.skipNsNode,
         skipNodeLabels: snapshot.skipLabels,
         skipNodeTaints: snapshot.skipTaints,
@@ -269,15 +269,15 @@ export default function GuardrailsForm() {
       )}
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
 
-        {/* ── 1. System-Protected Namespaces ──────────────────────── */}
+        {/* ── 1. Protected Namespaces ──────────────────────── */}
         <CategoryCard
           icon={<ShieldOutlinedIcon sx={{ color: 'warning.main' }} />}
-          title="System-Protected Namespaces"
+          title="Protected Namespaces"
           subtitle="Namespaces that are never scaled down"
           expanded={expanded === SECTION.NAMESPACES}
           onToggle={() => toggle(SECTION.NAMESPACES)}
           pills={
-            <Chip label={`${form.systemNs.length} protected`} size="small" sx={{ bgcolor: 'rgba(245,158,11,.12)', color: 'warning.main', fontWeight: 600, fontSize: 11 }} />
+            <Chip label={`${form.protectedNs.length} protected`} size="small" sx={{ bgcolor: 'rgba(245,158,11,.12)', color: 'warning.main', fontWeight: 600, fontSize: 11 }} />
           }
           cardSx={{ borderColor: AMBER_40, bgcolor: AMBER_03 }}
           dividerSx={{ borderColor: AMBER_40 }}
@@ -292,9 +292,9 @@ export default function GuardrailsForm() {
             Workloads in these namespaces are never scaled down or drained. Only remove an entry if you know what you are doing.
           </Typography>
           <ChipInput
-            id="chip-input-system-ns"
-            values={form.systemNs}
-            onChange={(v) => setField('systemNs', [...v].sort())}
+            id="chip-input-protected-ns"
+            values={form.protectedNs}
+            onChange={(v) => setField('protectedNs', [...v].sort())}
             onDelete={(v) => setNsToRemove(v)}
             readOnly={!hasEdit}
             containerSx={{
@@ -605,7 +605,7 @@ export default function GuardrailsForm() {
             color="error"
             startIcon={<DeleteOutlineIcon />}
             onClick={() => {
-              setField('systemNs', form.systemNs.filter((ns) => ns !== nsToRemove).sort())
+              setField('protectedNs', form.protectedNs.filter((ns) => ns !== nsToRemove).sort())
               setNsToRemove(null)
             }}
           >

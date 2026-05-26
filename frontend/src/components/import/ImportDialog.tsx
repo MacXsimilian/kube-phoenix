@@ -65,7 +65,7 @@ interface PolicyPreviewResp {
 }
 
 interface GuardrailsBody {
-  systemNamespaces: string
+  protectedNamespaces: string
   skipNsNode: string
   skipNodeLabels: string
   skipNodeTaints: string

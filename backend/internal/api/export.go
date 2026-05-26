@@ -24,7 +24,7 @@ const (
 // guardrailsExportBody is the sanitised guardrails payload — every persisted
 // field except id/updatedAt.
 type guardrailsExportBody struct {
-	SystemNamespaces             string `json:"systemNamespaces"`
+	ProtectedNamespaces          string `json:"protectedNamespaces"`
 	SkipNsNode                   string `json:"skipNsNode"`
 	SkipNodeLabels               string `json:"skipNodeLabels"`
 	SkipNodeTaints               string `json:"skipNodeTaints"`
@@ -96,7 +96,7 @@ func (h *Handler) exportGuardrails(w http.ResponseWriter, r *http.Request) {
 		SchemaVersion: exportSchemaVersion,
 		Kind:          exportKindGuardrails,
 		Guardrails: guardrailsExportBody{
-			SystemNamespaces:             g.SystemNamespaces,
+			ProtectedNamespaces:          g.ProtectedNamespaces,
 			SkipNsNode:                   g.SkipNsNode,
 			SkipNodeLabels:               g.SkipNodeLabels,
 			SkipNodeTaints:               g.SkipNodeTaints,

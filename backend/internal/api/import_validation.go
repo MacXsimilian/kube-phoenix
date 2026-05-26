@@ -61,7 +61,7 @@ func validateEnvelope(version int, kind, expectedKind string) string {
 
 func validateGuardrailsImport(b guardrailsExportBody) string {
 	body := map[string]interface{}{
-		"systemNamespaces":          b.SystemNamespaces,
+		"protectedNamespaces":       b.ProtectedNamespaces,
 		"skipNsNode":                b.SkipNsNode,
 		"skipNodeLabels":            b.SkipNodeLabels,
 		"skipNodeTaints":            b.SkipNodeTaints,

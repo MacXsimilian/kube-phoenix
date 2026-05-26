@@ -193,7 +193,7 @@ func TestValidateExceptionImport_RejectsReversedWindow(t *testing.T) {
 func TestGuardrailsBodyToUpdates_ContainsAllFields(t *testing.T) {
 	updates := guardrailsBodyToUpdates(guardrailsExportBody{})
 	expected := []string{
-		"system_namespaces", "skip_ns_node", "skip_node_labels", "skip_node_taints",
+		"protected_namespaces", "skip_ns_node", "skip_node_labels", "skip_node_taints",
 		"scaling_priority_namespaces", "scheduler_eval_interval", "scheduler_auto_wake",
 		"scheduler_reconcile_while_awake", "scheduler_enforce_sleep", "scaling_concurrency",
 		"wake_wave_size", "wake_wave_pause_seconds", "protect_critical_pod_nodes",
@@ -210,7 +210,7 @@ func TestGuardrailsBodyToUpdates_ContainsAllFields(t *testing.T) {
 // fields.
 func TestGuardrailsModelToBody_RoundTrip(t *testing.T) {
 	g := &store.Guardrails{
-		SystemNamespaces:             "kube-system",
+		ProtectedNamespaces:          "kube-system",
 		SchedulerEvalInterval:        "45s",
 		SchedulerAutoWake:            true,
 		SchedulerReconcileWhileAwake: false,
@@ -218,8 +218,8 @@ func TestGuardrailsModelToBody_RoundTrip(t *testing.T) {
 		ScalingConcurrency:           5,
 	}
 	body := guardrailsModelToBody(g)
-	if body.SystemNamespaces != "kube-system" {
-		t.Errorf("SystemNamespaces = %q, want %q", body.SystemNamespaces, "kube-system")
+	if body.ProtectedNamespaces != "kube-system" {
+		t.Errorf("ProtectedNamespaces = %q, want %q", body.ProtectedNamespaces, "kube-system")
 	}
 	if body.SchedulerEvalInterval != "45s" {
 		t.Errorf("SchedulerEvalInterval = %q, want %q", body.SchedulerEvalInterval, "45s")

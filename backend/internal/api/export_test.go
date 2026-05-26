@@ -16,7 +16,7 @@ import (
 // omits id and updatedAt — the fields the design decision says must not
 // travel cross-environment.
 func TestGuardrailsExport_StripsPersistenceMetadata(t *testing.T) {
-	body := guardrailsExportBody{SystemNamespaces: "kube-system"}
+	body := guardrailsExportBody{ProtectedNamespaces: "kube-system"}
 	export := guardrailsExport{
 		SchemaVersion: exportSchemaVersion,
 		Kind:          exportKindGuardrails,

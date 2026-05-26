@@ -278,7 +278,7 @@ erDiagram
 
     guardrails {
         bigint id PK "singleton"
-        text system_namespaces "CSV"
+        text protected_namespaces "CSV"
         text skip_ns_node "CSV"
         text skip_node_labels "CSV"
         text skip_node_taints "CSV"

@@ -154,7 +154,7 @@ function createSeedData() {
     // ── Guardrails ───────────────────────────────────────────────────────────
     guardrails: {
       id: 1,
-      systemNamespaces: 'kube-system,kube-node-lease',
+      protectedNamespaces: 'kube-system,kube-node-lease',
       skipNsNode: '',
       skipNodeLabels: '',
       skipNodeTaints: '',

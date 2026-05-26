@@ -98,6 +98,18 @@ func runMigrations(db *gorm.DB, autoMigrate bool) error {
 		slog.Warn("migration: drop policy_overrides table failed (non-fatal)", "err", err)
 	}
 
+	// Rename the misleading system_namespaces column. The list never represented
+	// "Kubernetes system namespaces"; it has always been the operator's list of
+	// namespaces this app must never scale or drain.
+	if err := db.Exec(`DO $$ BEGIN
+		IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='guardrails' AND column_name='system_namespaces')
+		AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='guardrails' AND column_name='protected_namespaces') THEN
+			ALTER TABLE guardrails RENAME COLUMN system_namespaces TO protected_namespaces;
+		END IF;
+	END $$`).Error; err != nil {
+		slog.Warn("migration: rename system_namespaces column failed (non-fatal)", "err", err)
+	}
+
 	if !autoMigrate {
 		slog.Info("store: auto-migration skipped (AUTO_MIGRATE=false)")
 	} else {

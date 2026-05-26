@@ -89,7 +89,7 @@ components:
         id:
           type: integer
           readOnly: true
-        systemNamespaces:
+        protectedNamespaces:
           type: string
           example: "kube-system,kube-public,kube-node-lease,kube-phoenix"
           description: Protected system namespaces — always skipped. Comma-separated.
@@ -140,7 +140,7 @@ components:
       description: Partial update for guardrails. Only provided fields are written.
       type: object
       properties:
-        systemNamespaces:
+        protectedNamespaces:
           type: string
         skipNsNode:
           type: string
@@ -1262,7 +1262,7 @@ components:
       type: object
       description: Sanitised guardrails fields. All persistence metadata is stripped.
       properties:
-        systemNamespaces: { type: string }
+        protectedNamespaces: { type: string }
         skipNsNode: { type: string }
         skipNodeLabels: { type: string }
         skipNodeTaints: { type: string }
