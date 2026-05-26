@@ -505,7 +505,7 @@ export default function GuardrailsForm() {
         </Tooltip>
         <Button
           variant="outlined"
-          startIcon={<FileDownloadOutlinedIcon fontSize="small" />}
+          startIcon={<FileUploadOutlinedIcon fontSize="small" />}
           onClick={(e) => setExportAnchor(e.currentTarget)}
         >
           Export
@@ -514,7 +514,7 @@ export default function GuardrailsForm() {
           <span>
             <Button
               variant="outlined"
-              startIcon={<FileUploadOutlinedIcon fontSize="small" />}
+              startIcon={<FileDownloadOutlinedIcon fontSize="small" />}
               disabled={!hasEdit}
               onClick={() => setImportOpen(true)}
             >

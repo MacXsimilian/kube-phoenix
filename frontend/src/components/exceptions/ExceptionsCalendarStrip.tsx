@@ -119,12 +119,14 @@ export default function ExceptionsCalendarStrip({
   canEdit,
   onEdit,
   onCancel,
+  onExport,
 }: {
   exceptions: ScheduledException[]
   isDark: boolean
   canEdit: boolean
   onEdit: (ex: ScheduledException) => void
   onCancel: (ex: ScheduledException) => void
+  onExport?: (ex: ScheduledException, anchor: HTMLElement) => void
 }) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [expandedId, setExpandedId] = useState<number | null>(null)
@@ -171,14 +173,14 @@ export default function ExceptionsCalendarStrip({
           </Box>
           <Collapse in={historyOpen}>
             <Box sx={{ mb: currentRows.length > 0 ? 2 : 0 }}>
-              <RowList rows={pastRows} todayKey={todayStr} isDark={isDark} canEdit={canEdit} onEdit={onEdit} onCancel={onCancel} expandedId={expandedId} onToggleExpand={setExpandedId} dimmed />
+              <RowList rows={pastRows} todayKey={todayStr} isDark={isDark} canEdit={canEdit} onEdit={onEdit} onCancel={onCancel} onExport={onExport} expandedId={expandedId} onToggleExpand={setExpandedId} dimmed />
             </Box>
           </Collapse>
         </>
       )}
       {/* ── Active + Upcoming ─────────────────────────────────── */}
       {currentRows.length > 0 && (
-        <RowList rows={currentRows} todayKey={todayStr} isDark={isDark} canEdit={canEdit} onEdit={onEdit} onCancel={onCancel} expandedId={expandedId} onToggleExpand={setExpandedId} />
+        <RowList rows={currentRows} todayKey={todayStr} isDark={isDark} canEdit={canEdit} onEdit={onEdit} onCancel={onCancel} onExport={onExport} expandedId={expandedId} onToggleExpand={setExpandedId} />
       )}
     </>
   );
@@ -187,7 +189,7 @@ export default function ExceptionsCalendarStrip({
 // ── Row list ─────────────────────────────────────────────────────────────────
 
 function RowList({
-  rows, todayKey, isDark, canEdit, onEdit, onCancel, expandedId, onToggleExpand, dimmed,
+  rows, todayKey, isDark, canEdit, onEdit, onCancel, onExport, expandedId, onToggleExpand, dimmed,
 }: {
   rows: CalendarRow[]
   todayKey: string
@@ -195,6 +197,7 @@ function RowList({
   canEdit: boolean
   onEdit: (ex: ScheduledException) => void
   onCancel: (ex: ScheduledException) => void
+  onExport?: (ex: ScheduledException, anchor: HTMLElement) => void
   expandedId: number | null
   onToggleExpand: (id: number | null) => void
   dimmed?: boolean
@@ -208,7 +211,7 @@ function RowList({
               key={`day-${row.key}`}
               date={row.date} dateKey={row.key} exceptions={row.exceptions}
               isToday={row.key === todayKey} isDark={isDark} canEdit={canEdit}
-              onEdit={onEdit} onCancel={onCancel}
+              onEdit={onEdit} onCancel={onCancel} onExport={onExport}
               expandedId={expandedId} onToggleExpand={onToggleExpand}
             />
           )
@@ -217,7 +220,7 @@ function RowList({
           <SpanRow
             key={`span-${row.exception.id}`}
             ex={row.exception} startDate={row.startDate} endDate={row.endDate}
-            isDark={isDark} canEdit={canEdit} onEdit={onEdit} onCancel={onCancel}
+            isDark={isDark} canEdit={canEdit} onEdit={onEdit} onCancel={onCancel} onExport={onExport}
             expandedId={expandedId} onToggleExpand={onToggleExpand}
           />
         )
@@ -229,13 +232,14 @@ function RowList({
 // ── Exception block (shared between day + span rows) ────────────────────────
 
 function ExceptionBlock({
-  ex, isDark, canEdit, onEdit, onCancel, isExpanded, onToggle,
+  ex, isDark, canEdit, onEdit, onCancel, onExport, isExpanded, onToggle,
 }: {
   ex: ScheduledException
   isDark: boolean
   canEdit: boolean
   onEdit: () => void
   onCancel: () => void
+  onExport?: (anchor: HTMLElement) => void
   isExpanded: boolean
   onToggle: () => void
 }) {
@@ -283,7 +287,7 @@ function ExceptionBlock({
         }}>
         {timeOfDay(ex.startsAt)}–{timeOfDay(ex.endsAt)}
       </Typography>
-      <ExceptionActions ex={ex} canEdit={canEdit} onEdit={onEdit} onCancel={onCancel} />
+      <ExceptionActions ex={ex} canEdit={canEdit} onEdit={onEdit} onCancel={onCancel} onExport={onExport} />
       <ExpandMoreIcon sx={{ fontSize: 16, color: 'text.disabled', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: '.2s' }} />
     </Box>
   );
@@ -292,11 +296,12 @@ function ExceptionBlock({
 // ── Single-day row ──────────────────────────────────────────────────────────
 
 function DayRow({
-  date, dateKey, exceptions, isToday, isDark, canEdit, onEdit, onCancel, expandedId, onToggleExpand,
+  date, dateKey, exceptions, isToday, isDark, canEdit, onEdit, onCancel, onExport, expandedId, onToggleExpand,
 }: {
   date: Date; dateKey: string; exceptions: ScheduledException[]; isToday: boolean
   isDark: boolean; canEdit: boolean
   onEdit: (ex: ScheduledException) => void; onCancel: (ex: ScheduledException) => void
+  onExport?: (ex: ScheduledException, anchor: HTMLElement) => void
   expandedId: number | null; onToggleExpand: (id: number | null) => void
 }) {
   return (
@@ -319,6 +324,7 @@ function DayRow({
             <ExceptionBlock
               key={ex.id} ex={ex} isDark={isDark} canEdit={canEdit}
               onEdit={() => onEdit(ex)} onCancel={() => onCancel(ex)}
+              onExport={onExport ? (anchor) => onExport(ex, anchor) : undefined}
               isExpanded={expandedId === ex.id}
               onToggle={() => onToggleExpand(expandedId === ex.id ? null : ex.id)}
             />
@@ -337,11 +343,12 @@ function DayRow({
 // ── Multi-day span row ──────────────────────────────────────────────────────
 
 function SpanRow({
-  ex, startDate, endDate, isDark, canEdit, onEdit, onCancel, expandedId, onToggleExpand,
+  ex, startDate, endDate, isDark, canEdit, onEdit, onCancel, onExport, expandedId, onToggleExpand,
 }: {
   ex: ScheduledException; startDate: Date; endDate: Date
   isDark: boolean; canEdit: boolean
   onEdit: (ex: ScheduledException) => void; onCancel: (ex: ScheduledException) => void
+  onExport?: (ex: ScheduledException, anchor: HTMLElement) => void
   expandedId: number | null; onToggleExpand: (id: number | null) => void
 }) {
   const isExpanded = expandedId === ex.id
@@ -387,6 +394,7 @@ function SpanRow({
           <ExceptionBlock
             ex={ex} isDark={isDark} canEdit={canEdit}
             onEdit={() => onEdit(ex)} onCancel={() => onCancel(ex)}
+            onExport={onExport ? (anchor) => onExport(ex, anchor) : undefined}
             isExpanded={isExpanded}
             onToggle={() => onToggleExpand(isExpanded ? null : ex.id)}
           />

@@ -17,7 +17,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlineOutlined'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
-import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
+import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
 import { useIsDark } from '@/lib/useIsDark'
 import { deletePolicy, exportPolicy } from '@/lib/api'
 import ExportMenu from '@/components/import/ExportMenu'
@@ -311,7 +311,7 @@ export default function PolicyCard({
                 aria-label="Export policy"
                 sx={actionBtnSx}
               >
-                <FileDownloadOutlinedIcon sx={{ fontSize: 14 }} />
+                <FileUploadOutlinedIcon sx={{ fontSize: 14 }} />
               </IconButton>
             </Tooltip>
             <Tooltip title={canEdit ? 'Edit' : 'No permission'} placement="left">

@@ -11,14 +11,15 @@ import CenteredSpinner from '@/components/common/CenteredSpinner'
 import Alert from '@mui/material/Alert'
 import Tooltip from '@mui/material/Tooltip'
 import AddIcon from '@mui/icons-material/Add'
-import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
 import PageHeader from '@/components/shared/PageHeader'
 import EmptyState from '@/components/shared/EmptyState'
 import ConfirmDialog from '@/components/common/ConfirmDialog'
-import { getExceptions, deleteException } from '@/lib/api'
+import { getExceptions, deleteException, exportException } from '@/lib/api'
 import type { ScheduledException } from '@/lib/types'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
 import ImportDialog from '@/components/import/ImportDialog'
+import ExportMenu from '@/components/import/ExportMenu'
 import ExceptionsCalendarStrip from '@/components/exceptions/ExceptionsCalendarStrip'
 import { useAuth } from '@/lib/auth'
 import { canEditSchedules } from '@/lib/rbac'
@@ -34,6 +35,7 @@ export default function ExceptionsPage() {
   const [editing, setEditing] = useState<ScheduledException | undefined>()
   const [pendingDelete, setPendingDelete] = useState<ScheduledException | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [exportTarget, setExportTarget] = useState<{ anchor: HTMLElement; ex: ScheduledException } | null>(null)
   const { notify, SnackbarAlert } = useSnackbar()
 
   const canEdit = canEditSchedules(user?.permissions)
@@ -65,7 +67,7 @@ export default function ExceptionsPage() {
               <span>
                 <Button
                   variant="outlined"
-                  startIcon={<FileUploadOutlinedIcon />}
+                  startIcon={<FileDownloadOutlinedIcon />}
                   onClick={() => setImportOpen(true)}
                   disabled={!canEdit}
                 >
@@ -100,6 +102,7 @@ export default function ExceptionsPage() {
           canEdit={canEdit}
           onEdit={(ex) => { setEditing(ex); setDialogOpen(true) }}
           onCancel={(ex) => setPendingDelete(ex)}
+          onExport={(ex, anchor) => setExportTarget({ anchor, ex })}
         />
       )}
       <ExceptionDialog
@@ -112,6 +115,14 @@ export default function ExceptionsPage() {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         kind="exception"
+        onNotify={notify}
+      />
+      <ExportMenu
+        anchorEl={exportTarget?.anchor ?? null}
+        open={Boolean(exportTarget)}
+        onClose={() => setExportTarget(null)}
+        fetchPayload={() => exportException(exportTarget!.ex.id)}
+        downloadName={`kube-phoenix-exception-${exportTarget?.ex.ticketRef || exportTarget?.ex.id || 'export'}`}
         onNotify={notify}
       />
       <ConfirmDialog

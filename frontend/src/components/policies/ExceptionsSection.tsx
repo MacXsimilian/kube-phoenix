@@ -57,7 +57,7 @@ export default function ExceptionsSection({
         }}>Scheduled Exceptions</Typography>
         {canEdit && (
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button size="small" startIcon={<FileUploadOutlinedIcon />} onClick={() => setImportOpen(true)}>
+            <Button size="small" startIcon={<FileDownloadOutlinedIcon />} onClick={() => setImportOpen(true)}>
               Import
             </Button>
             <Button size="small" startIcon={<AddIcon />} onClick={onAddException}>
@@ -120,7 +120,7 @@ export default function ExceptionsSection({
                       onClick={(e) => setExportTarget({ anchor: e.currentTarget, ex })}
                       aria-label="Export exception"
                     >
-                      <FileDownloadOutlinedIcon fontSize="small" />
+                      <FileUploadOutlinedIcon fontSize="small" />
                     </IconButton>
                   </TableCell>
                 </TableRow>

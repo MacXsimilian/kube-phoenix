@@ -9,7 +9,7 @@ import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
 import AddIcon from '@mui/icons-material/Add'
-import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
 import PageHeader from '@/components/shared/PageHeader'
 import EmptyState from '@/components/shared/EmptyState'
 import { getPolicies } from '@/lib/api'
@@ -64,7 +64,7 @@ export default function PoliciesPage() {
               <span>
                 <Button
                   variant="outlined"
-                  startIcon={<FileUploadOutlinedIcon />}
+                  startIcon={<FileDownloadOutlinedIcon />}
                   onClick={() => setImportOpen(true)}
                   disabled={!canEdit}
                 >
