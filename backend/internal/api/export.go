@@ -111,6 +111,7 @@ func (h *Handler) exportGuardrails(w http.ResponseWriter, r *http.Request) {
 			ProtectCriticalPodNodes:      g.ProtectCriticalPodNodes,
 		},
 	}
+	h.audit(r, "guardrail.export", "guardrail", nil, nil, nil)
 	jsonOK(w, out)
 }
 
@@ -134,6 +135,7 @@ func (h *Handler) exportPolicy(w http.ResponseWriter, r *http.Request) {
 			SleepWindows:    parseSleepWindows(*p),
 		},
 	}
+	h.audit(r, "policy.export", "policy", &p.ID, nil, map[string]any{"name": p.Name})
 	jsonOK(w, out)
 }
 
@@ -181,5 +183,6 @@ func (h *Handler) exportException(w http.ResponseWriter, r *http.Request) {
 			WorkloadTargets: targets,
 		},
 	}
+	h.audit(r, "exception.export", "exception", &ex.ID, nil, map[string]any{"ticketRef": ex.TicketRef, "policyName": policyName})
 	jsonOK(w, out)
 }

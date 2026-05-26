@@ -88,7 +88,11 @@ target environment, the backend returns:
   exception on the same policy is rejected with 409 in both preview
   and apply.
 - Every apply produces an audit entry: `guardrail.import`,
-  `policy.import`, or `exception.import`.
+  `policy.import`, or `exception.import`. Every export does too:
+  `guardrail.export`, `policy.export`, or `exception.export`. Export
+  entries carry the user, IP, and a small `after` payload identifying
+  what was pulled (policy name, exception ticket ref + parent policy
+  name) so admins can trace who exported what.
 - The guardrails apply path reloads the scheduler if the timing or
   evaluator fields changed.
 
