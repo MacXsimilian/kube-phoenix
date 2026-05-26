@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.4](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.3...v0.7.4) (2026-05-26)
+
+
+### Bug Fixes
+
+* **helm:** allow global property in values schema for subchart use ([#399](https://github.com/MacXsimilian/kube-phoenix/issues/399)) ([f4740a4](https://github.com/MacXsimilian/kube-phoenix/commit/f4740a45f4022a2fbca3271e186470261679822b))
+
 ## [0.7.3](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.2...v0.7.3) (2026-05-25)
 
 
