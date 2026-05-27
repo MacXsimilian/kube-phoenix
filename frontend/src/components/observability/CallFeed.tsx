@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback, useSyncExternalStore, memo } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
@@ -88,19 +88,35 @@ function useFilteredCalls(calls: ApiCall[], filter: CategoryFilter, search: stri
   }, [calls, filter, search])
 }
 
-function useTickingClock(setNow: (t: number) => void) {
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), RELATIVE_TIME_INTERVAL_MS)
-    return () => clearInterval(id)
-  }, [setNow])
+// Single shared 1s clock. Components that call useNow() re-render on each tick;
+// their parents do not, so relative timestamps update without re-rendering rows.
+let sharedNow = Date.now()
+const clockListeners = new Set<() => void>()
+let clockTimer: ReturnType<typeof setInterval> | null = null
+
+function subscribeToClock(listener: () => void): () => void {
+  clockListeners.add(listener)
+  if (clockTimer === null) {
+    clockTimer = setInterval(() => {
+      sharedNow = Date.now()
+      clockListeners.forEach((notify) => notify())
+    }, RELATIVE_TIME_INTERVAL_MS)
+  }
+  return () => {
+    clockListeners.delete(listener)
+    if (clockListeners.size === 0 && clockTimer !== null) {
+      clearInterval(clockTimer)
+      clockTimer = null
+    }
+  }
 }
 
-function useCallsPerSec(calls: ApiCall[], now: number): number {
-  return useMemo(() => {
-    const cutoff = now - CALLS_PER_SEC_WINDOW_MS
-    const recent = calls.filter((c) => new Date(c.timestamp).getTime() > cutoff)
-    return recent.length / (CALLS_PER_SEC_WINDOW_MS / 1000)
-  }, [calls, now])
+function getSharedNow(): number {
+  return sharedNow
+}
+
+function useNow(): number {
+  return useSyncExternalStore(subscribeToClock, getSharedNow, getSharedNow)
 }
 
 function useAutoScroll(calls: ApiCall[]) {
@@ -200,18 +216,14 @@ interface CallFeedProps {
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export default function CallFeed({ calls }: CallFeedProps) {
+function CallFeed({ calls }: CallFeedProps) {
   const [filter, setFilter] = useState<CategoryFilter>('all')
   const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [now, setNow] = useState(Date.now())
   const [viewMode, setViewMode] = useState<ViewMode>('stream')
-
-  useTickingClock(setNow)
 
   const filtered = useFilteredCalls(calls, filter, search)
   const errorCount = useMemo(() => filtered.filter((c) => c.statusCode >= 400).length, [filtered])
-  const callsPerSec = useCallsPerSec(calls, now)
   const latencyBuckets = useLatencyBuckets(filtered)
   const groupedCalls = useGroupedCalls(filtered)
   const { scrollRef, isScrollPaused, scrollToBottom } = useAutoScroll(calls)
@@ -224,7 +236,7 @@ export default function CallFeed({ calls }: CallFeedProps) {
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <HeaderBar
         callCount={filtered.length}
-        callsPerSec={callsPerSec}
+        calls={calls}
         latencyBuckets={latencyBuckets}
         filter={filter}
         onFilterChange={setFilter}
@@ -240,7 +252,6 @@ export default function CallFeed({ calls }: CallFeedProps) {
           scrollRef={scrollRef}
           calls={calls}
           filtered={filtered}
-          now={now}
           expandedId={expandedId}
           onToggleExpanded={toggleExpanded}
           isScrollPaused={isScrollPaused}
@@ -253,20 +264,21 @@ export default function CallFeed({ calls }: CallFeedProps) {
   )
 }
 
+export default memo(CallFeed)
+
 // ── CallList ──────────────────────────────────────────────────────────────
 
 interface CallListProps {
   scrollRef: React.RefObject<HTMLDivElement | null>
   calls: ApiCall[]
   filtered: ApiCall[]
-  now: number
   expandedId: string | null
   onToggleExpanded: (id: string) => void
   isScrollPaused: boolean
   scrollToBottom: () => void
 }
 
-function CallList({ scrollRef, calls, filtered, now, expandedId, onToggleExpanded, isScrollPaused, scrollToBottom }: CallListProps) {
+const CallList = memo(function CallList({ scrollRef, calls, filtered, expandedId, onToggleExpanded, isScrollPaused, scrollToBottom }: CallListProps) {
   const displayedCalls = filtered.slice(-MAX_DISPLAY_ROWS)
   const animatedCutoff = displayedCalls.length - ANIMATED_ROW_COUNT
   return (
@@ -279,10 +291,9 @@ function CallList({ scrollRef, calls, filtered, now, expandedId, onToggleExpande
             <StaticCallRow
               key={call.id}
               call={call}
-              now={now}
               isEven={index % 2 === 0}
               isExpanded={expandedId === call.id}
-              onToggle={() => onToggleExpanded(call.id)}
+              onToggle={onToggleExpanded}
             />
           ))}
           <AnimatePresence initial={false}>
@@ -290,10 +301,9 @@ function CallList({ scrollRef, calls, filtered, now, expandedId, onToggleExpande
               <CallRow
                 key={call.id}
                 call={call}
-                now={now}
                 isEven={(animatedCutoff + index) % 2 === 0}
                 isExpanded={expandedId === call.id}
-                onToggle={() => onToggleExpanded(call.id)}
+                onToggle={onToggleExpanded}
               />
             ))}
           </AnimatePresence>
@@ -302,13 +312,28 @@ function CallList({ scrollRef, calls, filtered, now, expandedId, onToggleExpande
       {isScrollPaused && <NewCallsBanner onClick={scrollToBottom} />}
     </Box>
   )
-}
+})
 
 // ── HeaderBar ──────────────────────────────────────────────────────────────
 
+function CallsPerSec({ calls }: { calls: ApiCall[] }) {
+  const now = useNow()
+  const callsPerSec = useMemo(() => {
+    const cutoff = now - CALLS_PER_SEC_WINDOW_MS
+    const recent = calls.filter((c) => new Date(c.timestamp).getTime() > cutoff)
+    return recent.length / (CALLS_PER_SEC_WINDOW_MS / 1000)
+  }, [calls, now])
+
+  return (
+    <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: 10, fontFamily: 'monospace' }}>
+      {callsPerSec.toFixed(1)}/s
+    </Typography>
+  )
+}
+
 interface HeaderBarProps {
   callCount: number
-  callsPerSec: number
+  calls: ApiCall[]
   latencyBuckets: LatencyBucket[]
   filter: CategoryFilter
   onFilterChange: (cat: CategoryFilter) => void
@@ -319,7 +344,7 @@ interface HeaderBarProps {
   onViewModeChange: (mode: ViewMode) => void
 }
 
-function HeaderBar({ callCount, callsPerSec, latencyBuckets, filter, onFilterChange, search, onSearchChange, errorCount, viewMode, onViewModeChange }: HeaderBarProps) {
+function HeaderBar({ callCount, calls, latencyBuckets, filter, onFilterChange, search, onSearchChange, errorCount, viewMode, onViewModeChange }: HeaderBarProps) {
   return (
     <Box sx={{
       display: 'flex', alignItems: 'center', gap: 1,
@@ -331,9 +356,7 @@ function HeaderBar({ callCount, callsPerSec, latencyBuckets, filter, onFilterCha
         Live API & Function Calls
       </Typography>
       <LiveCallCount count={callCount} />
-      <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: 10, fontFamily: 'monospace' }}>
-        {callsPerSec.toFixed(1)}/s
-      </Typography>
+      <CallsPerSec calls={calls} />
       <LatencySparkline buckets={latencyBuckets} />
       <SearchInput value={search} onChange={onSearchChange} />
       <ViewModeToggle value={viewMode} onChange={onViewModeChange} />
@@ -531,20 +554,19 @@ function TableHeader() {
 
 interface CallRowProps {
   call: ApiCall
-  now: number
   isEven: boolean
   isExpanded: boolean
-  onToggle: () => void
+  onToggle: (id: string) => void
 }
 
-function CallRowContent({ call, now, isEven, isExpanded, onToggle }: CallRowProps) {
+function CallRowContent({ call, isEven, isExpanded, onToggle }: CallRowProps) {
   const theme = useTheme()
   const isError = call.statusCode >= 400
 
   return (
     <>
       <Box
-        onClick={onToggle}
+        onClick={() => onToggle(call.id)}
         sx={{
           display: 'grid', gridTemplateColumns: TABLE_COLUMNS, gap: 1,
           px: 2, height: ROW_HEIGHT, alignItems: 'center', cursor: 'pointer',
@@ -555,7 +577,7 @@ function CallRowContent({ call, now, isEven, isExpanded, onToggle }: CallRowProp
           '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.06) },
           transition: 'background-color 120ms',
         }}>
-        <TimeCell timestamp={call.timestamp} now={now} />
+        <TimeCell timestamp={call.timestamp} />
         <MethodBadge method={call.method} />
         <PathCell path={call.path} statusCode={call.statusCode} />
         <FunctionCell goFunc={call.goFunc} />
@@ -569,21 +591,21 @@ function CallRowContent({ call, now, isEven, isExpanded, onToggle }: CallRowProp
   )
 }
 
-function StaticCallRow(props: CallRowProps) {
+const StaticCallRow = memo(function StaticCallRow(props: CallRowProps) {
   return (
     <div>
       <CallRowContent {...props} />
     </div>
   )
-}
+})
 
-function CallRow(props: CallRowProps) {
+const CallRow = memo(function CallRow(props: CallRowProps) {
   return (
     <motion.div initial={rowEntrance.initial} animate={rowEntrance.animate} exit={rowEntrance.exit} transition={rowEntrance.transition} layout>
       <CallRowContent {...props} />
     </motion.div>
   )
-}
+})
 
 // ── CallDetailPanel ───────────────────────────────────────────────────────
 
@@ -683,7 +705,8 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
 
 // ── Cell components ────────────────────────────────────────────────────────
 
-function TimeCell({ timestamp, now }: { timestamp: string; now: number }) {
+function TimeCell({ timestamp }: { timestamp: string }) {
+  const now = useNow()
   const elapsed = Math.max(0, Math.floor((now - new Date(timestamp).getTime()) / 1000))
   const label = elapsed < 60 ? `${elapsed}s ago` : `${Math.floor(elapsed / 60)}m ago`
 
