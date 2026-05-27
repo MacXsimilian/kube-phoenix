@@ -10,6 +10,9 @@ import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
+import Menu from '@mui/material/Menu'
+import MenuItem from '@mui/material/MenuItem'
+import ListItemIcon from '@mui/material/ListItemIcon'
 
 import CircularProgress from '@mui/material/CircularProgress'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
@@ -18,19 +21,27 @@ import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
+import PowerSettingsNewIcon from '@mui/icons-material/PowerSettingsNew'
 import { useIsDark } from '@/lib/useIsDark'
 import { deletePolicy, exportPolicy } from '@/lib/api'
 import ExportMenu from '@/components/import/ExportMenu'
 import { formatError } from '@/lib/formatters'
 import type { Policy, SnackMessage } from '@/lib/types'
 import { windowsToText, hasSleepWindows } from '@/lib/windowUtils'
-import { stateColors, getModeStyle, SMALL_CHIP_SX, CARD_HEADER_GRADIENTS, LED_COLORS } from '@/lib/statusColors'
+import {
+  stateColors,
+  getModeStyle,
+  SMALL_CHIP_SX,
+  CARD_HEADER_GRADIENTS,
+  LED_COLORS,
+} from '@/lib/statusColors'
 import { timeUntil } from '@/lib/formatters'
 import { usePolicyTriggers } from '@/lib/usePolicyTriggers'
 import { useColors } from '@/lib/colors'
 import ConfirmDialog from '@/components/common/ConfirmDialog'
 import TriggerModeDialog, { type TriggerDirection } from '@/components/common/TriggerModeDialog'
 import MiniTimeline from './MiniTimeline'
+import WeeklySavingsRing from './WeeklySavingsRing'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -100,6 +111,7 @@ export default function PolicyCard({
   const [deleteDialog, setDeleteDialog] = useState(false)
   const [triggerDialog, setTriggerDialog] = useState<TriggerDirection | null>(null)
   const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null)
+  const [triggerMenuAnchor, setTriggerMenuAnchor] = useState<HTMLElement | null>(null)
   const STATE_COLORS = stateColors(isDark)
   const stateStyle = STATE_COLORS[policy.currentState] ?? STATE_COLORS.unknown
   const led = LED_COLORS[policy.currentState] ?? LED_COLORS.unknown
@@ -125,6 +137,37 @@ export default function PolicyCard({
   const sleepIconColor = isDark ? '#a5b4fc' : '#4F46E5'
   const wakeIconColor = isDark ? '#fcd34d' : '#92400E'
 
+  // Single contextual trigger: do the opposite of the current state. Ambiguous
+  // states (unknown/transitioning) fall back to a pick-menu instead.
+  const triggerConfig =
+    policy.currentState === 'awake'
+      ? {
+          direction: 'sleep' as const,
+          Icon: BedtimeIcon,
+          color: sleepIconColor,
+          hoverBg: 'rgba(99,102,241,0.15)',
+          tooltip: 'Sleep Now',
+        }
+      : policy.currentState === 'sleeping'
+        ? {
+            direction: 'wake' as const,
+            Icon: WbSunnyIcon,
+            color: wakeIconColor,
+            hoverBg: 'rgba(245,158,11,0.15)',
+            tooltip: 'Wake Now',
+          }
+        : {
+            direction: null,
+            Icon: PowerSettingsNewIcon,
+            color: undefined,
+            hoverBg: undefined,
+            tooltip: 'Sleep / Wake',
+          }
+
+  const triggerBtnSx = triggerConfig.color
+    ? { ...actionBtnSx, color: triggerConfig.color, '&:hover': { bgcolor: triggerConfig.hoverBg } }
+    : actionBtnSx
+
   return (
     <>
       <Paper
@@ -136,7 +179,9 @@ export default function PolicyCard({
           opacity: isDisabled ? DISABLED_OPACITY : 1,
           '&:hover': {
             borderColor: 'rgba(124,58,237,0.3)',
-            boxShadow: isDark ? '0 0 0 1px rgba(124,58,237,0.08), 0 4px 24px rgba(0,0,0,0.3)' : '0 0 0 1px rgba(124,58,237,0.08), 0 4px 24px rgba(0,0,0,0.08)',
+            boxShadow: isDark
+              ? '0 0 0 1px rgba(124,58,237,0.08), 0 4px 24px rgba(0,0,0,0.3)'
+              : '0 0 0 1px rgba(124,58,237,0.08), 0 4px 24px rgba(0,0,0,0.08)',
           },
           transition: 'border-color 0.2s, box-shadow 0.2s, opacity 0.2s',
           p: 0,
@@ -155,7 +200,15 @@ export default function PolicyCard({
           {/* Main content — left 70% + right 30% stats */}
           <Box sx={{ flex: 1, minWidth: 0, p: '14px 20px', display: 'flex', gap: 2 }}>
             {/* Left column: name, chips, schedule, timeline */}
-            <Box sx={{ flex: 70, minWidth: 0 }}>
+            <Box
+              sx={{
+                flex: 70,
+                minWidth: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+              }}
+            >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
                 <Box
                   title={policy.currentState}
@@ -179,8 +232,9 @@ export default function PolicyCard({
                   sx={{
                     fontWeight: 600,
                     fontSize: 15,
-                    color: 'text.primary'
-                  }}>
+                    color: 'text.primary',
+                  }}
+                >
                   {policy.name}
                 </Typography>
                 <Chip
@@ -198,7 +252,11 @@ export default function PolicyCard({
                   }}
                 />
                 {isDisabled && (
-                  <Chip label="Disabled" size="small" sx={{ ...SMALL_CHIP_SX, bgcolor: 'action.selected' }} />
+                  <Chip
+                    label="Disabled"
+                    size="small"
+                    sx={{ ...SMALL_CHIP_SX, bgcolor: 'action.selected' }}
+                  />
                 )}
                 {policy.namespaceFilter && (
                   <Chip
@@ -220,7 +278,7 @@ export default function PolicyCard({
               )}
             </Box>
 
-            {/* Right column: State / Next / TZ */}
+            {/* Right column: savings + Next (state in the header chip + LED, TZ on detail) */}
             <Box
               sx={{
                 minWidth: 120,
@@ -234,22 +292,22 @@ export default function PolicyCard({
                 borderLeftColor: 'divider',
               }}
             >
-              <Box>
-                <Typography sx={{ fontSize: 11, color: 'text.secondary', lineHeight: 1.3 }}>State</Typography>
-                <Typography sx={{ ...STAT_VALUE_SX, color: stateStyle.color, fontWeight: 600 }}>
-                  {stateStyle.label}
+              {hasSleepWindows(windows) && (
+                <Box
+                  sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 0.5 }}
+                >
+                  <WeeklySavingsRing windows={windows} size={56} />
+                  <Typography sx={{ fontSize: 10, color: 'text.secondary', mt: 0.5 }}>
+                    saved/wk
+                  </Typography>
+                </Box>
+              )}
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography sx={{ fontSize: 11, color: 'text.secondary', lineHeight: 1.3 }}>
+                  Next
                 </Typography>
-              </Box>
-              <Box>
-                <Typography sx={{ fontSize: 11, color: 'text.secondary', lineHeight: 1.3 }}>Next</Typography>
                 <Typography sx={{ ...STAT_VALUE_SX, color: 'text.primary' }}>
                   {nextTransitionLabel(policy)}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography sx={{ fontSize: 11, color: 'text.secondary', lineHeight: 1.3 }}>TZ</Typography>
-                <Typography sx={{ ...STAT_VALUE_SX, color: 'text.primary' }}>
-                  {policy.timezone || 'UTC'}
                 </Typography>
               </Box>
             </Box>
@@ -278,29 +336,23 @@ export default function PolicyCard({
                 <OpenInNewIcon sx={{ fontSize: 14 }} />
               </IconButton>
             </Tooltip>
-            <Tooltip title={canTrigger ? 'Sleep Now' : 'No permission'} placement="left">
+            <Tooltip title={canTrigger ? triggerConfig.tooltip : 'No permission'} placement="left">
               <span>
                 <IconButton
                   size="small"
-                  onClick={() => setTriggerDialog('sleep')}
+                  onClick={(event) => {
+                    if (triggerConfig.direction) setTriggerDialog(triggerConfig.direction)
+                    else setTriggerMenuAnchor(event.currentTarget)
+                  }}
                   disabled={!canTrigger || isBusy}
-                  aria-label="Trigger sleep"
-                  sx={{ ...actionBtnSx, color: sleepIconColor, '&:hover': { bgcolor: 'rgba(99,102,241,0.15)' } }}
+                  aria-label="Trigger sleep or wake"
+                  sx={triggerBtnSx}
                 >
-                  {sleepMut.isPending ? <CircularProgress size={14} /> : <BedtimeIcon sx={{ fontSize: 14 }} />}
-                </IconButton>
-              </span>
-            </Tooltip>
-            <Tooltip title={canTrigger ? 'Wake Now' : 'No permission'} placement="left">
-              <span>
-                <IconButton
-                  size="small"
-                  onClick={() => setTriggerDialog('wake')}
-                  disabled={!canTrigger || isBusy}
-                  aria-label="Trigger wake"
-                  sx={{ ...actionBtnSx, color: wakeIconColor, '&:hover': { bgcolor: 'rgba(245,158,11,0.15)' } }}
-                >
-                  {wakeMut.isPending ? <CircularProgress size={14} /> : <WbSunnyIcon sx={{ fontSize: 14 }} />}
+                  {isBusy ? (
+                    <CircularProgress size={14} />
+                  ) : (
+                    <triggerConfig.Icon sx={{ fontSize: 14 }} />
+                  )}
                 </IconButton>
               </span>
             </Tooltip>
@@ -316,7 +368,13 @@ export default function PolicyCard({
             </Tooltip>
             <Tooltip title={canEdit ? 'Edit' : 'No permission'} placement="left">
               <span>
-                <IconButton size="small" onClick={onEdit} disabled={!canEdit} aria-label="Edit policy" sx={actionBtnSx}>
+                <IconButton
+                  size="small"
+                  onClick={onEdit}
+                  disabled={!canEdit}
+                  aria-label="Edit policy"
+                  sx={actionBtnSx}
+                >
                   <EditOutlinedIcon sx={{ fontSize: 14 }} />
                 </IconButton>
               </span>
@@ -328,7 +386,11 @@ export default function PolicyCard({
                   onClick={() => setDeleteDialog(true)}
                   disabled={!canEdit}
                   aria-label="Delete policy"
-                  sx={{ ...actionBtnSx, color: colors.errorLight, '&:hover': { bgcolor: colors.errorBg } }}
+                  sx={{
+                    ...actionBtnSx,
+                    color: colors.errorLight,
+                    '&:hover': { bgcolor: colors.errorBg },
+                  }}
                 >
                   <DeleteOutlineIcon sx={{ fontSize: 14 }} />
                 </IconButton>
@@ -355,6 +417,34 @@ export default function PolicyCard({
         }}
         onClose={() => setTriggerDialog(null)}
       />
+      <Menu
+        anchorEl={triggerMenuAnchor}
+        open={Boolean(triggerMenuAnchor)}
+        onClose={() => setTriggerMenuAnchor(null)}
+      >
+        <MenuItem
+          onClick={() => {
+            setTriggerMenuAnchor(null)
+            setTriggerDialog('sleep')
+          }}
+        >
+          <ListItemIcon>
+            <BedtimeIcon fontSize="small" sx={{ color: sleepIconColor }} />
+          </ListItemIcon>
+          Sleep Now
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setTriggerMenuAnchor(null)
+            setTriggerDialog('wake')
+          }}
+        >
+          <ListItemIcon>
+            <WbSunnyIcon fontSize="small" sx={{ color: wakeIconColor }} />
+          </ListItemIcon>
+          Wake Now
+        </MenuItem>
+      </Menu>
       <ExportMenu
         anchorEl={exportAnchor}
         open={Boolean(exportAnchor)}
@@ -364,5 +454,5 @@ export default function PolicyCard({
         onNotify={onNotify}
       />
     </>
-  );
+  )
 }
