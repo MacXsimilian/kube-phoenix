@@ -117,6 +117,7 @@ frontend/
         WeeklyTimeline.tsx      # SVG 7-day bar chart timeline
         LedGlowTimeline.tsx     # SVG 7-day LED-strip timeline with glow filters
         MiniTimeline.tsx        # Full-width single-day 24h sparkline for policy cards
+        WeeklySavingsRing.tsx   # Donut showing the % of the week a policy sleeps (PolicyCard right column)
         WindowPicker.tsx        # Sleep window editor with day buttons + time selectors
         LegendItem.tsx          # Shared timeline legend dot + label
         TimelineLegend.tsx      # Extracted legend strip for timelines (sleep, awake, exception)
@@ -665,8 +666,8 @@ All functions take an `isDark` boolean and return objects with `{ bgcolor, color
 `PolicyCard` uses a wide timeline card design:
 - **Gradient header bar** (3px): state-colored gradient from `CARD_HEADER_GRADIENTS`
 - **LED status dot** with glow, pulse animation for transitioning state, from shared `LED_COLORS`
-- **70/30 column layout**: left column has policy name, status/mode chips, schedule text, and a 48px `MiniTimeline`; right column shows State, Next transition, and Timezone with a border-left separator
-- **Vertical action buttons** on the far right edge: view, sleep, wake, edit, delete
+- **70/30 column layout**: left column has policy name, status/mode chips, schedule text, and a `MiniTimeline`, vertically centered; right column shows the weekly savings ring (`WeeklySavingsRing`) above the Next-transition countdown, with a border-left separator. Current state is conveyed by the header chip and LED dot; timezone is shown on the detail page.
+- **Vertical action buttons** on the far right edge: view, a contextual sleep/wake trigger (Sleep when awake, Wake when sleeping, with a pick-menu for the unknown/transitioning states), export, edit, delete
 
 #### Policy Detail Page (Full-Width Horizontal Bands)
 
@@ -1029,6 +1030,7 @@ The Scheduler Behaviour section uses stacked label-left/control-right rows for E
 | `timeToHours(time)` | `"19:30"` -> `19.5` (fractional hours for timeline rendering) |
 | `hasSleepWindows(windows)` | Type guard: returns `true` if the array is non-null and non-empty (narrows `SleepWindow[] \| null` to `SleepWindow[]`) |
 | `computeWeeklyStats(windows)` | Returns `{ sleepHours, awakeHours }` per 168-hour week |
+| `weeklySavingsPercent(windows)` | Returns `{ percent, overcounted }` — share of the 168-hour week asleep, clamped to 100%; `overcounted` flags overlapping windows whose raw total exceeds 100% |
 | `nowInTimezone(tz?)` | Returns `{ dayOfWeek, fractionalHour }` in the given IANA timezone |
 | `toTimezone(iso, tz?)` | Converts ISO timestamp to a Date in the given timezone |
 | `computeTimeRangeBlocks(start, end, tz?)` | Splits an absolute time range into per-day `TimeBlock[]` for timeline rendering |

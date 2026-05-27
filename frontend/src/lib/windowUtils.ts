@@ -55,10 +55,10 @@ function formatDayRange(days: number[]): string {
   runs.push(run)
 
   return runs
-    .map(r =>
+    .map((r) =>
       r.length >= 3
         ? `${DAY_NAMES[r[0]]}\u2013${DAY_NAMES[r[r.length - 1]]}`
-        : r.map(d => DAY_NAMES[d]).join(', '),
+        : r.map((d) => DAY_NAMES[d]).join(', '),
     )
     .join(', ')
 }
@@ -75,7 +75,7 @@ export function windowsToText(windows: SleepWindow[]): string {
   if (!windows || windows.length === 0) return ''
 
   return windows
-    .map(sw => {
+    .map((sw) => {
       const days = formatDayRange(sw.daysOfWeek)
       if (sw.allDay) return `${days} all day`
       return `${days} ${formatTime(sw.startTime)} \u2013 ${formatTime(sw.endTime)}`
@@ -92,14 +92,19 @@ export function timeToHours(time: string): number {
 }
 
 /** Returns true if the policy has at least one sleep window configured. */
-export function hasSleepWindows(windows: SleepWindow[] | null | undefined): windows is SleepWindow[] {
+export function hasSleepWindows(
+  windows: SleepWindow[] | null | undefined,
+): windows is SleepWindow[] {
   return !!windows && windows.length > 0
 }
 
 /**
  * Compute total weekly sleep and awake hours from sleep windows.
  */
-export function computeWeeklyStats(windows: SleepWindow[]): { sleepHours: number; awakeHours: number } {
+export function computeWeeklyStats(windows: SleepWindow[]): {
+  sleepHours: number
+  awakeHours: number
+} {
   let sleepMinutes = 0
 
   for (const sw of windows) {
@@ -112,15 +117,31 @@ export function computeWeeklyStats(windows: SleepWindow[]): { sleepHours: number
       const [eh, em] = sw.endTime.split(':').map(Number)
       const startMin = sh * MINUTES_PER_HOUR + sm
       const endMin = eh * MINUTES_PER_HOUR + em
-      minutesPerDay = endMin <= startMin
-        ? (MINUTES_PER_DAY - startMin) + endMin // overnight
-        : endMin - startMin
+      minutesPerDay =
+        endMin <= startMin
+          ? MINUTES_PER_DAY - startMin + endMin // overnight
+          : endMin - startMin
     }
     sleepMinutes += minutesPerDay * sw.daysOfWeek.length
   }
 
   const sleepHours = Math.round(sleepMinutes / MINUTES_PER_HOUR)
   return { sleepHours, awakeHours: HOURS_PER_WEEK - sleepHours }
+}
+
+/**
+ * Weekly sleep time as a percentage of the full week, clamped to 100.
+ * `overcounted` is true when overlapping windows pushed the raw total past
+ * 100% — computeWeeklyStats sums each window independently, so overlaps are
+ * double-counted.
+ */
+export function weeklySavingsPercent(windows: SleepWindow[]): {
+  percent: number
+  overcounted: boolean
+} {
+  const { sleepHours } = computeWeeklyStats(windows)
+  const rawPercent = (sleepHours / HOURS_PER_WEEK) * 100
+  return { percent: Math.min(100, Math.round(rawPercent)), overcounted: rawPercent > 100 }
 }
 
 /**
@@ -131,12 +152,23 @@ export function computeWeeklyStats(windows: SleepWindow[]): { sleepHours: number
 function dateInTimezone(date: Date, tz: string): Date {
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
     hour12: false,
   })
-  const parts = Object.fromEntries(fmt.formatToParts(date).map(p => [p.type, p.value]))
-  return new Date(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second)
+  const parts = Object.fromEntries(fmt.formatToParts(date).map((p) => [p.type, p.value]))
+  return new Date(
+    +parts.year,
+    +parts.month - 1,
+    +parts.day,
+    +parts.hour,
+    +parts.minute,
+    +parts.second,
+  )
 }
 
 /**
@@ -168,9 +200,9 @@ function toTimezone(iso: string, tz?: string): Date {
 
 /** A day-row + fractional-hour range, independent of visual layout. */
 interface TimeBlock {
-  row: number       // 0=Mon .. 6=Sun (index into DOW_MAP)
+  row: number // 0=Mon .. 6=Sun (index into DOW_MAP)
   startHour: number // fractional hour 0–24
-  endHour: number   // fractional hour 0–24
+  endHour: number // fractional hour 0–24
 }
 
 /**
@@ -190,7 +222,9 @@ export function computeTimeRangeBlocks(startISO: string, endISO: string, tz?: st
   while (cursor <= endDay) {
     const row = MONDAY_FIRST_DOW_MAP.indexOf(cursor.getDay())
     if (row !== -1) {
-      const isSameAsStart = cursor.getTime() === new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
+      const isSameAsStart =
+        cursor.getTime() ===
+        new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
       const isSameAsEnd = cursor.getTime() === endDay.getTime()
       const sh = isSameAsStart ? start.getHours() + start.getMinutes() / 60 : 0
       const eh = isSameAsEnd ? end.getHours() + end.getMinutes() / 60 : 24
