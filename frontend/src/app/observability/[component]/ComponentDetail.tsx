@@ -11,7 +11,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import { useTheme } from '@mui/material/styles'
 import { useRouter } from 'next/navigation'
-import { useSharedObservabilityStream } from '@/lib/ObservabilityStreamContext'
+import { useObservabilityMetrics } from '@/lib/ObservabilityStreamContext'
 import { COMPONENT_INFO } from '@/lib/observability-components'
 import type { MetricSnapshot } from '@/lib/observability-types'
 
@@ -41,7 +41,7 @@ async function loadECharts() {
 export default function ComponentDetail({ component }: { component: string }) {
   const theme = useTheme()
   const router = useRouter()
-  const stream = useSharedObservabilityStream()
+  const { latest, history } = useObservabilityMetrics()
   const info = COMPONENT_INFO[component]
 
   if (!info) {
@@ -52,9 +52,9 @@ export default function ComponentDetail({ component }: { component: string }) {
     )
   }
 
-  const loading = !stream.latest
-  const snap = stream.latest?.snapshot
-  const componentMetrics = stream.latest?.components.find((c) => c.component === info.id)
+  const loading = !latest
+  const snap = latest?.snapshot
+  const componentMetrics = latest?.components.find((c) => c.component === info.id)
   const status = componentMetrics?.status ?? 'ok'
   const statusColor = status === 'crit' ? theme.palette.error.main : status === 'warn' ? theme.palette.warning.main : theme.palette.success.main
 
@@ -127,7 +127,7 @@ export default function ComponentDetail({ component }: { component: string }) {
       {/* Metric charts */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 3 }}>
         {info.metrics.map((m) => (
-          <MetricChart key={m.label} label={m.label} unit={m.unit} getValue={m.getValue} history={stream.history} />
+          <MetricChart key={m.label} label={m.label} unit={m.unit} getValue={m.getValue} history={history} />
         ))}
       </Box>
       {/* Related links */}

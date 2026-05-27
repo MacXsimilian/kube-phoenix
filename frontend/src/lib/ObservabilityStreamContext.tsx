@@ -1,23 +1,68 @@
 'use client'
 
-import { createContext, useContext } from 'react'
-import { useObservabilityStream, type ObservabilityStreamState } from './useObservabilityStream'
+import { createContext, useContext, useMemo } from 'react'
+import { useObservabilityStream } from './useObservabilityStream'
+import type {
+  ObservabilityStreamPayload,
+  MetricSnapshot,
+  IncidentEvent,
+  ApiCall,
+  RuntimeConfig,
+} from '@/lib/observability-types'
 
-const ObservabilityStreamContext = createContext<ObservabilityStreamState | null>(null)
+interface MetricsSlice {
+  latest: ObservabilityStreamPayload | null
+  history: MetricSnapshot[]
+}
+
+interface ConnectionSlice {
+  runtimeConfig: RuntimeConfig | null
+  disconnected: boolean
+}
+
+const MetricsContext = createContext<MetricsSlice | null>(null)
+const EventsContext = createContext<IncidentEvent[] | null>(null)
+const CallsContext = createContext<ApiCall[] | null>(null)
+const ConnectionContext = createContext<ConnectionSlice | null>(null)
 
 export function ObservabilityStreamProvider({ children }: { children: React.ReactNode }) {
-  const stream = useObservabilityStream()
+  const { latest, history, events, recentCalls, runtimeConfig, disconnected } = useObservabilityStream()
+  const metrics = useMemo<MetricsSlice>(() => ({ latest, history }), [latest, history])
+  const connection = useMemo<ConnectionSlice>(() => ({ runtimeConfig, disconnected }), [runtimeConfig, disconnected])
+
   return (
-    <ObservabilityStreamContext.Provider value={stream}>
-      {children}
-    </ObservabilityStreamContext.Provider>
+    <MetricsContext.Provider value={metrics}>
+      <EventsContext.Provider value={events}>
+        <CallsContext.Provider value={recentCalls}>
+          <ConnectionContext.Provider value={connection}>
+            {children}
+          </ConnectionContext.Provider>
+        </CallsContext.Provider>
+      </EventsContext.Provider>
+    </MetricsContext.Provider>
   )
 }
 
-export function useSharedObservabilityStream(): ObservabilityStreamState {
-  const ctx = useContext(ObservabilityStreamContext)
-  if (!ctx) {
-    throw new Error('useSharedObservabilityStream must be used within ObservabilityStreamProvider')
+function useSlice<T>(context: React.Context<T | null>, hookName: string): T {
+  const value = useContext(context)
+  if (value === null) {
+    throw new Error(`${hookName} must be used within ObservabilityStreamProvider`)
   }
-  return ctx
+  return value
+}
+
+export function useObservabilityMetrics(): MetricsSlice {
+  return useSlice(MetricsContext, 'useObservabilityMetrics')
+}
+
+export function useObservabilityEvents(): IncidentEvent[] {
+  return useSlice(EventsContext, 'useObservabilityEvents')
+}
+
+export function useObservabilityCalls(): ApiCall[] {
+  return useSlice(CallsContext, 'useObservabilityCalls')
+}
+
+export function useObservabilityConnection(): ConnectionSlice {
+  return useSlice(ConnectionContext, 'useObservabilityConnection')
 }

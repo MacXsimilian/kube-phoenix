@@ -103,7 +103,10 @@ export function useObservabilityStream(): ObservabilityStreamState {
   useEffect(() => {
     const interval = setInterval(() => {
       const cutoff = Date.now() - EVENT_TTL_MS
-      setEvents((prev) => prev.filter((e) => new Date(e.timestamp).getTime() > cutoff))
+      setEvents((prev) => {
+        const next = prev.filter((e) => new Date(e.timestamp).getTime() > cutoff)
+        return next.length === prev.length ? prev : next
+      })
     }, 2000)
     return () => clearInterval(interval)
   }, [])
@@ -150,6 +153,7 @@ export function useObservabilityStream(): ObservabilityStreamState {
                     setRecentCalls((prev) => {
                       const seen = new Set(prev.map((c) => c.id))
                       const fresh = payload.recentCalls.filter((c) => !seen.has(c.id))
+                      if (fresh.length === 0) return prev
                       return [...fresh, ...prev].slice(0, MAX_CALLS)
                     })
                   }

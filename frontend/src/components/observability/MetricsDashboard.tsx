@@ -23,7 +23,11 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlineOutlined'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import type { ObservabilityStreamState } from '@/lib/useObservabilityStream'
+import {
+  useObservabilityMetrics,
+  useObservabilityEvents,
+  useObservabilityCalls,
+} from '@/lib/ObservabilityStreamContext'
 import type { MetricSnapshot, TimeRange, ObservabilityThreshold, ApiCall } from '@/lib/observability-types'
 import StatusHeader from '@/components/observability/StatusHeader'
 import SystemOverview from '@/components/observability/SystemOverview'
@@ -54,7 +58,6 @@ async function loadECharts() {
 // ── Types ───────────────────────────────────────────────────────────────────
 
 interface Props {
-  stream: ObservabilityStreamState
   timeRange: TimeRange
   onTimeRangeChange: (range: TimeRange) => void
 }
@@ -83,11 +86,13 @@ const PANELS: PanelConfig[] = [
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
 
-export default function MetricsDashboard({ stream, timeRange, onTimeRangeChange }: Props) {
+export default function MetricsDashboard({ timeRange, onTimeRangeChange }: Props) {
   const theme = useTheme()
   const router = useRouter()
   const [expandedPanel, setExpandedPanel] = useState<string | null>(null)
-  const { latest, history, events, recentCalls } = stream
+  const { latest, history } = useObservabilityMetrics()
+  const events = useObservabilityEvents()
+  const recentCalls = useObservabilityCalls()
   const snap = latest?.snapshot
   const thresholds = latest?.thresholds ?? []
   const components = latest?.components ?? []
