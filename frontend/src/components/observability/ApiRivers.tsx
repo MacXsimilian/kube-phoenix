@@ -19,7 +19,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme, alpha } from '@mui/material/styles'
 import { useRouter } from 'next/navigation'
 import type gsap from 'gsap'
-import type { ObservabilityStreamState } from '@/lib/useObservabilityStream'
+import {
+  useObservabilityMetrics,
+  useObservabilityEvents,
+  useObservabilityConnection,
+} from '@/lib/ObservabilityStreamContext'
 import RiversMinimap from '@/components/observability/RiversMinimap'
 import RiversLinkPopover from '@/components/observability/RiversLinkPopover'
 import RiversComponentPreview from '@/components/observability/RiversComponentPreview'
@@ -419,14 +423,13 @@ function formatReqS(rps: number | undefined): string {
 
 // ── Main component ───────────────────────────────────────────────────────────
 
-interface Props {
-  stream: ObservabilityStreamState
-}
-
-export default function ApiRivers({ stream }: Props) {
+export default function ApiRivers() {
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
   const router = useRouter()
+  const { latest } = useObservabilityMetrics()
+  const events = useObservabilityEvents()
+  const { runtimeConfig } = useObservabilityConnection()
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -509,24 +512,24 @@ export default function ApiRivers({ stream }: Props) {
   // Map SSE component statuses to component IDs
   const componentStatusMap = useMemo(() => {
     const map: Record<string, string> = {}
-    if (stream.latest) {
-      for (const c of stream.latest.components) {
+    if (latest) {
+      for (const c of latest.components) {
         map[c.component] = c.status
       }
     }
     return map
-  }, [stream.latest])
+  }, [latest])
 
   // J: Live RPS map from stream
   const liveRpsMap = useMemo(() => {
     const map: Record<string, { rps: number; latencyMs: number }> = {}
-    if (!stream.latest?.links) return map
-    for (const l of stream.latest.links) {
+    if (!latest?.links) return map
+    for (const l of latest.links) {
       const key = `${l.source}-${l.target}`
       map[key] = { rps: l.rps, latencyMs: l.latencyMs }
     }
     return map
-  }, [stream.latest])
+  }, [latest])
 
   const liveRpsMapRef = useRef(liveRpsMap)
   useEffect(() => { liveRpsMapRef.current = liveRpsMap }, [liveRpsMap])
@@ -654,7 +657,6 @@ export default function ApiRivers({ stream }: Props) {
 
   // S: Error shockwave watcher
   useEffect(() => {
-    const events = stream.events
     if (!events || events.length <= prevEventsLenRef.current) {
       prevEventsLenRef.current = events?.length ?? 0
       return
@@ -673,7 +675,7 @@ export default function ApiRivers({ stream }: Props) {
         color: '#EF4444',
       })
     }
-  }, [stream.events, dragOffsets, layoutMode])
+  }, [events, dragOffsets, layoutMode])
 
   // Particle animation loop
   useEffect(() => {
@@ -871,12 +873,12 @@ export default function ApiRivers({ stream }: Props) {
   }, [])
 
   const systemStatus = useMemo(() => {
-    if (!stream.latest) return 'healthy'
-    const statuses = stream.latest.components.map((c) => c.status)
+    if (!latest) return 'healthy'
+    const statuses = latest.components.map((c) => c.status)
     if (statuses.includes('crit')) return 'critical'
     if (statuses.includes('warn')) return 'warning'
     return 'healthy'
-  }, [stream.latest])
+  }, [latest])
 
   const statusColor = systemStatus === 'critical' ? theme.palette.error.main : systemStatus === 'warning' ? theme.palette.warning.main : theme.palette.success.main
 
@@ -1174,7 +1176,7 @@ export default function ApiRivers({ stream }: Props) {
             const isTrace = traceMode && traceCompId === comp.id
             const compStatus = componentStatusMap[comp.id]
             const hasWarn = compStatus === 'warn' || compStatus === 'crit'
-            const liveComp = stream.latest?.components.find((c) => c.component === comp.id)
+            const liveComp = latest?.components.find((c) => c.component === comp.id)
 
             return (
               <motion.div key={comp.id}
@@ -1311,8 +1313,8 @@ export default function ApiRivers({ stream }: Props) {
               const above = r.y > 180
               const tx = r.x + r.w / 2
               const ty = above ? r.y - 8 : r.y + r.h + 8
-              const liveMetrics = stream.latest?.components.find((c) => c.component === hoveredComp)
-              const limits = stream.runtimeConfig?.components[hoveredComp]
+              const liveMetrics = latest?.components.find((c) => c.component === hoveredComp)
+              const limits = runtimeConfig?.components[hoveredComp]
               const { incoming, outgoing } = computeCompPreviewData(hoveredComp)
 
               return (

@@ -6,7 +6,6 @@ import Box from '@mui/material/Box'
 import Tabs from '@mui/material/Tabs'
 import Tab from '@mui/material/Tab'
 import PageHeader from '@/components/shared/PageHeader'
-import { useSharedObservabilityStream } from '@/lib/ObservabilityStreamContext'
 import MetricsDashboard from '@/components/observability/MetricsDashboard'
 import ApiRivers from '@/components/observability/ApiRivers'
 import type { TimeRange } from '@/lib/observability-types'
@@ -27,7 +26,6 @@ function parseRangeParam(param: string | null): TimeRange {
 export default function ObservabilityPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const stream = useSharedObservabilityStream()
 
   const [activeTab, setActiveTab] = useState(() => parseTabParam(searchParams.get('tab')))
   const [timeRange, setTimeRange] = useState<TimeRange>(() => parseRangeParam(searchParams.get('range')))
@@ -107,12 +105,11 @@ export default function ObservabilityPage() {
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         {activeTab === 0 && (
           <MetricsDashboard
-            stream={stream}
             timeRange={timeRange}
             onTimeRangeChange={handleTimeRangeChange}
           />
         )}
-        {activeTab === 1 && <ApiRivers stream={stream} />}
+        {activeTab === 1 && <ApiRivers />}
       </Box>
     </Box>
   )

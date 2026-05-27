@@ -185,7 +185,7 @@ frontend/
       rbac.ts                   # Permission checking helpers
       observability-types.ts    # TypeScript interfaces for observability metrics and streams
       observability-components.ts # Component metadata (display names, descriptions, icons) for drill-down pages
-      ObservabilityStreamContext.tsx # Shared React context + provider for useObservabilityStream (persists SSE across route transitions)
+      ObservabilityStreamContext.tsx # Provider + per-slice React contexts for useObservabilityStream (persists SSE across route transitions)
       useObservabilityStream.ts # SSE hook for observability data streams
       motion/                   # Motion design tokens and animation utilities
         echartsTheme.ts         # ECharts theme configuration
@@ -1339,15 +1339,15 @@ A two-tab layout (Metrics Dashboard / API Rivers) sharing a single SSE stream. T
 
 ```
 SSE /api/observability/stream
-  → useObservabilityStream hook (single instance)
-    → ObservabilityStreamContext (React context in layout.tsx)
-      → ObservabilityPage (URL state, keyboard shortcuts)
-      │   → MetricsDashboard (panels, call feed, overview, timeline)
-      │   → ApiRivers (topology, particles, tooltips, minimap)
-      → ComponentDetail (drill-down with skeleton loading)
+  → useObservabilityStream hook (single instance, in ObservabilityStreamProvider)
+    → per-slice contexts in layout.tsx: metrics · events · calls · connection
+      → ObservabilityPage (URL state, keyboard shortcuts -- no stream subscription)
+      │   → MetricsDashboard (metrics + events + calls slices)
+      │   → ApiRivers (metrics + events + connection slices)
+      → ComponentDetail (metrics slice)
 ```
 
-The SSE stream is the sole data source -- there is no TanStack Query polling fallback. A single `useObservabilityStream` instance is created in `ObservabilityStreamProvider` (mounted in `observability/layout.tsx`) and shared via React context to all child routes. This means navigating between the dashboard and component drill-down pages does not tear down and re-establish the SSE connection -- the stream persists across route transitions, providing instant data availability on navigation.
+The SSE stream is the sole data source -- there is no TanStack Query polling fallback. A single `useObservabilityStream` instance is created in `ObservabilityStreamProvider` (mounted in `observability/layout.tsx`) and exposed through four per-slice React contexts (metrics, events, calls, connection), so each consumer re-renders only when the slice it reads changes. Navigating between the dashboard and component drill-down pages does not tear down and re-establish the SSE connection -- the stream persists across route transitions, providing instant data availability on navigation.
 
 ### Key Components
 
@@ -1369,15 +1369,16 @@ All components live under `src/components/observability/`.
 ### Key Hooks
 
 - **`useObservabilityStream`** -- SSE connection with automatic reconnect using exponential backoff (5s base, 30s max), history ring buffer (60 entries), threshold crossing detection, and runtime config polling (30s). Instantiated once in the layout provider, not per-page.
-- **`useSharedObservabilityStream`** -- Context consumer hook that reads from `ObservabilityStreamContext`. All observability pages and components use this instead of calling `useObservabilityStream` directly.
+- **`useObservabilityMetrics` / `useObservabilityEvents` / `useObservabilityCalls` / `useObservabilityConnection`** -- Per-slice context consumer hooks. Observability pages and components subscribe to only the slice they read instead of the whole stream, so they re-render only when that slice changes.
 - **Lazy eCharts loading** -- a Promise-based dedup pattern ensures only one `import('echarts')` call is in-flight at a time, shared across all chart panels.
 - **`useSharedClock`** (in `StatusHeader`) -- consolidates 3 timer intervals (clock, freshness, sparkline tick) into a single `setInterval`.
+- **Shared `useSyncExternalStore` clock** (in `CallFeed`) -- one 1s clock that the relative-timestamp cells and calls/sec counter subscribe to directly, so refreshing "Ns ago" labels updates those leaves without re-rendering the call rows.
 
 ### State Management
 
 | Concern | Approach |
 |:--------|:---------|
-| Stream data | Lifted to layout level via `ObservabilityStreamProvider`; all child routes consume via `useSharedObservabilityStream` context hook |
+| Stream data | Lifted to layout level via `ObservabilityStreamProvider`, which exposes metrics/events/calls/connection slices; child routes consume only the slices they read via the per-slice hooks |
 | Tab and time range | URL query params (`?tab=`, `?range=`) via `useSearchParams` |
 | Rivers drag offsets | Persisted to `localStorage` |
 | Keyboard shortcuts | Registered at page level (tab switching, time range cycling) |
@@ -1396,6 +1397,8 @@ No TanStack Query is used on this page. All data arrives via SSE push rather tha
 ### Performance Considerations
 
 - The SSE stream is instantiated once in `ObservabilityStreamProvider` at the layout level. Navigating between `/observability` and `/observability/{component}` does not destroy or re-establish the connection, eliminating the 2--4 second data gap that would occur if each page managed its own stream.
+- Stream state is split into per-slice React contexts (metrics, events, calls, connection) so a component re-renders only when the slice it reads changes, not on every 2s tick. The page-level component subscribes to no slice and does not re-render on data updates.
+- `CallFeed`, its row list, and its rows are memoized, and the `recentCalls`/`events` arrays keep a stable identity when their contents are unchanged, so the feed skips ticks that bring no new calls. Relative timestamps and the calls/sec counter update via a shared clock without re-rendering the rows.
 - eCharts instances are disposed on unmount with `ResizeObserver` cleanup to prevent memory leaks.
 - The particle animation in `ApiRivers` reads live data from refs (not effect dependencies) to avoid teardown and re-initialization on every SSE update.
 - `AnimatePresence` in `CallFeed` is limited to the newest 5 rows to cap layout animation cost.
