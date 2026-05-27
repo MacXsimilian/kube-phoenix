@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.6](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.5...v0.7.6) (2026-05-27)
+
+
+### Features
+
+* **policies:** add weekly savings ring and streamline policy card ([#404](https://github.com/MacXsimilian/kube-phoenix/issues/404)) ([b406fcb](https://github.com/MacXsimilian/kube-phoenix/commit/b406fcb02a3518dcd8501cc41f6cee96415cae8b))
+
+
+### Performance Improvements
+
+* **observability:** reduce dashboard re-renders on live updates ([#403](https://github.com/MacXsimilian/kube-phoenix/issues/403)) ([1b24b69](https://github.com/MacXsimilian/kube-phoenix/commit/1b24b6945cd38c17035a315d662a0f8550b062cb))
+
 ## [0.7.5](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.4...v0.7.5) (2026-05-26)
 
 
