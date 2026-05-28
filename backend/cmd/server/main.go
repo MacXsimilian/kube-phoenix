@@ -103,6 +103,19 @@ func main() {
 		defer cache.Stop()
 	}
 
+	// ── Observability collector ───────────────────────────────────────────
+	// Must be initialised before the policy scheduler so SetCallRecorder
+	// happens-before the scheduler's tickLoop goroutines read callRecorder.
+	obsCollector, err := observability.NewCollector(st)
+	if err != nil {
+		slog.Error("observability collector init failed", "err", err)
+		os.Exit(1)
+	}
+	if k8s != nil {
+		k8s.SetCallRecorder(obsCollector.CallRecorder())
+	}
+	runTracked(&wg, "observability-collector", func() { obsCollector.Start(bgCtx) })
+
 	// ── Policy scheduler ──────────────────────────────────────────────────
 	g, err := st.GetGuardrails()
 	if err != nil {
@@ -121,18 +134,6 @@ func main() {
 			os.Exit(1)
 		}
 		defer policySched.Stop()
-	}
-
-	// ── Observability collector ───────────────────────────────────────────
-	obsCollector, err := observability.NewCollector(st)
-	if err != nil {
-		slog.Error("observability collector init failed", "err", err)
-		os.Exit(1)
-	}
-	runTracked(&wg, "observability-collector", func() { obsCollector.Start(bgCtx) })
-
-	if k8s != nil {
-		k8s.SetCallRecorder(obsCollector.CallRecorder())
 	}
 
 	// ── Audit writer (separate ctx — must drain after HTTP shutdown) ──────
