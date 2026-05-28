@@ -15,6 +15,13 @@ import (
 
 const resetConfirmPhrase = "RESET DATABASE"
 
+// destructiveOpTimeout bounds long-running admin operations (resetDB,
+// emergencyScale) so they can finish even if the operator closes the browser
+// tab mid-flight. Without it the in-flight K8s scale calls and DB writes would
+// inherit the request context and abort on client disconnect, potentially
+// leaving workloads half-scaled.
+const destructiveOpTimeout = 5 * time.Minute
+
 type resetEvent struct {
 	Type    string `json:"type"` // "step" | "done" | "error"
 	Message string `json:"message"`
@@ -79,8 +86,11 @@ func (h *Handler) resetDB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	opCtx, opCancel := context.WithTimeout(context.Background(), destructiveOpTimeout)
+	defer opCancel()
+
 	emit("step", "Restarting policy scheduler...")
-	if err := h.policyScheduler.Restart(r.Context()); err != nil {
+	if err := h.policyScheduler.Restart(opCtx); err != nil {
 		slog.Error("admin: policy scheduler restart failed", "err", err)
 		emit("error", "Policy scheduler restart failed — see server logs for details")
 		return
@@ -160,15 +170,18 @@ func (h *Handler) emergencyScale(w http.ResponseWriter, r *http.Request) {
 	}
 	emit("step", fmt.Sprintf("Found %d workloads to scale up", len(snapshots)))
 
+	opCtx, opCancel := context.WithTimeout(context.Background(), destructiveOpTimeout)
+	defer opCancel()
+
 	if len(snapshots) == 0 {
 		emit("step", "No sleeping workloads found — skipping scaling")
 	} else {
-		h.emergencyScaleSnapshots(r.Context(), snapshots, emit)
+		h.emergencyScaleSnapshots(opCtx, snapshots, emit)
 	}
 
 	// Step 7: Restart the scheduler (all policies are now disabled, so it idles).
 	emit("step", "Restarting policy scheduler...")
-	if err := h.policyScheduler.Restart(r.Context()); err != nil {
+	if err := h.policyScheduler.Restart(opCtx); err != nil {
 		slog.Error("admin: policy scheduler restart failed", "err", err)
 		emit("error", "Policy scheduler restart failed — see server logs for details")
 		return
