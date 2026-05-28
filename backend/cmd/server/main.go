@@ -25,6 +25,7 @@ import (
 
 const (
 	httpReadTimeout        = 15 * time.Second
+	httpReadHeaderTimeout  = 5 * time.Second
 	httpIdleTimeout        = 60 * time.Second
 	shutdownTimeout        = 30 * time.Second
 	sessionCleanupInterval = 15 * time.Minute
@@ -145,11 +146,12 @@ func main() {
 	// ── HTTP server ───────────────────────────────────────────────────────
 	router := api.NewRouter(bgCtx, cfg, st, k8s, policySched, cache, obsCollector, auditWriter)
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", *port),
-		Handler:      router,
-		ReadTimeout:  httpReadTimeout,
-		WriteTimeout: 0, // disabled for WebSocket streaming
-		IdleTimeout:  httpIdleTimeout,
+		Addr:              fmt.Sprintf(":%d", *port),
+		Handler:           router,
+		ReadTimeout:       httpReadTimeout,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		WriteTimeout:      0, // disabled for WebSocket streaming
+		IdleTimeout:       httpIdleTimeout,
 	}
 
 	go func() {
