@@ -79,6 +79,15 @@ function toUTCString(ts: string): string {
   return new Date(ts).toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
 }
 
+// Prefix any cell whose first character could be interpreted as a spreadsheet
+// formula. Excel, Numbers, and Google Sheets all execute leading =, +, -, @,
+// tab, and CR — turning attacker-controlled usernames into arbitrary formulas.
+function escapeCSVCell(value: string): string {
+  const needsFormulaGuard = /^[=+\-@\t\r]/.test(value)
+  const guarded = needsFormulaGuard ? `'${value}` : value
+  return `"${guarded.replace(/"/g, '""')}"`
+}
+
 export function downloadCSV(items: AuditLogEntry[]): void {
   const header = ['Time (UTC)', 'User', 'Action', 'Resource', 'IP Address']
   const rows = items.map(e => [
@@ -89,7 +98,7 @@ export function downloadCSV(items: AuditLogEntry[]): void {
     e.ipAddress ?? '',
   ])
   const csv = [header, ...rows]
-    .map(row => row.map(v => `"${v.replace(/"/g, '""')}"`).join(','))
+    .map(row => row.map(escapeCSVCell).join(','))
     .join('\n')
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
