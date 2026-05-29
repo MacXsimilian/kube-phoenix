@@ -35,9 +35,14 @@ func SessionIDFromContext(ctx context.Context) uint {
 
 // ─── Session Auth (cookie-based) ─────────────────────────────────────────────
 
+// sessionExtendGrace is the slack window before idle expiry within which a
+// request will refresh the sliding window. Outside this window the existing
+// expiry is still well in the future and the DB UPDATE is skipped.
+const sessionExtendGrace = 60 * time.Second
+
 // SessionAuth reads the __kp_session HTTP-only cookie, looks up the session in
 // the database, places the User into the request context, and extends the
-// sliding-window expiry.
+// sliding-window expiry when it nears the idle limit.
 func SessionAuth(st *store.Store, idleTimeout time.Duration) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -59,9 +64,10 @@ func SessionAuth(st *store.Store, idleTimeout time.Duration) func(http.Handler) 
 				return
 			}
 
-			// Extend sliding window (capped at max_expires_at by the store).
-			if err := st.ExtendSession(cookie.Value, idleTimeout); err != nil {
-				slog.Warn("session-auth: extend session failed", "err", err)
+			if shouldExtendSession(sess.ExpiresAt, idleTimeout) {
+				if err := st.ExtendSession(cookie.Value, idleTimeout); err != nil {
+					slog.Warn("session-auth: extend session failed", "err", err)
+				}
 			}
 
 			ctx := context.WithValue(r.Context(), ctxUserKey{}, &sess.User)
@@ -69,6 +75,18 @@ func SessionAuth(st *store.Store, idleTimeout time.Duration) func(http.Handler) 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// shouldExtendSession reports whether the sliding-window expiry is close enough
+// to "now" that we should refresh it. Sessions are extended only when the
+// remaining lifetime drops below the grace window, which collapses the per-
+// request UPDATE storm into roughly one UPDATE per grace interval per session.
+func shouldExtendSession(expiresAt time.Time, idleTimeout time.Duration) bool {
+	threshold := idleTimeout - sessionExtendGrace
+	if threshold <= 0 {
+		return true
+	}
+	return time.Until(expiresAt) <= threshold
 }
 
 // ─── CSRF protection (double-submit cookie) ──────────────────────────────────
