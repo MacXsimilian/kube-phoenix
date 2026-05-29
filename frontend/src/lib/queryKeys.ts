@@ -6,13 +6,13 @@ export const queryKeys = {
   policy: (id: number) => ['policy', id] as const,
   policyExecutions: (policyId?: number) =>
     policyId != null
-      ? ['policy-executions', policyId] as const
+      ? ['policy-executions', 'by-policy', policyId] as const
       : ['policy-executions'] as const,
   policyExecutionsFeed: () => ['policy-executions', 'feed'] as const,
   policyExecutionsTable: (page: number, rowsPerPage: number, status: string, direction: string) =>
-    ['policy-executions', page, rowsPerPage, status, direction] as const,
+    ['policy-executions', 'table', page, rowsPerPage, status, direction] as const,
   policyExecutionPoll: (id: number | undefined) => ['policy-execution-poll', id] as const,
-  policyExecutionsFetch: (id: number) => ['policy-executions', { id }] as const,
+  policyExecutionsFetch: (id: number) => ['policy-executions', 'fetch', id] as const,
   auditLogs: (page: number, pageSize: number, user: string, action: string, from: string, to: string) =>
     ['audit-logs', page, pageSize, user, action, from, to] as const,
   exceptions: (policyId?: number) =>
