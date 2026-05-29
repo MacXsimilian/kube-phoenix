@@ -717,24 +717,26 @@ export default function LogViewer({
                   }}>
                   Logs
                 </Typography>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      size="small"
-                      checked={autoScroll}
-                      onChange={(e) => {
-                        const on = e.target.checked
-                        setAutoScroll(on)
-                        if (on && lines.length > 0) {
-                          virtualizer.scrollToIndex(lines.length - 1, { align: 'end', behavior: 'smooth' })
-                        }
-                      }}
-                      sx={{ '& .MuiSwitch-thumb': { background: (t) => t.palette.primary.main } }}
-                    />
-                  }
-                  label={<Typography variant="caption" sx={{ color: 'text.secondary' }}>Auto-scroll</Typography>}
-                  sx={{ m: 0 }}
-                />
+                {isRunning && (
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        size="small"
+                        checked={autoScroll}
+                        onChange={(e) => {
+                          const on = e.target.checked
+                          setAutoScroll(on)
+                          if (on && lines.length > 0) {
+                            virtualizer.scrollToIndex(lines.length - 1, { align: 'end', behavior: 'smooth' })
+                          }
+                        }}
+                        sx={{ '& .MuiSwitch-thumb': { background: (t) => t.palette.primary.main } }}
+                      />
+                    }
+                    label={<Typography variant="caption" sx={{ color: 'text.secondary' }}>Auto-scroll</Typography>}
+                    sx={{ m: 0 }}
+                  />
+                )}
               </Box>
               {/* WebSocket disconnected — floating toast handled below */}
               {logsError && !isRunning && (
