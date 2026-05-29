@@ -107,6 +107,11 @@ func NextTransition(windows []SleepWindow, timezone string, now time.Time) *time
 
 // collectBoundaries generates all window start/end boundary times within
 // the next numDays days from the given local time.
+//
+// Boundaries are constructed with time.Date so that DST transitions resolve
+// correctly. Using Add(N*time.Minute) on midnight would advance real elapsed
+// time, which gives the wrong wall-clock answer on DST days: fall-back boundaries
+// fire an hour early, spring-forward boundaries fire an hour late.
 func collectBoundaries(windows []SleepWindow, local time.Time, numDays int) []time.Time {
 	loc := local.Location()
 	today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
@@ -115,6 +120,7 @@ func collectBoundaries(windows []SleepWindow, local time.Time, numDays int) []ti
 	for offset := 0; offset < numDays; offset++ {
 		date := today.AddDate(0, 0, offset)
 		dow := int(date.Weekday())
+		y, m, d := date.Date()
 
 		for _, w := range windows {
 			if w.AllDay {
@@ -139,19 +145,19 @@ func collectBoundaries(windows []SleepWindow, local time.Time, numDays int) []ti
 
 				// Sleep start boundary.
 				if dayInSet(dow, w.DaysOfWeek) {
-					boundaries = append(boundaries, date.Add(time.Duration(startMin)*time.Minute))
+					boundaries = append(boundaries, time.Date(y, m, d, startMin/60, startMin%60, 0, 0, loc))
 				}
 				// Wake boundary.
 				if startMin < endMin {
 					// Same-day: wake on same day.
 					if dayInSet(dow, w.DaysOfWeek) {
-						boundaries = append(boundaries, date.Add(time.Duration(endMin)*time.Minute))
+						boundaries = append(boundaries, time.Date(y, m, d, endMin/60, endMin%60, 0, 0, loc))
 					}
 				} else {
 					// Overnight: wake fires on next day.
 					yesterday := (dow + 6) % 7
 					if dayInSet(yesterday, w.DaysOfWeek) {
-						boundaries = append(boundaries, date.Add(time.Duration(endMin)*time.Minute))
+						boundaries = append(boundaries, time.Date(y, m, d, endMin/60, endMin%60, 0, 0, loc))
 					}
 				}
 			}

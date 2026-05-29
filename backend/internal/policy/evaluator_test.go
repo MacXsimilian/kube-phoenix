@@ -330,6 +330,36 @@ func TestNextTransition(t *testing.T) {
 			now:  time.Date(2024, 3, 16, 12, 0, 0, 0, time.UTC),
 			want: nil,
 		},
+		{
+			// On 2024-11-03 America/New_York falls back from EDT to EST at
+			// 02:00 local: clocks jump back to 01:00. A wake at 03:00 wall
+			// must resolve as 03:00 EST = 08:00 UTC, not midnight EDT + 3h
+			// (which would fire an hour early at 07:00 UTC).
+			name: "DST fall-back: wake at 03:00 wall resolves to EST",
+			windows: []SleepWindow{{
+				DaysOfWeek: []int{sun},
+				StartTime:  "01:00",
+				EndTime:    "03:00",
+			}},
+			tz:   "America/New_York",
+			now:  time.Date(2024, 11, 3, 5, 30, 0, 0, time.UTC), // 01:30 EDT, sleeping
+			want: timePtr(time.Date(2024, 11, 3, 8, 0, 0, 0, time.UTC)),
+		},
+		{
+			// On 2024-03-10 America/New_York springs forward from EST to EDT
+			// at 02:00 local: clocks jump to 03:00. A wake at 04:00 wall
+			// must resolve as 04:00 EDT = 08:00 UTC, not midnight EST + 4h
+			// (which would fire an hour late at 09:00 UTC).
+			name: "DST spring-forward: wake at 04:00 wall resolves to EDT",
+			windows: []SleepWindow{{
+				DaysOfWeek: []int{sun},
+				StartTime:  "02:00",
+				EndTime:    "04:00",
+			}},
+			tz:   "America/New_York",
+			now:  time.Date(2024, 3, 10, 7, 30, 0, 0, time.UTC), // 03:30 EDT, sleeping
+			want: timePtr(time.Date(2024, 3, 10, 8, 0, 0, 0, time.UTC)),
+		},
 	}
 
 	for _, tt := range tests {
