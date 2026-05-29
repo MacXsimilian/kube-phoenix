@@ -7,6 +7,7 @@ import type { SleepWindow } from '@/lib/types'
 import { useIsDark } from '@/lib/useIsDark'
 import { timeToHours, isOvernight, windowsToText, nowInTimezone } from '@/lib/windowUtils'
 import { TIMELINE_COLORS } from '@/lib/colors'
+import { useClockTick } from '@/lib/useClockTick'
 
 const TOP_PAD = 6
 const BOT_PAD = 4
@@ -16,13 +17,12 @@ const WAVEFORM_STROKE = 1.5
 const NOW_DOT_R = 3.5
 const HOUR_TICKS = [0, 3, 6, 9, 12, 15, 18, 21, 24]
 const TICK_H = 3
-const UPDATE_INTERVAL_MS = 30_000
 
 /**
  * Sparkline-style 24h timeline showing sleep/awake as a waveform.
  * The waveform SVG stretches to fill the container width.
  * Hour tick marks are rendered inside the SVG; labels via CSS for crisp text.
- * Now marker updates every 30 seconds.
+ * Now marker updates on each shared 30s clock tick.
  */
 export default function MiniTimeline({
   windows,
@@ -40,7 +40,6 @@ export default function MiniTimeline({
   const gradIdAwake = `spark-awake-${uid}`
   const gradIdSleep = `spark-sleep-${uid}`
 
-  // Pause interval when off-screen
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -52,24 +51,11 @@ export default function MiniTimeline({
     return () => observer.disconnect()
   }, [])
 
-  // Real-time current hour — ticks every 30s, paused when not visible
-  const [timeState, setTimeState] = useState(() => {
-    const now = nowInTimezone(timezone)
-    return { currentHour: now.fractionalHour, todayDow: now.dayOfWeek }
-  })
-
-  useEffect(() => {
-    if (!isVisible) return
-    const now = nowInTimezone(timezone)
-    setTimeState({ currentHour: now.fractionalHour, todayDow: now.dayOfWeek })
-    const id = setInterval(() => {
-      const now = nowInTimezone(timezone)
-      setTimeState({ currentHour: now.fractionalHour, todayDow: now.dayOfWeek })
-    }, UPDATE_INTERVAL_MS)
-    return () => clearInterval(id)
-  }, [timezone, isVisible])
-
-  const { currentHour, todayDow } = timeState
+  // Re-render on shared 30s tick; derive current hour from the wall clock each render.
+  useClockTick()
+  const now = nowInTimezone(timezone)
+  const currentHour = now.fractionalHour
+  const todayDow = now.dayOfWeek
 
   // Build sleeping ranges for today (memoized to avoid recalc on unrelated re-renders)
   const sleepRanges = useMemo(() => {

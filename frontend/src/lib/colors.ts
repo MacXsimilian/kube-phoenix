@@ -30,10 +30,13 @@ export function semanticColors(isDark: boolean) {
   }
 }
 
+const LIGHT_COLORS = semanticColors(false)
+const DARK_COLORS = semanticColors(true)
+
 /** React hook — returns mode-aware semantic colors from the current MUI theme. */
 export function useColors() {
   const theme = useTheme()
-  return semanticColors(theme.palette.mode === 'dark')
+  return theme.palette.mode === 'dark' ? DARK_COLORS : LIGHT_COLORS
 }
 
 export const TIMELINE_COLORS = {

@@ -16,6 +16,14 @@ const nextConfig = {
     // .proto.tsx pages (prototypes) are only included during dev-mock
     ...(process.env.NEXT_PUBLIC_PROTOTYPES === '1' ? ['proto.tsx'] : []),
   ],
+  experimental: {
+    optimizePackageImports: [
+      '@mui/material',
+      '@mui/icons-material',
+      '@mui/material/styles',
+      'framer-motion',
+    ],
+  },
 }
 
 export default analyzer(nextConfig)

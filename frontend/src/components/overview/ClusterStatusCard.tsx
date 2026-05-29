@@ -41,12 +41,16 @@ export default function ClusterStatusCard() {
   const hasTrigger = canTriggerSchedules(user?.permissions)
   const colors = useColors()
 
-  // Single overview query — fed by SSE in real time, polls as fallback
+  // Subscribe to SSE — updates the overview query cache in real time
+  const streamDisconnected = useClusterStream()
+
+  // Single overview query — fed by SSE in real time. Only fall back to
+  // interval polling when the SSE stream is disconnected.
   const { data: overview, isLoading, isError } = useQuery({
     queryKey: queryKeys.overview(),
     queryFn: getOverview,
     staleTime: 25_000,
-    refetchInterval: 30_000,
+    refetchInterval: streamDisconnected ? 30_000 : false,
   })
 
   // Policies for trigger button (find first enabled apply-mode policy)
@@ -56,9 +60,6 @@ export default function ClusterStatusCard() {
     staleTime: 60_000,
     refetchInterval: 60_000,
   })
-
-  // Subscribe to SSE — updates the overview query cache in real time
-  const streamDisconnected = useClusterStream()
 
   const { notify, SnackbarAlert } = useSnackbar()
 
@@ -75,7 +76,7 @@ export default function ClusterStatusCard() {
       try {
         const execs = await queryClient.fetchQuery({
           queryKey: queryKeys.policyExecutionsFetch(executionId),
-          queryFn: () => getPolicyExecutions({ policyId: firstPolicy!.id, page: 1, pageSize: 10 }),
+          queryFn: () => getPolicyExecutions({ policyId: firstPolicy!.id, page: 0, pageSize: 10 }),
         })
         const exec = execs.items.find((e: PolicyExecution) => e.id === executionId)
         if (exec) setLiveExecution(exec)
@@ -91,7 +92,7 @@ export default function ClusterStatusCard() {
   const { data: refreshedExec } = useQuery({
     queryKey: queryKeys.policyExecutionPoll(liveId),
     queryFn: async () => {
-      const execs = await getPolicyExecutions({ policyId: firstPolicy!.id, page: 1, pageSize: 10 })
+      const execs = await getPolicyExecutions({ policyId: firstPolicy!.id, page: 0, pageSize: 10 })
       return execs.items.find((e: PolicyExecution) => e.id === liveId) ?? null
     },
     enabled: !!liveId && liveRunning && !!firstPolicy,

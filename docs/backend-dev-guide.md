@@ -48,8 +48,8 @@ This requires `DATABASE_URL` to be set (PostgreSQL connection string). The Kuber
 - Load `*config.AppConfig` via `config.Load()` -- a single startup-time parse of every backend env var (database, K8s, sessions, admin seed, retention, etc.). All downstream constructors receive their slice of `cfg` rather than reading `os.Getenv` themselves.
 - Initialize `store.Store` via `store.New(cfg.DatabaseURL, store.PoolConfig{...})` populated from `cfg.DB*` fields, run `SeedDefaults(cfg.AdminUser, cfg.AdminPassword)`, and recover interrupted state via `recoverInterruptedState()` (which wraps `MarkInterruptedPolicyExecutions()` and `ResetStuckTransitioningPolicies()`).
 - Create the Kubernetes client via `k8s.New(k8sclient.Config{...})` populated from `cfg.Kubeconfig`, `cfg.ClusterName`, `cfg.K8sQPS`, `cfg.K8sBurst`; tolerate its absence (sets `k8s = nil`).
-- Start `ClusterCache`, `PolicyScheduler`, the observability collector, the `AuditWriter`, and maintenance tickers (session cleanup every 15m, audit retention daily). Every background goroutine is tracked by a single `sync.WaitGroup` -- most through the `runTracked` helper, the maintenance tickers via direct `wg.Add(1)` -- so shutdown can join them all.
-- Build the Chi router via `api.NewRouter(ctx, cfg, ...)` and start `http.Server` with `ReadTimeout=15s`, `WriteTimeout=0` (disabled for WebSocket/SSE), `IdleTimeout=60s`.
+- Start `ClusterCache`, the observability collector, the `PolicyScheduler`, the `AuditWriter`, and maintenance tickers (session cleanup every 15m, audit retention daily). The collector is constructed and `k8s.SetCallRecorder(obsCollector.CallRecorder())` is called *before* the scheduler starts, so the recorder write happens-before the scheduler's `tickLoop` goroutines read it (eliminating a data race). Every background goroutine is tracked by a single `sync.WaitGroup` -- most through the `runTracked` helper, the maintenance tickers via direct `wg.Add(1)` -- so shutdown can join them all.
+- Build the Chi router via `api.NewRouter(ctx, cfg, ...)` and start `http.Server` with `ReadTimeout=15s`, `ReadHeaderTimeout=5s` (caps slowloris-style header reads independently of body upload time), `WriteTimeout=0` (disabled for WebSocket/SSE), `IdleTimeout=60s`.
 - Listen for `SIGINT`/`SIGTERM` and run the shutdown sequence below.
 
 **Shutdown sequence:** order matters and is enforced by code, not by deferred cleanup. Two cancellation contexts (`bgCtx` for collector/scheduler/cache/tickers, `auditCtx` for the `AuditWriter`) let the audit writer outlive HTTP shutdown so it captures entries produced by handlers that are still finishing.
@@ -119,7 +119,7 @@ Downstream constructors take their own typed inputs (`store.PoolConfig`, `k8scli
 | `guardrails.go` | `getGuardrails`, `updateGuardrails` |
 | `users.go` | `listUsers`, `createUser`, `updateUser`, `deleteUser` |
 | `audit.go` | `AuditWriter.Start()`, `Handler.audit()`, `Handler.auditDeniedMiddleware()`, `marshalOrNull()`, `clientIP()`, `listAuditLogs` |
-| `admin.go` | `resetDB` -- streams NDJSON progress events while dropping/recreating all tables; `emergencyScale` -- disables all policies, cancels active exceptions, scales sleeping workloads to 1 replica, streams NDJSON progress |
+| `admin.go` | `resetDB` -- streams NDJSON progress events while dropping/recreating all tables; `emergencyScale` -- disables all policies, cancels active exceptions, scales sleeping workloads to 1 replica, streams NDJSON progress. Both handlers run the mutating phase under a fresh `context.Background()` bounded by `destructiveOpTimeout` (5 min) rather than the request context, so a mid-flight client disconnect cannot abort in-flight K8s scales or DB writes and leave workloads half-restored. |
 | `ws.go` | `wsReadPump`, `wsSendLines`, `wsSendReplayAfterDB`, `wsDrainChannel`, `wsStreamLoop` -- WebSocket helpers |
 | `helpers.go` | `jsonOK`, `jsonCreated`, `jsonError`, `jsonInternalError`, `parseID`, `parsePageSize`, `reloadScheduler`, `handleStoreError`, `requireUser`, `nonNilMap` |
 | `cluster_info.go` | `getClusterInfo` -- returns Kubernetes API server URL, version, auth mode, and cluster name |
@@ -147,7 +147,7 @@ Downstream constructors take their own typed inputs (`store.PoolConfig`, `k8scli
 
 **Key functions:**
 - `NewPolicyScheduler(st, k8sClient, cfg SchedulerConfig)` -- constructor.
-- `Start(ctx)` / `Stop()` -- lifecycle; `Start` calls `reload()` then launches `tickLoop`. `Stop` cancels the context and waits for in-flight executions via the `inflight` WaitGroup.
+- `Start(ctx)` / `Stop()` -- lifecycle; `Start` calls `reload()` then launches `tickLoop`. `Stop` cancels both the tick context and a dedicated execution context (`execCtx`) before joining `inflight.Wait()`. Cancelling `execCtx` propagates into every in-flight execution's derived `runCtx`, so a `Stop` during a slow scale finishes within shutdown bounds instead of blocking on each policy's per-execution timeout (up to 2h).
 - `Reload()` -- re-reads all enabled policies from DB; called after any policy CRUD.
 - `RecoverPolicies(ctx)` -- startup reconciliation (called automatically inside `Start()` before the tick loop launches): compares `CurrentState` against `IntendedState` and queues recovery executions for mismatches.
 - `RunSleepNow(policyID, trigger)` / `RunWakeNow(policyID, trigger)` -- manual triggers; both delegate to `runNow(policyID, direction, trigger)` which fetches the policy and calls `run`. Returns the new execution ID.
@@ -155,7 +155,7 @@ Downstream constructors take their own typed inputs (`store.PoolConfig`, `k8scli
 - `IsAlreadyRunning(err)` -- helper that checks whether an error is `ErrPolicyTransitioning` or `ErrPolicyExecutionInflight`.
 - `TickExceptions(ctx)` -- called every 60s; delegates to `maybeStartException` (pending → active when `StartsAt` passes, dispatches `RunSleepNow` for `force_sleep` or `RunWakeNow` for `stay_awake`) and `maybeEndException` (active → completed when `EndsAt` passes, triggers the inverse revert action if `SleepOnEnd` is enabled). Once active, exceptions also feed into `IntendedState` on every scheduler tick so the normal schedule cannot override them.
 - `RunExceptionAction(ps, policyID, exType, trigger)` / `RevertExceptionAction(...)` -- exported helpers that dispatch sleep/wake based on exception type (start = direct action, end = inverse). Used by the scheduler and API handler.
-- `execContext()` -- returns a context derived from the scheduler's parent context, so `Stop()` can signal in-flight executions to abort. Falls back to `context.Background()` if the scheduler was never started.
+- `execContext()` -- returns the dedicated `execCtx` that scopes all in-flight executions. `Stop()` cancels it so every execution's derived `runCtx` unwinds immediately. Falls back to `context.Background()` if the scheduler was never started.
 - `run(ctx, policy, direction, trigger)` -- core orchestration: registers the policy in `inflightPolicies`, sets `transitioning` state via `claimTransition`, creates `PolicyExecution`, spawns goroutine with panic recovery that delegates to `executeAndFinalize`. The goroutine cleans up `inflightPolicies` and `inflightCancels` on exit.
 - `executeAndFinalize(ctx, policy, direction, execID, startedAt)` -- extracted goroutine body: creates a timeout context, stores the cancel function in `inflightCancels`, creates the log channel, and delegates to `executeScaler` (sleep/wake dispatch) and `drainLogChannel` (batched log persistence + real-time WebSocket publish). Post-execution cleanup is delegated to `finalizeExecution` (determines final status -- `success`, `failed`, or `interrupted` when the context was cancelled -- calls `FinishPolicyExecution`), `recordExecutionMetrics` (Prometheus counters and histograms), and `updatePolicyState` (sets `sleeping`, `awake`, or `unknown` in both DB and cache).
 - `evaluateAll()` -- snapshots the cached policy map, batch-fetches active exceptions (`ListActiveExceptionsForPolicies`) for all enabled policies, builds an `evalContext`, and calls `evaluatePolicy` for each.
@@ -313,7 +313,7 @@ Downstream constructors take their own typed inputs (`store.PoolConfig`, `k8scli
 
 **Key internal functions:**
 - `windowContains(w, currentDOW, currentMinutes)` -- checks if a day/time falls inside a single window.
-- `collectBoundaries(windows, local, numDays)` -- generates all window start/end boundary times for `NextTransition`.
+- `collectBoundaries(windows, local, numDays)` -- generates all window start/end boundary times for `NextTransition`. Boundaries are constructed with `time.Date(y, m, d, hour, min, ...)` so DST transitions resolve at the correct wall-clock time. Adding `N*time.Minute` to local midnight would advance real elapsed time instead, firing fall-back boundaries an hour early and spring-forward boundaries an hour late.
 - `dayInSet(day, daysOfWeek)` -- membership check.
 - `timeToMinutes(t)` / `parseTime(t)` -- convert "HH:MM" to minutes-of-day.
 
@@ -530,7 +530,7 @@ type AuditLog struct {
 
 - Written asynchronously via `AuditWriter` (buffered channel, capacity 4096). Security-critical actions (`auth.*`, `user.*`, `admin.*`) bypass the buffer and write synchronously to guarantee delivery.
 - If the buffer is full for non-critical actions, the writer blocks up to 500ms before dropping and incrementing `kube_phoenix_audit_drops_total`.
-- On graceful shutdown, the writer's drain loop flushes queued entries until the channel is empty or `drainTimeout` (5s) elapses. The drain budget is checked at the top of each iteration so a slow database cannot stall shutdown for more than one in-flight write past the budget. Final `flushed` and `dropped` counts are logged.
+- On graceful shutdown, the writer's drain loop flushes queued entries until the channel is empty or `drainTimeout` (5s) elapses. Each iteration first performs a non-blocking `ctx.Done()` check before the main `select`, because Go's `select` chooses ready cases pseudo-randomly — under sustained channel load the shutdown signal could otherwise be starved indefinitely and `drainTimeout` would bound nothing. Final `flushed` and `dropped` counts are logged.
 - Retention is configurable via `AUDIT_RETENTION_DAYS` (default 90). A daily maintenance ticker deletes audit logs and finished policy executions (cascading to log lines and snapshots) older than the threshold. Executions with open (un-restored) snapshots are preserved regardless of age.
 
 #### Policy

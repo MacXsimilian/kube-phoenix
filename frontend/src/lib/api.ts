@@ -38,11 +38,16 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     headers['X-CSRF-Token'] = getCSRFToken()
   }
 
+  const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+  const signal = options?.signal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : timeoutSignal
+
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     credentials: 'include',
     headers,
-    signal: options?.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal,
   })
 
   await handleAuthErrors(res)
@@ -263,13 +268,13 @@ export async function* emergencyScaleStream(): AsyncGenerator<ResetEvent> {
 export const getUsers = (): Promise<User[]> =>
   apiFetch<User[]>('/api/users')
 
-export const createUserAPI = (data: { username: string; email?: string; password: string; role: string }): Promise<User> =>
+export const createUser = (data: { username: string; email?: string; password: string; role: string }): Promise<User> =>
   apiFetch<User>('/api/users', { method: 'POST', body: JSON.stringify(data) })
 
-export const updateUserAPI = (id: number, data: Partial<Pick<User, 'role' | 'enabled'>>): Promise<User> =>
+export const updateUser = (id: number, data: Partial<Pick<User, 'role' | 'enabled'>>): Promise<User> =>
   apiFetch<User>(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 
-export const deleteUserAPI = (id: number): Promise<void> =>
+export const deleteUser = (id: number): Promise<void> =>
   apiFetch<void>(`/api/users/${id}`, { method: 'DELETE' })
 
 // ── OIDC ──────────────────────────────────────────────────────────────────────

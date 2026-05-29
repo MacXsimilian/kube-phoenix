@@ -346,10 +346,6 @@ function WindowCard({
 
 // ── WindowPicker ─────────────────────────────────────────────────────────────
 
-function windowStableKey(w: SleepWindow, idx: number): string {
-  return `${w.startTime}-${w.endTime}-${w.daysOfWeek.join(',')}-${idx}`
-}
-
 export default function WindowPicker({
   windows,
   onChange,
@@ -434,7 +430,7 @@ export default function WindowPicker({
       {/* Window cards */}
       {windows.map((w, idx) => (
         <WindowCard
-          key={windowStableKey(w, idx)}
+          key={idx}
           window={w}
           idx={idx}
           totalWindows={windows.length}

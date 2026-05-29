@@ -127,6 +127,7 @@ export default function ImportDialog({ open, onClose, kind, onNotify }: ImportDi
   const [pastedText, setPastedText] = useState('')
   const [parseError, setParseError] = useState<string | null>(null)
   const [preview, setPreview] = useState<PreviewResp>(null)
+  const [previewedPayload, setPreviewedPayload] = useState<unknown>(null)
   const [resolution, setResolution] = useState<Resolution>('overwrite')
   const [newName, setNewName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -137,6 +138,7 @@ export default function ImportDialog({ open, onClose, kind, onNotify }: ImportDi
       setPastedText('')
       setParseError(null)
       setPreview(null)
+      setPreviewedPayload(null)
       setResolution('overwrite')
       setNewName('')
       setBusy(false)
@@ -144,7 +146,7 @@ export default function ImportDialog({ open, onClose, kind, onNotify }: ImportDi
     }
   }, [open])
 
-  const parsedPayload = (): unknown | null => {
+  const parsePastedPayload = (): unknown | null => {
     try {
       const parsed = JSON.parse(pastedText) as unknown
       setParseError(null)
@@ -156,13 +158,14 @@ export default function ImportDialog({ open, onClose, kind, onNotify }: ImportDi
   }
 
   const runPreview = async () => {
-    const payload = parsedPayload()
+    const payload = parsePastedPayload()
     if (payload == null) return
     setBusy(true)
     setError(null)
     try {
       const result = await previewByKind(kind, payload)
       setPreview(result as PreviewResp)
+      setPreviewedPayload(payload)
       if (kind === 'policy') {
         setResolution('overwrite')
         setNewName('')
@@ -175,12 +178,11 @@ export default function ImportDialog({ open, onClose, kind, onNotify }: ImportDi
   }
 
   const runApply = async () => {
-    const payload = parsedPayload()
-    if (payload == null) return
+    if (previewedPayload == null) return
     setBusy(true)
     setError(null)
     try {
-      await applyByKind(kind, payload, resolution, newName)
+      await applyByKind(kind, previewedPayload, resolution, newName)
       invalidateAfterImport(qc, kind)
       onNotify?.(successMessage(kind), 'success')
       onClose()
@@ -230,7 +232,12 @@ export default function ImportDialog({ open, onClose, kind, onNotify }: ImportDi
           </Button>
         ) : (
           <>
-            <Button onClick={() => setPreview(null)} disabled={busy}>Back</Button>
+            <Button
+              onClick={() => { setPreview(null); setPreviewedPayload(null) }}
+              disabled={busy}
+            >
+              Back
+            </Button>
             <Button
               variant="contained"
               onClick={runApply}

@@ -57,7 +57,7 @@ function splitCommaList(s: string) { return s.split(',').map((v) => v.trim()).fi
 
 function validateEvalInterval(value: string): string | undefined {
   const v = value.trim()
-  if (!/^(\d+(s|m))+$/.test(v)) return 'Must be a valid duration (e.g. 30s, 1m, 2m)'
+  if (!/^\d+[sm]$/.test(v)) return 'Must be a valid duration (e.g. 30s, 1m, 2m)'
   const min = v.match(/(\d+)m/)?.[1] ? Number(v.match(/(\d+)m/)![1]) * 60 : 0
   const s = v.match(/(\d+)s/)?.[1] ? Number(v.match(/(\d+)s/)![1]) : 0
   const total = min + s

@@ -124,6 +124,9 @@ export default function CreatePolicyDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.policies() })
+      if (isEdit && existing) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.policy(existing.id) })
+      }
       onNotify?.(isEdit ? 'Policy updated' : 'Policy created', 'success')
       onClose()
     },

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback, memo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/queryKeys'
 import { useSearchParams } from 'next/navigation'
@@ -35,6 +35,85 @@ import WorkloadDetailDrawer from './WorkloadDetailDrawer'
 const validStatuses = ['running', 'sleeping', 'partial']
 
 type WorkloadSortCol = 'namespace' | 'name' | 'kind' | 'replicas' | 'status'
+
+const FILTER_BAR_SX = { display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' } as const
+const SEARCH_FIELD_SX = { minWidth: 200 } as const
+const NS_FIELD_SX = { minWidth: 160 } as const
+const STATUS_FIELD_SX = { minWidth: 140 } as const
+const PROTECTION_FIELD_SX = { minWidth: 150 } as const
+const FLEX_SPACER_SX = { flex: 1 } as const
+const UPDATED_CAPTION_SX = { color: 'text.disabled' } as const
+const ROW_COUNT_SX = { color: 'text.disabled', display: 'block', mb: 1 } as const
+const EMPTY_CELL_SX = { color: 'text.secondary', py: 2, textAlign: 'center' } as const
+const ROW_SX = { cursor: 'pointer' } as const
+const NS_CELL_SX = { color: 'text.secondary', fontSize: 13 } as const
+const NS_INNER_SX = { display: 'flex', alignItems: 'center', gap: 0.75 } as const
+const SHIELD_ICON_SX = { fontSize: 14, color: 'warning.main' } as const
+const NAME_CELL_SX = { fontWeight: 500, fontSize: 13 } as const
+const KIND_CHIP_SX = { height: 20, fontSize: 10, bgcolor: 'rgba(124,58,237,0.12)', color: 'primary.main' } as const
+const REPLICAS_INNER_SX = { display: 'flex', alignItems: 'center', gap: 0.75 } as const
+const REPLICAS_TEXT_SX = { fontSize: 13, fontFamily: 'monospace' } as const
+const SAVED_REPLICAS_SX = { color: 'text.secondary', fontSize: 12 } as const
+
+type WorkloadRowProps = {
+  workload: Workload
+  isProtected: boolean
+  statusColor: { label: string; bgcolor: string; color: string }
+  unhealthyDotColor: string
+  onClick: (w: Workload) => void
+}
+
+const WorkloadRow = memo(function WorkloadRow({
+  workload,
+  isProtected,
+  statusColor,
+  unhealthyDotColor,
+  onClick,
+}: WorkloadRowProps) {
+  const unhealthy = workload.readyReplicas < workload.currentReplicas && workload.currentReplicas > 0
+  return (
+    <TableRow hover onClick={() => onClick(workload)} sx={ROW_SX}>
+      <TableCell sx={NS_CELL_SX}>
+        <Box sx={NS_INNER_SX}>
+          {workload.namespace}
+          {isProtected && (
+            <Tooltip title="System-protected namespace" arrow>
+              <ShieldOutlinedIcon sx={SHIELD_ICON_SX} />
+            </Tooltip>
+          )}
+        </Box>
+      </TableCell>
+      <TableCell sx={NAME_CELL_SX}>{workload.name}</TableCell>
+      <TableCell>
+        <Chip label={workload.kind} size="small" sx={KIND_CHIP_SX} />
+      </TableCell>
+      <TableCell>
+        <Box sx={REPLICAS_INNER_SX}>
+          {unhealthy && (
+            <Tooltip title={`Only ${workload.readyReplicas}/${workload.currentReplicas} replicas ready`} arrow>
+              <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: unhealthyDotColor, flexShrink: 0 }} />
+            </Tooltip>
+          )}
+          <Typography component="span" sx={REPLICAS_TEXT_SX}>
+            {workload.currentReplicas}
+          </Typography>
+          {workload.savedReplicas !== null && (
+            <Typography component="span" sx={SAVED_REPLICAS_SX}>
+              / {workload.savedReplicas}
+            </Typography>
+          )}
+        </Box>
+      </TableCell>
+      <TableCell>
+        <Chip
+          label={statusColor.label}
+          size="small"
+          sx={{ height: 20, fontSize: 11, bgcolor: statusColor.bgcolor, color: statusColor.color }}
+        />
+      </TableCell>
+    </TableRow>
+  )
+})
 
 export default function WorkloadsTable() {
   const searchParams = useSearchParams()
@@ -109,16 +188,18 @@ export default function WorkloadsTable() {
   // Reset page when filters change
   useEffect(() => { setPage(0) }, [search, nsFilter, statusFilter, protectionFilter])
 
+  const handleRowClick = useCallback((w: Workload) => setSelectedWorkload(w), [])
+
   return (
     <>
       {/* Filters */}
-      <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Box sx={FILTER_BAR_SX}>
         <TextField
           label="Search"
           size="small"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{ minWidth: 200 }}
+          sx={SEARCH_FIELD_SX}
         />
         <TextField
           select
@@ -126,7 +207,7 @@ export default function WorkloadsTable() {
           size="small"
           value={nsFilter}
           onChange={(e) => setNsFilter(e.target.value)}
-          sx={{ minWidth: 160 }}
+          sx={NS_FIELD_SX}
         >
           {namespaces.map((ns) => (
             <MenuItem key={ns} value={ns}>
@@ -140,7 +221,7 @@ export default function WorkloadsTable() {
           size="small"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          sx={{ minWidth: 140 }}
+          sx={STATUS_FIELD_SX}
         >
           {['all', 'running', 'sleeping', 'partial'].map((s) => (
             <MenuItem key={s} value={s}>
@@ -154,28 +235,20 @@ export default function WorkloadsTable() {
           size="small"
           value={protectionFilter}
           onChange={(e) => setProtectionFilter(e.target.value as 'all' | 'protected' | 'unprotected')}
-          sx={{ minWidth: 150 }}
+          sx={PROTECTION_FIELD_SX}
         >
           <MenuItem value="all">All</MenuItem>
           <MenuItem value="protected">Protected</MenuItem>
           <MenuItem value="unprotected">Unprotected</MenuItem>
         </TextField>
-        <Box sx={{ flex: 1 }} />
-        <Typography variant="caption" sx={{
-          color: "text.disabled"
-        }}>
+        <Box sx={FLEX_SPACER_SX} />
+        <Typography variant="caption" sx={UPDATED_CAPTION_SX}>
           {dataUpdatedAt ? `Updated ${sinceMs(dataUpdatedAt)}` : ''}
         </Typography>
       </Box>
       {/* Row count */}
       {!isLoading && !isError && (
-        <Typography
-          variant="caption"
-          sx={{
-            color: "text.disabled",
-            display: 'block',
-            mb: 1
-          }}>
+        <Typography variant="caption" sx={ROW_COUNT_SX}>
           {sorted.length === workloads.length
             ? `${workloads.length} workload${workloads.length !== 1 ? 's' : ''}`
             : `Showing ${sorted.length} of ${workloads.length} workloads`}
@@ -203,73 +276,22 @@ export default function WorkloadsTable() {
               {sorted.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5}>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        color: "text.secondary",
-                        py: 2,
-                        textAlign: 'center'
-                      }}>
+                    <Typography variant="body2" sx={EMPTY_CELL_SX}>
                       No workloads match the current filters.
                     </Typography>
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedRows.map((w) => {
-                  const statusColor = STATUS_COLORS[w.status]
-                  const unhealthy = w.readyReplicas < w.currentReplicas && w.currentReplicas > 0
-                  return (
-                    <TableRow key={`${w.namespace}/${w.name}/${w.kind}`} hover onClick={() => setSelectedWorkload(w)} sx={{ cursor: 'pointer' }}>
-                      <TableCell sx={{ color: 'text.secondary', fontSize: 13 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                          {w.namespace}
-                          {protectedNamespaces.has(w.namespace) && (
-                            <Tooltip title="System-protected namespace" arrow>
-                              <ShieldOutlinedIcon sx={{ fontSize: 14, color: 'warning.main' }} />
-                            </Tooltip>
-                          )}
-                        </Box>
-                      </TableCell>
-                      <TableCell sx={{ fontWeight: 500, fontSize: 13 }}>{w.name}</TableCell>
-                      <TableCell>
-                        <Chip
-                          label={w.kind}
-                          size="small"
-                          sx={{ height: 20, fontSize: 10, bgcolor: 'rgba(124,58,237,0.12)', color: 'primary.main' }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                          {unhealthy && (
-                            <Tooltip title={`Only ${w.readyReplicas}/${w.currentReplicas} replicas ready`} arrow>
-                              <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: colors.errorLight, flexShrink: 0 }} />
-                            </Tooltip>
-                          )}
-                          <Typography component="span" sx={{ fontSize: 13, fontFamily: 'monospace' }}>
-                            {w.currentReplicas}
-                          </Typography>
-                          {w.savedReplicas !== null && (
-                            <Typography
-                              component="span"
-                              sx={{
-                                color: "text.secondary",
-                                fontSize: 12
-                              }}>
-                              / {w.savedReplicas}
-                            </Typography>
-                          )}
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={statusColor.label}
-                          size="small"
-                          sx={{ height: 20, fontSize: 11, bgcolor: statusColor.bgcolor, color: statusColor.color }}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
+                paginatedRows.map((w) => (
+                  <WorkloadRow
+                    key={`${w.namespace}/${w.name}/${w.kind}`}
+                    workload={w}
+                    isProtected={protectedNamespaces.has(w.namespace)}
+                    statusColor={STATUS_COLORS[w.status]}
+                    unhealthyDotColor={colors.errorLight}
+                    onClick={handleRowClick}
+                  />
+                ))
               )}
             </TableBody>
           </Table>

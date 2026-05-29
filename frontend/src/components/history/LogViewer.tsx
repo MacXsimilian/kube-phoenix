@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/queryKeys'
 import Drawer from '@mui/material/Drawer'
@@ -454,11 +455,16 @@ function RolloutProgressBar({ lines, status, direction }: { lines: LogLine[]; st
 
 // ── Log line row ──────────────────────────────────────────────────────────────
 
-function LogLineRow({ line }: { line: LogLine }) {
-  const isDark = useIsDark()
-  const colors = useColors()
-  const levelColors = isDark ? LOG_LEVEL_COLORS_DARK : LOG_LEVEL_COLORS_LIGHT
-  const color = levelColors[line.level] ?? colors.muted
+const LogLineRow = React.memo(function LogLineRow({
+  line,
+  levelColors,
+  mutedColor,
+}: {
+  line: LogLine
+  levelColors: typeof LOG_LEVEL_COLORS_DARK
+  mutedColor: string
+}) {
+  const color = levelColors[line.level] ?? mutedColor
   const isError = line.level === 'error'
   const isWarn = line.level === 'warn'
   return (
@@ -488,7 +494,7 @@ function LogLineRow({ line }: { line: LogLine }) {
       </Box>
     </Box>
   )
-}
+})
 
 export default function LogViewer({
   execution,
@@ -499,19 +505,27 @@ export default function LogViewer({
 }) {
   const queryClient = useQueryClient()
   const isDark = useIsDark()
+  const colors = useColors()
+  const levelColors = isDark ? LOG_LEVEL_COLORS_DARK : LOG_LEVEL_COLORS_LIGHT
+  const mutedColor = colors.muted
   const { notify, SnackbarAlert } = useSnackbar()
   const { width: drawerWidth, onMouseDown: handleResizeMouseDown, onTouchStart: handleResizeTouchStart } = useDrawerResize(640)
   const [currentErrorIdx, setCurrentErrorIdx] = useState(-1)
   const [autoScroll, setAutoScroll] = useState(true)
-  const bottomRef = useRef<HTMLDivElement>(null)
   const logContainerRef = useRef<HTMLDivElement>(null)
-  const lineEls = useRef<(HTMLElement | null)[]>([])
 
   const isRunning = execution?.status === 'running'
   const [wsToastOpen, setWsToastOpen] = useState(false)
   const wasConnectedRef = useRef(false)
 
   const { lines, isConnected, cleanClose, logsError, maxRetriesReached } = useExecutionLogs(execution?.id, isRunning)
+
+  const virtualizer = useVirtualizer({
+    count: lines.length,
+    getScrollElement: () => logContainerRef.current,
+    estimateSize: () => 24,
+    overscan: 20,
+  })
 
   // Show floating toast when WebSocket disconnects unexpectedly (not on clean server close)
   useEffect(() => {
@@ -529,15 +543,14 @@ export default function LogViewer({
     setWsToastOpen(false)
     wasConnectedRef.current = false
     setAutoScroll(true)
-    lineEls.current = []
   }, [execution?.id])
 
   // Auto-scroll when enabled
   useEffect(() => {
-    if (autoScroll) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (autoScroll && lines.length > 0) {
+      virtualizer.scrollToIndex(lines.length - 1, { align: 'end' })
     }
-  }, [lines, autoScroll])
+  }, [lines.length, autoScroll, virtualizer])
 
   // Detect manual scroll-up to pause auto-scroll, re-enable when scrolled to bottom
   useEffect(() => {
@@ -565,7 +578,7 @@ export default function LogViewer({
     if (errorIndices.length === 0) return
     const next = (currentErrorIdx + 1) % errorIndices.length
     setCurrentErrorIdx(next)
-    lineEls.current[errorIndices[next]]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    virtualizer.scrollToIndex(errorIndices[next], { align: 'center', behavior: 'smooth' })
   }
 
   function handleCopy() {
@@ -712,22 +725,26 @@ export default function LogViewer({
                   }}>
                   Logs
                 </Typography>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      size="small"
-                      checked={autoScroll}
-                      onChange={(e) => {
-                        const on = e.target.checked
-                        setAutoScroll(on)
-                        if (on) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-                      }}
-                      sx={{ '& .MuiSwitch-thumb': { background: (t) => t.palette.primary.main } }}
-                    />
-                  }
-                  label={<Typography variant="caption" sx={{ color: 'text.secondary' }}>Auto-scroll</Typography>}
-                  sx={{ m: 0 }}
-                />
+                {isRunning && (
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        size="small"
+                        checked={autoScroll}
+                        onChange={(e) => {
+                          const on = e.target.checked
+                          setAutoScroll(on)
+                          if (on && lines.length > 0) {
+                            virtualizer.scrollToIndex(lines.length - 1, { align: 'end', behavior: 'smooth' })
+                          }
+                        }}
+                        sx={{ '& .MuiSwitch-thumb': { background: (t) => t.palette.primary.main } }}
+                      />
+                    }
+                    label={<Typography variant="caption" sx={{ color: 'text.secondary' }}>Auto-scroll</Typography>}
+                    sx={{ m: 0 }}
+                  />
+                )}
               </Box>
               {/* WebSocket disconnected — floating toast handled below */}
               {logsError && !isRunning && (
@@ -756,12 +773,20 @@ export default function LogViewer({
                     No log lines found.
                   </Typography>
                 )}
-                {lines.map((line, i) => (
-                  <Box key={`${line.id ?? line.seq}-${i}`} ref={(el: HTMLElement | null) => { lineEls.current[i] = el }}>
-                    <LogLineRow line={line} />
+                {lines.length > 0 && (
+                  <Box sx={{ height: virtualizer.getTotalSize(), width: '100%', position: 'relative' }}>
+                    {virtualizer.getVirtualItems().map((vi) => (
+                      <Box
+                        key={vi.key}
+                        data-index={vi.index}
+                        ref={virtualizer.measureElement}
+                        sx={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vi.start}px)` }}
+                      >
+                        <LogLineRow line={lines[vi.index]} levelColors={levelColors} mutedColor={mutedColor} />
+                      </Box>
+                    ))}
                   </Box>
-                ))}
-                <div ref={bottomRef} />
+                )}
               </Box>
             </Box>
           </>

@@ -34,7 +34,7 @@ import KeyOutlinedIcon from '@mui/icons-material/KeyOutlined'
 import StorageOutlinedIcon from '@mui/icons-material/StorageOutlined'
 import { useRouter } from 'next/navigation'
 import PageHeader from '@/components/shared/PageHeader'
-import { getUsers, createUserAPI, updateUserAPI, deleteUserAPI } from '@/lib/api'
+import { getUsers, createUser, updateUser, deleteUser } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { canManageUsers } from '@/lib/rbac'
 import type { User, Role } from '@/lib/types'
@@ -88,19 +88,19 @@ export default function UsersPage() {
   const [mutationError, setMutationError] = useState('')
 
   const createMutation = useMutation({
-    mutationFn: () => createUserAPI(form),
+    mutationFn: () => createUser(form),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: queryKeys.users() }); setCreateOpen(false); setForm({ username: '', email: '', password: '', role: 'viewer' }); setCreateError('') },
     onError: (err: Error) => setCreateError(err.message),
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<Pick<User, 'role' | 'enabled'>> }) => updateUserAPI(id, data),
+    mutationFn: ({ id, data }: { id: number; data: Partial<Pick<User, 'role' | 'enabled'>> }) => updateUser(id, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: queryKeys.users() }); setMutationError('') },
     onError: (err: Error) => setMutationError(err.message),
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => deleteUserAPI(id),
+    mutationFn: (id: number) => deleteUser(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: queryKeys.users() }); setDeleteTarget(null); setMutationError('') },
     onError: (err: Error) => { setMutationError(err.message); setDeleteTarget(null) },
   })

@@ -15,6 +15,7 @@ import { ThemeModeProvider, useThemeMode } from '@/lib/themeMode'
 import CircularProgress from '@mui/material/CircularProgress'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { UnsavedChangesProvider } from '@/lib/useUnsavedChanges'
+import { ClockTickProvider } from '@/lib/useClockTick'
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, checking, backendError } = useAuth()
@@ -59,7 +60,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeModeProvider>
-        <ThemedApp>{children}</ThemedApp>
+        <ClockTickProvider>
+          <ThemedApp>{children}</ThemedApp>
+        </ClockTickProvider>
       </ThemeModeProvider>
     </QueryClientProvider>
   )

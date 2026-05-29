@@ -22,6 +22,7 @@ import Button from '@mui/material/Button'
 import DownloadIcon from '@mui/icons-material/Download'
 import PageHeader from '@/components/shared/PageHeader'
 import { getAuditLogs } from '@/lib/api'
+import type { AuditLogEntry } from '@/lib/types'
 import { useAuth } from '@/lib/auth'
 import { canViewAudit } from '@/lib/rbac'
 import { useRouter } from 'next/navigation'
@@ -53,6 +54,7 @@ export default function AuditLogPage() {
   const [fromFilter, setFromFilter] = useState('')
   const [toFilter, setToFilter] = useState('')
   const [exportError, setExportError] = useState<string | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
 
   const debouncedUserFilter = useDebouncedValue(userFilter, 300)
   const hasPermission = !!user && canViewAudit(user.permissions)
@@ -78,19 +80,39 @@ export default function AuditLogPage() {
   })
 
   const handleExport = async () => {
+    const EXPORT_PAGE_SIZE = 1000
+    const EXPORT_MAX_ROWS = 100_000
     setExportError(null)
+    setIsExporting(true)
     try {
-      const result = await getAuditLogs({
+      const filters = {
         user: debouncedUserFilter || undefined,
         action: actionFilter || undefined,
         from: localFrom,
         to: localTo,
-        page: 0,
-        pageSize: 1000,
-      })
-      downloadCSV(result.items)
+      }
+      const collected: AuditLogEntry[] = []
+      let cursor = 0
+      let total = Infinity
+      while (collected.length < total && collected.length < EXPORT_MAX_ROWS) {
+        const result = await getAuditLogs({
+          ...filters,
+          page: cursor,
+          pageSize: EXPORT_PAGE_SIZE,
+        })
+        if (result.items.length === 0) break
+        collected.push(...result.items)
+        total = result.total
+        cursor += 1
+      }
+      if (total > EXPORT_MAX_ROWS) {
+        setExportError(`Export capped at ${EXPORT_MAX_ROWS.toLocaleString()} rows (${total.toLocaleString()} match filters). Narrow the filters to capture older entries.`)
+      }
+      downloadCSV(collected)
     } catch (e) {
       setExportError(e instanceof Error ? e.message : 'Export failed')
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -107,9 +129,9 @@ export default function AuditLogPage() {
             variant="outlined"
             startIcon={<DownloadIcon />}
             onClick={handleExport}
-            disabled={isLoading}
+            disabled={isLoading || isExporting}
           >
-            Export CSV
+            {isExporting ? 'Exporting…' : 'Export CSV'}
           </Button>
         }
       />

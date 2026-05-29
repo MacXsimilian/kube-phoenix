@@ -39,7 +39,7 @@ The kube-phoenix frontend is the operator-facing UI for managing Kubernetes slee
 **Dependency notes:**
 
 - `three`, `@react-three/fiber`, and `@react-three/drei` were removed (unused).
-- `react-window` is listed as a dependency but not currently used (evaluated for log virtualization).
+- `@tanstack/react-virtual` powers the virtualized log viewers (`PodLogViewer`, `LogViewer`).
 - GSAP is lazy-loaded via dynamic `import()` in `ApiRivers` rather than eagerly imported.
 
 **Running locally:**
@@ -81,6 +81,7 @@ frontend/
       observability/layout.tsx  # /observability layout -- wraps all observability routes in ObservabilityStreamProvider
       observability/page.tsx    # /observability -- observability center
       observability/[component]/page.tsx  # /observability/{component} -- component drill-down
+      <route>/error.tsx           # per-route error boundary (Next 16 segment) -- re-exports shared RouteError
       prototypes/                 # /prototypes/* -- in-app mockup gallery for shared components (committed, not gated)
     components/
       layout/
@@ -148,6 +149,7 @@ frontend/
         TriggerChip.tsx         # Reusable chip displaying execution trigger type with icon and color
         PageHeader.tsx          # Unified page-title chrome: title, subtitle, breadcrumbs, actions, meta, tabs slots
         EmptyState.tsx          # Dashed-border placeholder card with title, optional description, icon, and action slot
+        RouteError.tsx          # Shared route-level error boundary UI re-exported from each /app/<route>/error.tsx
       exceptions/
         ExceptionsCalendarStrip.tsx  # Calendar strip layout: day rows, span rows for multi-day, history split. Threads optional onExport down to each row.
         ExceptionDetailPanel.tsx     # Expandable detail grid (dates, duration, namespace filter, workload targets)
@@ -195,6 +197,7 @@ frontend/
       queryClient.ts            # TanStack QueryClient singleton with default options
       queryKeys.ts              # Centralized query key factory for all TanStack Query keys
       useClusterStream.ts       # SSE hook: cluster/stream subscription with reconnect + TanStack cache injection
+      useClockTick.tsx          # ClockTickProvider + useClockTick(): one 30s tick shared by every component that re-renders on the wall clock
       useDebouncedValue.ts      # Generic debounce hook for search inputs
       useDrawerResize.ts        # Mouse/touch drag resize hook for side drawers (returns named object)
       useIsDark.ts              # Hook: returns boolean for dark mode (wraps useTheme)
@@ -227,7 +230,7 @@ frontend/
 
 ### Static Export (No SSR)
 
-The Next.js config sets `output: 'export'`, which produces plain HTML/JS/CSS files with no server component. Every page file has the `'use client'` directive. Implications:
+The Next.js config sets `output: 'export'`, which produces plain HTML/JS/CSS files with no server component. `experimental.optimizePackageImports` is enabled for `@mui/material`, `@mui/icons-material`, `@mui/material/styles`, and `framer-motion` to keep dev cold-start and bundle size in check. Every page file has the `'use client'` directive. Implications:
 
 - No `getServerSideProps`, `getStaticProps`, or server actions
 - No API routes in Next.js -- all API calls go to the Go backend
@@ -242,14 +245,17 @@ The root layout (`layout.tsx`) wraps all content in `<Providers>`, which layers:
 ```
 QueryClientProvider          # TanStack Query cache
   ThemeModeProvider          # light/dark/system preference (localStorage)
-    ThemeProvider (MUI)      # MUI theme built from resolved mode
-      CssBaseline            # MUI CSS reset
-        AuthProvider         # Session state, login/logout
-          AppContent         # Auth gate: shows LoginScreen or AppShell
-            ErrorBoundary
-              AppShell       # Sidebar + content area
-                {children}   # Page content
+    ClockTickProvider        # Shared 30s tick for time-derived UI ("now" markers, countdowns)
+      ThemeProvider (MUI)    # MUI theme built from resolved mode
+        CssBaseline          # MUI CSS reset
+          AuthProvider       # Session state, login/logout
+            AppContent       # Auth gate: shows LoginScreen or AppShell
+              ErrorBoundary
+                AppShell     # Sidebar + content area
+                  {children} # Page content
 ```
+
+Each route under `src/app/<route>/` also ships an `error.tsx` segment that re-exports `RouteError` from `@/components/shared/RouteError`. Next.js wraps the matching segment in a runtime error boundary, so a render error in one route isolates to that route's panel instead of unmounting the whole app.
 
 ### TanStack Query as the Data Layer
 
@@ -263,16 +269,18 @@ All query keys are centralized in the `queryKeys` factory at `src/lib/queryKeys.
 |:--------|:--------|:--------|
 | `['resource']` | `['policies']`, `['workloads']`, `['nodes']` | List queries |
 | `['resource', id]` | `['policy', 42]`, `['logs', 15]` | Detail queries |
-| `['resource', parentId]` | `['policy-executions', policyId]`, `['exceptions', policyId]` | Scoped queries |
+| `['resource', 'sub-name', id]` | `['policy-executions', 'by-policy', policyId]`, `['policy-executions', 'fetch', id]` | Scoped queries — each sub-purpose gets a named segment so unrelated keys never collide |
 | `['resource', ...filters]` | `['audit-logs', page, pageSize, user, action, from, to]` | Paginated/filtered queries |
+| `['resource', 'sub-name', ...filters]` | `['policy-executions', 'table', page, rowsPerPage, status, direction]` | Tabular/paginated queries scoped to a sub-purpose |
 | `['resource', 'feed']` | `['policy-executions', 'feed']` | Special-purpose queries |
 
 **Default options** (from `queryClient.ts`):
 
 ```typescript
 {
-  staleTime: 30_000,   // DEFAULT_STALE_TIME_MS
+  staleTime: 30_000,        // DEFAULT_STALE_TIME_MS
   retry: 1,
+  refetchOnWindowFocus: false, // queries already poll or arrive via SSE; opt back in per-query
 }
 ```
 
@@ -324,11 +332,11 @@ interface AuthState {
 
 **Session lifecycle:**
 
-1. On mount, `AuthProvider` fetches `GET /api/auth/me` to check for an existing session cookie.
+1. On mount, `AuthProvider` fetches `GET /api/auth/me`. The result is a discriminated union — `{ kind: 'user' }`, `{ kind: 'unauthenticated' }` (401/403), or `{ kind: 'error' }` (network/5xx). Only `unauthenticated` triggers the dev-mode probe; `error` sets `backendError` and never logs the user out.
 2. In parallel, it probes `GET /api/auth/oidc/config` to detect whether OIDC SSO is available.
-3. If `/me` fails (no session), it probes `GET /api/policies` to detect dev mode (no auth required). In dev mode, a synthetic admin user is created with all permissions.
+3. On `unauthenticated`, it probes `GET /api/policies` (with a `REQUEST_TIMEOUT_MS` abort signal) to detect dev mode (no auth required). In dev mode, a synthetic admin user is created with all permissions.
 4. After login, the provider fetches `/me` again to get the authoritative user object with permissions.
-5. A 5-minute interval (`ME_POLL_INTERVAL`) re-fetches `/me` to detect role changes, session expiry, or disabled accounts.
+5. A 5-minute interval (`ME_POLL_INTERVAL`) re-fetches `/me` to detect role changes, session expiry, or disabled accounts. Transient `error` results preserve the current user — only `unauthenticated` results clear it. Successful polls compare the new user to the cached one via `usersEqual()` and skip `setUser` when nothing changed, so unchanged poll responses don't cascade re-renders through every auth consumer.
 6. The API layer dispatches a `kp-session-expired` custom event on any 401 response. The auth provider listens for this event and sets the user to `null`, which triggers the login screen.
 
 **CSRF protection:** Mutation requests (POST/PUT/DELETE/PATCH) include an `X-CSRF-Token` header read from the `__kp_csrf` cookie via `getCSRFToken()`.
@@ -391,7 +399,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T>
 | Credentials | `credentials: 'include'` (always sends cookies) |
 | Content-Type | `application/json` for all requests |
 | CSRF | `X-CSRF-Token` header attached on POST/PUT/DELETE/PATCH via `getCSRFToken()` |
-| Timeout | `AbortSignal.timeout(30_000)` (`REQUEST_TIMEOUT_MS`) |
+| Timeout | `AbortSignal.timeout(30_000)` (`REQUEST_TIMEOUT_MS`), composed with any caller-supplied signal via `AbortSignal.any([callerSignal, timeoutSignal])` so component unmounts and timeouts both abort the fetch |
 | 401 handling | Dispatches `kp-session-expired` event, throws `'Session expired'` |
 | 403 handling | Parses error body, throws descriptive permission error |
 | Non-OK handling | Parses error/message from JSON body, throws `HTTP {status}` as fallback |
@@ -468,9 +476,9 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T>
 | Function | Method | Endpoint |
 |:---------|:-------|:---------|
 | `getUsers()` | GET | `/api/users` |
-| `createUserAPI(data)` | POST | `/api/users` |
-| `updateUserAPI(id, data)` | PUT | `/api/users/{id}` |
-| `deleteUserAPI(id)` | DELETE | `/api/users/{id}` |
+| `createUser(data)` | POST | `/api/users` |
+| `updateUser(id, data)` | PUT | `/api/users/{id}` |
+| `deleteUser(id)` | DELETE | `/api/users/{id}` |
 
 **Auth/OIDC:**
 
@@ -538,7 +546,7 @@ This is the most data-rich component on the dashboard. It combines multiple data
 
 1. **SSE stream** via the `useClusterStream()` hook, which subscribes to `GET /api/cluster/stream` and pushes `Overview` objects directly into the TanStack Query cache under the `['overview']` key using `queryClient.setQueryData()`.
 
-2. **REST fallback** via a standard `useQuery({ queryKey: ['overview'], queryFn: getOverview, refetchInterval: 30_000 })`. If the SSE stream fails, the polling fallback keeps data fresh.
+2. **REST fallback** via a standard `useQuery({ queryKey: ['overview'], queryFn: getOverview })`. The 30s `refetchInterval` is gated on `streamDisconnected` — while the SSE stream is healthy, the interval is `false` (no polling) and the cache is fed exclusively by stream pushes. When the stream drops the interval re-engages to keep data fresh.
 
 3. **Policies query** to find the first enabled policy for the quick Sleep Now / Wake Now buttons.
 
@@ -730,7 +738,7 @@ All three timeline components use raw SVG for rendering. They share timeline mat
 - Smooth step transitions between states at 15-minute resolution
 - SVG waveform stretches to fill the container width (no fixed pixel width)
 - SVG tick marks at hour positions (0, 3, 6, 9, 12, 15, 18, 21, 24); CSS-positioned labels beneath to avoid SVG distortion
-- Now-marker (red dot + vertical line) positioned via CSS percentage, updates in real-time every 30 seconds via `setInterval`
+- Now-marker (red dot + vertical line) positioned via CSS percentage; re-renders on each shared 30s `ClockTickProvider` tick instead of per-instance `setInterval`, so N policy cards share one timer
 - Timezone-aware via the policy's timezone
 - Sleep ranges memoized with `useMemo` to avoid recalculation on unrelated re-renders
 - Gradient SVG IDs use `useId()` for uniqueness across multiple policy cards
@@ -1049,7 +1057,7 @@ The Scheduler Behaviour section uses stacked label-left/control-right rows for E
 }
 ```
 
-**`useColors()`** is a React hook that calls `useTheme()` to detect the current mode and returns `semanticColors(isDark)`.
+**`useColors()`** is a React hook that calls `useTheme()` to detect the current mode and returns one of two module-level `semanticColors(isDark)` objects (`LIGHT_COLORS` / `DARK_COLORS`). The two objects are computed once at module load, so consumers get a stable reference identity per mode and downstream `useMemo`/`React.memo` dependencies stay valid.
 
 **`TIMELINE_COLORS`** is a static object with named colors for timeline rendering: `sleep`, `sleepGlow`, `exception`, `exceptionBg`, `awake`, `awakeBg`, `sleepBg`. These are not mode-aware because timelines render the same in both themes.
 
@@ -1159,7 +1167,7 @@ A generic debounce hook: `useDebouncedValue<T>(value, delayMs)` returns the debo
 
 ### lib/useClusterStream.ts
 
-The SSE subscription hook for the cluster stream. Connects to `GET /api/cluster/stream`, parses SSE events, and pushes `Overview` objects into the TanStack Query cache via `queryClient.setQueryData()`. Implements automatic reconnection with exponential backoff and sets a disconnected flag after 2 consecutive failures.
+The SSE subscription hook for the cluster stream. Connects to `GET /api/cluster/stream`, parses SSE events, and pushes `Overview` objects into the TanStack Query cache via `queryClient.setQueryData()`. Reconnects with exponential backoff (1s base, 15s cap, 10% jitter) and sets a disconnected flag after 2 consecutive failures, which consumers can use to re-engage REST polling.
 
 ### lib/timelineUtils.ts
 
@@ -1186,7 +1194,7 @@ Every `useMutation` has an `onSuccess` handler that invalidates related query ke
 queryClient.invalidateQueries({ queryKey: ['policies'] })
 queryClient.invalidateQueries({ queryKey: ['policy', policyId] })
 queryClient.invalidateQueries({ queryKey: ['policy-executions'] })
-queryClient.invalidateQueries({ queryKey: ['policy-executions', policyId] })
+queryClient.invalidateQueries({ queryKey: ['policy-executions', 'by-policy', policyId] })
 ```
 
 Both `PolicyCard` and `PolicyDetailPage` consume this hook rather than duplicating the mutation logic.
@@ -1245,7 +1253,7 @@ sx={{ bgcolor: stateStyle.bg, color: stateStyle.color }}
 
 ### Typography and Spacing
 
-- **Font:** Inter (loaded via `next/font/google` with weights 300-700)
+- **Font:** Inter (loaded via `next/font/google` with weights 400-700)
 - **Page title:** use the shared `<PageHeader title=... />` component (see [Shared Page Chrome](#shared-page-chrome)) instead of raw `Typography` — every top-level page renders through it
 - **Heading:** `variant="h5" sx={{ fontWeight: 700 }}` for in-page section headers that are not the page title
 - **Subtitle:** `variant="subtitle1" sx={{ fontWeight: 700 }}` for section headers
@@ -1266,7 +1274,7 @@ sx={{ bgcolor: stateStyle.bg, color: stateStyle.color }}
 2. Reads the response body as a `ReadableStream` with `TextDecoder`
 3. Parses SSE format: looks for lines starting with `data: `, parses JSON
 4. Pushes parsed `Overview` objects directly into TanStack cache: `queryClient.setQueryData(['overview'], data)`
-5. On connection loss, waits 3-5 seconds and reconnects in a loop
+5. On connection loss, reconnects with exponential backoff (1s base, 15s cap, 10% jitter)
 6. Sets a `disconnected` flag after 2 consecutive failures, displayed as a warning chip
 
 The SSE stream pushes updates within ~2 seconds of any cluster change (the backend `ClusterCache` debounce interval). If nothing changes, no events are sent. The REST polling fallback (`refetchInterval: 30_000`) only fires if the TanStack Query cache becomes stale, which normally does not happen while the SSE stream is healthy.
@@ -1315,17 +1323,22 @@ Components that do not use SSE or WebSocket rely on TanStack Query's `refetchInt
 | PoliciesPage | `['policies']` | 30s |
 | ExceptionsPage | `['exceptions', ...]` | 30s |
 
-### Auto-Scroll in PodLogViewer
+### Auto-Scroll and Virtualization in PodLogViewer
 
-`PodLogViewer` delegates streaming to the `usePodLogStream` hook and search UI to `LogSearchBar`. It manages auto-scroll via:
+`PodLogViewer` delegates streaming to the `usePodLogStream` hook and search UI to `LogSearchBar`. Rows are virtualized via `@tanstack/react-virtual` (`useVirtualizer` against `logRef`, `estimateSize: 22`, `overscan: 20`) so only on-screen lines are mounted, regardless of buffer size.
 
-1. `autoScroll` state (default `true`)
-2. `useEffect` that scrolls to bottom when `lines` change and `autoScroll` is true: `logRef.current.scrollTop = logRef.current.scrollHeight`
-3. `onScroll` handler that detects if user is near the bottom (within 40px): `setAutoScroll(atBottom)`
-4. User scrolling up disables auto-scroll; scrolling back to the bottom re-enables it
-5. Clicking "next match" in search disables auto-scroll so the view stays at the match
+Auto-scroll:
 
-The entrance animation (`LOG_WATERFALL_SX`) is only applied to newly appended lines. A `prevLineCountRef` tracks the line count from the previous render so that existing lines skip the animation, avoiding hundreds of concurrent CSS animations on each state update.
+1. `autoScroll` state (default `true`); the toggle is hidden once streaming finishes
+2. `useEffect` calls `virtualizer.scrollToIndex(lines.length - 1, { align: 'end' })` whenever new lines arrive and `autoScroll` is true
+3. `onScroll` handler detects if the user is near the bottom (within 40px) and sets `autoScroll` accordingly — scrolling up disables, returning to the bottom re-enables
+4. Clicking "next match" in search disables auto-scroll so the view stays on the match (scroll target via `virtualizer.scrollToIndex(matchIdx, { align: 'center' })`)
+
+Search match indices are computed incrementally: a ref-backed `matchIndicesRef` is extended with newly appended lines on each render (full rescan only when the search string changes or the buffer shrinks). This keeps search match-set work proportional to new lines rather than the full buffer on every tick.
+
+The entrance animation (`LOG_WATERFALL_SX`) is applied to every virtualized row. Because the virtualizer mounts only the visible slice, the animation cost stays bounded — independent of total line count.
+
+`LogViewer` (execution logs in `history/`) uses the same virtualizer pattern. The `LogLineRow` component was lifted out of the closure and wrapped in `React.memo` so identical rows skip render entirely on re-batched updates.
 
 ---
 
