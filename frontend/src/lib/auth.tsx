@@ -30,6 +30,22 @@ type FetchMeResult =
   | { kind: 'unauthenticated' }
   | { kind: 'error' }
 
+function usersEqual(a: User | null, b: User | null): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return (
+    a.id === b.id &&
+    a.username === b.username &&
+    a.role === b.role &&
+    a.source === b.source &&
+    a.enabled === b.enabled &&
+    a.createdAt === b.createdAt &&
+    a.defaultTimezone === b.defaultTimezone &&
+    a.permissions.length === b.permissions.length &&
+    a.permissions.every((p, i) => p === b.permissions[i])
+  )
+}
+
 const AuthContext = createContext<AuthState | null>(null)
 
 /**
@@ -122,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!userRef.current || userRef.current.id === 0) return
       const result = await fetchMe()
       if (result.kind === 'user') {
-        setUser(result.user)
+        setUser(prev => usersEqual(prev, result.user) ? prev : result.user)
       } else if (result.kind === 'unauthenticated') {
         // Session expired or user disabled — log out.
         setUser(null)
