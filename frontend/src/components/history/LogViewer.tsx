@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/queryKeys'
@@ -455,11 +455,16 @@ function RolloutProgressBar({ lines, status, direction }: { lines: LogLine[]; st
 
 // ── Log line row ──────────────────────────────────────────────────────────────
 
-function LogLineRow({ line }: { line: LogLine }) {
-  const isDark = useIsDark()
-  const colors = useColors()
-  const levelColors = isDark ? LOG_LEVEL_COLORS_DARK : LOG_LEVEL_COLORS_LIGHT
-  const color = levelColors[line.level] ?? colors.muted
+const LogLineRow = React.memo(function LogLineRow({
+  line,
+  levelColors,
+  mutedColor,
+}: {
+  line: LogLine
+  levelColors: typeof LOG_LEVEL_COLORS_DARK
+  mutedColor: string
+}) {
+  const color = levelColors[line.level] ?? mutedColor
   const isError = line.level === 'error'
   const isWarn = line.level === 'warn'
   return (
@@ -489,7 +494,7 @@ function LogLineRow({ line }: { line: LogLine }) {
       </Box>
     </Box>
   )
-}
+})
 
 export default function LogViewer({
   execution,
@@ -500,6 +505,9 @@ export default function LogViewer({
 }) {
   const queryClient = useQueryClient()
   const isDark = useIsDark()
+  const colors = useColors()
+  const levelColors = isDark ? LOG_LEVEL_COLORS_DARK : LOG_LEVEL_COLORS_LIGHT
+  const mutedColor = colors.muted
   const { notify, SnackbarAlert } = useSnackbar()
   const { width: drawerWidth, onMouseDown: handleResizeMouseDown, onTouchStart: handleResizeTouchStart } = useDrawerResize(640)
   const [currentErrorIdx, setCurrentErrorIdx] = useState(-1)
@@ -774,7 +782,7 @@ export default function LogViewer({
                         ref={virtualizer.measureElement}
                         sx={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vi.start}px)` }}
                       >
-                        <LogLineRow line={lines[vi.index]} />
+                        <LogLineRow line={lines[vi.index]} levelColors={levelColors} mutedColor={mutedColor} />
                       </Box>
                     ))}
                   </Box>
