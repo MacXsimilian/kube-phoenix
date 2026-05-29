@@ -22,14 +22,13 @@ export function stateColors(isDark: boolean): Record<PolicyState, { bg: string; 
 
 // ── Execution / exception status colors ──────────────────────────────────────
 
-type ExecutionStatus = 'running' | 'success' | 'failed' | 'interrupted' | 'skipped' | 'pending' | 'active' | 'completed' | 'cancelled'
+type ExecutionStatus = 'running' | 'success' | 'failed' | 'interrupted' | 'pending' | 'active' | 'completed' | 'cancelled'
 
 const EXEC_STATUS_DARK: Record<ExecutionStatus, { bg: string; color: string }> = {
   running:     { bg: 'rgba(245,158,11,0.18)',  color: '#fcd34d' },
   success:     { bg: 'rgba(34,197,94,0.18)',   color: '#86efac' },
   failed:      { bg: 'rgba(239,68,68,0.18)',   color: '#fca5a5' },
   interrupted: { bg: 'rgba(148,163,184,0.15)', color: '#94a3b8' },
-  skipped:     { bg: 'rgba(148,163,184,0.15)', color: '#94a3b8' },
   pending:     { bg: 'rgba(148,163,184,0.15)', color: '#94a3b8' },
   active:      { bg: 'rgba(34,197,94,0.18)',   color: '#86efac' },
   completed:   { bg: 'rgba(148,163,184,0.15)', color: '#94a3b8' },
@@ -40,7 +39,6 @@ const EXEC_STATUS_LIGHT: Record<ExecutionStatus, { bg: string; color: string }> 
   success:     { bg: 'rgba(34,197,94,0.18)',   color: '#15803D' },
   failed:      { bg: 'rgba(239,68,68,0.18)',   color: '#B91C1C' },
   interrupted: { bg: 'rgba(148,163,184,0.15)', color: '#475569' },
-  skipped:     { bg: 'rgba(148,163,184,0.15)', color: '#475569' },
   pending:     { bg: 'rgba(148,163,184,0.15)', color: '#475569' },
   active:      { bg: 'rgba(34,197,94,0.18)',   color: '#15803D' },
   completed:   { bg: 'rgba(148,163,184,0.15)', color: '#475569' },

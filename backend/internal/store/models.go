@@ -135,7 +135,7 @@ type PolicyExecution struct {
 	Trigger    string     `gorm:"size:30" json:"trigger"`         // scheduled|manual_sleep|manual_wake|recovery|skip_applied|override_start|override_end|exception_start|exception_end
 	StartedAt  time.Time  `gorm:"index;index:idx_pe_policy_started,priority:2,sort:desc" json:"startedAt"`
 	FinishedAt *time.Time `json:"finishedAt"`
-	Status     string     `gorm:"index;size:20" json:"status"` // running|success|failed|interrupted|skipped
+	Status     string     `gorm:"index;size:20" json:"status"` // running|success|failed|interrupted
 	Mode       string     `gorm:"size:10" json:"mode"`         // "plan" | "apply"
 
 	CountScaled    int `json:"countScaled"`

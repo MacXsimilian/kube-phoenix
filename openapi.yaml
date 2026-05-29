@@ -2601,7 +2601,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [running, success, failed, interrupted, skipped]
+            enum: [running, success, failed, interrupted]
         - name: direction
           in: query
           schema:
