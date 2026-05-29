@@ -97,7 +97,7 @@ During a critical incident, an admin needs to immediately disable all policies, 
 
 | #    | Requirement                                                                                                                          |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| R6.1 | Every execution is recorded with status (`running`, `success`, `failed`, `interrupted`, `skipped`), trigger type, and aggregate counters |
+| R6.1 | Every execution is recorded with status (`running`, `success`, `failed`, `interrupted`), trigger type, and aggregate counters |
 | R6.2 | Structured log lines per execution, streamable via WebSocket                                                                         |
 | R6.3 | Prometheus metrics for scaling events                                                                                                |
 | R6.4 | Policy state fields: `CurrentState`, `StateSince`, `LastSleepAt`, `LastWakeAt`, `NextTransitionAt`                                   |

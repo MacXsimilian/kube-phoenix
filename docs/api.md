@@ -184,7 +184,7 @@ The `/api/observability/stream` endpoint pushes JSON events in SSE format (`data
     "schedulerEvalDurationMs": 15.0,
     "policySuccessCount": 0,
     "policyFailedCount": 0,
-    "policySkippedCount": 0,
+    "policyInterruptedCount": 0,
     "workloadsScaledCount": 0,
     "scaleOperationDurationMs": 0.0,
     "schedulerPanics": 0,

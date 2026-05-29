@@ -309,6 +309,7 @@ kubectl delete namespace kube-phoenix
 | `serviceAccount.create` | `true` | Create a ServiceAccount |
 | `serviceAccount.name` | `""` | ServiceAccount name (defaults to release name) |
 | `serviceAccount.annotations` | `{}` | Annotations (use for IRSA: `eks.amazonaws.com/role-arn`) |
+| `serviceAccount.automountServiceAccountToken` | `true` | Mount the SA token into the pod. The app needs it to call the Kubernetes API; set `false` only if it no longer does. |
 | `rbac.create` | `true` | Create ClusterRole and ClusterRoleBinding |
 
 ### Database

@@ -197,6 +197,61 @@ A Chi middleware captures every HTTP request flowing through the router: method,
 
 ---
 
+## Prometheus Metrics
+
+All application metrics are defined in `backend/internal/metrics/metrics.go`, registered
+once via `promauto` on the default registry, and exposed unauthenticated at `/metrics` on
+the main service port for in-cluster scraping (see [helm/kube-phoenix/templates/servicemonitor.yaml](../helm/kube-phoenix/templates/servicemonitor.yaml)).
+Because the default registry is used, the standard Go runtime (`go_*`) and process
+(`process_*`) collectors are exposed as well.
+
+The collector in [`internal/observability/collector.go`](../backend/internal/observability/collector.go)
+self-scrapes these series every 2 seconds to build the dashboard `MetricSnapshot`.
+
+### Counters
+
+| Metric | Labels | Description |
+| :----- | :----- | :---------- |
+| `kube_phoenix_executions_total` | `mode`, `direction`, `status` | Completed policy executions. `status` is one of `success`, `failed`, `interrupted`. |
+| `kube_phoenix_workloads_scaled_total` | `direction` | Workloads (Deployments + StatefulSets) scaled, by `sleep`/`wake`. |
+| `kube_phoenix_nodes_drained_total` | — | Nodes drained during sleep operations. |
+| `kube_phoenix_nodes_deleted_total` | — | Nodes deleted during sleep operations. |
+| `kube_phoenix_auth_attempts_total` | `status`, `method` | Login attempts. `status` ∈ {`success`, `failure`}, `method` ∈ {`local`, `oidc`}. |
+| `kube_phoenix_user_actions_total` | `action`, `resource_type` | User-initiated mutations. |
+| `kube_phoenix_rate_limit_hits_total` | `type` | Rate-limit rejections. `type` ∈ {`per_ip`, `per_username`}. |
+| `kube_phoenix_audit_drops_total` | — | Audit entries dropped because the async write buffer was full. |
+| `kube_phoenix_cache_hits_total` | — | Cluster cache reads served from memory. |
+| `kube_phoenix_cache_misses_total` | — | Cluster cache reads that found no data. |
+| `kube_phoenix_cache_rebuilds_total` | — | Cluster cache snapshot rebuilds. |
+| `kube_phoenix_http_requests_total` | `method`, `path`, `status_code` | HTTP requests. `path` is the Chi route template (never the raw URL), or `unmatched`. |
+| `kube_phoenix_k8s_requests_total` | `verb`, `resource`, `status` | Kubernetes API calls. `verb` ∈ {`get`, `list`, `scale`, `cordon`, `drain`, `delete`}, `status` ∈ {`success`, `error`}. |
+| `kube_phoenix_policy_operations_total` | `operation`, `status` | Policy CRUD operations. |
+| `kube_phoenix_exception_operations_total` | `operation`, `status` | Exception CRUD operations. |
+| `kube_phoenix_ws_connections_total` | — | WebSocket connections opened. |
+| `kube_phoenix_scheduler_evaluations_total` | — | Scheduler evaluation ticks. |
+| `kube_phoenix_scheduler_panics_total` | — | Recovered panics in scheduler and background goroutines. |
+
+### Gauges
+
+| Metric | Labels | Description |
+| :----- | :----- | :---------- |
+| `kube_phoenix_active_policies` | `mode` | Enabled policies, partitioned by mode. |
+| `kube_phoenix_active_sessions` | — | Active (non-expired) sessions. |
+| `kube_phoenix_ws_active_connections` | — | Currently active WebSocket connections. |
+| `kube_phoenix_db_pool_open_connections` | — | Open database connections. |
+| `kube_phoenix_db_pool_in_use` | — | Database connections currently in use. |
+| `kube_phoenix_db_pool_idle` | — | Idle database connections. |
+
+### Histograms
+
+| Metric | Labels | Buckets (seconds) |
+| :----- | :----- | :---------------- |
+| `kube_phoenix_execution_duration_seconds` | `mode`, `direction` | 5, 15, 30, 60, 120, 300, 600, 1800 |
+| `kube_phoenix_http_request_duration_seconds` | `method`, `path` | 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10 |
+| `kube_phoenix_k8s_request_duration_seconds` | `verb`, `resource` | 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30 |
+| `kube_phoenix_cache_rebuild_duration_seconds` | — | 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1 |
+| `kube_phoenix_scheduler_evaluation_duration_seconds` | — | 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5 |
+
 ## Data Model
 
 ### MetricSnapshot
@@ -214,14 +269,14 @@ One row per collection tick (every 2 seconds). Stored in the `metric_snapshots` 
 | `k8sPatchRate` | float64 | calls/min | Kubernetes PATCH API calls per minute |
 | `k8sDeleteRate` | float64 | calls/min | Kubernetes DELETE API calls per minute |
 | `wsActiveConnections` | int | connections | Current WebSocket connection count (gauge) |
-| `cacheHitRate` | float64 | % | Derived cache rebuild rate (0--100) |
+| `cacheHitRate` | float64 | % | Cache hit rate, `hits / (hits + misses) * 100`, or 100 when idle (0--100) |
 | `schedulerEvalRate` | float64 | evals/min | Scheduler evaluations per minute |
 | `schedulerEvalDurationMs` | float64 | ms | Median scheduler evaluation duration |
 | `workloadsScaledCount` | int | count | Workloads scaled in the tick window |
 | `scaleOperationDurationMs` | float64 | ms | Median scale operation duration |
 | `policySuccessCount` | int | count | Successful executions in the tick window |
 | `policyFailedCount` | int | count | Failed executions in the tick window |
-| `policySkippedCount` | int | count | Skipped executions in the tick window |
+| `policyInterruptedCount` | int | count | Interrupted (cancelled) executions in the tick window |
 | `schedulerPanics` | int | count | Scheduler panics recovered in the tick window |
 | `auditDrops` | int | count | Dropped audit log entries |
 | `rateLimitHits` | int | count | Rate limit rejections |
@@ -324,7 +379,7 @@ Lines are sent in three ordered phases: DB (by seq), replay (by seq, filtered to
 
 ### Known Limitations
 
-- The `cacheHitRate` field measures cache readiness (whether the cluster cache snapshot is initialized), not per-key lookup effectiveness. After initial sync, hit rate is near 100%.
+- The `cacheHitRate` field is the real hit ratio computed from the `kube_phoenix_cache_hits_total` and `kube_phoenix_cache_misses_total` counters (`hits / (hits + misses) * 100`). When no reads have occurred yet (`hits + misses == 0`) it reports 100. Because the cluster cache serves nearly all reads from memory after the initial sync, the steady-state value sits near 100%.
 - The Call Recorder ring buffer holds 4096 entries. Under high request rates (>50 req/s), older calls rotate out within 2 seconds and may never appear in an SSE payload.
 - The collector does not retry failed database writes. A failed tick is logged and skipped; the next tick will proceed normally.
 - Component and link metrics in the API Rivers view use a mix of real metrics and scaling-factor estimates. The `k8s-client` component uses real K8s latency and error rate from Prometheus histograms/counters. The `store` and `ws-broker` components use hardcoded latency values (5ms and 1ms respectively) because no direct per-component latency instrumentation exists for database queries or broker message delivery. Inter-component link RPS values use decay factors (e.g., auth passes 98% to handlers) that are estimates, not measured values.
