@@ -580,7 +580,7 @@ type PolicyExecution struct {
     Trigger    string     // "scheduled" | "manual_sleep" | "manual_wake" | "recovery" | "reconcile" | "enforce_sleep" | "exception_start" | "exception_end"
     StartedAt  time.Time
     FinishedAt *time.Time
-    Status     string     // "running" | "success" | "failed" | "interrupted" | "skipped"
+    Status     string     // "running" | "success" | "failed" | "interrupted"
     Mode       string     // "plan" | "apply"
     CountScaled, CountSkipped, CountErrors, CountProtected, CountDrained, CountDeleted int
 }
@@ -1073,8 +1073,8 @@ All metrics are registered via `promauto` in `backend/internal/metrics/metrics.g
 | Metric | Type | Labels | What it measures |
 |:-------|:-----|:-------|:-----------------|
 | **Policy execution** | | | |
-| `kube_phoenix_executions_total` | Counter | `mode`, `direction`, `status` | Completed policy executions. `mode` is plan/apply. `direction` is sleep/wake. `status` is success/failed. |
-| `kube_phoenix_execution_duration_seconds` | Histogram | `mode`, `direction`, `status` | Wall-clock duration of each execution. Buckets: 5, 15, 30, 60, 120, 300, 600, 1800. |
+| `kube_phoenix_executions_total` | Counter | `mode`, `direction`, `status` | Completed policy executions. `mode` is plan/apply. `direction` is sleep/wake. `status` is success/failed/interrupted. |
+| `kube_phoenix_execution_duration_seconds` | Histogram | `mode`, `direction` | Wall-clock duration of each execution. Buckets: 5, 15, 30, 60, 120, 300, 600, 1800. |
 | `kube_phoenix_workloads_scaled_total` | Counter | `direction` | Workloads (Deployments + StatefulSets) affected by scaling operations. |
 | `kube_phoenix_nodes_drained_total` | Counter | -- | Nodes drained during sleep operations. |
 | `kube_phoenix_nodes_deleted_total` | Counter | -- | Nodes deleted during sleep operations. |
@@ -1083,7 +1083,7 @@ All metrics are registered via `promauto` in `backend/internal/metrics/metrics.g
 | `kube_phoenix_http_requests_total` | Counter | `method`, `path`, `status_code` | Every HTTP request. `path` is the Chi route pattern (e.g. `/api/policies/{id}`), not the actual URL. |
 | `kube_phoenix_http_request_duration_seconds` | Histogram | `method`, `path` | HTTP request latency. Buckets: 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10. |
 | **Kubernetes client** | | | |
-| `kube_phoenix_k8s_requests_total` | Counter | `verb`, `resource`, `status` | Every K8s API call. `verb`: list/get/scale/annotate/cordon/drain/delete. `resource`: deployment/statefulset/node/pod/etc. `status`: success/error. |
+| `kube_phoenix_k8s_requests_total` | Counter | `verb`, `resource`, `status` | Every K8s API call. `verb`: list/get/scale/cordon/drain/delete. `resource`: deployment/statefulset/node/pod/etc. `status`: success/error. |
 | `kube_phoenix_k8s_request_duration_seconds` | Histogram | `verb`, `resource` | K8s API call latency. Buckets: 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30. |
 | **CRUD operations** | | | |
 | `kube_phoenix_policy_operations_total` | Counter | `operation`, `status` | Policy create/update/delete outcomes (store-level, not validation rejections). |

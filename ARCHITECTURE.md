@@ -320,7 +320,7 @@ erDiagram
         bigint policy_id FK
         varchar direction "sleep/wake"
         varchar trigger "enum"
-        varchar status "enum: running|success|failed|interrupted|skipped"
+        varchar status "enum: running|success|failed|interrupted"
         varchar mode "plan/apply"
         int count_scaled
         int count_drained
