@@ -3,7 +3,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { Overview } from '@/lib/types'
 import { queryKeys } from '@/lib/queryKeys'
 
-const STREAM_RECONNECT_DELAY_MS = 5_000
+const RECONNECT_BASE_MS = 1_000
+const RECONNECT_MAX_MS = 15_000
 
 // useClusterStream subscribes to the backend SSE stream and pushes received
 // Overview updates directly into the TanStack Query cache, eliminating polling.
@@ -17,6 +18,14 @@ export function useClusterStream() {
     mountedRef.current = true
     const controller = new AbortController()
 
+    function nextDelay() {
+      const base = Math.min(
+        RECONNECT_BASE_MS * Math.pow(2, failCountRef.current - 1),
+        RECONNECT_MAX_MS,
+      )
+      return base + Math.random() * 0.1 * base
+    }
+
     async function connect() {
       while (mountedRef.current) {
         try {
@@ -27,7 +36,7 @@ export function useClusterStream() {
           if (!res.ok || !res.body) {
             failCountRef.current += 1
             if (failCountRef.current > 1) setDisconnected(true)
-            await new Promise((r) => setTimeout(r, STREAM_RECONNECT_DELAY_MS))
+            await new Promise((r) => setTimeout(r, nextDelay()))
             if (controller.signal.aborted) break
             continue
           }
@@ -56,7 +65,7 @@ export function useClusterStream() {
           if (process.env.NODE_ENV === 'development') console.warn('[kp] cluster stream error:', err)
           failCountRef.current += 1
           if (failCountRef.current > 1) setDisconnected(true)
-          await new Promise((r) => setTimeout(r, STREAM_RECONNECT_DELAY_MS))
+          await new Promise((r) => setTimeout(r, nextDelay()))
           if (controller.signal.aborted) break
         }
       }
