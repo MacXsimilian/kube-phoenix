@@ -15,13 +15,11 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      {{- include "kube-phoenix.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: server
+      {{- include "kube-phoenix.serverSelectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "kube-phoenix.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: server
+        {{- include "kube-phoenix.serverSelectorLabels" . | nindent 8 }}
         app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
