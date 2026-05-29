@@ -75,7 +75,7 @@ export default function ClusterStatusCard() {
       try {
         const execs = await queryClient.fetchQuery({
           queryKey: queryKeys.policyExecutionsFetch(executionId),
-          queryFn: () => getPolicyExecutions({ policyId: firstPolicy!.id, page: 1, pageSize: 10 }),
+          queryFn: () => getPolicyExecutions({ policyId: firstPolicy!.id, page: 0, pageSize: 10 }),
         })
         const exec = execs.items.find((e: PolicyExecution) => e.id === executionId)
         if (exec) setLiveExecution(exec)
@@ -91,7 +91,7 @@ export default function ClusterStatusCard() {
   const { data: refreshedExec } = useQuery({
     queryKey: queryKeys.policyExecutionPoll(liveId),
     queryFn: async () => {
-      const execs = await getPolicyExecutions({ policyId: firstPolicy!.id, page: 1, pageSize: 10 })
+      const execs = await getPolicyExecutions({ policyId: firstPolicy!.id, page: 0, pageSize: 10 })
       return execs.items.find((e: PolicyExecution) => e.id === liveId) ?? null
     },
     enabled: !!liveId && liveRunning && !!firstPolicy,
