@@ -28,6 +28,7 @@ import LogSearchBar from './LogSearchBar'
 
 const ERROR_PATTERN = /\b(error|fatal|panic|exception|fail(ed|ure)?|crash)\b/i
 const WARN_PATTERN = /\b(warn(ing)?|deprecat)\b/i
+const EMPTY_MATCH_INDICES: number[] = []
 
 function detectLevel(line: string): 'error' | 'warn' | 'info' {
   if (ERROR_PATTERN.test(line)) return 'error'
@@ -68,14 +69,31 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
   const selectedContainer = containers.find((c) => c.name === container)
   const hasPreviousInstance = !!selectedContainer?.lastState
 
-  // Match indices within the full lines array (no filtering -- all lines shown)
+  // Match indices within the full lines array (no filtering -- all lines shown).
+  // Cached incrementally: only newly-appended lines are scanned per render.
+  const matchIndicesRef = useRef<number[]>([])
+  const matchScanLenRef = useRef(0)
+  const prevSearchForIndicesRef = useRef(search)
   const matchIndices = useMemo(() => {
-    if (!search) return []
+    if (!search) {
+      matchIndicesRef.current = []
+      matchScanLenRef.current = 0
+      prevSearchForIndicesRef.current = ''
+      return EMPTY_MATCH_INDICES
+    }
+    const searchChanged = prevSearchForIndicesRef.current !== search
+    const linesShrank = lines.length < matchScanLenRef.current
+    if (searchChanged || linesShrank) {
+      matchIndicesRef.current = []
+      matchScanLenRef.current = 0
+      prevSearchForIndicesRef.current = search
+    }
     const lower = search.toLowerCase()
-    return lines.reduce<number[]>((acc, l, i) => {
-      if (l.toLowerCase().includes(lower)) acc.push(i)
-      return acc
-    }, [])
+    for (let i = matchScanLenRef.current; i < lines.length; i++) {
+      if (lines[i].toLowerCase().includes(lower)) matchIndicesRef.current.push(i)
+    }
+    matchScanLenRef.current = lines.length
+    return matchIndicesRef.current.slice()
   }, [lines, search])
 
   // O(1) lookup set for highlighting matched lines
