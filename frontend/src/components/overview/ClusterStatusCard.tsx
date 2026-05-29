@@ -41,12 +41,16 @@ export default function ClusterStatusCard() {
   const hasTrigger = canTriggerSchedules(user?.permissions)
   const colors = useColors()
 
-  // Single overview query — fed by SSE in real time, polls as fallback
+  // Subscribe to SSE — updates the overview query cache in real time
+  const streamDisconnected = useClusterStream()
+
+  // Single overview query — fed by SSE in real time. Only fall back to
+  // interval polling when the SSE stream is disconnected.
   const { data: overview, isLoading, isError } = useQuery({
     queryKey: queryKeys.overview(),
     queryFn: getOverview,
     staleTime: 25_000,
-    refetchInterval: 30_000,
+    refetchInterval: streamDisconnected ? 30_000 : false,
   })
 
   // Policies for trigger button (find first enabled apply-mode policy)
@@ -56,9 +60,6 @@ export default function ClusterStatusCard() {
     staleTime: 60_000,
     refetchInterval: 60_000,
   })
-
-  // Subscribe to SSE — updates the overview query cache in real time
-  const streamDisconnected = useClusterStream()
 
   const { notify, SnackbarAlert } = useSnackbar()
 
