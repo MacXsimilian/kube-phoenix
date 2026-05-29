@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import type { User } from './types'
+import { REQUEST_TIMEOUT_MS } from './constants'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
 
@@ -94,8 +95,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (result.kind === 'user') {
           setUser(result.user)
         } else if (result.kind === 'unauthenticated') {
-          // Probe if backend requires auth at all (dev mode check).
-          fetch(`${BASE}/api/policies`, { credentials: 'include' })
+          // Probe if backend requires auth at all (dev mode check). The probe
+          // intentionally bypasses apiFetch because 401/403 is the expected
+          // signal for "auth required" rather than a real session-expiry event.
+          fetch(`${BASE}/api/policies`, {
+            credentials: 'include',
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          })
             .then(res => {
               if (res.ok) {
                 // No auth required — dev mode. Create a synthetic user.
