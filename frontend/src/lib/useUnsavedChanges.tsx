@@ -53,7 +53,9 @@ export function UnsavedChangesProvider({ children }: { children: React.ReactNode
         href.startsWith('#') ||
         href.startsWith('mailto:') ||
         href.startsWith('tel:') ||
-        href.startsWith('javascript:')
+        href.startsWith('javascript:') ||
+        href.startsWith('data:') ||
+        href.startsWith('vbscript:')
       )
         return
       e.preventDefault()
