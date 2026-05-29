@@ -35,9 +35,12 @@ func hasActiveException(exceptions []store.ScheduledException, exType string) bo
 }
 
 // StateInput holds the inputs needed to compute a policy's intended state.
+// Either Timezone or Location may be set; Location takes precedence and lets
+// hot paths skip the per-call time.LoadLocation.
 type StateInput struct {
 	Windows    []policy.SleepWindow
 	Timezone   string
+	Location   *time.Location
 	Exceptions []store.ScheduledException
 	Now        time.Time
 }
@@ -60,9 +63,16 @@ func IntendedState(in StateInput) PolicyState {
 	if len(in.Windows) == 0 {
 		return PolicyStateUnknown
 	}
-	state := policy.Evaluate(in.Windows, in.Timezone, in.Now)
+	state := evaluateWindows(in)
 	if state == policy.StateSleeping {
 		return PolicyStateSleeping
 	}
 	return PolicyStateAwake
+}
+
+func evaluateWindows(in StateInput) policy.IntendedState {
+	if in.Location != nil {
+		return policy.EvaluateInLocation(in.Windows, in.Location, in.Now)
+	}
+	return policy.Evaluate(in.Windows, in.Timezone, in.Now)
 }

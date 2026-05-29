@@ -24,9 +24,21 @@ func Evaluate(windows []SleepWindow, timezone string, now time.Time) IntendedSta
 	if len(windows) == 0 {
 		return StateAwake
 	}
-
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
+		return StateAwake
+	}
+	return EvaluateInLocation(windows, loc, now)
+}
+
+// EvaluateInLocation is Evaluate using a preloaded *time.Location. Hot paths
+// (e.g. the scheduler tick) cache the location once at load time and pass it in
+// to avoid the per-call time.LoadLocation cost.
+func EvaluateInLocation(windows []SleepWindow, loc *time.Location, now time.Time) IntendedState {
+	if len(windows) == 0 {
+		return StateAwake
+	}
+	if loc == nil {
 		return StateAwake
 	}
 	local := now.In(loc)
@@ -79,24 +91,29 @@ func NextTransition(windows []SleepWindow, timezone string, now time.Time) *time
 	if len(windows) == 0 {
 		return nil
 	}
-
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
 		return nil
 	}
-	local := now.In(loc)
-	currentState := Evaluate(windows, timezone, now)
+	return NextTransitionInLocation(windows, loc, now)
+}
 
-	// Collect all boundary times in the next week + 1 day buffer.
+// NextTransitionInLocation is NextTransition using a preloaded *time.Location.
+func NextTransitionInLocation(windows []SleepWindow, loc *time.Location, now time.Time) *time.Time {
+	if len(windows) == 0 || loc == nil {
+		return nil
+	}
+	local := now.In(loc)
+	currentState := EvaluateInLocation(windows, loc, now)
+
 	const maxLookaheadDays = 8
 	boundaries := collectBoundaries(windows, local, maxLookaheadDays)
 
-	// Find the earliest boundary after now where the state differs.
 	for _, b := range boundaries {
 		if !b.After(local) {
 			continue
 		}
-		stateAtB := Evaluate(windows, timezone, b.In(time.UTC))
+		stateAtB := EvaluateInLocation(windows, loc, b.In(time.UTC))
 		if stateAtB != currentState {
 			utc := b.In(time.UTC)
 			return &utc
