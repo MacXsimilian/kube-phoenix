@@ -726,7 +726,7 @@ function buildChartOption(
         series: [
           { type: 'bar', name: 'Success', stack: 'policy', data: history.map((s) => s.policySuccessCount), itemStyle: { color: theme.palette.success.main } },
           { type: 'bar', name: 'Failed', stack: 'policy', data: history.map((s) => s.policyFailedCount), itemStyle: { color: theme.palette.error.main } },
-          { type: 'bar', name: 'Skipped', stack: 'policy', data: history.map((s) => s.policySkippedCount), itemStyle: { color: theme.palette.grey[500] } },
+          { type: 'bar', name: 'Interrupted', stack: 'policy', data: history.map((s) => s.policyInterruptedCount), itemStyle: { color: theme.palette.grey[500] } },
         ],
       }
     }

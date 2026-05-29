@@ -1047,7 +1047,7 @@ func (ps *PolicyScheduler) finalizeExecution(execID uint, status string, counts 
 // recordExecutionMetrics records Prometheus metrics for a completed execution.
 func recordExecutionMetrics(mode, direction, status string, duration float64, counts *scaler.Counts) {
 	metrics.ExecutionsTotal.WithLabelValues(mode, direction, status).Inc()
-	metrics.ExecutionDuration.WithLabelValues(mode, direction, status).Observe(duration)
+	metrics.ExecutionDuration.WithLabelValues(mode, direction).Observe(duration)
 	if counts != nil {
 		metrics.WorkloadsScaledTotal.WithLabelValues(direction).Add(float64(counts.Scaled))
 		metrics.NodesDrainedTotal.Add(float64(counts.Drained))

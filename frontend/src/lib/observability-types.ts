@@ -13,7 +13,7 @@ export interface MetricSnapshot {
   k8sLatencyP99Ms: number
   policySuccessCount: number
   policyFailedCount: number
-  policySkippedCount: number
+  policyInterruptedCount: number
   wsActiveConnections: number
   cacheHitRate: number
   schedulerEvalRate: number
