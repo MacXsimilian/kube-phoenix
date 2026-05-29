@@ -160,9 +160,9 @@ sleeping or awake at a given point in time.
 - Compute the next state transition time for dashboard display.
 
 **Key interfaces:**
-- `IntendedState(StateInput) PolicyState` -- accepts a `StateInput` struct containing windows, timezone, exceptions, and time. Returns `"sleeping"`, `"awake"`, or `"unknown"`.
-- `Evaluate(windows, timezone, now) string` -- window-only evaluation.
-- `NextTransition(windows, timezone, now) *time.Time` -- next sleep/wake edge.
+- `IntendedState(StateInput) PolicyState` -- accepts a `StateInput` struct containing windows, timezone (or a preloaded `Location`), exceptions, and time. Returns `"sleeping"`, `"awake"`, or `"unknown"`.
+- `Evaluate(windows, timezone, now) string` -- window-only evaluation. `EvaluateInLocation(windows, loc, now)` is the same call with a preloaded `*time.Location` for hot paths.
+- `NextTransition(windows, timezone, now) *time.Time` -- next sleep/wake edge. `NextTransitionInLocation(windows, loc, now)` accepts a preloaded `*time.Location`.
 
 ### PolicyScaler
 

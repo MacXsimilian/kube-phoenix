@@ -86,10 +86,13 @@ type evalContext struct {
 	exceptionsByPolicy  map[uint][]store.ScheduledException // batch-fetched per tick
 }
 
-// cachedPolicy holds a parsed in-memory representation of a policy.
+// cachedPolicy holds a parsed in-memory representation of a policy. The
+// location is preloaded so per-tick evaluation does not pay the
+// time.LoadLocation cost.
 type cachedPolicy struct {
 	policy  store.Policy
 	windows []policy.SleepWindow
+	loc     *time.Location
 }
 
 // PolicyScheduler evaluates all enabled policies on a 30-second tick and
@@ -219,7 +222,7 @@ func (ps *PolicyScheduler) NextTransition(policyID uint) *time.Time {
 	if !ok {
 		return nil
 	}
-	return policy.NextTransition(cp.windows, cp.policy.Timezone, time.Now())
+	return policy.NextTransitionInLocation(cp.windows, cp.loc, time.Now())
 }
 
 // NextTransitions returns the next transition time for each requested policy
@@ -227,14 +230,14 @@ func (ps *PolicyScheduler) NextTransition(policyID uint) *time.Time {
 func (ps *PolicyScheduler) NextTransitions(policyIDs []uint) map[uint]*time.Time {
 	ps.mu.Lock()
 	type entry struct {
-		id       uint
-		windows  []policy.SleepWindow
-		timezone string
+		id      uint
+		windows []policy.SleepWindow
+		loc     *time.Location
 	}
 	entries := make([]entry, 0, len(policyIDs))
 	for _, id := range policyIDs {
 		if cp, ok := ps.policies[id]; ok {
-			entries = append(entries, entry{id, cp.windows, cp.policy.Timezone})
+			entries = append(entries, entry{id, cp.windows, cp.loc})
 		}
 	}
 	ps.mu.Unlock()
@@ -242,7 +245,7 @@ func (ps *PolicyScheduler) NextTransitions(policyIDs []uint) map[uint]*time.Time
 	now := time.Now()
 	result := make(map[uint]*time.Time, len(entries))
 	for _, e := range entries {
-		result[e.id] = policy.NextTransition(e.windows, e.timezone, now)
+		result[e.id] = policy.NextTransitionInLocation(e.windows, e.loc, now)
 	}
 	return result
 }
@@ -568,7 +571,7 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, ctx evalContext) {
 	}
 	exceptions := ctx.exceptionsByPolicy[p.ID]
 	intended := IntendedState(StateInput{
-		Windows: cp.windows, Timezone: p.Timezone,
+		Windows: cp.windows, Location: cp.loc,
 		Exceptions: exceptions, Now: ctx.now,
 	})
 
@@ -798,14 +801,15 @@ func (ps *PolicyScheduler) reload() error {
 	for _, p := range policies {
 		modeCounts[p.Mode]++
 
-		if _, err := time.LoadLocation(p.Timezone); err != nil {
+		loc, err := time.LoadLocation(p.Timezone)
+		if err != nil {
 			slog.Warn("policy scheduler: invalid timezone, skipping policy",
 				"policyID", p.ID, "timezone", p.Timezone, "err", err)
 			continue
 		}
 
 		windows := parsePolicyWindows(p)
-		ps.policies[p.ID] = cachedPolicy{policy: p, windows: windows}
+		ps.policies[p.ID] = cachedPolicy{policy: p, windows: windows, loc: loc}
 		slog.Info("policy scheduler: registered policy",
 			"policyID", p.ID, "name", p.Name, "windowCount", len(windows))
 	}

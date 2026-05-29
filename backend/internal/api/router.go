@@ -58,6 +58,8 @@ type Handler struct {
 	dbMaxOpenConns           int
 	dbMaxIdleConns           int
 	dbConnMaxLifetimeMinutes int
+
+	overviewCache overviewMemo
 }
 
 // NewRouter wires the HTTP handler stack. The provided AuditWriter must already

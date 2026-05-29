@@ -25,6 +25,13 @@ type policyResponse struct {
 
 func (h *Handler) policyResp(p store.Policy) policyResponse {
 	nextTransition := h.policyScheduler.NextTransition(p.ID)
+	return h.policyRespWithTransition(p, nextTransition)
+}
+
+// policyRespWithTransition builds a policy response using a precomputed next
+// transition, avoiding a scheduler-mutex acquisition. Used by list handlers
+// that batch-fetch transitions in a single lock acquisition.
+func (h *Handler) policyRespWithTransition(p store.Policy, nextTransition *time.Time) policyResponse {
 	windows := parseSleepWindows(p)
 	return policyResponse{Policy: p, NextTransitionAt: nextTransition, SleepWindows: windows}
 }
@@ -49,9 +56,14 @@ func (h *Handler) listPolicies(w http.ResponseWriter, r *http.Request) {
 		jsonInternalError(w, err, "list policies failed")
 		return
 	}
+	policyIDs := make([]uint, len(policies))
+	for i, p := range policies {
+		policyIDs[i] = p.ID
+	}
+	transitions := h.policyScheduler.NextTransitions(policyIDs)
 	resp := make([]policyResponse, len(policies))
 	for i, p := range policies {
-		resp[i] = h.policyResp(p)
+		resp[i] = h.policyRespWithTransition(p, transitions[p.ID])
 	}
 	jsonOK(w, resp)
 }

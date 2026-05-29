@@ -7,10 +7,21 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 )
+
+// overviewMemo caches the marshaled overview payload between cache rebuilds so
+// concurrent SSE subscribers and plain GETs reuse a single buildOverview pass.
+// The payload is invalidated when the underlying cluster cache advances its
+// snapshot timestamp.
+type overviewMemo struct {
+	mu             sync.Mutex
+	payload        []byte
+	snapshotMarker time.Time
+}
 
 type NextRunInfo struct {
 	Name    string `json:"name"`
@@ -33,7 +44,53 @@ type OverviewResponse struct {
 }
 
 func (h *Handler) getOverview(w http.ResponseWriter, r *http.Request) {
-	jsonOK(w, h.buildOverview())
+	payload, err := h.overviewBytes()
+	if err != nil {
+		jsonInternalError(w, err, "overview encode failed")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(payload)
+}
+
+// overviewBytes returns the marshaled overview payload, rebuilding it only when
+// the cluster cache snapshot has advanced since the last build. Policy
+// transition data refreshes at the same cadence — staleness is bounded by the
+// cache rebuild interval.
+func (h *Handler) overviewBytes() ([]byte, error) {
+	marker := h.snapshotMarker()
+
+	h.overviewCache.mu.Lock()
+	defer h.overviewCache.mu.Unlock()
+
+	if h.overviewCache.payload != nil && h.overviewCache.snapshotMarker.Equal(marker) {
+		return h.overviewCache.payload, nil
+	}
+
+	payload, err := json.Marshal(h.buildOverview())
+	if err != nil {
+		return nil, err
+	}
+	h.overviewCache.payload = payload
+	h.overviewCache.snapshotMarker = marker
+	return payload, nil
+}
+
+func (h *Handler) snapshotMarker() time.Time {
+	if h.cache == nil {
+		return time.Time{}
+	}
+	return h.cache.Snapshot().FetchedAt
+}
+
+// invalidateOverviewMemo forces the next overviewBytes call to rebuild even
+// when the cluster cache snapshot has not advanced. Used after policy CRUD so
+// the NextRun field reflects changes before the next informer-driven rebuild.
+func (h *Handler) invalidateOverviewMemo() {
+	h.overviewCache.mu.Lock()
+	h.overviewCache.payload = nil
+	h.overviewCache.mu.Unlock()
 }
 
 // streamCluster streams OverviewResponse updates as Server-Sent Events.
@@ -91,11 +148,11 @@ func (h *Handler) streamCluster(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) writeSSEOverview(w http.ResponseWriter, flusher http.Flusher) bool {
-	data, err := json.Marshal(h.buildOverview())
+	payload, err := h.overviewBytes()
 	if err != nil {
 		return false
 	}
-	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
 		return false
 	}
 	flusher.Flush()

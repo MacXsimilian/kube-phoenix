@@ -83,27 +83,21 @@ func emit(ch chan<- LogLine, level, msg string) {
 
 func isApply(mode string) bool { return mode == store.PolicyModeApply }
 
-// namespaceAllowed returns true if the namespace should be processed.
-// If filter is empty, all namespaces are allowed (subject to guardrail skip list).
-// If filter is set, only listed namespaces are allowed.
 // filterSnapshotsByNamespace returns only snapshots whose namespace matches
 // the comma-separated filter. Used by scoped exception wakes to avoid
 // restoring workloads outside the exception's target.
 func filterSnapshotsByNamespace(snaps []store.WorkloadSnapshot, filter string) []store.WorkloadSnapshot {
+	if filter == "" {
+		return snaps
+	}
+	allowed := stringutil.SplitCSVSet(filter)
 	out := make([]store.WorkloadSnapshot, 0, len(snaps))
 	for _, s := range snaps {
-		if namespaceAllowed(s.Namespace, filter) {
+		if allowed[s.Namespace] {
 			out = append(out, s)
 		}
 	}
 	return out
-}
-
-func namespaceAllowed(ns, filter string) bool {
-	if filter == "" {
-		return true
-	}
-	return stringutil.SplitCSVSet(filter)[ns]
 }
 
 // formatWorkload returns "Deployment default/nginx" style.
@@ -158,16 +152,20 @@ func (r *Runner) collectFilteredEntries(
 	namespaceFilter string,
 	counts *Counts,
 ) []workloadEntry {
+	allowed := stringutil.SplitCSVSet(namespaceFilter)
+	hasFilter := namespaceFilter != ""
+	inFilter := func(ns string) bool { return !hasFilter || allowed[ns] }
+
 	entries := make([]workloadEntry, 0, len(deployments)+len(statefulsets))
 	for _, d := range deployments {
-		if skipNS[d.Namespace] || !namespaceAllowed(d.Namespace, namespaceFilter) {
+		if skipNS[d.Namespace] || !inFilter(d.Namespace) {
 			counts.Skipped++
 			continue
 		}
 		entries = append(entries, r.deploymentToEntry(d))
 	}
 	for _, ss := range statefulsets {
-		if skipNS[ss.Namespace] || !namespaceAllowed(ss.Namespace, namespaceFilter) {
+		if skipNS[ss.Namespace] || !inFilter(ss.Namespace) {
 			counts.Skipped++
 			continue
 		}
@@ -178,12 +176,12 @@ func (r *Runner) collectFilteredEntries(
 
 // ── Node protection helpers ──────────────────────────────────────────────────
 
-func isLabelProtected(labels map[string]string, skipNodeLabels string) bool {
-	return nodeutil.MatchLabel(labels, skipNodeLabels) != ""
+func isLabelProtected(labels map[string]string, matchers []nodeutil.LabelMatcher) bool {
+	return nodeutil.MatchLabelParsed(labels, matchers) != ""
 }
 
-func isTaintProtected(taints []corev1.Taint, skipNodeTaints string) bool {
-	return nodeutil.MatchTaint(taints, skipNodeTaints) != ""
+func isTaintProtected(taints []corev1.Taint, matchers []nodeutil.TaintMatcher) bool {
+	return nodeutil.MatchTaintParsed(taints, matchers) != ""
 }
 
 // ── Priority namespace helpers ────────────────────────────────────────────────

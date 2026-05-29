@@ -65,6 +65,7 @@ func (h *Handler) reloadScheduler(policyID uint) {
 	if err := h.policyScheduler.Reload(); err != nil {
 		slog.Error("policy scheduler reload failed", "policyID", policyID, "err", err)
 	}
+	h.invalidateOverviewMemo()
 }
 
 // handleStoreError writes a 404 if the error is gorm.ErrRecordNotFound,
