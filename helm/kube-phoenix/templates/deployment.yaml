@@ -36,7 +36,7 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: {{ include "kube-phoenix.serviceAccountName" . }}
-      automountServiceAccountToken: true
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
