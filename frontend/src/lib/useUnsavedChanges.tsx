@@ -47,7 +47,15 @@ export function UnsavedChangesProvider({ children }: { children: React.ReactNode
       const anchor = (e.target as HTMLElement).closest('a[href]')
       if (!anchor) return
       const href = anchor.getAttribute('href')
-      if (!href || href.startsWith('http') || href.startsWith('#')) return
+      if (
+        !href ||
+        href.startsWith('http') ||
+        href.startsWith('#') ||
+        href.startsWith('mailto:') ||
+        href.startsWith('tel:') ||
+        href.startsWith('javascript:')
+      )
+        return
       e.preventDefault()
       e.stopPropagation()
       setPendingHref(href)
