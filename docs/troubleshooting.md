@@ -94,6 +94,22 @@ Then review the failed execution log to understand the root cause.
 
 If none of the above apply, check whether a guardrail is excluding the workload's namespace.
 
+## Audit log CSV export is truncated or missing rows
+
+**Problem:** The audit log CSV download contains fewer rows than the filtered table view shows.
+
+**Cause:** The export pages through results 1000 rows at a time but caps at 100,000 total rows. Filter sets larger than that are intentionally truncated to keep the in-browser CSV build bounded.
+
+**Solution:** Narrow the date range or filters until the matching total falls under 100,000. When the cap is hit, the UI surfaces a banner stating the total match count alongside the export.
+
+## Audit CSV cells begin with a stray apostrophe
+
+**Problem:** A username or other field in an exported audit CSV starts with `'`.
+
+**Cause:** Excel, Numbers, and Google Sheets treat cells starting with `=`, `+`, `-`, `@`, tab, or carriage return as formulas, so the export prefixes any such cell with a leading apostrophe to neutralise formula injection. The apostrophe is a sentinel — the spreadsheet treats the rest of the cell as text and never displays the prefix.
+
+**Solution:** No action required. The raw value remains intact; only the spreadsheet rendering is guarded.
+
 ## Scheduled exception did not fire
 
 **Problem:** A scheduled exception's `startsAt` has passed but it is still in `pending` status.
@@ -140,6 +156,14 @@ kubectl logs -n kube-phoenix deployment/kube-phoenix
 - **Running locally without a cluster:** Expected behavior. Cluster endpoints return empty data.
 - **RBAC not applied:** Verify the ClusterRoleBinding exists: `kubectl get clusterrolebinding kube-phoenix`.
 - **Cache not yet populated:** On cold start, the cluster cache waits up to 30 seconds for SharedInformer sync. If the API server is slow, `Snapshot().Ready()` may still be false. Wait a few seconds and refresh.
+
+## UI logs the user out on transient network errors
+
+**Problem:** The UI returns to the login screen during brief backend hiccups (CDN restart, ingress reload, laptop sleep), even though the session is still valid.
+
+**Cause:** Historic behavior treated every failed `/api/auth/me` call as "session expired". Now the auth poller distinguishes three outcomes: an explicit 401/403 (logout), a network/5xx failure (preserve current user, surface a backend-error banner instead), and a successful payload (compare to cached user, skip the state update when nothing changed).
+
+**Solution:** Nothing to configure. If you still see logouts, check the browser DevTools network tab for an actual `401` on `/api/auth/me` — that indicates the session cookie is genuinely missing or expired.
 
 ## WebSocket log streaming disconnects immediately
 
