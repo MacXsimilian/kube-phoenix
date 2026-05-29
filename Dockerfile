@@ -1,7 +1,7 @@
 # ── Stage 1: Build frontend ───────────────────────────────────────────────────
 # Always build on the host platform — Next.js output is arch-independent.
 # Digest pins the exact image; update with: docker pull node:24-alpine && docker inspect --format='{{index .RepoDigests 0}}' node:24-alpine
-FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:2bdb65ed1dab192432bc31c95f94155ca5ad7fc1392fb7eb7526ab682fa5bf14 AS frontend-builder
 
 ARG NEXT_PUBLIC_APP_VERSION=dev
 
