@@ -139,7 +139,7 @@ Downstream constructors take their own typed inputs (`store.PoolConfig`, `k8scli
 
 **Key types:**
 - `PolicyScheduler` -- owns the tick loop, in-memory policy cache (`map[uint]cachedPolicy`), runner, `Broker`, `inflightPolicies` (tracks which policies have a running execution), and `inflightCancels` (cancel functions for running executions, used by `CancelExecution`). Store and runner dependencies are held as interfaces (`schedulerStore`, `policyRunner`) for testability. Protected by `sync.Mutex`.
-- `cachedPolicy` -- pairs a `store.Policy` with its parsed `[]policy.SleepWindow`.
+- `cachedPolicy` -- pairs a `store.Policy` with its parsed `[]policy.SleepWindow` and a preloaded `*time.Location` so per-tick evaluation skips `time.LoadLocation`.
 - `PolicyState` -- string enum: `"sleeping"`, `"awake"`, `"unknown"`.
 - `evalContext` -- per-tick configuration passed through evaluation functions: `now`, `autoWake`, `reconcileWhileAwake`, `exceptionsByPolicy`.
 - `Broker` -- in-process pub/sub for execution log lines (see `broker.go`).
@@ -169,7 +169,7 @@ Downstream constructors take their own typed inputs (`store.PoolConfig`, `k8scli
 - `UpdateSettings(cfg SchedulerConfig) error` -- apply new eval interval, auto-wake, reconcile-while-awake, and enforce-sleep at runtime; restarts the ticker goroutine only if the interval changed.
 
 **Policy Engine (`policy_engine.go`):**
-- `StateInput` -- struct grouping windows, timezone, exceptions, and time for `IntendedState` evaluation.
+- `StateInput` -- struct grouping windows, timezone, exceptions, and time for `IntendedState` evaluation. The optional `Location *time.Location` field takes precedence over `Timezone` and lets hot paths skip `time.LoadLocation`.
 - `IntendedState(StateInput) PolicyState` -- precedence: `force_sleep` exception > `stay_awake` exception > window evaluation.
 - ~~`ActiveException`~~ -- removed (was unused).
 
@@ -307,7 +307,9 @@ Downstream constructors take their own typed inputs (`store.PoolConfig`, `k8scli
 
 **Key functions:**
 - `Evaluate(windows, timezone, now)` -- returns `StateSleeping` if `now` falls inside any window, `StateAwake` otherwise. Handles same-day windows (e.g. 09:00-17:00) and overnight windows (e.g. 19:00-07:00) by checking both the evening portion (current day) and morning portion (previous day).
+- `EvaluateInLocation(windows, loc, now)` -- variant of `Evaluate` that takes a preloaded `*time.Location`. Hot paths (e.g. the scheduler tick) cache the location at policy load time and pass it in to avoid the per-call `time.LoadLocation`.
 - `NextTransition(windows, timezone, now)` -- scans all window boundary times within the next 8 days, finds the earliest one where the evaluated state differs from the current state. Returns `nil` if no transition found.
+- `NextTransitionInLocation(windows, loc, now)` -- variant of `NextTransition` that takes a preloaded `*time.Location`.
 - `ValidateWindows(windows)` -- structural validation: 1–10 windows, non-empty days, valid HH:MM format, no duplicate days, start != end.
 - `CronsToWindows(sleepCron, wakeCron)` -- migration helper that reverse-parses legacy cron expressions into `SleepWindow` format.
 
@@ -328,7 +330,7 @@ Downstream constructors take their own typed inputs (`store.PoolConfig`, `k8scli
 **Purpose:** Session authentication, CSRF protection, and RBAC permission checks.
 
 **Key functions:**
-- `SessionAuth(st, idleTimeout) func(http.Handler) http.Handler` -- reads the `__kp_session` cookie, looks up the session via `store.GetSessionByToken`, checks `User.Enabled`, extends the sliding window, and places the `*store.User` into the request context.
+- `SessionAuth(st, idleTimeout) func(http.Handler) http.Handler` -- reads the `__kp_session` cookie, looks up the session via `store.GetSessionByToken`, checks `User.Enabled`, and places the `*store.User` into the request context. The sliding-window expiry is refreshed only when the remaining lifetime drops below `idleTimeout - 60s`, so per-request `UPDATE` traffic collapses to roughly one write per minute per session.
 - `CSRFProtect` -- double-submit cookie pattern: for POST/PUT/DELETE, validates that the `X-CSRF-Token` header matches the `__kp_csrf` cookie value. GET/HEAD/OPTIONS are exempt.
 - `RequirePermission(perm) func(http.Handler) http.Handler` -- extracts the user from context and checks `auth.HasPermission(user.Role, perm)`.
 - `UserFromContext(ctx) *store.User` -- retrieves the authenticated user from context (or nil).
@@ -412,9 +414,15 @@ Downstream constructors take their own typed inputs (`store.PoolConfig`, `k8scli
 
 **Purpose:** Shared node protection logic used by both `api/cluster_nodes.go` (for computing node protection status in API responses) and `scaler/scaler.go` (for deciding which nodes to drain).
 
+**Key types:**
+- `LabelMatcher` -- single parsed `key=value` entry from a label CSV; holds the original `Raw` form for return-on-match.
+- `TaintMatcher` -- single parsed `key=value:effect` entry from a taint CSV.
+
 **Key functions:**
-- `MatchLabel(labels map[string]string, skipNodeLabels string) string` -- returns the matched `key=value` entry if any node label matches, or `""` if none match.
-- `MatchTaint(taints []corev1.Taint, skipNodeTaints string) string` -- returns the matched `key=value:effect` entry if any node taint matches, or `""` if none match.
+- `ParseLabels(csv string) []LabelMatcher` / `ParseTaints(csv string) []TaintMatcher` -- split a CSV config into matchers once; invalid entries are dropped. Callers that loop over many nodes call these once outside the loop.
+- `MatchLabelParsed(labels, matchers) string` / `MatchTaintParsed(taints, matchers) string` -- check a node's labels/taints against preparsed matchers. Returns the matching `Raw` entry or `""`.
+- `MatchLabel(labels map[string]string, skipNodeLabels string) string` -- convenience wrapper that parses the CSV inline. Returns the matched `key=value` entry or `""`.
+- `MatchTaint(taints []corev1.Taint, skipNodeTaints string) string` -- convenience wrapper that parses the CSV inline.
 - `IsCriticalPod(priorityClassName string) bool` -- returns true if the pod uses `system-node-critical` or `system-cluster-critical` PriorityClassName. Used by both `scaler/nodes.go` and `api/cluster_nodes.go` to protect nodes running Kubernetes-critical pods.
 
 **Dependencies:** `k8s.io/api/core/v1`.
@@ -500,7 +508,7 @@ type Session struct {
     User         User      // preloaded on lookup
     IPAddress    string
     UserAgent    string
-    ExpiresAt    time.Time // sliding window, extended on each request
+    ExpiresAt    time.Time // sliding window, refreshed when remaining lifetime drops below idleTimeout - 60s
     MaxExpiresAt time.Time // hard cap (default 24h from creation)
     CreatedAt    time.Time
 }
