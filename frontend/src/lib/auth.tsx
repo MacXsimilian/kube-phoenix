@@ -25,6 +25,11 @@ interface AuthState {
   refreshUser: () => Promise<void>
 }
 
+type FetchMeResult =
+  | { kind: 'user'; user: User }
+  | { kind: 'unauthenticated' }
+  | { kind: 'error' }
+
 const AuthContext = createContext<AuthState | null>(null)
 
 /**
@@ -44,15 +49,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [oidcEnabled, setOidcEnabled] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fetchMe = useCallback(async (): Promise<User | null> => {
+  const fetchMe = useCallback(async (): Promise<FetchMeResult> => {
     try {
       const res = await fetch(`${BASE}/api/auth/me`, { credentials: 'include' })
       if (res.ok) {
-        return (await res.json()) as User
+        return { kind: 'user', user: (await res.json()) as User }
       }
-      return null
+      if (res.status === 401 || res.status === 403) {
+        return { kind: 'unauthenticated' }
+      }
+      return { kind: 'error' }
     } catch {
-      return null
+      return { kind: 'error' }
     }
   }, [])
 
@@ -66,10 +74,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch((err) => { if (process.env.NODE_ENV === 'development') console.warn('[kp] OIDC config fetch failed:', err) })
 
     fetchMe()
-      .then(currentUser => {
-        if (currentUser) {
-          setUser(currentUser)
-        } else {
+      .then(result => {
+        if (result.kind === 'user') {
+          setUser(result.user)
+        } else if (result.kind === 'unauthenticated') {
           // Probe if backend requires auth at all (dev mode check).
           fetch(`${BASE}/api/policies`, { credentials: 'include' })
             .then(res => {
@@ -84,6 +92,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               }
             })
             .catch(() => setBackendError(true))
+        } else {
+          // Network or server error — assume backend trouble rather than logout.
+          setBackendError(true)
         }
       })
       .finally(() => setChecking(false))
@@ -109,13 +120,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!shouldPoll) return
     intervalRef.current = setInterval(async () => {
       if (!userRef.current || userRef.current.id === 0) return
-      const currentUser = await fetchMe()
-      if (currentUser) {
-        setUser(currentUser)
-      } else {
+      const result = await fetchMe()
+      if (result.kind === 'user') {
+        setUser(result.user)
+      } else if (result.kind === 'unauthenticated') {
         // Session expired or user disabled — log out.
         setUser(null)
       }
+      // 'error' (network / 5xx): preserve current user; the next poll will retry.
     }, ME_POLL_INTERVAL)
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
@@ -136,12 +148,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // After login, fetch full me (with permissions) — the login response has
     // the user but the /me endpoint is authoritative with permissions.
     const me = await fetchMe()
-    setUser(me ?? data.user)
+    setUser(me.kind === 'user' ? me.user : data.user)
   }, [fetchMe])
 
   const refreshUser = useCallback(async () => {
     const me = await fetchMe()
-    if (me) setUser(me)
+    if (me.kind === 'user') setUser(me.user)
   }, [fetchMe])
 
   const logout = useCallback(async () => {
