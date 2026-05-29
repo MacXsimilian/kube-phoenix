@@ -118,12 +118,15 @@ func buildNodeResponse(nodes []corev1.Node, allPods []corev1.Pod, g *store.Guard
 		}
 	}
 
+	labelMatchers := nodeutil.ParseLabels(g.SkipNodeLabels)
+	taintMatchers := nodeutil.ParseTaints(g.SkipNodeTaints)
+
 	var result []NodeResponse
 	for _, node := range nodes {
 		instanceType := nodeLabel(node, "node.kubernetes.io/instance-type", "beta.kubernetes.io/instance-type")
 		zone := nodeLabel(node, "topology.kubernetes.io/zone", "failure-domain.beta.kubernetes.io/zone")
 
-		status, reason := nodeProtectionStatus(node.Name, node.Labels, node.Spec.Taints, g.SkipNodeLabels, g.SkipNodeTaints, criticalNodes)
+		status, reason := nodeProtectionStatus(node.Name, node.Labels, node.Spec.Taints, labelMatchers, taintMatchers, criticalNodes)
 
 		result = append(result, NodeResponse{
 			Name:             node.Name,
@@ -172,11 +175,11 @@ func convertTaints(taints []corev1.Taint) []NodeTaintResponse {
 	return out
 }
 
-func nodeProtectionStatus(nodeName string, labels map[string]string, taints []corev1.Taint, skipLabels, skipTaints string, criticalNodes map[string]bool) (string, string) {
-	if m := nodeutil.MatchLabel(labels, skipLabels); m != "" {
+func nodeProtectionStatus(nodeName string, labels map[string]string, taints []corev1.Taint, labelMatchers []nodeutil.LabelMatcher, taintMatchers []nodeutil.TaintMatcher, criticalNodes map[string]bool) (string, string) {
+	if m := nodeutil.MatchLabelParsed(labels, labelMatchers); m != "" {
 		return "protected", "label: " + m
 	}
-	if m := nodeutil.MatchTaint(taints, skipTaints); m != "" {
+	if m := nodeutil.MatchTaintParsed(taints, taintMatchers); m != "" {
 		return "protected", "taint: " + m
 	}
 	if criticalNodes[nodeName] {

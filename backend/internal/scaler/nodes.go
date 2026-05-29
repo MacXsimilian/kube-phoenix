@@ -81,11 +81,14 @@ func (r *Runner) drainNodes(ctx context.Context, mode string, guardrails *store.
 	skipNsNode := stringutil.SplitCSVSet(guardrails.SkipNsNode)
 	criticalNodes, podCountPerNode := classifyNodes(allPods, skipNsNode, guardrails.ProtectCriticalPodNodes)
 
+	labelMatchers := nodeutil.ParseLabels(guardrails.SkipNodeLabels)
+	taintMatchers := nodeutil.ParseTaints(guardrails.SkipNodeTaints)
+
 	// Collect drainable nodes, skipping protected ones.
 	var targets []drainTarget
 	for _, node := range nodes {
 		name := node.Name
-		if isLabelProtected(node.Labels, guardrails.SkipNodeLabels) || isTaintProtected(node.Spec.Taints, guardrails.SkipNodeTaints) {
+		if isLabelProtected(node.Labels, labelMatchers) || isTaintProtected(node.Spec.Taints, taintMatchers) {
 			emit(logCh, "info", fmt.Sprintf("Protected node %s (label/taint match)", name))
 			counts.Protected++
 			continue
