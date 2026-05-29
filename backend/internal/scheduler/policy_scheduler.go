@@ -103,6 +103,8 @@ type PolicyScheduler struct {
 
 	mu                   sync.Mutex
 	cancel               context.CancelFunc
+	execCtx              context.Context
+	execCancel           context.CancelFunc
 	parentCtx            context.Context
 	policies             map[uint]cachedPolicy
 	lastReconcileAttempt map[uint]time.Time
@@ -139,6 +141,9 @@ func (ps *PolicyScheduler) start(ctx context.Context, recover bool) error {
 	ps.parentCtx = ctx
 	tickCtx, cancel := context.WithCancel(ctx)
 	ps.cancel = cancel
+	execCtx, execCancel := context.WithCancel(ctx)
+	ps.execCtx = execCtx
+	ps.execCancel = execCancel
 	if err := ps.reload(); err != nil {
 		ps.mu.Unlock()
 		return err
@@ -157,13 +162,20 @@ func (ps *PolicyScheduler) start(ctx context.Context, recover bool) error {
 	return nil
 }
 
-// Stop gracefully shuts down the ticker and waits for in-flight executions.
+// Stop gracefully shuts down the ticker and the in-flight execution context,
+// then waits for executions to unwind. Both contexts are cancelled before the
+// wait so executeAndFinalize's runCtx (derived from execCtx) sees cancellation
+// and does not block on per-execution timeouts (up to 2h).
 func (ps *PolicyScheduler) Stop() {
 	ps.mu.Lock()
-	cancel := ps.cancel
+	tickCancel := ps.cancel
+	execCancel := ps.execCancel
 	ps.mu.Unlock()
-	if cancel != nil {
-		cancel()
+	if tickCancel != nil {
+		tickCancel()
+	}
+	if execCancel != nil {
+		execCancel()
 	}
 	ps.inflight.Wait()
 }
@@ -262,12 +274,13 @@ func (ps *PolicyScheduler) runNow(policyID uint, direction, trigger string, mode
 	return ps.run(ps.execContext(), *p, direction, trigger)
 }
 
-// execContext returns a context for execution goroutines. It derives from the
-// scheduler's parent context so Stop() can signal in-flight executions to abort,
-// rather than hanging until the per-execution timeout (up to 2h) expires.
+// execContext returns the cancellable context that scopes all in-flight
+// executions. Stop() cancels it so executeAndFinalize's derived runCtx unwinds
+// immediately, rather than hanging until the per-execution timeout (up to 2h)
+// expires.
 func (ps *PolicyScheduler) execContext() context.Context {
 	ps.mu.Lock()
-	ctx := ps.parentCtx
+	ctx := ps.execCtx
 	ps.mu.Unlock()
 	if ctx != nil {
 		return ctx

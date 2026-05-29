@@ -25,6 +25,7 @@ import (
 
 const (
 	httpReadTimeout        = 15 * time.Second
+	httpReadHeaderTimeout  = 5 * time.Second
 	httpIdleTimeout        = 60 * time.Second
 	shutdownTimeout        = 30 * time.Second
 	sessionCleanupInterval = 15 * time.Minute
@@ -103,6 +104,19 @@ func main() {
 		defer cache.Stop()
 	}
 
+	// ── Observability collector ───────────────────────────────────────────
+	// Must be initialised before the policy scheduler so SetCallRecorder
+	// happens-before the scheduler's tickLoop goroutines read callRecorder.
+	obsCollector, err := observability.NewCollector(st)
+	if err != nil {
+		slog.Error("observability collector init failed", "err", err)
+		os.Exit(1)
+	}
+	if k8s != nil {
+		k8s.SetCallRecorder(obsCollector.CallRecorder())
+	}
+	runTracked(&wg, "observability-collector", func() { obsCollector.Start(bgCtx) })
+
 	// ── Policy scheduler ──────────────────────────────────────────────────
 	g, err := st.GetGuardrails()
 	if err != nil {
@@ -123,18 +137,6 @@ func main() {
 		defer policySched.Stop()
 	}
 
-	// ── Observability collector ───────────────────────────────────────────
-	obsCollector, err := observability.NewCollector(st)
-	if err != nil {
-		slog.Error("observability collector init failed", "err", err)
-		os.Exit(1)
-	}
-	runTracked(&wg, "observability-collector", func() { obsCollector.Start(bgCtx) })
-
-	if k8s != nil {
-		k8s.SetCallRecorder(obsCollector.CallRecorder())
-	}
-
 	// ── Audit writer (separate ctx — must drain after HTTP shutdown) ──────
 	auditWriter := api.NewAuditWriter(st, 4096)
 	runTracked(&wg, "audit-writer", func() { auditWriter.Start(auditCtx) })
@@ -144,11 +146,12 @@ func main() {
 	// ── HTTP server ───────────────────────────────────────────────────────
 	router := api.NewRouter(bgCtx, cfg, st, k8s, policySched, cache, obsCollector, auditWriter)
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", *port),
-		Handler:      router,
-		ReadTimeout:  httpReadTimeout,
-		WriteTimeout: 0, // disabled for WebSocket streaming
-		IdleTimeout:  httpIdleTimeout,
+		Addr:              fmt.Sprintf(":%d", *port),
+		Handler:           router,
+		ReadTimeout:       httpReadTimeout,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		WriteTimeout:      0, // disabled for WebSocket streaming
+		IdleTimeout:       httpIdleTimeout,
 	}
 
 	go func() {

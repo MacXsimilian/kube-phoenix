@@ -47,8 +47,19 @@ const drainTimeout = 5 * time.Second
 // is cancelled, then drains any queued entries (bounded by drainTimeout) before
 // returning. Recovers from panics to prevent a single bad entry from killing
 // the audit pipeline.
+//
+// Each iteration first performs a non-blocking ctx check before the main
+// select. Go's select picks ready cases pseudo-randomly, so under sustained
+// channel load the shutdown signal could otherwise be starved indefinitely and
+// drainTimeout would bound nothing.
 func (aw *AuditWriter) Start(ctx context.Context) {
 	for {
+		select {
+		case <-ctx.Done():
+			aw.drain()
+			return
+		default:
+		}
 		select {
 		case <-ctx.Done():
 			aw.drain()
