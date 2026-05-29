@@ -42,7 +42,7 @@ let state = {
   k8sErrorRate: 0.3,
   policySuccessCount: 0,
   policyFailedCount: 0,
-  policySkippedCount: 0,
+  policyInterruptedCount: 0,
   wsActiveConnections: 8,
   cacheHitRate: 95,
   schedulerEvalRate: 2,
@@ -87,7 +87,7 @@ function tickState() {
   // Policy executions — sparse events
   state.policySuccessCount = Math.random() < 0.1 ? Math.floor(Math.random() * 3) + 1 : 0
   state.policyFailedCount = Math.random() < 0.02 ? 1 : 0
-  state.policySkippedCount = Math.random() < 0.05 ? 1 : 0
+  state.policyInterruptedCount = Math.random() < 0.05 ? 1 : 0
 
   state.wsActiveConnections = Math.round(rw(state.wsActiveConnections, 2, 25, 3))
   state.cacheHitRate = rw(state.cacheHitRate, 70, 100, 3)

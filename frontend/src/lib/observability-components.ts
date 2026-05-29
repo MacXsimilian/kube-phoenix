@@ -163,12 +163,12 @@ export const COMPONENT_INFO: Record<string, ComponentInfo> = {
   policy_executions: {
     id: 'scheduler',
     label: 'Policy Executions',
-    description: 'Policy execution outcomes — success, failed, skipped.',
+    description: 'Policy execution outcomes — success, failed, interrupted.',
     goFile: 'internal/scheduler/',
     metrics: [
       { label: 'Success', unit: '', getValue: (s) => s.policySuccessCount },
       { label: 'Failed', unit: '', getValue: (s) => s.policyFailedCount },
-      { label: 'Skipped', unit: '', getValue: (s) => s.policySkippedCount },
+      { label: 'Interrupted', unit: '', getValue: (s) => s.policyInterruptedCount },
     ],
     relatedLinks: [],
   },

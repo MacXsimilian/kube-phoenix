@@ -9,7 +9,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      {{- include "kube-phoenix.selectorLabels" . | nindent 6 }}
+      {{- include "kube-phoenix.serverSelectorLabels" . | nindent 6 }}
   policyTypes:
     - Ingress
     - Egress

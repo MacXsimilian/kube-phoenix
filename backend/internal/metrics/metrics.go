@@ -23,7 +23,7 @@ var (
 		Name:    "kube_phoenix_execution_duration_seconds",
 		Help:    "Duration of policy executions in seconds.",
 		Buckets: []float64{5, 15, 30, 60, 120, 300, 600, 1800},
-	}, []string{"mode", "direction", "status"})
+	}, []string{"mode", "direction"})
 
 	// WorkloadsScaledTotal counts workloads (Deployments + StatefulSets) affected.
 	WorkloadsScaledTotal = promauto.NewCounterVec(prometheus.CounterOpts{

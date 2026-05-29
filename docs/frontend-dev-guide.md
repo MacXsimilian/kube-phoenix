@@ -775,7 +775,7 @@ The history page composes `ExecutionTable` and `LogViewer`. It supports deep-lin
 
 - Paginated table using `TablePagination` (10/20/50 rows per page)
 - Refetches periodically to catch newly completed executions
-- **Filter dropdowns** for Status (running/success/failed/interrupted/skipped) and Direction (sleep/wake)
+- **Filter dropdowns** for Status (running/success/failed/interrupted) and Direction (sleep/wake)
 - Columns: Started (`fmtDtShort` with year), Policy name (from preloaded relation), Direction (sleep/wake icon), Mode chip (using `modeColors(isDark)`), Status via `StatusChip`, Duration (`fmtDuration`), Summary (icons for scaled/drained/deleted/errors)
 - Header styling extracted to `TABLE_HEADER_CELL_SX` constant; chip sizing uses shared `SMALL_CHIP_SX`
 - Row click calls `onSelect(execution)`, which opens the `LogViewer` drawer
@@ -1068,7 +1068,7 @@ Most color exports are mode-aware functions that accept an `isDark: boolean` par
 | Export | Type | Purpose |
 |:-------|:-----|:--------|
 | `stateColors(isDark)` | `(boolean) → Record<string, { bg, color, label }>` | Policy current state (sleeping, awake, transitioning, unknown) |
-| `executionStatusColors(isDark)` | `(boolean) → Record<string, { bg, color }>` | Execution and exception statuses (running, success, failed, interrupted, skipped, pending, active, completed, cancelled) |
+| `executionStatusColors(isDark)` | `(boolean) → Record<string, { bg, color }>` | Execution and exception statuses (running, success, failed, interrupted, pending, active, completed, cancelled) |
 | `executionStatusFallback(isDark)` | `(boolean) → { bg, color }` | Default for unknown status strings |
 | `modeColors(isDark)` | `(boolean) → Record<string, { bg, color }>` | Plan (blue) and Apply (amber) mode chips |
 | `SMALL_CHIP_SX` | `{ height: 18, fontSize: 10 }` | Shared sx for small chips (mode, type badges) |

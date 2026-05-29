@@ -8,8 +8,7 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   selector:
-    {{- include "kube-phoenix.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: server
+    {{- include "kube-phoenix.serverSelectorLabels" . | nindent 4 }}
   ports:
     - name: http
       port: {{ .Values.service.port }}

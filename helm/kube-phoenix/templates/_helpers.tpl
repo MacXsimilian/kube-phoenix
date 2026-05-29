@@ -109,6 +109,16 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Selector labels scoped to the server component.
+Use this wherever the application pods must be targeted exclusively, so the
+selector does not also match the PostgreSQL pods (which share name + instance).
+*/}}
+{{- define "kube-phoenix.serverSelectorLabels" -}}
+{{ include "kube-phoenix.selectorLabels" . }}
+app.kubernetes.io/component: server
+{{- end }}
+
+{{/*
 Validate mutually exclusive values and required fields.
 */}}
 {{- define "kube-phoenix.validateValues" -}}
