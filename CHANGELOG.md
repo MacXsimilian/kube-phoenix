@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.7](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.6...v0.7.7) (2026-05-29)
+
+
+### Bug Fixes
+
+* correct Helm selectors and observability metrics, drop dead skipped status ([#413](https://github.com/MacXsimilian/kube-phoenix/issues/413)) ([0419c15](https://github.com/MacXsimilian/kube-phoenix/commit/0419c157f9039ef6576831f9d741aff572f5e30c))
+* frontend + backend cleanup (bugs, perf, error boundaries) ([#409](https://github.com/MacXsimilian/kube-phoenix/issues/409)) ([ba517c7](https://github.com/MacXsimilian/kube-phoenix/commit/ba517c7b1c64f149f3fdd673492636dc39433899))
+* six high-severity findings from 2026 backend audit ([#407](https://github.com/MacXsimilian/kube-phoenix/issues/407)) ([d3b6634](https://github.com/MacXsimilian/kube-phoenix/commit/d3b66340084e103652f711f346e9b287e2c11096))
+
+
+### Performance Improvements
+
+* **backend:** reduce per-request and per-subscriber hot-path overhead ([#410](https://github.com/MacXsimilian/kube-phoenix/issues/410)) ([d6a8633](https://github.com/MacXsimilian/kube-phoenix/commit/d6a863345fab4b21efc55658db87c660ffc44786))
+
 ## [0.7.6](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.5...v0.7.6) (2026-05-27)
 
 
