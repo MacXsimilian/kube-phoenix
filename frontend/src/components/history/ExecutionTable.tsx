@@ -197,7 +197,6 @@ export default function PolicyExecutionTable({
           <MenuItem value="success">Success</MenuItem>
           <MenuItem value="failed">Failed</MenuItem>
           <MenuItem value="interrupted">Interrupted</MenuItem>
-          <MenuItem value="skipped">Skipped</MenuItem>
         </TextField>
         <TextField
           label="Direction" select size="small" value={directionFilter}

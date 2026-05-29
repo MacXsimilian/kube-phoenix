@@ -128,7 +128,7 @@ func runMigrations(db *gorm.DB, autoMigrate bool) error {
 	}
 	if err := db.Exec(`DO $$ BEGIN
 		ALTER TABLE policy_executions ADD CONSTRAINT chk_policy_execution_status
-			CHECK (status IN ('running','success','failed','interrupted','skipped'));
+			CHECK (status IN ('running','success','failed','interrupted'));
 	EXCEPTION WHEN duplicate_object THEN NULL;
 	END $$`).Error; err != nil {
 		slog.Warn("migration: add execution status CHECK failed (non-fatal)", "err", err)

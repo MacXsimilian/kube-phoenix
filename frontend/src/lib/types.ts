@@ -168,7 +168,7 @@ export interface PolicyExecution {
   trigger: string
   startedAt: string
   finishedAt: string | null
-  status: 'running' | 'success' | 'failed' | 'interrupted' | 'skipped'
+  status: 'running' | 'success' | 'failed' | 'interrupted'
   mode: 'plan' | 'apply'
   countScaled: number
   countSkipped: number
