@@ -38,11 +38,16 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     headers['X-CSRF-Token'] = getCSRFToken()
   }
 
+  const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+  const signal = options?.signal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : timeoutSignal
+
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     credentials: 'include',
     headers,
-    signal: options?.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal,
   })
 
   await handleAuthErrors(res)
