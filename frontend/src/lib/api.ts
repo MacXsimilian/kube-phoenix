@@ -268,13 +268,13 @@ export async function* emergencyScaleStream(): AsyncGenerator<ResetEvent> {
 export const getUsers = (): Promise<User[]> =>
   apiFetch<User[]>('/api/users')
 
-export const createUserAPI = (data: { username: string; email?: string; password: string; role: string }): Promise<User> =>
+export const createUser = (data: { username: string; email?: string; password: string; role: string }): Promise<User> =>
   apiFetch<User>('/api/users', { method: 'POST', body: JSON.stringify(data) })
 
-export const updateUserAPI = (id: number, data: Partial<Pick<User, 'role' | 'enabled'>>): Promise<User> =>
+export const updateUser = (id: number, data: Partial<Pick<User, 'role' | 'enabled'>>): Promise<User> =>
   apiFetch<User>(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 
-export const deleteUserAPI = (id: number): Promise<void> =>
+export const deleteUser = (id: number): Promise<void> =>
   apiFetch<void>(`/api/users/${id}`, { method: 'DELETE' })
 
 // ── OIDC ──────────────────────────────────────────────────────────────────────
