@@ -28,6 +28,9 @@ serviceAccount:
   create: true
   name: ""   # defaults to release-chart name
   annotations: {}   # e.g. for IRSA: eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/ROLE
+  # The app calls the Kubernetes API, so it needs its token mounted. Set to
+  # false only if the workload no longer talks to the API server.
+  automountServiceAccountToken: true
 
 # RBAC — ClusterRole + ClusterRoleBinding so the app can manage nodes cluster-wide
 rbac:
