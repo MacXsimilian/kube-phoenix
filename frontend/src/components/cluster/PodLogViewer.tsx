@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
@@ -50,13 +51,19 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
   const [autoScroll, setAutoScroll] = useState(true)
   const [currentMatchIdx, setCurrentMatchIdx] = useState(-1)
   const logRef = useRef<HTMLDivElement>(null)
-  const lineEls = useRef<(HTMLElement | null)[]>([])
 
   const {
     lines, isStreaming, isLoading, hasError, errorMsg,
     mode, setMode, canLoadMore, handleLoadMore,
     startStream, fetchPrevious, clear,
   } = usePodLogStream({ namespace, podName, container })
+
+  const virtualizer = useVirtualizer({
+    count: lines.length,
+    getScrollElement: () => logRef.current,
+    estimateSize: () => 22,
+    overscan: 20,
+  })
 
   // Track previous line count so the entrance animation only applies to new lines.
   const prevLineCountRef = useRef(0)
@@ -90,10 +97,9 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
   // Scroll to current match
   useEffect(() => {
     if (currentMatchIdx >= 0 && currentMatchIdx < matchIndices.length) {
-      const lineIdx = matchIndices[currentMatchIdx]
-      lineEls.current[lineIdx]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      virtualizer.scrollToIndex(matchIndices[currentMatchIdx], { align: 'center', behavior: 'smooth' })
     }
-  }, [currentMatchIdx, matchIndices])
+  }, [currentMatchIdx, matchIndices, virtualizer])
 
   const jumpToMatch = useCallback((direction: 'next' | 'prev') => {
     if (matchIndices.length === 0) return
@@ -107,10 +113,10 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
   // ── Auto-scroll ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (autoScroll && logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight
+    if (autoScroll && lines.length > 0) {
+      virtualizer.scrollToIndex(lines.length - 1, { align: 'end' })
     }
-  }, [lines, autoScroll])
+  }, [lines.length, autoScroll, virtualizer])
 
   const handleScroll = useCallback(() => {
     if (!logRef.current) return
@@ -329,34 +335,43 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
               textAlign: 'center'
             }}>No log lines found.</Typography>
         )}
-        {lines.map((line, i) => {
-          const isMatch = search && matchSet.has(i)
-          const isCurrent = isMatch && matchIndices[currentMatchIdx] === i
-          const level = detectLevel(line)
-          const isError = level === 'error'
-          return (
-            <Box
-              key={i}
-              ref={(el: HTMLElement | null) => { lineEls.current[i] = el }}
-              sx={{
-                px: 1, py: 0.125, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-                color: isError ? colors.errorLight : level === 'warn' ? colors.warning : 'text.primary',
-                fontWeight: isError ? 500 : 400,
-                borderLeft: `3px solid ${isError ? colors.error : level === 'warn' ? colors.warning : colors.mutedBg}`,
-                ml: 0.5,
-                borderRadius: 0.5,
-                bgcolor: isError ? 'rgba(239,68,68,0.06)' : 'transparent',
-                '&:hover': { bgcolor: isError ? 'rgba(239,68,68,0.10)' : 'rgba(255,255,255,0.03)' },
-                ...(i >= prevLineCountRef.current ? LOG_WATERFALL_SX : {}),
-                ...(isCurrent
-                  ? { bgcolor: 'rgba(124,58,237,0.35)', borderLeft: '3px solid', borderColor: 'primary.main' }
-                  : isMatch ? { bgcolor: 'rgba(124,58,237,0.12)' } : {}),
-              }}
-            >
-              {line}
-            </Box>
-          )
-        })}
+        {lines.length > 0 && (
+          <Box sx={{ height: virtualizer.getTotalSize(), width: '100%', position: 'relative' }}>
+            {virtualizer.getVirtualItems().map((vi) => {
+              const i = vi.index
+              const line = lines[i]
+              const isMatch = search && matchSet.has(i)
+              const isCurrent = isMatch && matchIndices[currentMatchIdx] === i
+              const level = detectLevel(line)
+              const isError = level === 'error'
+              return (
+                <Box
+                  key={vi.key}
+                  data-index={vi.index}
+                  ref={virtualizer.measureElement}
+                  sx={{
+                    position: 'absolute', top: 0, left: 0, width: '100%',
+                    transform: `translateY(${vi.start}px)`,
+                    px: 1, py: 0.125, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                    color: isError ? colors.errorLight : level === 'warn' ? colors.warning : 'text.primary',
+                    fontWeight: isError ? 500 : 400,
+                    borderLeft: `3px solid ${isError ? colors.error : level === 'warn' ? colors.warning : colors.mutedBg}`,
+                    ml: 0.5,
+                    borderRadius: 0.5,
+                    bgcolor: isError ? 'rgba(239,68,68,0.06)' : 'transparent',
+                    '&:hover': { bgcolor: isError ? 'rgba(239,68,68,0.10)' : 'rgba(255,255,255,0.03)' },
+                    ...(i >= prevLineCountRef.current ? LOG_WATERFALL_SX : {}),
+                    ...(isCurrent
+                      ? { bgcolor: 'rgba(124,58,237,0.35)', borderLeft: '3px solid', borderColor: 'primary.main' }
+                      : isMatch ? { bgcolor: 'rgba(124,58,237,0.12)' } : {}),
+                  }}
+                >
+                  {line}
+                </Box>
+              )
+            })}
+          </Box>
+        )}
       </Box>
       {/* Status bar */}
       <Box sx={{ px: 2, py: 0.75, borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
