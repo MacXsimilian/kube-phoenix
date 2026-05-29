@@ -352,21 +352,26 @@ export default function PodLogViewer({ namespace, podName, containers, onBack }:
                   sx={{
                     position: 'absolute', top: 0, left: 0, width: '100%',
                     transform: `translateY(${vi.start}px)`,
-                    px: 1, py: 0.125, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-                    color: isError ? colors.errorLight : level === 'warn' ? colors.warning : 'text.primary',
-                    fontWeight: isError ? 500 : 400,
-                    borderLeft: `3px solid ${isError ? colors.error : level === 'warn' ? colors.warning : colors.mutedBg}`,
-                    ml: 0.5,
-                    borderRadius: 0.5,
-                    bgcolor: isError ? 'rgba(239,68,68,0.06)' : 'transparent',
-                    '&:hover': { bgcolor: isError ? 'rgba(239,68,68,0.10)' : 'rgba(255,255,255,0.03)' },
-                    ...(i >= prevLineCountRef.current ? LOG_WATERFALL_SX : {}),
-                    ...(isCurrent
-                      ? { bgcolor: 'rgba(124,58,237,0.35)', borderLeft: '3px solid', borderColor: 'primary.main' }
-                      : isMatch ? { bgcolor: 'rgba(124,58,237,0.12)' } : {}),
                   }}
                 >
-                  {line}
+                  <Box
+                    sx={{
+                      px: 1, py: 0.125, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                      color: isError ? colors.errorLight : level === 'warn' ? colors.warning : 'text.primary',
+                      fontWeight: isError ? 500 : 400,
+                      borderLeft: `3px solid ${isError ? colors.error : level === 'warn' ? colors.warning : colors.mutedBg}`,
+                      ml: 0.5,
+                      borderRadius: 0.5,
+                      bgcolor: isError ? 'rgba(239,68,68,0.06)' : 'transparent',
+                      '&:hover': { bgcolor: isError ? 'rgba(239,68,68,0.10)' : 'rgba(255,255,255,0.03)' },
+                      ...(i >= prevLineCountRef.current ? LOG_WATERFALL_SX : {}),
+                      ...(isCurrent
+                        ? { bgcolor: 'rgba(124,58,237,0.35)', borderLeft: '3px solid', borderColor: 'primary.main' }
+                        : isMatch ? { bgcolor: 'rgba(124,58,237,0.12)' } : {}),
+                    }}
+                  >
+                    {line}
+                  </Box>
                 </Box>
               )
             })}
