@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, memo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/queryKeys'
 import Alert from '@mui/material/Alert'
@@ -36,54 +36,108 @@ import TriggerChip from '@/components/shared/TriggerChip'
 import type { PolicyExecution } from '@/lib/types'
 import { TABLE_HEAD_CELL_SX } from '@/lib/tableStyles'
 
+const FILTER_BAR_SX = { display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' } as const
+const FILTER_FIELD_SX = { minWidth: 140 } as const
+const ERROR_ALERT_SX = { mx: 2, mt: 2 } as const
+const LOADING_BOX_SX = { p: 2, display: 'flex', flexDirection: 'column', gap: 1 } as const
+const EMPTY_CELL_SX = { color: 'text.secondary', py: 3, textAlign: 'center' } as const
+const ROW_SX = { cursor: 'pointer' } as const
+const STARTED_CELL_SX = { fontSize: 13 } as const
+const POLICY_NAME_SX = { maxWidth: 160 } as const
+const DIRECTION_INNER_SX = { display: 'flex', alignItems: 'center', gap: 0.75 } as const
+const SLEEP_ICON_SX = { fontSize: 14, color: 'primary.main' } as const
+const WAKE_ICON_SX = { fontSize: 14, color: 'warning.main' } as const
+const DURATION_CELL_SX = { fontSize: 13, color: 'text.secondary' } as const
+const SUMMARY_OUTER_SX = { display: 'flex', alignItems: 'center', gap: 1 } as const
+const SUMMARY_ITEM_SX = { display: 'flex', alignItems: 'center', gap: 0.25 } as const
+const SUMMARY_ICON_SX = { fontSize: 12, color: 'text.secondary' } as const
+const SUMMARY_TEXT_SX = { color: 'text.secondary' } as const
+const SUMMARY_ERROR_ICON_SX = { fontSize: 12, color: 'error.main' } as const
+const SUMMARY_ERROR_TEXT_SX = { color: 'error.main' } as const
+
 function SummaryCell({ exec }: { exec: PolicyExecution }) {
   const isWake = exec.direction === 'wake'
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+    <Box sx={SUMMARY_OUTER_SX}>
       <Tooltip title={isWake ? 'Restored' : 'Scaled'}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+        <Box sx={SUMMARY_ITEM_SX}>
           {isWake
-            ? <ArrowUpwardIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
-            : <ArrowDownwardIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+            ? <ArrowUpwardIcon sx={SUMMARY_ICON_SX} />
+            : <ArrowDownwardIcon sx={SUMMARY_ICON_SX} />
           }
-          <Typography variant="caption" sx={{
-            color: "text.secondary"
-          }}>{exec.countScaled}</Typography>
+          <Typography variant="caption" sx={SUMMARY_TEXT_SX}>{exec.countScaled}</Typography>
         </Box>
       </Tooltip>
       {exec.countDrained > 0 && (
         <Tooltip title="Drained">
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-            <CloudOffIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
-            <Typography variant="caption" sx={{
-              color: "text.secondary"
-            }}>{exec.countDrained}</Typography>
+          <Box sx={SUMMARY_ITEM_SX}>
+            <CloudOffIcon sx={SUMMARY_ICON_SX} />
+            <Typography variant="caption" sx={SUMMARY_TEXT_SX}>{exec.countDrained}</Typography>
           </Box>
         </Tooltip>
       )}
       {exec.countDeleted > 0 && (
         <Tooltip title="Deleted">
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-            <DeleteOutlineIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
-            <Typography variant="caption" sx={{
-              color: "text.secondary"
-            }}>{exec.countDeleted}</Typography>
+          <Box sx={SUMMARY_ITEM_SX}>
+            <DeleteOutlineIcon sx={SUMMARY_ICON_SX} />
+            <Typography variant="caption" sx={SUMMARY_TEXT_SX}>{exec.countDeleted}</Typography>
           </Box>
         </Tooltip>
       )}
       {exec.countErrors > 0 && (
         <Tooltip title="Errors">
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-            <ErrorOutlineIcon sx={{ fontSize: 12, color: 'error.main' }} />
-            <Typography variant="caption" sx={{
-              color: "error.main"
-            }}>{exec.countErrors}</Typography>
+          <Box sx={SUMMARY_ITEM_SX}>
+            <ErrorOutlineIcon sx={SUMMARY_ERROR_ICON_SX} />
+            <Typography variant="caption" sx={SUMMARY_ERROR_TEXT_SX}>{exec.countErrors}</Typography>
           </Box>
         </Tooltip>
       )}
     </Box>
   );
 }
+
+type ExecutionRowProps = {
+  exec: PolicyExecution
+  modeStyle: { bg: string; color: string } | undefined
+  onClick: (exec: PolicyExecution) => void
+}
+
+const ExecutionRow = memo(function ExecutionRow({ exec, modeStyle, onClick }: ExecutionRowProps) {
+  return (
+    <TableRow hover sx={ROW_SX} onClick={() => onClick(exec)}>
+      <TableCell sx={STARTED_CELL_SX}>{fmtDtShort(exec.startedAt)}</TableCell>
+      <TableCell>
+        <Typography variant="body2" noWrap sx={POLICY_NAME_SX}>
+          {exec.policy?.name ?? `Policy #${exec.policyId}`}
+        </Typography>
+      </TableCell>
+      <TableCell>
+        <Box sx={DIRECTION_INNER_SX}>
+          {exec.direction === 'sleep' ? (
+            <BedtimeIcon sx={SLEEP_ICON_SX} />
+          ) : (
+            <WbSunnyIcon sx={WAKE_ICON_SX} />
+          )}
+          <Typography variant="body2">{exec.direction === 'sleep' ? 'Sleep' : 'Wake'}</Typography>
+        </Box>
+      </TableCell>
+      <TableCell><TriggerChip trigger={exec.trigger} /></TableCell>
+      <TableCell>
+        <Chip
+          label={exec.mode.toUpperCase()}
+          size="small"
+          sx={{
+            ...SMALL_CHIP_SX,
+            bgcolor: modeStyle?.bg, color: modeStyle?.color,
+          }}
+        />
+      </TableCell>
+      <TableCell><StatusChip status={exec.status} hideSpinner /></TableCell>
+      <TableCell sx={DURATION_CELL_SX}>{fmtDuration(exec.startedAt, exec.finishedAt)}</TableCell>
+      <TableCell><SummaryCell exec={exec} /></TableCell>
+    </TableRow>
+  )
+})
 
 export default function PolicyExecutionTable({
   onSelect,
@@ -119,6 +173,8 @@ export default function PolicyExecutionTable({
     }
   }, [data, initialExecId, autoOpened, onSelect])
 
+  const handleRowClick = useCallback((exec: PolicyExecution) => onSelect(exec), [onSelect])
+
   if (isError && !data?.items?.length) {
     return (
       <Alert severity="warning">
@@ -130,11 +186,11 @@ export default function PolicyExecutionTable({
   return (
     <>
       {/* Filters — outside the card, matching the Cluster State layout */}
-      <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Box sx={FILTER_BAR_SX}>
         <TextField
           label="Status" select size="small" value={statusFilter}
           onChange={e => { setStatusFilter(e.target.value); setPage(0) }}
-          sx={{ minWidth: 140 }}
+          sx={FILTER_FIELD_SX}
         >
           <MenuItem value="">All Statuses</MenuItem>
           <MenuItem value="running">Running</MenuItem>
@@ -146,7 +202,7 @@ export default function PolicyExecutionTable({
         <TextField
           label="Direction" select size="small" value={directionFilter}
           onChange={e => { setDirectionFilter(e.target.value); setPage(0) }}
-          sx={{ minWidth: 140 }}
+          sx={FILTER_FIELD_SX}
         >
           <MenuItem value="">All Directions</MenuItem>
           <MenuItem value="sleep">Sleep</MenuItem>
@@ -155,13 +211,13 @@ export default function PolicyExecutionTable({
       </Box>
       <Paper>
       {isError && (
-        <Alert severity="warning" sx={{ mx: 2, mt: 2 }}>
+        <Alert severity="warning" sx={ERROR_ALERT_SX}>
           Could not load executions — showing last known data.
         </Alert>
       )}
 
       {isLoading ? (
-        <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <Box sx={LOADING_BOX_SX}>
           {[...Array(5)].map((_, i) => (
             <Skeleton key={i} variant="rounded" height={44} />
           ))}
@@ -186,60 +242,20 @@ export default function PolicyExecutionTable({
                 {!data?.items?.length ? (
                   <TableRow>
                     <TableCell colSpan={8}>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          color: "text.secondary",
-                          py: 3,
-                          textAlign: 'center'
-                        }}>
+                      <Typography variant="body2" sx={EMPTY_CELL_SX}>
                         {isError ? 'Could not load executions.' : 'No executions yet.'}
                       </Typography>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  data.items.map((exec) => {
-                    const modeStyle = getModeStyle(isDark, exec.mode)
-                    return (
-                      <TableRow
-                        key={exec.id}
-                        hover
-                        sx={{ cursor: 'pointer' }}
-                        onClick={() => onSelect(exec)}
-                      >
-                        <TableCell sx={{ fontSize: 13 }}>{fmtDtShort(exec.startedAt)}</TableCell>
-                        <TableCell>
-                          <Typography variant="body2" noWrap sx={{ maxWidth: 160 }}>
-                            {exec.policy?.name ?? `Policy #${exec.policyId}`}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                            {exec.direction === 'sleep' ? (
-                              <BedtimeIcon sx={{ fontSize: 14, color: 'primary.main' }} />
-                            ) : (
-                              <WbSunnyIcon sx={{ fontSize: 14, color: 'warning.main' }} />
-                            )}
-                            <Typography variant="body2">{exec.direction === 'sleep' ? 'Sleep' : 'Wake'}</Typography>
-                          </Box>
-                        </TableCell>
-                        <TableCell><TriggerChip trigger={exec.trigger} /></TableCell>
-                        <TableCell>
-                          <Chip
-                            label={exec.mode.toUpperCase()}
-                            size="small"
-                            sx={{
-                              ...SMALL_CHIP_SX,
-                              bgcolor: modeStyle?.bg, color: modeStyle?.color,
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell><StatusChip status={exec.status} hideSpinner /></TableCell>
-                        <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{fmtDuration(exec.startedAt, exec.finishedAt)}</TableCell>
-                        <TableCell><SummaryCell exec={exec} /></TableCell>
-                      </TableRow>
-                    )
-                  })
+                  data.items.map((exec) => (
+                    <ExecutionRow
+                      key={exec.id}
+                      exec={exec}
+                      modeStyle={getModeStyle(isDark, exec.mode)}
+                      onClick={handleRowClick}
+                    />
+                  ))
                 )}
               </TableBody>
             </Table>
