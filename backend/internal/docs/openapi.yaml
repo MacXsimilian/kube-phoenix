@@ -1108,7 +1108,7 @@ components:
           type: integer
         policyFailedCount:
           type: integer
-        policySkippedCount:
+        policyInterruptedCount:
           type: integer
         wsActiveConnections:
           type: integer

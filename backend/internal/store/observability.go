@@ -31,9 +31,9 @@ type MetricSnapshot struct {
 	K8sLatencyP99Ms float64 `json:"k8sLatencyP99Ms"` // milliseconds
 
 	// Policy executions
-	PolicySuccessCount int `json:"policySuccessCount"` // in the tick window
-	PolicyFailedCount  int `json:"policyFailedCount"`
-	PolicySkippedCount int `json:"policySkippedCount"`
+	PolicySuccessCount     int `json:"policySuccessCount"` // in the tick window
+	PolicyFailedCount      int `json:"policyFailedCount"`
+	PolicyInterruptedCount int `json:"policyInterruptedCount"`
 
 	// WebSocket
 	WSActiveConnections int `json:"wsActiveConnections"`
@@ -211,7 +211,7 @@ func averageBucket(bucket []MetricSnapshot) MetricSnapshot {
 		result.TotalErrorRate += s.TotalErrorRate
 		result.PolicySuccessCount += s.PolicySuccessCount
 		result.PolicyFailedCount += s.PolicyFailedCount
-		result.PolicySkippedCount += s.PolicySkippedCount
+		result.PolicyInterruptedCount += s.PolicyInterruptedCount
 		result.WorkloadsScaledCount += s.WorkloadsScaledCount
 		result.WSActiveConnections += s.WSActiveConnections
 		result.SchedulerPanics += s.SchedulerPanics

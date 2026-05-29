@@ -113,7 +113,6 @@ func (c *Collector) collect() error {
 	snap.K8sGetRate = (c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "list") +
 		c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "get")) * 60
 	snap.K8sPatchRate = (c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "scale") +
-		c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "annotate") +
 		c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "cordon")) * 60
 	snap.K8sDeleteRate = (c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "delete") +
 		c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "drain")) * 60
@@ -139,7 +138,7 @@ func (c *Collector) collect() error {
 
 	snap.PolicySuccessCount = int(c.counterRateFiltered("kube_phoenix_executions_total", current, elapsed, "status", "success") * elapsed)
 	snap.PolicyFailedCount = int(c.counterRateFiltered("kube_phoenix_executions_total", current, elapsed, "status", "failed") * elapsed)
-	snap.PolicySkippedCount = int(c.counterRateFiltered("kube_phoenix_executions_total", current, elapsed, "status", "skipped") * elapsed)
+	snap.PolicyInterruptedCount = int(c.counterRateFiltered("kube_phoenix_executions_total", current, elapsed, "status", "interrupted") * elapsed)
 
 	snap.WorkloadsScaledCount = int(c.counterRate("kube_phoenix_workloads_scaled_total", current, elapsed) * elapsed)
 	snap.ScaleOperationDurationMs = histogramQuantile(families["kube_phoenix_execution_duration_seconds"], 0.50) * 1000
@@ -154,7 +153,7 @@ func (c *Collector) collect() error {
 
 	snap.ActiveSessions = int(gaugeValue(families["kube_phoenix_active_sessions"]))
 	snap.ActivePolicies = int(gaugeValue(families["kube_phoenix_active_policies"]))
-	snap.K8sErrorRate = c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "status", "failure") * 60
+	snap.K8sErrorRate = c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "status", "error") * 60
 
 	c.prev = current
 	c.prevTime = now
