@@ -12,7 +12,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      {{- include "kube-phoenix.selectorLabels" . | nindent 6 }}
+      {{- include "kube-phoenix.serverSelectorLabels" . | nindent 6 }}
   endpoints:
     - port: http
       path: /metrics
