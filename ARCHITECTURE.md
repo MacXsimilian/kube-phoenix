@@ -68,7 +68,7 @@ flowchart TB
 
 | Layer       | Choice                                   |
 |:------------|:-----------------------------------------|
-| Backend     | Go 1.26, Chi v5, GORM v1.31, gorilla/websocket, client-go |
+| Backend     | Go 1.27, Chi v5, GORM v1.31, gorilla/websocket, client-go |
 | Frontend    | Next.js 16 (static export), MUI v9, TanStack Query v5 |
 | Database    | PostgreSQL 17                            |
 | Container   | Multi-stage Docker build, digest-pinned base images, distroless runtime |

@@ -6,7 +6,7 @@ This guide walks through setting up a complete local development environment for
 
 | Tool | Version | Install | Purpose |
 | :--- | :------ | :------ | :------ |
-| Go | 1.26.8+ | `brew install go` | Backend compilation; minimum from `backend/go.mod` |
+| Go | 1.27.1+ | `brew install go` | Backend compilation; minimum from `backend/go.mod` |
 | Node.js | 24+ | `brew install node` | Frontend build (Next.js) |
 | Docker | any | [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/) | Image builds, local PostgreSQL |
 | minikube | latest | `brew install minikube` | Local Kubernetes cluster |

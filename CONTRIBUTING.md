@@ -22,10 +22,10 @@ and navigate the review process.
 
 | Tool | Version | Purpose |
 | :--- | :------ | :------ |
-| Go | 1.26.8+ | Backend compilation and tests; minimum from `backend/go.mod` |
+| Go | 1.27.1+ | Backend compilation and tests; minimum from `backend/go.mod` |
 | Node.js | 24+ | Frontend build (Next.js) |
 | Docker | any | Local PostgreSQL via `docker compose` |
-| golangci-lint | v2.12.2 | Matches CI (`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2`) |
+| golangci-lint | v2.14.0 | Matches CI (`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0`) |
 | govulncheck | latest | Vulnerability scanning (`go install golang.org/x/vuln/cmd/govulncheck@latest`) |
 | kubectl | Within one minor version of the API server | Optional CLI for cluster setup and inspection; the backend uses `client-go` directly |
 
