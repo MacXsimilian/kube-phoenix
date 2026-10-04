@@ -27,7 +27,9 @@ and navigate the review process.
 | Docker | any | Local PostgreSQL via `docker compose` |
 | golangci-lint | v2.12.2 | Matches CI (`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2`) |
 | govulncheck | latest | Vulnerability scanning (`go install golang.org/x/vuln/cmd/govulncheck@latest`) |
-| kubectl | any | Optional -- cluster endpoints return empty data without it |
+| kubectl | Within one minor version of the API server | Optional CLI for cluster setup and inspection; the backend uses `client-go` directly |
+
+Follow the [Kubernetes kubectl version-skew policy](https://kubernetes.io/releases/version-skew-policy/#kubectl). Backend cluster access depends on in-cluster credentials or a valid kubeconfig. If the Kubernetes client cannot be configured, cluster endpoints return HTTP 503 (`kubernetes client unavailable`); the absence of the kubectl executable alone does not disable them.
 
 ### Quick Start
 

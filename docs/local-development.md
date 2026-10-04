@@ -10,7 +10,7 @@ This guide walks through setting up a complete local development environment for
 | Node.js | 24+ | `brew install node` | Frontend build (Next.js) |
 | Docker | any | [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/) | Image builds, local PostgreSQL |
 | minikube | latest | `brew install minikube` | Local Kubernetes cluster |
-| kubectl | any | `brew install kubectl` | Cluster interaction |
+| kubectl | Within one minor version of the API server | `brew install kubectl` | Cluster setup and inspection; see the [version-skew policy](https://kubernetes.io/releases/version-skew-policy/#kubectl) |
 | Helm | 3.8+ | `brew install helm` | In-cluster deployment; CI uses 4.2.0 |
 | golangci-lint | v2.12.2 | `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2` | Backend linting (optional; matches CI) |
 
@@ -203,7 +203,7 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:8080' > frontend/.env.local
 
 > **Important:** `NEXT_PUBLIC_*` variables are baked in at startup. Restart the frontend after creating or changing `.env.local`.
 
-The backend starts with a nil Kubernetes client. Cluster endpoints return empty data and scaling operations are skipped. Everything else -- policies, guardrails, audit log, authentication -- works as expected.
+Without in-cluster credentials or a valid kubeconfig, the backend starts with a nil Kubernetes client. Cluster endpoints return HTTP 503 (`kubernetes client unavailable`) and scaling operations are skipped. The backend uses `client-go` directly; installing kubectl alone does not provide cluster access. Everything else -- policies, guardrails, audit log, authentication -- works as expected.
 
 ### Authentication
 
