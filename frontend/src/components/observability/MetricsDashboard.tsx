@@ -1,7 +1,10 @@
 'use client'
 
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, type RefObject } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import type { EChartsCoreOption, EChartsType } from 'echarts/core'
 import Box from '@mui/material/Box'
+import Alert from '@mui/material/Alert'
 import Typography from '@mui/material/Typography'
 import Card from '@mui/material/Card'
 import Chip from '@mui/material/Chip'
@@ -29,6 +32,10 @@ import {
   useObservabilityCalls,
 } from '@/lib/ObservabilityStreamContext'
 import type { MetricSnapshot, TimeRange, ObservabilityThreshold, ApiCall } from '@/lib/observability-types'
+import { getObservabilityHistory } from '@/lib/api'
+import { queryKeys } from '@/lib/queryKeys'
+import { formatError } from '@/lib/formatters'
+import { mergeMetricHistory, metricSeries, previousPeriodSeries } from '@/lib/observabilityHistory'
 import StatusHeader from '@/components/observability/StatusHeader'
 import SystemOverview from '@/components/observability/SystemOverview'
 import CallFeed from '@/components/observability/CallFeed'
@@ -53,6 +60,34 @@ async function loadECharts() {
     })()
   }
   return echartsPromise
+}
+
+function useMetricChart(chartRef: RefObject<HTMLDivElement | null>, option: EChartsCoreOption) {
+  const chart = useRef<EChartsType | null>(null)
+  const latestOption = useRef(option)
+
+  useEffect(() => {
+    latestOption.current = option
+    chart.current?.setOption(option, { notMerge: true })
+  }, [option])
+
+  useEffect(() => {
+    let disposed = false
+    let observer: ResizeObserver | undefined
+    loadECharts().then(ec => {
+      if (disposed || !chartRef.current) return
+      chart.current = ec.init(chartRef.current, undefined, { renderer: 'canvas' })
+      chart.current.setOption(latestOption.current, { notMerge: true })
+      observer = new ResizeObserver(() => chart.current?.resize())
+      observer.observe(chartRef.current)
+    })
+    return () => {
+      disposed = true
+      observer?.disconnect()
+      chart.current?.dispose()
+      chart.current = null
+    }
+  }, [chartRef])
 }
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -90,7 +125,17 @@ export default function MetricsDashboard({ timeRange, onTimeRangeChange }: Props
   const theme = useTheme()
   const router = useRouter()
   const [expandedPanel, setExpandedPanel] = useState<string | null>(null)
-  const { latest, history } = useObservabilityMetrics()
+  const { latest, history: liveHistory } = useObservabilityMetrics()
+  const { data: storedHistory, dataUpdatedAt, isPending, isError, error } = useQuery({
+    queryKey: queryKeys.observabilityHistory(timeRange),
+    queryFn: ({ signal }) => getObservabilityHistory(timeRange, signal),
+    refetchInterval: 30_000,
+  })
+  const rangeEndMs = Math.max(dataUpdatedAt, Date.parse(latest?.snapshot.timestamp ?? '') || 0)
+  const history = useMemo(
+    () => mergeMetricHistory(storedHistory, liveHistory, timeRange, rangeEndMs),
+    [storedHistory, liveHistory, timeRange, rangeEndMs],
+  )
   const events = useObservabilityEvents()
   const recentCalls = useObservabilityCalls()
   const snap = latest?.snapshot
@@ -125,6 +170,15 @@ export default function MetricsDashboard({ timeRange, onTimeRangeChange }: Props
 
       {/* Scrollable content */}
       <Box sx={{ flex: 1, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {isPending && <Alert severity="info">Loading metrics history for {timeRange}…</Alert>}
+        {isError && (
+          <Alert severity="warning">
+            Historical metrics could not be loaded: {formatError(error)}. Available live samples are shown.
+          </Alert>
+        )}
+        {!isPending && !isError && storedHistory?.length === 0 && (
+          <Alert severity="info">No stored metrics for this range. Live samples appear as they arrive.</Alert>
+        )}
         {/* System Overview */}
         <SystemOverview
           snapshot={snap}
@@ -141,7 +195,7 @@ export default function MetricsDashboard({ timeRange, onTimeRangeChange }: Props
             gap: 2,
           }}
         >
-          {!snap
+          {!snap && history.length === 0
             ? Array.from({ length: PANELS.length }, (_, i) => <PanelSkeleton key={i} />)
             : PANELS.map((panel) => (
                 <MetricPanel
@@ -171,7 +225,7 @@ export default function MetricsDashboard({ timeRange, onTimeRangeChange }: Props
         <CallFeed calls={recentCalls} />
 
         {/* Error Timeline */}
-        {(events.length > 0 || history.length > 0) && (
+        {history.length > 0 && (
           <ErrorTimeline events={events} history={history} />
         )}
       </Box>
@@ -237,9 +291,8 @@ interface MetricPanelProps {
 function MetricPanel({ config, snapshot, history, threshold, onClick }: MetricPanelProps) {
   const theme = useTheme()
   const chartRef = useRef<HTMLDivElement>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const chartInstance = useRef<any>(null)
-  const roRef = useRef<ResizeObserver | null>(null)
+  const option = useMemo(() => buildChartOption(config, history, threshold, theme), [config, history, threshold, theme])
+  useMetricChart(chartRef, option)
 
   const value = snapshot ? config.getValue(snapshot) : 0
   const prevValue = history.length >= 2 ? config.getValue(history[history.length - 2]) : value
@@ -254,34 +307,6 @@ function MetricPanel({ config, snapshot, history, threshold, onClick }: MetricPa
 
   const minMax = useMinMax(config, history)
   const legendEntries = useLegendEntries(config, theme)
-
-  useEffect(() => {
-    if (!chartRef.current) return
-    let disposed = false
-    loadECharts().then((ec) => {
-      if (disposed || !chartRef.current) return
-      if (!chartInstance.current) {
-        chartInstance.current = ec.init(chartRef.current, undefined, { renderer: 'canvas' })
-        const ro = new ResizeObserver(() => chartInstance.current?.resize())
-        ro.observe(chartRef.current)
-        roRef.current = ro
-      }
-    })
-    return () => {
-      disposed = true
-      chartInstance.current?.dispose()
-      chartInstance.current = null
-      roRef.current?.disconnect()
-      roRef.current = null
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  useEffect(() => {
-    if (!chartInstance.current || history.length < 2) return
-    const option = buildChartOption(config, history, threshold, theme)
-    chartInstance.current.setOption(option, { notMerge: false })
-  }, [config, history, threshold, theme])
 
   return (
     <Card
@@ -330,7 +355,7 @@ function MetricPanel({ config, snapshot, history, threshold, onClick }: MetricPa
         <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75 }}>
           <Typography aria-live="polite" sx={{ fontSize: 24, fontWeight: 700, fontFamily: 'monospace', lineHeight: 1 }}>
             <span style={{ transition: 'all 300ms ease' }}>
-              {config.chartType === 'gauge' ? value.toFixed(1) : value.toFixed(config.unit === 'ms' ? 0 : 1)}
+              {snapshot ? value.toFixed(config.unit === 'ms' ? 0 : 1) : '--'}
             </span>
           </Typography>
           <Typography
@@ -468,7 +493,7 @@ function PanelExpandDialog({ panels, expandedPanel, snapshot, history, threshold
         <Box sx={{ flex: 1 }}>
           <Typography variant="h6" component="span">{config.title}</Typography>
           <Typography variant="h6" component="span" sx={{ ml: 1, fontFamily: 'monospace', fontWeight: 700 }}>
-            {value.toFixed(config.unit === 'ms' ? 0 : 1)} {config.unit}
+            {snapshot ? value.toFixed(config.unit === 'ms' ? 0 : 1) : '--'} {config.unit}
           </Typography>
         </Box>
         <IconButton onClick={onClose} aria-label="Close" sx={{ position: 'absolute', right: 8, top: 8 }}>
@@ -550,37 +575,8 @@ function SlowestCallsTable({ calls, theme }: { calls: ApiCall[]; theme: Theme })
 function ExpandedChart({ config, history, threshold }: { config: PanelConfig; history: MetricSnapshot[]; threshold: ObservabilityThreshold | undefined }) {
   const theme = useTheme()
   const chartRef = useRef<HTMLDivElement>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const chartInstance = useRef<any>(null)
-  const roRef = useRef<ResizeObserver | null>(null)
-
-  useEffect(() => {
-    if (!chartRef.current) return
-    let disposed = false
-    loadECharts().then((ec) => {
-      if (disposed || !chartRef.current) return
-      if (!chartInstance.current) {
-        chartInstance.current = ec.init(chartRef.current, undefined, { renderer: 'canvas' })
-        const ro = new ResizeObserver(() => chartInstance.current?.resize())
-        ro.observe(chartRef.current)
-        roRef.current = ro
-      }
-    })
-    return () => {
-      disposed = true
-      chartInstance.current?.dispose()
-      chartInstance.current = null
-      roRef.current?.disconnect()
-      roRef.current = null
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  useEffect(() => {
-    if (!chartInstance.current || history.length < 2) return
-    const option = buildChartOption(config, history, threshold, theme)
-    chartInstance.current.setOption(option, { notMerge: false })
-  }, [config, history, threshold, theme])
+  const option = useMemo(() => buildChartOption(config, history, threshold, theme), [config, history, threshold, theme])
+  useMetricChart(chartRef, option)
 
   return <Box ref={chartRef} sx={{ width: '100%', height: 400 }} />
 }
@@ -631,12 +627,17 @@ function buildChartOption(
   const spanMs = history.length >= 2
     ? new Date(history[history.length - 1].timestamp).getTime() - new Date(history[0].timestamp).getTime()
     : 0
-  const labels = history.map((s) => formatAxisLabel(new Date(s.timestamp), spanMs))
   const textColor = theme.palette.text.secondary
   const gridColor = theme.palette.divider
 
   const baseGrid = { top: 8, right: 8, bottom: 28, left: 40 }
-  const baseXAxis = { type: 'category' as const, data: labels, axisLabel: { fontSize: 9, color: textColor, interval: Math.max(0, Math.floor(labels.length / 5) - 1), rotate: 0 }, axisLine: { show: false }, axisTick: { show: false } }
+  const baseXAxis = {
+    type: 'time' as const,
+    splitNumber: 5,
+    axisLabel: { fontSize: 9, color: textColor, formatter: (value: number) => formatAxisLabel(new Date(value), spanMs) },
+    axisLine: { show: false },
+    axisTick: { show: false },
+  }
   const baseYAxis = { type: 'value' as const, splitLine: { lineStyle: { color: gridColor, opacity: 0.3 } }, axisLabel: { fontSize: 10, color: textColor } }
   const baseTooltip = buildBaseTooltip(theme)
 
@@ -651,8 +652,8 @@ function buildChartOption(
     case 'line':
     case 'errorline': {
       const color = config.chartType === 'errorline' ? theme.palette.error.main : theme.palette.primary.main
-      const currentData = history.map((s) => config.getValue(s))
-      const comparisonSeries = buildComparisonSeries(currentData, color, history.length)
+      const currentData = metricSeries(history, config.getValue)
+      const comparisonSeries = buildComparisonSeries(history, config.getValue, color)
       return {
         animation: false,
         tooltip: baseTooltip,
@@ -683,9 +684,9 @@ function buildChartOption(
           xAxis: baseXAxis,
           yAxis: baseYAxis,
           series: [
-            { type: 'line', name: 'P50', data: history.map((s) => s.httpLatencyP50Ms), smooth: true, showSymbol: false, lineStyle: { width: 1.5, color: theme.palette.success.main } },
-            { type: 'line', name: 'P95', data: history.map((s) => s.httpLatencyP95Ms), smooth: true, showSymbol: false, lineStyle: { width: 1.5, color: theme.palette.warning.main } },
-            { type: 'line', name: 'P99', data: history.map((s) => s.httpLatencyP99Ms), smooth: true, showSymbol: false, lineStyle: { width: 2, color: theme.palette.error.main }, markLine: thresholdMarkLines.length > 0 ? { silent: true, symbol: 'none', data: thresholdMarkLines } : undefined },
+            { type: 'line', name: 'P50', data: metricSeries(history, s => s.httpLatencyP50Ms), smooth: true, showSymbol: false, lineStyle: { width: 1.5, color: theme.palette.success.main } },
+            { type: 'line', name: 'P95', data: metricSeries(history, s => s.httpLatencyP95Ms), smooth: true, showSymbol: false, lineStyle: { width: 1.5, color: theme.palette.warning.main } },
+            { type: 'line', name: 'P99', data: metricSeries(history, s => s.httpLatencyP99Ms), smooth: true, showSymbol: false, lineStyle: { width: 2, color: theme.palette.error.main }, markLine: thresholdMarkLines.length > 0 ? { silent: true, symbol: 'none', data: thresholdMarkLines } : undefined },
           ],
         }
       }
@@ -697,8 +698,8 @@ function buildChartOption(
           xAxis: baseXAxis,
           yAxis: baseYAxis,
           series: [
-            { type: 'line', name: 'P50', data: history.map((s) => s.k8sLatencyP50Ms), smooth: true, showSymbol: false, lineStyle: { width: 1.5, color: theme.palette.success.main } },
-            { type: 'line', name: 'P99', data: history.map((s) => s.k8sLatencyP99Ms), smooth: true, showSymbol: false, lineStyle: { width: 2, color: theme.palette.error.main }, markLine: thresholdMarkLines.length > 0 ? { silent: true, symbol: 'none', data: thresholdMarkLines } : undefined },
+            { type: 'line', name: 'P50', data: metricSeries(history, s => s.k8sLatencyP50Ms), smooth: true, showSymbol: false, lineStyle: { width: 1.5, color: theme.palette.success.main } },
+            { type: 'line', name: 'P99', data: metricSeries(history, s => s.k8sLatencyP99Ms), smooth: true, showSymbol: false, lineStyle: { width: 2, color: theme.palette.error.main }, markLine: thresholdMarkLines.length > 0 ? { silent: true, symbol: 'none', data: thresholdMarkLines } : undefined },
           ],
         }
       }
@@ -709,9 +710,9 @@ function buildChartOption(
         xAxis: baseXAxis,
         yAxis: baseYAxis,
         series: [
-          { type: 'line', name: 'GET', data: history.map((s) => s.k8sGetRate), smooth: true, showSymbol: false, lineStyle: { width: 1.5, color: theme.palette.info.main } },
-          { type: 'line', name: 'PATCH', data: history.map((s) => s.k8sPatchRate), smooth: true, showSymbol: false, lineStyle: { width: 1.5, color: theme.palette.warning.main } },
-          { type: 'line', name: 'DELETE', data: history.map((s) => s.k8sDeleteRate), smooth: true, showSymbol: false, lineStyle: { width: 1.5, color: theme.palette.error.main }, markLine: thresholdMarkLines.length > 0 ? { silent: true, symbol: 'none', data: thresholdMarkLines } : undefined },
+          { type: 'line', name: 'GET', data: metricSeries(history, s => s.k8sGetRate), smooth: true, showSymbol: false, lineStyle: { width: 1.5, color: theme.palette.info.main } },
+          { type: 'line', name: 'PATCH', data: metricSeries(history, s => s.k8sPatchRate), smooth: true, showSymbol: false, lineStyle: { width: 1.5, color: theme.palette.warning.main } },
+          { type: 'line', name: 'DELETE', data: metricSeries(history, s => s.k8sDeleteRate), smooth: true, showSymbol: false, lineStyle: { width: 1.5, color: theme.palette.error.main }, markLine: thresholdMarkLines.length > 0 ? { silent: true, symbol: 'none', data: thresholdMarkLines } : undefined },
         ],
       }
     }
@@ -724,9 +725,9 @@ function buildChartOption(
         xAxis: baseXAxis,
         yAxis: baseYAxis,
         series: [
-          { type: 'bar', name: 'Success', stack: 'policy', data: history.map((s) => s.policySuccessCount), itemStyle: { color: theme.palette.success.main } },
-          { type: 'bar', name: 'Failed', stack: 'policy', data: history.map((s) => s.policyFailedCount), itemStyle: { color: theme.palette.error.main } },
-          { type: 'bar', name: 'Interrupted', stack: 'policy', data: history.map((s) => s.policyInterruptedCount), itemStyle: { color: theme.palette.grey[500] } },
+          { type: 'bar', name: 'Success', stack: 'policy', data: metricSeries(history, s => s.policySuccessCount), itemStyle: { color: theme.palette.success.main } },
+          { type: 'bar', name: 'Failed', stack: 'policy', data: metricSeries(history, s => s.policyFailedCount), itemStyle: { color: theme.palette.error.main } },
+          { type: 'bar', name: 'Interrupted', stack: 'policy', data: metricSeries(history, s => s.policyInterruptedCount), itemStyle: { color: theme.palette.grey[500] } },
         ],
       }
     }
@@ -734,15 +735,16 @@ function buildChartOption(
     case 'scatter': {
       const successData: [number, number][] = []
       const failData: [number, number][] = []
-      history.forEach((s, i) => {
-        if (s.workloadsScaledCount > 0) successData.push([i, s.scaleOperationDurationMs])
-        if (s.policyFailedCount > 0) failData.push([i, s.scaleOperationDurationMs])
+      history.forEach(s => {
+        const timestamp = Date.parse(s.timestamp)
+        if (s.workloadsScaledCount > 0) successData.push([timestamp, s.scaleOperationDurationMs])
+        if (s.policyFailedCount > 0) failData.push([timestamp, s.scaleOperationDurationMs])
       })
       return {
         animation: false,
         tooltip: { ...baseTooltip, formatter: formatScatterTooltip },
         grid: baseGrid,
-        xAxis: { ...baseXAxis, show: false },
+        xAxis: baseXAxis,
         yAxis: { ...baseYAxis, name: 'ms', nameTextStyle: { fontSize: 10, color: textColor } },
         series: [
           { type: 'scatter', name: 'Success', data: successData, symbolSize: 8, itemStyle: { color: theme.palette.success.main, opacity: 0.7 } },
@@ -758,16 +760,13 @@ function buildChartOption(
 
 // ── Comparison overlay ─────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildComparisonSeries(data: number[], color: string, historyLength: number): any[] {
-  if (historyLength <= 30) return []
-  const midpoint = Math.floor(data.length / 2)
-  const previousHalf = data.slice(0, midpoint)
-  const padded = new Array(data.length - previousHalf.length).fill(null)
+function buildComparisonSeries(history: MetricSnapshot[], value: (snapshot: MetricSnapshot) => number, color: string) {
+  const data = previousPeriodSeries(history, value)
+  if (data.length === 0) return []
   return [{
     type: 'line',
     name: 'Previous period',
-    data: [...padded, ...previousHalf],
+    data,
     smooth: true,
     showSymbol: false,
     lineStyle: { width: 1.5, color, type: 'dashed' as const, opacity: 0.2 },

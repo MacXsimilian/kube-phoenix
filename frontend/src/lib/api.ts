@@ -1,6 +1,7 @@
 import type { Guardrails, Workload, Node, NodePod, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecution, PolicyExecutionPage, LogLine, ScheduledException, ScheduledExceptionInput, ClusterInfo, VersionInfo } from './types'
 import { getCSRFToken } from './auth'
 import { REQUEST_TIMEOUT_MS } from './constants'
+import type { MetricSnapshot, TimeRange } from './observability-types'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
 
@@ -68,6 +69,11 @@ export const getClusterInfo = (): Promise<ClusterInfo> =>
 
 export const getVersionInfo = (): Promise<VersionInfo> =>
   apiFetch<VersionInfo>('/api/version')
+
+// ── Observability history ────────────────────────────────────────────────────
+
+export const getObservabilityHistory = async (range: TimeRange, signal?: AbortSignal): Promise<MetricSnapshot[]> =>
+  (await apiFetch<MetricSnapshot[] | null>(`/api/observability/history?range=${range}`, { signal })) ?? []
 
 // ── User settings ────────────────────────────────────────────────────────────
 

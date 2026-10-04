@@ -1360,7 +1360,9 @@ SSE /api/observability/stream
       → ComponentDetail (metrics slice)
 ```
 
-The SSE stream is the sole data source -- there is no TanStack Query polling fallback. A single `useObservabilityStream` instance is created in `ObservabilityStreamProvider` (mounted in `observability/layout.tsx`) and exposed through four per-slice React contexts (metrics, events, calls, connection), so each consumer re-renders only when the slice it reads changes. Navigating between the dashboard and component drill-down pages does not tear down and re-establish the SSE connection -- the stream persists across route transitions, providing instant data availability on navigation.
+The SSE stream supplies live values, events, and calls. The Metrics Dashboard also fetches `GET /api/observability/history?range=...` through TanStack Query, keyed by the selected range and refreshed every 30 seconds. Stored snapshots are merged with live samples, deduplicated by timestamp, and filtered to the selected rolling interval. Chart time axes preserve the spacing between historical and live samples. Loading and history errors are displayed while live values continue updating.
+
+A single `useObservabilityStream` instance is created in `ObservabilityStreamProvider` (mounted in `observability/layout.tsx`) and exposed through four per-slice React contexts (metrics, events, calls, connection), so each consumer re-renders only when the slice it reads changes. Navigating between the dashboard and component drill-down pages does not tear down and re-establish the SSE connection -- the stream persists across route transitions, providing instant data availability on navigation.
 
 ### Key Components
 
@@ -1392,15 +1394,16 @@ All components live under `src/components/observability/`.
 | Concern | Approach |
 |:--------|:---------|
 | Stream data | Lifted to layout level via `ObservabilityStreamProvider`, which exposes metrics/events/calls/connection slices; child routes consume only the slices they read via the per-slice hooks |
+| Metrics history | TanStack Query keyed by time range; historical samples merge with the live stream for charts and statistics |
 | Tab and time range | URL query params (`?tab=`, `?range=`) via `useSearchParams` |
 | Rivers drag offsets | Persisted to `localStorage` |
 | Keyboard shortcuts | Registered at page level (tab switching, time range cycling) |
 
-No TanStack Query is used on this page. All data arrives via SSE push rather than request/response polling.
+Historical requests use the shared API client and query cache; changing the selected range cancels the previous request. Live status and current KPI values continue to use SSE snapshots.
 
 ### Additional Observability Details
 
-- **MetricsDashboard** uses a split `useEffect` pattern: one effect initializes chart instances (runs once), a separate effect updates chart data when the SSE stream delivers new snapshots.
+- **MetricsDashboard** uses a shared chart hook: one effect initializes each chart with its latest option after lazy loading; another replaces chart options when historical or live data changes, including empty datasets.
 - **ApiRivers** caches path lengths in the animation loop to avoid repeated `getTotalLength()` calls. Shadow blur is disabled when the particle count exceeds 300 to maintain frame rate.
 - **Traffic segments** in `SystemOverview`: K8s API rates are converted from calls/min (backend) to req/s (display). WebSocket connections are no longer included in the traffic bar breakdown.
 - **ComponentDetail** metadata (display names, descriptions, icons) is extracted to `src/lib/observability-components.ts` for reuse across the drill-down pages. The drill-down page displays MUI `Skeleton` placeholders for the status indicator and metric card values while waiting for the first SSE payload, providing immediate visual feedback on navigation.
