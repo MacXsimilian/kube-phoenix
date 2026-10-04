@@ -25,7 +25,7 @@ import TableRow from '@mui/material/TableRow'
 import { queryKeys } from '@/lib/queryKeys'
 import { formatError, fmtDt } from '@/lib/formatters'
 import { windowsToText } from '@/lib/windowUtils'
-import type { SleepWindow } from '@/lib/types'
+import type { Guardrails, SleepWindow } from '@/lib/types'
 import {
   previewGuardrailsImport, applyGuardrailsImport,
   previewPolicyImport, applyPolicyImport,
@@ -120,9 +120,10 @@ interface ImportDialogProps {
   onClose: () => void
   kind: ImportKind
   onNotify?: (msg: string, severity: 'success' | 'error') => void
+  onGuardrailsImported?: (guardrails: Guardrails) => void
 }
 
-export default function ImportDialog({ open, onClose, kind, onNotify }: ImportDialogProps) {
+export default function ImportDialog({ open, onClose, kind, onNotify, onGuardrailsImported }: ImportDialogProps) {
   const qc = useQueryClient()
   const [pastedText, setPastedText] = useState('')
   const [parseError, setParseError] = useState<string | null>(null)
@@ -182,7 +183,13 @@ export default function ImportDialog({ open, onClose, kind, onNotify }: ImportDi
     setBusy(true)
     setError(null)
     try {
-      await applyByKind(kind, previewedPayload, resolution, newName)
+      const result = await applyByKind(kind, previewedPayload, resolution, newName)
+      if (kind === 'guardrails') {
+        const { guardrails } = result as { guardrails: Guardrails }
+        await qc.cancelQueries({ queryKey: queryKeys.guardrails() })
+        qc.setQueryData(queryKeys.guardrails(), guardrails)
+        onGuardrailsImported?.(guardrails)
+      }
       invalidateAfterImport(qc, kind)
       onNotify?.(successMessage(kind), 'success')
       onClose()

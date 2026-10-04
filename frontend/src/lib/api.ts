@@ -403,8 +403,8 @@ export const previewGuardrailsImport = (payload: unknown): Promise<unknown> =>
     body: JSON.stringify(payload),
   })
 
-export const applyGuardrailsImport = (payload: unknown): Promise<unknown> =>
-  apiFetch<unknown>('/api/guardrails/import/apply', {
+export const applyGuardrailsImport = (payload: unknown): Promise<{ guardrails: Guardrails }> =>
+  apiFetch<{ guardrails: Guardrails }>('/api/guardrails/import/apply', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
