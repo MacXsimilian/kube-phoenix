@@ -3,10 +3,64 @@
 package nodeutil
 
 import (
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 )
+
+func TestLabelValidationAndParsingAgree(t *testing.T) {
+	for _, tt := range []struct {
+		config string
+		valid  bool
+		count  int
+	}{
+		{"", true, 0},
+		{" , , ", true, 0},
+		{"example.com/Role=GPU,node-role.kubernetes.io/control-plane=,", true, 2},
+		{"=true", false, 0},
+		{"example.com/=true", false, 0},
+		{"not a key=true", false, 0},
+		{"k=v=extra", false, 0},
+		{"k=" + strings.Repeat("v", 64), false, 0},
+	} {
+		t.Run(tt.config, func(t *testing.T) {
+			if err := ValidateLabels(tt.config); (err == nil) != tt.valid {
+				t.Errorf("validation error = %v, want valid %v", err, tt.valid)
+			}
+			if got := len(ParseLabels(tt.config)); got != tt.count {
+				t.Errorf("parsed %d matchers, want %d", got, tt.count)
+			}
+		})
+	}
+}
+
+func TestTaintValidationAndParsingAgree(t *testing.T) {
+	for _, tt := range []struct {
+		config string
+		valid  bool
+		count  int
+	}{
+		{"", true, 0},
+		{" , , ", true, 0},
+		{"dedicated=infra:NoSchedule,dedicated=other:PreferNoSchedule,node.kubernetes.io/unschedulable=:NoExecute,", true, 3},
+		{"=v:NoSchedule", false, 0},
+		{"k=v:", false, 0},
+		{"k=v:Unknown", false, 0},
+		{"k=v:NoSchedule:NoExecute", false, 0},
+		{"invalid/key/name=v:NoSchedule", false, 0},
+		{"k=has space:NoExecute", false, 0},
+	} {
+		t.Run(tt.config, func(t *testing.T) {
+			if err := ValidateTaints(tt.config); (err == nil) != tt.valid {
+				t.Errorf("validation error = %v, want valid %v", err, tt.valid)
+			}
+			if got := len(ParseTaints(tt.config)); got != tt.count {
+				t.Errorf("parsed %d matchers, want %d", got, tt.count)
+			}
+		})
+	}
+}
 
 func TestMatchLabel(t *testing.T) {
 	tests := []struct {

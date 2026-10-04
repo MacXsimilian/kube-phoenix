@@ -201,6 +201,8 @@ Key behaviors:
 
 Guardrails protect critical resources from being touched by the scaler. Configure them via the UI or the `PUT /api/guardrails` endpoint.
 
+Guardrail updates and imports reject invalid Kubernetes namespace names, label keys/values, and taint effects. Protected namespaces must contain at least one name; optional node namespace, label, and taint protections may be empty. Empty label/taint values remain valid when their keys and taint effects are valid.
+
 | Guardrail | Description |
 | :-------- | :---------- |
 | Skip Namespaces | Namespaces excluded from all sleep operations (e.g., `kube-system`, `monitoring`) |

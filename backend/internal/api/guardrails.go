@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/macxsimilian/kube-phoenix/backend/internal/nodeutil"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/stringutil"
 )
 
 func (h *Handler) getGuardrails(w http.ResponseWriter, r *http.Request) {
@@ -95,6 +97,7 @@ var guardrailStringChecks = []guardrailStringCheck{
 	{"skipNodeLabels", validateSkipNodeLabels},
 	{"skipNodeTaints", validateSkipNodeTaints},
 	{"protectedNamespaces", validateProtectedNamespaces},
+	{"skipNsNode", validateSkipNsNode},
 	{"scalingPriorityNamespaces", validateScalingPriorityNamespaces},
 	{"schedulerEvalInterval", validateSchedulerEvalInterval},
 }
@@ -147,38 +150,43 @@ func validateBoundedWholeNumber(body map[string]interface{}, key string, min, ma
 }
 
 func validateSkipNodeLabels(s string) string {
-	return validateCSVEntries(s, "=", 1,
-		func(entry string) string { return fmt.Sprintf("invalid node label %q: must be key=value", entry) })
+	if err := nodeutil.ValidateLabels(s); err != nil {
+		return err.Error()
+	}
+	return ""
 }
 
 func validateSkipNodeTaints(s string) string {
-	for _, entry := range strings.Split(s, ",") {
-		entry = strings.TrimSpace(entry)
-		if entry == "" {
-			continue
-		}
-		parts := strings.SplitN(entry, ":", 2)
-		if len(parts) != 2 || !strings.Contains(parts[0], "=") {
-			return fmt.Sprintf("invalid node taint %q: must be key=value:effect", entry)
-		}
+	if err := nodeutil.ValidateTaints(s); err != nil {
+		return err.Error()
 	}
 	return ""
 }
 
 func validateProtectedNamespaces(s string) string {
-	if strings.TrimSpace(s) == "" {
+	if len(stringutil.SplitCSV(s)) == 0 {
 		return "protectedNamespaces cannot be empty"
+	}
+	return validateGuardrailNamespaces(s, "protectedNamespaces")
+}
+
+func validateSkipNsNode(s string) string {
+	return validateGuardrailNamespaces(s, "skipNsNode")
+}
+
+func validateGuardrailNamespaces(s, field string) string {
+	if msg := validateNamespaceFilter(s); msg != "" {
+		return field + ": " + msg
 	}
 	return ""
 }
 
 func validateScalingPriorityNamespaces(s string) string {
+	if msg := validateGuardrailNamespaces(s, "scalingPriorityNamespaces"); msg != "" {
+		return msg
+	}
 	seen := map[string]bool{}
-	for _, entry := range strings.Split(s, ",") {
-		entry = strings.TrimSpace(entry)
-		if entry == "" {
-			continue
-		}
+	for _, entry := range stringutil.SplitCSV(s) {
 		if seen[entry] {
 			return fmt.Sprintf("duplicate namespace %q in scalingPriorityNamespaces", entry)
 		}
@@ -197,21 +205,6 @@ func validateSchedulerEvalInterval(s string) string {
 	}
 	if d > 15*time.Minute {
 		return "schedulerEvalInterval must not exceed 15m"
-	}
-	return ""
-}
-
-// validateCSVEntries checks that each comma-separated entry contains exactly
-// expectedCount occurrences of sep. Returns an error message via msgFn or "".
-func validateCSVEntries(csv, sep string, expectedCount int, msgFn func(string) string) string {
-	for _, entry := range strings.Split(csv, ",") {
-		entry = strings.TrimSpace(entry)
-		if entry == "" {
-			continue
-		}
-		if strings.Count(entry, sep) != expectedCount {
-			return msgFn(entry)
-		}
 	}
 	return ""
 }
