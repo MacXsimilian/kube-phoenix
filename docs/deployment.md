@@ -266,7 +266,7 @@ helm upgrade kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
 
 The deployment strategy defaults to `RollingUpdate` with `maxUnavailable: 0` for zero-downtime rollouts. Database migrations run automatically on startup via GORM AutoMigrate. Secret changes (password rotation, DB URL update) trigger an automatic rolling restart via the `checksum/secret` pod annotation — no manual restart needed.
 
-> **Tip:** Pin a specific image tag in production with `--set image.tag=<version>` rather than relying on the chart's default `appVersion`.
+> **Tip:** Pin a full image version in production with `--set-string image.tag=<version>`. Using `--set-string` preserves numeric tags as strings, as required by the chart's values schema.
 
 ### Values Validation
 
