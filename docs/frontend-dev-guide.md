@@ -1167,7 +1167,7 @@ A generic debounce hook: `useDebouncedValue<T>(value, delayMs)` returns the debo
 
 ### lib/useClusterStream.ts
 
-The SSE subscription hook for the cluster stream. Connects to `GET /api/cluster/stream`, parses SSE events, and pushes `Overview` objects into the TanStack Query cache via `queryClient.setQueryData()`. Reconnects with exponential backoff (1s base, 15s cap, 10% jitter) and sets a disconnected flag after 2 consecutive failures, which consumers can use to re-engage REST polling.
+The SSE subscription hook for the cluster stream. Connects to `GET /api/cluster/stream`, parses SSE events, and pushes `Overview` objects into the TanStack Query cache via `queryClient.setQueryData()`. Reconnects with exponential backoff (1s base, 15s cap, 10% jitter) and sets a disconnected flag when the stream closes or fails, which consumers can use to re-engage REST polling. Short connections retain the retry count; a connection lasting at least 15 seconds resets the backoff. Cleanup aborts both the request and retry timer.
 
 ### lib/timelineUtils.ts
 
@@ -1275,7 +1275,7 @@ sx={{ bgcolor: stateStyle.bg, color: stateStyle.color }}
 3. Parses SSE format: looks for lines starting with `data: `, parses JSON
 4. Pushes parsed `Overview` objects directly into TanStack cache: `queryClient.setQueryData(['overview'], data)`
 5. On connection loss, reconnects with exponential backoff (1s base, 15s cap, 10% jitter)
-6. Sets a `disconnected` flag after 2 consecutive failures, displayed as a warning chip
+6. Sets a `disconnected` flag when the stream closes or fails, displayed as a warning chip
 
 The SSE stream pushes updates within ~2 seconds of any cluster change (the backend `ClusterCache` debounce interval). If nothing changes, no events are sent. The REST polling fallback (`refetchInterval: 30_000`) only fires if the TanStack Query cache becomes stale, which normally does not happen while the SSE stream is healthy.
 
