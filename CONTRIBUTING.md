@@ -233,7 +233,7 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 3. Merging the Release PR triggers the release pipeline. `release-please.yml` chains
    the release build via `workflow_call` because `GITHUB_TOKEN`-generated events do not
    trigger other workflows (so a `release: published` trigger would be silently skipped).
-   - Docker image pushed to `ghcr.io/macxsimilian/kube-phoenix` (semver tags only — no `latest`).
+   - Docker image pushed to `ghcr.io/macxsimilian/kube-phoenix` (full, minor, and major semver tags without the Git tag's leading `v`, plus `latest` for stable releases).
    - Image signed with [cosign](https://github.com/sigstore/cosign) (keyless / OIDC).
    - SBOM generated with [Syft](https://github.com/anchore/syft) and attached to the image.
    - Helm chart pushed to `oci://ghcr.io/macxsimilian/helm/kube-phoenix`.

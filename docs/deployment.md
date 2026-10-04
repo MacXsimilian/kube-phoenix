@@ -197,6 +197,8 @@ spec:
 
 The chart works as a standard ArgoCD Helm Application. Use an external database in production and disable pruning of the database resources so a sync error cannot delete the PostgreSQL PVC.
 
+Replace `<chart-version>` with a published version from [GitHub Releases](https://github.com/MacXsimilian/kube-phoenix/releases). Chart versions omit the Git tag's leading `v`; pin an exact version to control upgrades.
+
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -208,7 +210,7 @@ spec:
   source:
     repoURL: ghcr.io/macxsimilian/helm
     chart: kube-phoenix
-    targetRevision: 0.3.19
+    targetRevision: "<chart-version>"
     helm:
       values: |
         postgresql:
@@ -433,4 +435,4 @@ Released images are:
 - **Digest-pinned** — the Dockerfile pins all base images (`node`, `golang`, `distroless`) by manifest digest, not mutable tags.
 - **Signed** — each release image is signed with [cosign](https://github.com/sigstore/cosign) using keyless OIDC. Verify with: `cosign verify ghcr.io/macxsimilian/kube-phoenix:<tag> --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'`
 - **SBOM attached** — a Syft-generated SPDX SBOM is attached to each image via `cosign attach sbom`.
-- **Semver-only tags** — images are tagged with `v0.3.19`, `0.3`, and `0` only. No `latest` tag is published.
+- **Image tags** — a stable Git release tag `vX.Y.Z` produces image tags `X.Y.Z`, `X.Y`, and `X` (without the leading `v`). The release workflow also generates `latest` through the metadata action's default behavior. Pin the full version or digest for reproducible deployments; the shorter tags and `latest` move with subsequent releases.
