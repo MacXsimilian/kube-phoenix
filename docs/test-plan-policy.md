@@ -1,8 +1,10 @@
-# Policy Feature — Test Planbook
+# Policy Scenario Catalogue
 
 > Target environment: minikube 3-node cluster (local-cluster)
 > 9 namespaces, 50 deployments, 55 pods (`busybox:1.37` with role-based activity, some `pause:3.10.2` for idle workloads)
 > Access: `http://localhost:8080` — admin / adminadmin
+
+This is a catalogue of test scenarios and expected outcomes, not a record of completed validation. Start with [Your first policy](first-policy.md) for the guided manual flow and use the [smoke checklist](testing/policy-smoke-test.md) to record a short run. Record the application revision, environment, execution IDs, actual outcomes, and skipped cases separately.
 
 ---
 
@@ -44,7 +46,7 @@
 
 ## 1. Pre-flight Checks
 
-Verify the environment is ready before running any policy tests. The counts below assume the baseline fixtures from `hack/minikube-setup.sh`; restore those fixtures between scenarios that change or delete workloads. The node-drain scenarios assume the documented three-node topology and do not cover a manually prepared single-node cluster.
+Verify the environment is ready before running any policy tests. The counts below assume the baseline fixtures from `hack/minikube-setup.sh`; restore those fixtures between scenarios that change or delete workloads. Use a disposable cluster. Protect every node using the [tutorial label and Skip Node Labels entry](first-policy.md#2-protect-every-node) for all workload-only scenarios, and keep that protection through sleep and wake. Namespace filters do not limit node drain/deletion. Section 19 is a separate destructive exercise requiring its own node-selection preparation; it is not part of the smoke test.
 
 | # | Step | Expected Result |
 |---|------|-----------------|
@@ -55,6 +57,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 | 1.5 | Navigate to Policies page | Empty state — no policies exist yet |
 | 1.6 | Navigate to Guardrails page | Seeded defaults loaded: system/application namespaces protected, no `team-*` namespaces protected |
 | 1.7 | Check metrics-server: `kubectl top nodes` | Returns CPU/memory for all 3 nodes |
+| 1.8 | Verify every node has the tutorial protection label and the matching saved Skip Node Labels entry | Workload-only plan executions report all nodes protected; no node drain/deletion proposed |
 
 ---
 
@@ -200,7 +203,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 |---|------|-----------------|
 | 5.1.1 | Create policy in plan mode targeting `team-backend` | Mode badge shows "plan" |
 | 5.1.2 | Trigger manual sleep | Execution created with mode=plan |
-| 5.1.3 | Check execution logs | Log lines with level=`plan`: "Would scale deployment api 2→0", etc. |
+| 5.1.3 | Check execution logs | Log lines with level=`plan` preview sleeping `team-backend/api` from 2 replicas to 0 |
 | 5.1.4 | Check `countScaled` | Reflects number that would be scaled |
 | 5.1.5 | `kubectl get pods -n team-backend` | All pods still running — no actual scaling |
 | 5.1.6 | Check workload snapshots | No snapshots created (plan mode does not persist snapshots) |
@@ -211,7 +214,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 |---|------|-----------------|
 | 5.2.1 | Create policy in apply mode targeting `team-qa` | Overlap check passes (no other apply policy on team-qa) |
 | 5.2.2 | Trigger manual sleep | Execution with mode=apply |
-| 5.2.3 | Check execution logs | Log lines with level=`ok`: "Scaled deployment test-runner 1→0" |
+| 5.2.3 | Check execution logs | Log lines with level=`ok` confirm sleeping `team-qa/test-runner` from 1 replica to 0 |
 | 5.2.4 | `kubectl get pods -n team-qa` | 0 pods running |
 | 5.2.5 | Check workload snapshots | 5 snapshots created (one per deployment), each with `replicasBefore` set |
 | 5.2.6 | Trigger wake | All deployments restored to original replica counts |
@@ -430,7 +433,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 | 12.1.2 | Create policy targeting `team-payments` (or all namespaces) | Policy created (no error at creation) |
 | 12.1.3 | Trigger sleep (apply mode) | team-payments deployments skipped. Execution log shows `countProtected` for those deployments |
 | 12.1.4 | Verify `kubectl get pods -n team-payments` | All 6 pods still running |
-| 12.1.5 | Check execution `countProtected` | = 6 (all team-payments deployments) |
+| 12.1.5 | Check protected-workload logs and execution `countProtected` | Six team-payments Deployments are protected; the total also includes protected nodes, so reconcile it with the node-protection logs |
 
 ### 12.2 Protected Namespace in Multi-NS Policy
 
@@ -438,7 +441,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 |---|------|-----------------|
 | 12.2.1 | Policy targets `team-payments,team-infra`. team-payments is protected | Policy created |
 | 12.2.2 | Trigger sleep | team-infra scales to 0 (6 pods). team-payments untouched (6 pods remain) |
-| 12.2.3 | Execution counts: `countScaled`=6, `countProtected`=6 | team-infra deployments scaled, team-payments protected |
+| 12.2.3 | Check execution counts and protection logs | `countScaled`=6 for team-infra; six team-payments Deployments are protected, with protected nodes also contributing to `countProtected` |
 
 ### 12.3 Priority Namespaces
 
@@ -645,29 +648,35 @@ Verify the environment is ready before running any policy tests. The counts belo
 
 ## 19. Node Drain
 
+Run these scenarios only on a disposable multi-node cluster after completing workload-only tests. Sleep always includes a node drain/delete phase; there is no per-policy switch that limits it to the workload namespace. Wake restores replicas and does not uncordon or recreate nodes.
+
+Keep the control plane and nodes hosting kube-phoenix, its database, and any required cluster services protected. Select an expendable worker for this separate exercise, review every matching guardrail, and remove the tutorial protection label only from that selected worker when ready. Keep the guardrail entry and protection on all other nodes. If those prerequisites cannot be met, record these scenarios as **Not run**.
+
 ### 19.1 Drain on Sleep
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 19.1.1 | Create policy with node drain enabled (if applicable in policy config) | Policy configured |
-| 19.1.2 | Trigger sleep (apply mode) | Workloads scale to 0. Worker nodes cordoned |
-| 19.1.3 | `kubectl get nodes` | `local-cluster-m02` and `local-cluster-m03` show `SchedulingDisabled` |
-| 19.1.4 | Trigger wake | Workloads restored. Nodes uncordoned |
-| 19.1.5 | `kubectl get nodes` | All nodes `Ready` (no `SchedulingDisabled`) |
+| 19.1.1 | Run a plan sleep after preparing the selected worker | Logs identify the intended drain/delete candidate; every other node is protected |
+| 19.1.2 | Review the plan, then trigger sleep with Apply on the disposable cluster | Matching workloads scale to zero; the selected unprotected node is drained |
+| 19.1.3 | Inspect execution logs and node objects | A successful drain is followed by deletion of that node object; failed drains are logged and not followed by deletion |
+| 19.1.4 | Trigger wake with Apply | Saved workload replicas are restored; kube-phoenix does not uncordon or recreate nodes |
+| 19.1.5 | Restore the test cluster's node capacity and protection before other tests | Cluster returns to its known baseline; minikube recovery is handled separately from policy wake |
+
+Node-object deletion and node replacement depend on the cluster's kubelet/controller behavior. Do not equate a delete log with cloud-instance termination or assume minikube will provision replacement capacity automatically. See [local node recovery](local-development.md#minikube-node-was-deleted-by-a-policy).
 
 ### 19.2 Drain in Plan Mode
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 19.2.1 | Trigger sleep in plan mode on a drain-enabled policy | Logs say "Would cordon node X" |
-| 19.2.2 | `kubectl get nodes` | Nodes NOT cordoned (plan mode is dry-run) |
+| 19.2.1 | Trigger sleep with Plan after explicitly preparing a candidate node | Logs include `Would drain node` and `Would delete node object` for the candidate |
+| 19.2.2 | Compare node state with the baseline | No actual cordon, drain, or deletion occurs |
 
 ### 19.3 Drain Count
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 19.3.1 | After drain-enabled sleep execution | `countDrained` = 2 (worker nodes) |
-| 19.3.2 | Control plane node NOT drained | `local-cluster` stays schedulable |
+| 19.3.1 | Compare execution counts with candidate and completion logs | Counts reflect planned operations in Plan mode or completed operations in Apply mode; do not assume a fixed worker count |
+| 19.3.2 | Verify control-plane protection | Protection comes from the configured guardrails; do not assume a node's control-plane role alone excludes it |
 
 ---
 
@@ -811,7 +820,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 
 ## 26. Frontend — Create / Edit Dialog
 
-### 27.1 Create
+### 26.1 Create
 
 | # | Step | Expected Result |
 |---|------|-----------------|
@@ -824,7 +833,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 | 26.1.7 | Add 11th window | Not allowed (max 10) |
 | 26.1.8 | Fill all fields, submit | Policy created, dialog closes, list refreshes, success toast |
 
-### 27.2 Edit
+### 26.2 Edit
 
 | # | Step | Expected Result |
 |---|------|-----------------|
@@ -859,7 +868,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 | # | Step | Expected Result |
 |---|------|-----------------|
 | 28.1 | Click Sleep on an awake policy | TriggerModeDialog opens |
-| 28.2 | Shows options: use policy default, plan, apply | All options visible |
+| 28.2 | Shows Plan (dry-run) and Apply (live) | Both explicit execution modes visible |
 | 28.3 | Select "plan" override on an apply-mode policy | Confirms dry-run intent |
 | 28.4 | Confirm | Execution fires with overridden mode. Redirects to execution logs |
 | 28.5 | Cancel the dialog | No execution triggered |
@@ -868,7 +877,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 
 ## 29. Frontend — Execution History & Log Viewer
 
-### 30.1 Execution Table
+### 29.1 Execution Table
 
 | # | Step | Expected Result |
 |---|------|-----------------|
@@ -877,7 +886,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 | 29.1.3 | Direction: sleep (moon icon) / wake (sun icon) | Visual indicators |
 | 29.1.4 | Paginate through >20 executions | Pagination controls work |
 
-### 30.2 Log Viewer
+### 29.2 Log Viewer
 
 | # | Step | Expected Result |
 |---|------|-----------------|
@@ -891,7 +900,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 
 ## 30. API Validation & Error Responses
 
-### 31.1 Field Validation
+### 30.1 Field Validation
 
 | # | Input | Expected |
 |---|-------|----------|
@@ -913,7 +922,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 | 30.1.16 | window startTime: `25:00` | 400: invalid time format |
 | 30.1.17 | window startTime == endTime (not allDay) | 400: start and end must differ |
 
-### 31.2 Not Found
+### 30.2 Not Found
 
 | # | Input | Expected |
 |---|-------|----------|
@@ -921,7 +930,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 | 30.2.2 | `POST /api/policies/999999/sleep` | 404 |
 | 30.2.3 | `GET /api/policy-executions/999999` | 404 |
 
-### 31.3 Conflict
+### 30.3 Conflict
 
 | # | Input | Expected |
 |---|-------|----------|
@@ -934,7 +943,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 
 ## 31. Load & Scale
 
-### 32.1 Large Execution (All Namespaces)
+### 31.1 Large Execution (All Namespaces)
 
 | # | Step | Expected Result |
 |---|------|-----------------|
@@ -945,7 +954,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 | 31.1.5 | Trigger wake | All 55 pods restored |
 | 31.1.6 | Verify `countScaled` = 50 on wake | All restored |
 
-### 32.2 Multiple Concurrent Policies
+### 31.2 Multiple Concurrent Policies
 
 | # | Step | Expected Result |
 |---|------|-----------------|
@@ -954,14 +963,14 @@ Verify the environment is ready before running any policy tests. The counts belo
 | 31.2.3 | Wait for scheduled transition | All 5 execute concurrently (separate goroutines) |
 | 31.2.4 | All 5 succeed | No race conditions, no missed transitions |
 
-### 32.3 Rapid Manual Triggers
+### 31.3 Rapid Manual Triggers
 
 | # | Step | Expected Result |
 |---|------|-----------------|
 | 31.3.1 | Sleep policy A, immediately wake, immediately sleep | Each trigger waits for previous to complete or returns 409 |
 | 31.3.2 | No double-scaling or lost snapshots | State machine integrity maintained |
 
-### 32.4 Many Exceptions
+### 31.4 Many Exceptions
 
 | # | Step | Expected Result |
 |---|------|-----------------|
