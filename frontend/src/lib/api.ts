@@ -1,4 +1,4 @@
-import type { Guardrails, Workload, Node, NodePod, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecutionPage, LogLine, ScheduledException, ScheduledExceptionInput, ClusterInfo, VersionInfo } from './types'
+import type { Guardrails, Workload, Node, NodePod, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecution, PolicyExecutionPage, LogLine, ScheduledException, ScheduledExceptionInput, ClusterInfo, VersionInfo } from './types'
 import { getCSRFToken } from './auth'
 import { REQUEST_TIMEOUT_MS } from './constants'
 
@@ -359,6 +359,9 @@ export const getPolicyExecutions = (params?: {
   if (params?.pageSize) q.set('page_size', String(params.pageSize))
   return apiFetch<PolicyExecutionPage>(`/api/policy-executions?${q}`)
 }
+
+export const getPolicyExecution = (id: number, signal?: AbortSignal): Promise<PolicyExecution> =>
+  apiFetch<PolicyExecution>(`/api/policy-executions/${id}`, { signal })
 
 export const getPolicyExecutionLogs = (id: number): Promise<LogLine[]> =>
   apiFetch<LogLine[]>(`/api/policy-executions/${id}/logs`)
