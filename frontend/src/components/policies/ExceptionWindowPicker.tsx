@@ -40,9 +40,7 @@ function startOfDay(d: Date): Date {
 }
 
 function addMonths(d: Date, n: number): Date {
-  const out = new Date(d)
-  out.setMonth(out.getMonth() + n)
-  return out
+  return new Date(d.getFullYear(), d.getMonth() + n, 1)
 }
 
 function addHours(d: Date, n: number): Date {
@@ -277,7 +275,7 @@ export default function ExceptionWindowPicker({ value, onChange, minDate }: Prop
   const startTime = startDate ? timeOf(startDate) : DEFAULT_START_TIME
   const endTime = endDate ? timeOf(endDate) : DEFAULT_END_TIME
 
-  const [anchor, setAnchor] = useState<Date>(startOfDay(startDate ?? new Date()))
+  const [anchor, setAnchor] = useState<Date>(addMonths(startDate ?? new Date(), 0))
   const [hoverDay, setHoverDay] = useState<Date | null>(null)
 
   function emit(nextStartDay: Date | null, nextEndDay: Date | null, nextStartTime: string, nextEndTime: string) {
@@ -338,7 +336,7 @@ export default function ExceptionWindowPicker({ value, onChange, minDate }: Prop
             </IconButton>
           </Tooltip>
           <Tooltip title="Jump to today">
-            <IconButton size="small" onClick={() => setAnchor(startOfDay(new Date()))}>
+            <IconButton size="small" onClick={() => setAnchor(addMonths(new Date(), 0))}>
               <EventIcon fontSize="small" />
             </IconButton>
           </Tooltip>
