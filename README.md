@@ -38,7 +38,7 @@ The Metrics Dashboard is alpha. API Rivers is a cosmetic/mock visualization. See
 
 ## Quick Start
 
-For evaluation, use a disposable Kubernetes cluster with Helm OCI support. The chart declares Kubernetes 1.25 or later; see [deployment](docs/deployment.md) for the full requirements and production configuration.
+For evaluation, use a disposable Kubernetes cluster (1.25+) and Helm 3.8+ with OCI support. CI validates the chart with Helm 4.3.0; see [deployment](docs/deployment.md) for the full requirements and production configuration.
 
 Create a local values file; these example credentials are for a disposable local environment:
 

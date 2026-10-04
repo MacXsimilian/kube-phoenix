@@ -10,7 +10,16 @@ Sign in to the running application, then open `/api/docs/` for the embedded Swag
 
 ### Version Numbers
 
-The `openapi` field describes the specification format; `info.version` describes the API document version. Application releases have a separate version: `GET /api/version` returns the build tag, Go runtime version, and uptime. Unversioned backend builds report `dev`. See [application build versions](configuration.md#application-build-versions).
+The API documentation and application release use separate version fields:
+
+| Field | Meaning |
+| :---- | :------ |
+| `openapi: "3.1.0"` | OpenAPI specification format |
+| `info.version: "1.1.0"` | API document version; not the application release number |
+| `GET /api/version` → `version` | Application build tag (`vX.Y.Z` for releases, `dev` for an unversioned local build) |
+| `GET /api/version` → `goVersion` | Go runtime version reported by the running binary |
+
+`GET /api/version` also returns uptime. See [application build versions](configuration.md#application-build-versions) for version defaults and overrides.
 
 ## Authentication
 

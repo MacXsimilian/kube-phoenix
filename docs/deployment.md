@@ -374,5 +374,5 @@ Released images are:
 
 - **Digest-pinned** — the Dockerfile pins all base images (`node`, `golang`, `distroless`) by manifest digest, not mutable tags.
 - **Signed** — each release image is signed with [cosign](https://github.com/sigstore/cosign) using keyless OIDC. Verify with: `cosign verify ghcr.io/macxsimilian/kube-phoenix:<tag> --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'`
-- **SBOM attached** — a Syft-generated SPDX SBOM is attached to each image via `cosign attach sbom`.
-- **Image tags** — a stable Git release tag `vX.Y.Z` produces image tags `X.Y.Z`, `X.Y`, and `X` (without the leading `v`). The release workflow also generates `latest` through the metadata action's default behavior. Pin the full version or digest for reproducible deployments; the shorter tags and `latest` move with subsequent releases.
+- **SBOM attested** — Syft generates an SPDX SBOM, and Cosign signs an attestation attached to the image digest.
+- **Image tags** — a stable Git release tag `vX.Y.Z` produces the full image tag `X.Y.Z` without the leading `v`. Guarded promotion advances `X.Y`, `X`, and `latest` only when the release is newer within each alias's scope; replaying an older release cannot move them backwards. Prereleases do not update stable aliases. Pin the full version or digest for reproducible deployments.
