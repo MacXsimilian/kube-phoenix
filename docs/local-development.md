@@ -11,7 +11,7 @@ This guide walks through setting up a complete local development environment for
 | Docker | any | [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/) | Image builds, local PostgreSQL |
 | minikube | latest | `brew install minikube` | Local Kubernetes cluster |
 | kubectl | any | `brew install kubectl` | Cluster interaction |
-| Helm | 3.x | `brew install helm` | In-cluster deployment |
+| Helm | 3.8+ | `brew install helm` | In-cluster deployment; CI uses 4.2.0 |
 | golangci-lint | v2.12.2 | `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2` | Backend linting (optional; matches CI) |
 
 ---

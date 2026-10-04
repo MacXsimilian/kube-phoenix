@@ -4,8 +4,8 @@
 
 | Requirement | Minimum Version | Notes |
 | :---------- | :-------------- | :---- |
-| Kubernetes | 1.27+ | Any conformant distribution (EKS, GKE, AKS, kind, k3s) |
-| Helm | 3.x | OCI registry support required |
+| Kubernetes | 1.25+ | Minimum declared by `kubeVersion` in `helm/kube-phoenix/Chart.yaml` |
+| Helm | 3.8+ | OCI support enabled by default; CI and chart publishing use 4.2.0 |
 | PostgreSQL | 14+ | Bundled in-cluster by default; external instance recommended for production |
 
 ## Quick Install
