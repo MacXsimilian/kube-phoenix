@@ -54,7 +54,7 @@ A **policy** declares when workloads should sleep using sleep windows -- human-r
 
 ## Quick Start
 
-Requires Helm 3.8+ (OCI support) and a Kubernetes cluster (v1.25+, as declared by the chart). CI validates the chart with Helm 4.2.0.
+Requires Helm 3.8+ (OCI support) and a Kubernetes cluster (v1.25+, as declared by the chart). CI validates the chart with Helm 4.3.0.
 
 ```bash
 helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \

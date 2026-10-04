@@ -362,7 +362,7 @@ helm template kube-phoenix helm/kube-phoenix \
   --kube-version 1.25.0
 ```
 
-This override only supplies capabilities for local rendering. It does not change the Helm installation minimum or the version of a running cluster. CI uses Helm 4.2.0, whose default rendering capabilities satisfy the chart requirement.
+This override only supplies capabilities for local rendering. It does not change the Helm installation minimum or the version of a running cluster. CI uses Helm 4.3.0, whose default rendering capabilities satisfy the chart requirement.
 
 ---
 
