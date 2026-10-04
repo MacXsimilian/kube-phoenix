@@ -617,24 +617,31 @@ func (c *Client) CountReadyPods(ctx context.Context, kind, namespace, name strin
 }
 
 func (c *Client) workloadLabelSelector(ctx context.Context, kind, namespace, name string) (string, error) {
-	var labels map[string]string
+	var labelSelector *metav1.LabelSelector
 	switch kind {
 	case "Deployment":
 		d, err := c.GetDeployment(ctx, namespace, name)
 		if err != nil {
 			return "", err
 		}
-		labels = d.Spec.Selector.MatchLabels
+		labelSelector = d.Spec.Selector
 	case "StatefulSet":
 		ss, err := c.GetStatefulSet(ctx, namespace, name)
 		if err != nil {
 			return "", err
 		}
-		labels = ss.Spec.Selector.MatchLabels
+		labelSelector = ss.Spec.Selector
 	default:
 		return "", fmt.Errorf("unsupported kind %q", kind)
 	}
-	return metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: labels}), nil
+	if labelSelector == nil || len(labelSelector.MatchLabels)+len(labelSelector.MatchExpressions) == 0 {
+		return "", fmt.Errorf("missing pod selector for %s %s/%s", kind, namespace, name)
+	}
+	selector, err := metav1.LabelSelectorAsSelector(labelSelector)
+	if err != nil {
+		return "", fmt.Errorf("invalid pod selector for %s %s/%s: %w", kind, namespace, name, err)
+	}
+	return selector.String(), nil
 }
 
 func isPodReady(pod corev1.Pod) bool {
