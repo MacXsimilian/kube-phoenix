@@ -954,11 +954,14 @@ func (ps *PolicyScheduler) executeAndFinalize(ctx context.Context, p store.Polic
 		ps.drainLogChannel(execID, logCh)
 	}()
 
-	counts, runErr := ps.executeScaler(runCtx, p, direction, trigger, execID, logCh)
-
-	close(logCh)
-	wg.Wait()
-	ps.Broker.Close(execID)
+	counts, runErr := func() (*scaler.Counts, error) {
+		defer func() {
+			close(logCh)
+			wg.Wait()
+			ps.Broker.Close(execID)
+		}()
+		return ps.executeScaler(runCtx, p, direction, trigger, execID, logCh)
+	}()
 
 	status := store.ExecStatusSuccess
 	if runErr != nil {
