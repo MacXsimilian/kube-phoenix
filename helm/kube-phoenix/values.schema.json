@@ -36,7 +36,7 @@
     },
     "replicaCount": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 0
     },
     "revisionHistoryLimit": {
       "type": "integer",
@@ -104,7 +104,16 @@
           "properties": {
             "enabled": { "type": "boolean" },
             "size": { "type": "string", "pattern": "^[0-9]+(Gi|Mi|Ti)$" },
-            "storageClass": { "type": "string" }
+            "storageClass": { "type": "string" },
+            "existingClaim": { "type": "string" }
+          },
+          "if": {
+            "required": ["existingClaim"],
+            "properties": { "existingClaim": { "minLength": 1 } }
+          },
+          "then": {
+            "required": ["enabled"],
+            "properties": { "enabled": { "const": true } }
           }
         },
         "resources": { "$ref": "#/$defs/resources" }

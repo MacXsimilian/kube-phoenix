@@ -17,6 +17,7 @@ Start with the path that matches your task. Setup guides explain how to run the 
 | Guide | Use it for |
 | :---- | :--------- |
 | [Deployment](deployment.md) | Helm installation, PostgreSQL, HTTPS/ingress, OIDC, upgrades |
+| [PostgreSQL upgrade](postgresql-upgrade.md) | Move bundled PostgreSQL 17 data to 18 with retained storage and rollback |
 | [First policy](first-policy.md) | A scoped manual plan → apply → wake exercise |
 | [Configuration](configuration.md) | Environment defaults, authentication, policy fields, guardrails |
 | [Export/import](config-export-import.md) | Copy one resource between environments with preview and conflict resolution |

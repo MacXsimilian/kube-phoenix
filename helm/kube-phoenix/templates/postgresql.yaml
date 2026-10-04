@@ -69,11 +69,27 @@ spec:
         - name: init-permissions
           image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
           imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
-          # fsGroup: 70 (pod-level) makes the mount group-writable for the
-          # postgres user, so the init container only needs to create the
-          # pgdata subdir with restrictive perms. Running as UID 70 keeps the
-          # workload non-root end-to-end and satisfies KSV-0105.
-          command: ["sh", "-c", "mkdir -p /var/lib/postgresql/data/pgdata && chmod 700 /var/lib/postgresql/data/pgdata"]
+          # Refuse legacy data before creating the PostgreSQL 18 directory.
+          # fsGroup makes the mount writable for the non-root postgres user.
+          command:
+            - sh
+            - -ec
+            - |
+              for directory in /var/lib/postgresql /var/lib/postgresql/pgdata /var/lib/postgresql/data /var/lib/postgresql/data/pgdata /var/lib/postgresql/*/docker; do
+                if [ "$directory" != "$PGDATA" ] && [ -f "$directory/PG_VERSION" ]; then
+                  echo "Existing PostgreSQL data at $directory; migrate to a fresh PostgreSQL 18 volume before upgrading. See docs/postgresql-upgrade.md." >&2
+                  exit 1
+                fi
+              done
+              if [ -f "$PGDATA/PG_VERSION" ] && [ "$(cat "$PGDATA/PG_VERSION")" != "18" ]; then
+                echo "PGDATA contains an incompatible PostgreSQL major version; migrate to a fresh volume." >&2
+                exit 1
+              fi
+              mkdir -p "$PGDATA"
+              chmod 700 "$PGDATA"
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/18/docker
           securityContext:
             runAsUser: 70
             runAsGroup: 70
@@ -91,7 +107,7 @@ spec:
               memory: 32Mi
           volumeMounts:
             - name: data
-              mountPath: /var/lib/postgresql/data
+              mountPath: /var/lib/postgresql
       containers:
         - name: postgresql
           image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
@@ -125,22 +141,22 @@ spec:
                   name: {{ include "kube-phoenix.fullname" . }}-postgresql
                   key: POSTGRES_DB
             - name: PGDATA
-              value: /var/lib/postgresql/data/pgdata
+              value: /var/lib/postgresql/18/docker
           livenessProbe:
             exec:
-              command: ["pg_isready", "-U", {{ .Values.postgresql.auth.username | quote }}]
+              command: ["pg_isready", "-h", "127.0.0.1", "-U", {{ .Values.postgresql.auth.username | quote }}, "-d", {{ .Values.postgresql.auth.database | quote }}]
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", {{ .Values.postgresql.auth.username | quote }}]
+              command: ["pg_isready", "-h", "127.0.0.1", "-U", {{ .Values.postgresql.auth.username | quote }}, "-d", {{ .Values.postgresql.auth.database | quote }}]
             initialDelaySeconds: 5
             periodSeconds: 5
           resources:
             {{- toYaml .Values.postgresql.resources | nindent 12 }}
           volumeMounts:
             - name: data
-              mountPath: /var/lib/postgresql/data
+              mountPath: /var/lib/postgresql
             - name: run
               mountPath: /var/run/postgresql
             - name: tmp
@@ -153,8 +169,12 @@ spec:
         {{- if not .Values.postgresql.persistence.enabled }}
         - name: data
           emptyDir: {}
+        {{- else if .Values.postgresql.persistence.existingClaim }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.postgresql.persistence.existingClaim | quote }}
         {{- end }}
-  {{- if .Values.postgresql.persistence.enabled }}
+  {{- if and .Values.postgresql.persistence.enabled (not .Values.postgresql.persistence.existingClaim) }}
   volumeClaimTemplates:
     - metadata:
         name: data

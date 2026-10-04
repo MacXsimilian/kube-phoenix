@@ -205,6 +205,9 @@ jobs:
 
       - run: helm lint helm/kube-phoenix
 
+      - name: Test PostgreSQL storage and upgrade guards
+        run: python3 -B -m unittest discover -s hack/tests -p 'test_postgresql_*.py' -v
+
       - name: Lint with example values
         run: |
           for f in examples/values-*.yaml; do

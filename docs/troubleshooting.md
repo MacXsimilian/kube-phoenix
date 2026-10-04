@@ -229,6 +229,14 @@ kubectl logs -n kube-phoenix deployment/kube-phoenix
 3. Verify the StorageClass supports the requested access mode and size.
 4. Inspect PVC events: `kubectl describe pvc -n kube-phoenix`.
 
+## PostgreSQL refuses data after a major image upgrade
+
+**Problem:** PostgreSQL fails to start after moving from version 17 to 18. The Helm `init-permissions` container reports existing PostgreSQL data or an incompatible major version; Compose may report that an old database was found.
+
+**Cause:** PostgreSQL 18 cannot open a PostgreSQL 17 data directory. The new image also uses a different volume layout. Startup stops before initializing a new database on that volume.
+
+**Solution:** Keep the old volume and backup. Stop application writers, restore the previous PostgreSQL 17 configuration if necessary to take a final dump, then follow [PostgreSQL 17 to 18 migration](postgresql-upgrade.md) using a fresh volume. Do not remove `PG_VERSION`, delete the PVC, or change `PGDATA` to bypass the guard. Changing only the image tag back to 17 with the new chart's storage layout is not a rollback; restore the previous chart and volume configuration together.
+
 ## Init container waiting for PostgreSQL
 
 **Problem:** The main pod is stuck in `Init:0/1`.

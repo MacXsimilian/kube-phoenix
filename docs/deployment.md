@@ -8,7 +8,7 @@ Install a release into an existing cluster, then follow [Your first policy](firs
 | :---------- | :-------------- | :---- |
 | Kubernetes | 1.25+ | Minimum declared by `kubeVersion` in `helm/kube-phoenix/Chart.yaml` |
 | Helm | 3.8+ | OCI support enabled by default; CI and chart publishing use 4.3.0 |
-| PostgreSQL | 14+ | Bundled in-cluster by default; external instance recommended for production |
+| PostgreSQL | 14+ | Bundled database defaults to 18.6; external instance recommended for production |
 
 You also need `kubectl` configured for the intended cluster, permission to create the chart's cluster-wide RBAC resources, and a default StorageClass for the bundled database (or an explicit `postgresql.persistence.storageClass`). Verify `kubectl config current-context` before installation.
 
@@ -88,6 +88,8 @@ externalDatabase:
 ```
 
 Persist the selected database settings in the values file used for installation and future upgrades. If you intentionally use the bundled database outside a disposable local environment, replace its default `postgresql.auth.password` and plan for persistent-volume backups.
+
+The bundled PostgreSQL 18 image stores data under `/var/lib/postgresql/18/docker` on a volume mounted at `/var/lib/postgresql`. Existing PostgreSQL 17 volumes require a database migration to a fresh volume; changing the image tag does not convert their data. Follow [PostgreSQL 17 to 18 migration](postgresql-upgrade.md) before upgrading an existing bundled database. External PostgreSQL 14+ remains supported; use your database provider's upgrade procedure for a managed instance.
 
 ### Ingress with TLS
 
@@ -287,6 +289,8 @@ metrics:
 
 ## Upgrading
 
+For an existing bundled PostgreSQL 17 database, complete the [database migration](postgresql-upgrade.md) before using the normal upgrade command below. The chart refuses legacy data directories to prevent an empty database from being initialized alongside them. GORM AutoMigrate updates application tables; it does not upgrade PostgreSQL's storage format.
+
 ```bash
 helm upgrade kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
   --namespace kube-phoenix \
@@ -330,7 +334,7 @@ The sections below identify the main settings without duplicating every default.
 
 ### General
 
-`image.*` selects the application image; use `--set-string image.tag=...` for numeric-looking tags. Keep `replicaCount: 1`. `nameOverride`, `fullnameOverride`, and `namespaceOverride` change generated names. Set `createNamespace: false` when using Helm's `--create-namespace` or a namespace managed outside the chart.
+`image.*` selects the application image; use `--set-string image.tag=...` for numeric-looking tags. Keep `replicaCount: 1` for normal operation; use `0` during database maintenance. `nameOverride`, `fullnameOverride`, and `namespaceOverride` change generated names. Set `createNamespace: false` when using Helm's `--create-namespace` or a namespace managed outside the chart.
 
 ### RBAC and Service Account
 
@@ -339,6 +343,8 @@ The sections below identify the main settings without duplicating every default.
 ### Database
 
 `postgresql.*` configures the bundled database, credentials, resources, and persistent storage. For an external database, disable `postgresql.enabled` and configure `externalDatabase.*` or supply `DATABASE_URL` through `secret.existingSecret`. `db.*` configures the application's connection pool. See [External Database](#external-database).
+
+With persistence enabled, `postgresql.persistence.existingClaim` mounts an existing operator-managed PVC and omits the StatefulSet's `volumeClaimTemplates`. Create and retain that PVC separately; `size` and `storageClass` apply only to automatically generated claims. Switching an existing StatefulSet to a different claim requires recreating the StatefulSet while retaining its old PVC. The [PostgreSQL migration guide](postgresql-upgrade.md) covers that sequence and rollback.
 
 ### Secret and Auth
 
