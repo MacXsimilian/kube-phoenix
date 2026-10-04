@@ -1,6 +1,6 @@
 module github.com/macxsimilian/kube-phoenix/backend
 
-go 1.26.3
+go 1.26.8
 
 require (
 	github.com/go-chi/chi/v5 v5.3.0
@@ -14,7 +14,7 @@ require (
 	k8s.io/client-go v0.36.1
 )
 
-require golang.org/x/crypto v0.52.0
+require golang.org/x/crypto v0.56.0
 
 require (
 	github.com/go-openapi/swag/cmdutils v0.26.0 // indirect
@@ -71,12 +71,12 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/net v0.55.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/term v0.43.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/term v0.45.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools/godoc v0.1.0-deprecated // indirect; transitive via shurcooL/httpgzip → swaggest/swgui; no CVEs, not fixable without replacing swgui
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
