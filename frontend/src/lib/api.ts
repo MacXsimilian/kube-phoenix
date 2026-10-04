@@ -418,8 +418,8 @@ export const previewPolicyImport = (payload: unknown): Promise<unknown> =>
     body: JSON.stringify(payload),
   })
 
-export const applyPolicyImport = (payload: unknown): Promise<unknown> =>
-  apiFetch<unknown>('/api/policies/import/apply', {
+export const applyPolicyImport = (payload: unknown): Promise<{ policy: Policy }> =>
+  apiFetch<{ policy: Policy }>('/api/policies/import/apply', {
     method: 'POST',
     body: JSON.stringify(payload),
   })

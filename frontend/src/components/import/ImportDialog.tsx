@@ -25,7 +25,7 @@ import TableRow from '@mui/material/TableRow'
 import { queryKeys } from '@/lib/queryKeys'
 import { formatError, fmtDt } from '@/lib/formatters'
 import { windowsToText } from '@/lib/windowUtils'
-import type { Guardrails, SleepWindow } from '@/lib/types'
+import type { Guardrails, Policy, SleepWindow } from '@/lib/types'
 import {
   previewGuardrailsImport, applyGuardrailsImport,
   previewPolicyImport, applyPolicyImport,
@@ -189,6 +189,10 @@ export default function ImportDialog({ open, onClose, kind, onNotify, onGuardrai
         await qc.cancelQueries({ queryKey: queryKeys.guardrails() })
         qc.setQueryData(queryKeys.guardrails(), guardrails)
         onGuardrailsImported?.(guardrails)
+      } else if (kind === 'policy') {
+        const { policy } = result as { policy: Policy }
+        await qc.cancelQueries({ queryKey: queryKeys.policy(policy.id) })
+        qc.setQueryData(queryKeys.policy(policy.id), policy)
       }
       invalidateAfterImport(qc, kind)
       onNotify?.(successMessage(kind), 'success')
