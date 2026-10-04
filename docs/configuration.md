@@ -110,6 +110,8 @@ For separate local frontend/backend processes, set `CORS_ALLOWED_ORIGIN=http://l
 8. Set **Valid post logout redirect URIs** to `https://<your-domain>/`. Required for the Sign Out button to fully terminate the Keycloak session.
 9. To include AD groups in the ID token: create a **Client scope** named `groups`, add a **Group Membership** mapper with **Token Claim Name** = `groups`, **Add to ID token** = `On`, **Full group path** = `Off`. Add this scope to the client as a **Default** scope.
 
+Role mapping uses only the claim configured by `OIDC_GROUPS_CLAIM` (default `groups`). A missing claim assigns the viewer role; a present claim must be an array of strings or login is rejected. When using a custom claim, verify its identity-provider mapping before upgrading: standard `groups` membership no longer supplies fallback privileges.
+
 ### OIDC TLS Options
 
 **Custom CA certificate (recommended):** Mount a CA bundle via ConfigMap. In the Helm chart, set `oidc.caConfigMap` to the ConfigMap name and `oidc.caCertKey` to the key (default `cacert.pem`). This sets `SSL_CERT_FILE` so the Go TLS stack trusts the internal CA.

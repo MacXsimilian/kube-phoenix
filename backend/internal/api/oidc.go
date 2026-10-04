@@ -236,12 +236,11 @@ func (h *Handler) oidcExchangeAndVerify(ctx context.Context, code, verifier stri
 // oidcExtractClaims extracts standard claims and the configured groups claim from an ID token.
 func oidcExtractClaims(idToken *gooidc.IDToken, groupsClaim string) (oidcClaims, bool) {
 	var raw struct {
-		Sub               string   `json:"sub"`
-		PreferredUsername string   `json:"preferred_username"`
-		Email             string   `json:"email"`
-		GivenName         string   `json:"given_name"`
-		FamilyName        string   `json:"family_name"`
-		Groups            []string `json:"groups"`
+		Sub               string `json:"sub"`
+		PreferredUsername string `json:"preferred_username"`
+		Email             string `json:"email"`
+		GivenName         string `json:"given_name"`
+		FamilyName        string `json:"family_name"`
 	}
 	if err := idToken.Claims(&raw); err != nil {
 		return oidcClaims{}, false
@@ -250,16 +249,28 @@ func oidcExtractClaims(idToken *gooidc.IDToken, groupsClaim string) (oidcClaims,
 		return oidcClaims{}, false
 	}
 
-	groups := raw.Groups
-	if groupsClaim != "groups" {
-		var extra map[string]json.RawMessage
-		if err := idToken.Claims(&extra); err == nil {
-			if data, ok := extra[groupsClaim]; ok {
-				var g []string
-				if json.Unmarshal(data, &g) == nil {
-					groups = g
-				}
+	if groupsClaim == "" {
+		groupsClaim = "groups"
+	}
+	var extra map[string]json.RawMessage
+	if err := idToken.Claims(&extra); err != nil {
+		return oidcClaims{}, false
+	}
+	var groups []string
+	if data, ok := extra[groupsClaim]; ok {
+		// The configured claim is authoritative. Missing membership grants only
+		// viewer access; malformed membership rejects authentication.
+		var entries []interface{}
+		if json.Unmarshal(data, &entries) != nil || entries == nil {
+			return oidcClaims{}, false
+		}
+		groups = make([]string, 0, len(entries))
+		for _, entry := range entries {
+			group, ok := entry.(string)
+			if !ok {
+				return oidcClaims{}, false
 			}
+			groups = append(groups, group)
 		}
 	}
 
