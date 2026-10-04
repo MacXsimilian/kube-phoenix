@@ -529,9 +529,13 @@ export default function LogViewer({
   const executionStatus = execution?.status
   const policyId = execution?.policyId
   const selectedStatus = selectedExecution?.status
+  const lastExecutionRef = useRef<{ id: number; status: PolicyExecution['status'] } | null>(null)
 
   useEffect(() => {
-    if (!executionId || !executionStatus || executionStatus === 'running' || selectedStatus !== 'running') return
+    const previous = lastExecutionRef.current
+    lastExecutionRef.current = executionId && executionStatus ? { id: executionId, status: executionStatus } : null
+    const wasRunning = previous && previous.id === executionId ? previous.status === 'running' : selectedStatus === 'running'
+    if (!executionId || !executionStatus || executionStatus === 'running' || !wasRunning) return
     queryClient.invalidateQueries({ queryKey: queryKeys.policyExecutions() })
     queryClient.invalidateQueries({ queryKey: queryKeys.policies() })
     if (policyId != null) queryClient.invalidateQueries({ queryKey: queryKeys.policy(policyId) })
