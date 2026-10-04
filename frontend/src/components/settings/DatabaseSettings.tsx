@@ -189,16 +189,13 @@ export default function DatabaseSettings({ permissions, bare }: DangerZoneProps)
     try {
       for await (const event of emergencyScaleStream()) {
         setEsProgressEvents((prev) => [...prev, event])
-        if (event.type === 'done') {
-          queryClient.clear()
-          break
-        }
-        if (event.type === 'error') break
+        if (event.type === 'done' || event.type === 'error') break
       }
     } catch (err) {
       const msg = formatError(err)
       setEsProgressEvents((prev) => [...prev, { type: 'error', message: msg }])
     } finally {
+      void queryClient.invalidateQueries()
       setEsProgressDone(true)
     }
   }
