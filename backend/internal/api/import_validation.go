@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/policy"
@@ -108,6 +109,9 @@ func validatePolicyImportFields(b policyExportBody) string {
 // for malformed input and 422 when the time window is in the past — these are
 // reachable when an exception JSON is shared after its startsAt.
 func validateExceptionImport(b exceptionExportBody) (string, int) {
+	if msg := validateExceptionParentName(b.PolicyName); msg != "" {
+		return msg, http.StatusBadRequest
+	}
 	if err := validateExceptionType(b.ExceptionType); err != nil {
 		return err.Error(), http.StatusBadRequest
 	}
@@ -133,4 +137,11 @@ func validateExceptionImport(b exceptionExportBody) (string, int) {
 		return "startsAt must be in the future; the imported exception window has already begun", http.StatusUnprocessableEntity
 	}
 	return "", 0
+}
+
+func validateExceptionParentName(name *string) string {
+	if name == nil || strings.TrimSpace(*name) == "" {
+		return "policyName is required (freestanding exceptions are not supported)"
+	}
+	return ""
 }

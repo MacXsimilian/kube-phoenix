@@ -3,7 +3,9 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -130,7 +132,9 @@ func TestPolicyBodyToUpdates_ForcesEnabledOffAndPlanMode(t *testing.T) {
 // TestValidateExceptionImport_RejectsPastWindow returns 422 when the window
 // has already started — common when sharing a JSON between environments late.
 func TestValidateExceptionImport_RejectsPastWindow(t *testing.T) {
+	name := "nightly"
 	body := exceptionExportBody{
+		PolicyName:    &name,
 		ExceptionType: store.ExceptionTypeStayAwake,
 		StartsAt:      time.Now().Add(-2 * time.Hour),
 		EndsAt:        time.Now().Add(-time.Hour),
@@ -144,23 +148,25 @@ func TestValidateExceptionImport_RejectsPastWindow(t *testing.T) {
 	}
 }
 
-// TestValidateExceptionImport_AcceptsFreestanding accepts a future window with
-// no parent policy (PolicyName == nil).
-func TestValidateExceptionImport_AcceptsFreestanding(t *testing.T) {
+func TestValidateExceptionImport_AcceptsNamedParent(t *testing.T) {
+	name := "nightly"
 	body := exceptionExportBody{
+		PolicyName:    &name,
 		ExceptionType: store.ExceptionTypeStayAwake,
 		StartsAt:      time.Now().Add(time.Hour),
 		EndsAt:        time.Now().Add(2 * time.Hour),
 	}
 	msg, _ := validateExceptionImport(body)
 	if msg != "" {
-		t.Errorf("freestanding future exception must be accepted, got: %s", msg)
+		t.Errorf("future exception with a named parent must be accepted, got: %s", msg)
 	}
 }
 
 // TestValidateExceptionImport_RejectsBadType.
 func TestValidateExceptionImport_RejectsBadType(t *testing.T) {
+	name := "nightly"
 	body := exceptionExportBody{
+		PolicyName:    &name,
 		ExceptionType: "garbage",
 		StartsAt:      time.Now().Add(time.Hour),
 		EndsAt:        time.Now().Add(2 * time.Hour),
@@ -176,7 +182,9 @@ func TestValidateExceptionImport_RejectsBadType(t *testing.T) {
 
 // TestValidateExceptionImport_RejectsReversedWindow.
 func TestValidateExceptionImport_RejectsReversedWindow(t *testing.T) {
+	name := "nightly"
 	body := exceptionExportBody{
+		PolicyName:    &name,
 		ExceptionType: store.ExceptionTypeStayAwake,
 		StartsAt:      time.Now().Add(2 * time.Hour),
 		EndsAt:        time.Now().Add(time.Hour),
@@ -184,6 +192,49 @@ func TestValidateExceptionImport_RejectsReversedWindow(t *testing.T) {
 	msg, _ := validateExceptionImport(body)
 	if msg == "" {
 		t.Fatal("expected endsAt-before-startsAt to be rejected")
+	}
+}
+
+func TestExceptionImportHandlers_RequireParentPolicy(t *testing.T) {
+	h := &Handler{}
+	for _, parent := range []struct {
+		name    string
+		value   interface{}
+		include bool
+	}{
+		{"missing", nil, false},
+		{"null", nil, true},
+		{"empty", "", true},
+		{"blank", " \t\n", true},
+	} {
+		for endpoint, handler := range map[string]http.HandlerFunc{
+			"preview": h.previewExceptionImport,
+			"apply":   h.applyExceptionImport,
+		} {
+			t.Run(parent.name+"/"+endpoint, func(t *testing.T) {
+				ex := map[string]interface{}{
+					"exceptionType": store.ExceptionTypeStayAwake,
+					"startsAt":      time.Now().Add(time.Hour),
+					"endsAt":        time.Now().Add(2 * time.Hour),
+				}
+				if parent.include {
+					ex["policyName"] = parent.value
+				}
+				payload, err := json.Marshal(map[string]interface{}{"schemaVersion": exportSchemaVersion, "kind": exportKindException, "exception": ex})
+				if err != nil {
+					t.Fatal(err)
+				}
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/exceptions/import/"+endpoint, strings.NewReader(string(payload)))
+				res := httptest.NewRecorder()
+				handler(res, req)
+				if res.Code != http.StatusBadRequest {
+					t.Fatalf("status = %d, want 400; body: %s", res.Code, res.Body.String())
+				}
+				if !strings.Contains(res.Body.String(), "policyName is required") {
+					t.Errorf("unexpected rejection: %s", res.Body.String())
+				}
+			})
+		}
 	}
 }
 

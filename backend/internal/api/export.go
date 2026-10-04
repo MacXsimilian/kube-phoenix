@@ -66,7 +66,8 @@ type policyExport struct {
 }
 
 // exceptionExportBody references the parent policy by name (resolved on import)
-// instead of by FK ID. policyName is null for freestanding exceptions.
+// instead of by FK ID. Historical parentless records export a null policyName;
+// importing an exception requires the name of an existing parent policy.
 type exceptionExportBody struct {
 	PolicyName      *string                `json:"policyName"`
 	ExceptionType   string                 `json:"exceptionType"`

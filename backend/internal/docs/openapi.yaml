@@ -1080,6 +1080,35 @@ components:
         - startsAt
         - endsAt
 
+    ScheduledExceptionUpdate:
+      description: Partial update of a pending exception. Omitted fields are preserved. Empty strings clear ticketRef, reason, namespaceFilter, and labelSelector. The parent policy cannot be changed.
+      type: object
+      properties:
+        exceptionType:
+          type: string
+          enum: [stay_awake, force_sleep]
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        ticketRef:
+          type: string
+        reason:
+          type: string
+        sleepOnEnd:
+          type: boolean
+        namespaceFilter:
+          type: string
+        labelSelector:
+          type: string
+        workloadTargets:
+          type: array
+          description: Only non-empty target lists replace the current targets.
+          items:
+            $ref: "#/components/schemas/WorkloadTarget"
+
     # ── Observability models ─────────────────────────────────────────────────
 
     MetricSnapshot:
@@ -1319,9 +1348,8 @@ components:
       description: Sanitised exception fields. Parent policy is referenced by name; lifecycle fields are stripped.
       properties:
         policyName:
-          type: string
-          nullable: true
-          description: Parent policy name. Null for freestanding exceptions.
+          type: ["string", "null"]
+          description: Parent policy name. Historical parentless records export null; import requires a non-blank existing policy name.
         exceptionType: { type: string, enum: [stay_awake, force_sleep] }
         startsAt: { type: string, format: date-time }
         endsAt: { type: string, format: date-time }
@@ -1345,6 +1373,24 @@ components:
         kind: { type: string, enum: [exception] }
         exception:
           $ref: "#/components/schemas/ExceptionExportBody"
+
+    ExceptionImport:
+      type: object
+      required: [schemaVersion, kind, exception]
+      properties:
+        schemaVersion: { type: integer, enum: [1] }
+        kind: { type: string, enum: [exception] }
+        exception:
+          allOf:
+            - $ref: "#/components/schemas/ExceptionExportBody"
+            - type: object
+              required: [policyName]
+              properties:
+                policyName:
+                  type: string
+                  minLength: 1
+                  pattern: '\S'
+                  description: Non-blank name of an existing policy in the target environment.
 
 paths:
   /healthz:
@@ -1418,7 +1464,8 @@ paths:
       summary: SSE overview stream
       description: |
         Server-Sent Events stream. Sends the current overview immediately on connect,
-        then pushes a new `data:` event on every ClusterCache refresh (~10 s cadence).
+        then pushes a new `data:` event on each event-driven ClusterCache rebuild.
+        Keepalive comments are sent every 30 seconds; data events have no fixed cadence.
         Each event payload is a JSON-serialised `OverviewResponse`.
       tags: [Overview]
       responses:
@@ -2330,7 +2377,7 @@ paths:
             type: integer
             default: 50
             maximum: 1000
-          description: Number of items per page. Max 1000 — use a high value with page=0 to export all matching records.
+          description: Number of items per page, capped at 1000. Page 0 is the first page; iterate through pages to read all matching records.
       responses:
         "200":
           description: OK
@@ -2778,7 +2825,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ScheduledExceptionCreate"
+              $ref: "#/components/schemas/ScheduledExceptionUpdate"
       responses:
         "200":
           description: Updated exception.
@@ -2824,14 +2871,14 @@ paths:
     post:
       operationId: previewExceptionImport
       summary: Preview an exception import
-      description: Validates the payload, resolves the parent policy by name, and runs the same overlap check as the manual create endpoint. Rejects with 422 when the parent policy name does not exist, 409 when the window collides with an existing opposite-type exception on the same policy.
+      description: Requires a non-blank parent policy name, resolves it, and runs the same overlap check as the manual create endpoint. Rejects missing, null, or blank policyName with 400, an unresolved parent with 422, and opposite-type overlaps with 409.
       tags: [Exceptions]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ExceptionExport"
+              $ref: "#/components/schemas/ExceptionImport"
       responses:
         "200":
           description: Preview
@@ -2846,14 +2893,14 @@ paths:
     post:
       operationId: applyExceptionImport
       summary: Apply an exception import
-      description: Always creates a new exception. Exceptions have no name and are never overwritten. Runs the same overlap check as the preview endpoint and rejects with 409 when the window collides with an existing opposite-type exception on the same policy.
+      description: Always creates a new exception attached to an existing policy. Rejects missing, null, or blank policyName with 400. Exceptions are never overwritten. Runs the same overlap check as preview and rejects opposite-type overlaps with 409.
       tags: [Exceptions]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ExceptionExport"
+              $ref: "#/components/schemas/ExceptionImport"
       responses:
         "201":
           description: Created

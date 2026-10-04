@@ -12,6 +12,7 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "typecheck": "tsc --noEmit",
+    "test:windows": "tsc --ignoreConfig --types node --module nodenext --target es2022 --outDir node_modules/.cache/window-tests --skipLibCheck tests/window-utils.test.ts && node node_modules/.cache/window-tests/tests/window-utils.test.js",
     "format": "prettier --write 'src/**/*.{ts,tsx,json,css}'",
     "format:check": "prettier --check 'src/**/*.{ts,tsx,json,css}'",
     "postinstall": "patch-package"
@@ -19,34 +20,34 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
-    "@mui/icons-material": "^9.0.1",
-    "@mui/material": "^9.0.1",
-    "@tanstack/react-query": "^5.100.14",
-    "@tanstack/react-virtual": "^3.13.26",
+    "@mui/icons-material": "^9.4.0",
+    "@mui/material": "^9.4.0",
+    "@tanstack/react-query": "^5.104.1",
+    "@tanstack/react-virtual": "^3.14.13",
     "echarts": "^6.1.0",
     "echarts-for-react": "^3.0.6",
-    "framer-motion": "^12.40.0",
+    "framer-motion": "^14.0.0",
     "gsap": "^3.15.0",
     "next": "^16.3.8",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@next/bundle-analyzer": "^16.3.8",
     "@next/eslint-plugin-next": "^16.3.8",
-    "@types/node": "^25.9.1",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^10.4.0",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^10.12.0",
     "eslint-config-prettier": "^10",
     "eslint-plugin-react": "^7",
     "eslint-plugin-react-hooks": "^7.1.1",
     "patch-package": "^8.0.1",
-    "prettier": "^3.8.3",
+    "prettier": "^3.9.9",
     "typescript": "^6",
-    "typescript-eslint": "^8.60.0",
-    "ws": "^8.21.0"
+    "typescript-eslint": "^8.71.0",
+    "ws": "^8.22.0"
   },
   "overrides": {
     "postcss": "^8.5.28"

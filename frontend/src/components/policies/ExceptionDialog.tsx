@@ -81,7 +81,7 @@ export default function ExceptionDialog({
   }
 
   function validate(): string {
-    if (!form.policyId) return 'Policy is required'
+    if (!existing && !form.policyId) return 'Policy is required'
     if (!form.startsAt) return 'Start time is required'
     if (!form.endsAt) return 'End time is required'
     const start = new Date(form.startsAt)
@@ -98,11 +98,11 @@ export default function ExceptionDialog({
         exceptionType: form.exceptionType,
         startsAt: form.startsAt,
         endsAt: form.endsAt,
-        ticketRef: form.ticketRef || undefined,
-        reason: form.reason || undefined,
+        ticketRef: form.ticketRef ?? '',
+        reason: form.reason ?? '',
         sleepOnEnd: form.sleepOnEnd,
-        namespaceFilter: form.namespaceFilter || undefined,
-        labelSelector: form.labelSelector || undefined,
+        namespaceFilter: form.namespaceFilter ?? '',
+        labelSelector: form.labelSelector ?? '',
       }
       if (existing) {
         return updateException(existing.id, payload)
@@ -137,6 +137,11 @@ export default function ExceptionDialog({
       <DialogTitle sx={{ fontWeight: 700 }}>{existing ? 'Edit Exception' : 'New Exception'}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '20px !important' }}>
         {error && <Alert severity="error">{error}</Alert>}
+        {existing && existing.policyId == null && (
+          <Alert severity="warning">
+            This exception has no parent policy and cannot run. Cancel it and create an exception linked to a policy.
+          </Alert>
+        )}
 
         {showPolicyPicker && (
           <TextField

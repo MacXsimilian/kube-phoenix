@@ -10,12 +10,14 @@ import CircularProgress from '@mui/material/CircularProgress'
 import Alert from '@mui/material/Alert'
 import {
   getPolicy,
+  getPolicyExecution,
   getPolicyExecutions,
   getExceptions,
   exportPolicy,
 } from '@/lib/api'
 import ExportMenu from '@/components/import/ExportMenu'
-import type { PolicyExecution, ScheduledException } from '@/lib/types'
+import type { Policy, ScheduledException } from '@/lib/types'
+import { POLICIES_REFETCH_MS, EXECUTIONS_REFETCH_MS, EXCEPTIONS_REFETCH_MS } from '@/lib/constants'
 import CreatePolicyDialog from '@/components/policies/CreatePolicyDialog'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
 import LedGlowTimeline from '@/components/policies/LedGlowTimeline'
@@ -48,10 +50,10 @@ function PolicyDetailContent() {
   const policyId = raw ? parseInt(raw, 10) : NaN
 
   const [editOpen, setEditOpen] = useState(false)
+  const [editingPolicy, setEditingPolicy] = useState<Policy>()
   const [exceptionOpen, setExceptionOpen] = useState(false)
   const [editingException, setEditingException] = useState<ScheduledException | undefined>()
   const { notify, SnackbarAlert } = useSnackbar()
-  const [selectedExec, setSelectedExec] = useState<PolicyExecution | null>(null)
 
   const canEdit = canEditSchedules(user?.permissions)
   const canTrigger = canTriggerSchedules(user?.permissions)
@@ -60,19 +62,43 @@ function PolicyDetailContent() {
     queryKey: queryKeys.policy(policyId),
     queryFn: () => getPolicy(policyId),
     enabled: !isNaN(policyId),
+    refetchInterval: query => query.state.data?.currentState === 'transitioning' ? 2_000 : POLICIES_REFETCH_MS,
+    refetchOnWindowFocus: true,
   })
 
   const { data: executions } = useQuery({
     queryKey: queryKeys.policyExecutions(policyId),
     queryFn: () => getPolicyExecutions({ policyId, pageSize: 20 }),
     enabled: !isNaN(policyId),
+    refetchInterval: EXECUTIONS_REFETCH_MS,
+    refetchOnWindowFocus: true,
   })
 
   const { data: exceptions } = useQuery({
     queryKey: queryKeys.exceptions(policyId),
     queryFn: () => getExceptions({ policyId }),
     enabled: !isNaN(policyId),
+    refetchInterval: EXCEPTIONS_REFETCH_MS,
+    refetchOnWindowFocus: true,
   })
+
+  const executionParam = searchParams.get('exec')
+  const linkedExecutionId = executionParam == null ? undefined : Number(executionParam)
+  const validExecutionId = linkedExecutionId != null && Number.isSafeInteger(linkedExecutionId) && linkedExecutionId > 0
+  const { data: linkedExecution, isError: executionError } = useQuery({
+    queryKey: queryKeys.policyExecution(validExecutionId ? linkedExecutionId : undefined),
+    queryFn: ({ signal }) => getPolicyExecution(linkedExecutionId!, signal),
+    enabled: !isNaN(policyId) && validExecutionId,
+    initialData: () => executions?.items.find(ex => ex.id === linkedExecutionId && ex.policyId === policyId),
+  })
+  const selectedExec = linkedExecution?.policyId === policyId ? linkedExecution : null
+
+  const selectExecution = (id?: number) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (id == null) params.delete('exec')
+    else params.set('exec', String(id))
+    router.replace(`/policies/detail/?${params.toString()}`, { scroll: false })
+  }
 
   const { sleepMut, wakeMut, isBusy } = usePolicyTriggers(policyId, notify)
   const [triggerDialog, setTriggerDialog] = useState<TriggerDirection | null>(null)
@@ -94,6 +120,11 @@ function PolicyDetailContent() {
   return (
     <ErrorBoundary>
       <Box>
+        {executionParam != null && !validExecutionId && <Alert severity="error">Invalid execution ID.</Alert>}
+        {executionError && <Alert severity="error">Could not load the requested execution.</Alert>}
+        {linkedExecution && linkedExecution.policyId !== policyId && (
+          <Alert severity="error">The requested execution belongs to another policy.</Alert>
+        )}
         <PolicyHeroBand
           policy={policy}
           canEdit={canEdit}
@@ -106,7 +137,7 @@ function PolicyDetailContent() {
             onWake: () => setTriggerDialog('wake'),
           }}
           onBack={() => router.push('/policies')}
-          onEdit={() => { setExceptionOpen(false); setEditOpen(true) }}
+          onEdit={() => { setExceptionOpen(false); setEditingPolicy(policy); setEditOpen(true) }}
           onExport={(anchor) => setExportAnchor(anchor)}
         />
 
@@ -235,17 +266,17 @@ function PolicyDetailContent() {
         <Box sx={{ mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3 }}>
           <ExecutionHistoryTable
             executions={executions}
-            onRowClick={setSelectedExec}
+            onRowClick={ex => selectExecution(ex.id)}
           />
         </Box>
 
-        <LogViewer execution={selectedExec} onClose={() => setSelectedExec(null)} />
+        <LogViewer execution={selectedExec} onClose={() => selectExecution()} />
 
         {/* Dialogs */}
         <CreatePolicyDialog
           open={editOpen}
           onClose={() => setEditOpen(false)}
-          existing={policy}
+          existing={editingPolicy ?? policy}
           onNotify={notify}
         />
         <ExceptionDialog

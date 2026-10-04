@@ -125,7 +125,7 @@ func (h *Handler) updateException(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var body exceptionInput
+	var body exceptionUpdateInput
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, ErrInvalidBody, http.StatusBadRequest)
 		return
@@ -265,7 +265,19 @@ func newExceptionFromInput(body exceptionInput, r *http.Request) (*store.Schedul
 	return ex, nil
 }
 
-func buildExceptionUpdates(body exceptionInput) (map[string]interface{}, error) {
+type exceptionUpdateInput struct {
+	ExceptionType   string                 `json:"exceptionType"`
+	StartsAt        time.Time              `json:"startsAt"`
+	EndsAt          time.Time              `json:"endsAt"`
+	TicketRef       *string                `json:"ticketRef"`
+	Reason          *string                `json:"reason"`
+	SleepOnEnd      *bool                  `json:"sleepOnEnd"`
+	NamespaceFilter *string                `json:"namespaceFilter"`
+	LabelSelector   *string                `json:"labelSelector"`
+	WorkloadTargets []store.WorkloadTarget `json:"workloadTargets"`
+}
+
+func buildExceptionUpdates(body exceptionUpdateInput) (map[string]interface{}, error) {
 	updates := map[string]interface{}{}
 	if body.ExceptionType != "" {
 		updates["exception_type"] = body.ExceptionType
@@ -276,20 +288,20 @@ func buildExceptionUpdates(body exceptionInput) (map[string]interface{}, error) 
 	if !body.EndsAt.IsZero() {
 		updates["ends_at"] = body.EndsAt
 	}
-	if body.TicketRef != "" {
-		updates["ticket_ref"] = body.TicketRef
+	if body.TicketRef != nil {
+		updates["ticket_ref"] = *body.TicketRef
 	}
-	if body.Reason != "" {
-		updates["reason"] = body.Reason
+	if body.Reason != nil {
+		updates["reason"] = *body.Reason
 	}
 	if body.SleepOnEnd != nil {
 		updates["sleep_on_end"] = *body.SleepOnEnd
 	}
-	if body.NamespaceFilter != "" {
-		updates["namespace_filter"] = body.NamespaceFilter
+	if body.NamespaceFilter != nil {
+		updates["namespace_filter"] = *body.NamespaceFilter
 	}
-	if body.LabelSelector != "" {
-		updates["label_selector"] = body.LabelSelector
+	if body.LabelSelector != nil {
+		updates["label_selector"] = *body.LabelSelector
 	}
 	if len(body.WorkloadTargets) > 0 {
 		b, err := json.Marshal(body.WorkloadTargets)

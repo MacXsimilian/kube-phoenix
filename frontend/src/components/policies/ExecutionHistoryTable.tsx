@@ -10,10 +10,11 @@ import TableHead from '@mui/material/TableHead'
 import TableBody from '@mui/material/TableBody'
 import TableRow from '@mui/material/TableRow'
 import TableCell from '@mui/material/TableCell'
-import { TABLE_HEAD_CELL_SX } from '@/lib/tableStyles'
+import { TABLE_HEAD_CELL_SX, TABLE_ACTION_BUTTON_SX } from '@/lib/tableStyles'
 import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
 import Button from '@mui/material/Button'
+import ButtonBase from '@mui/material/ButtonBase'
 import CircularProgress from '@mui/material/CircularProgress'
 import BedtimeIcon from '@mui/icons-material/Bedtime'
 import WbSunnyIcon from '@mui/icons-material/WbSunny'
@@ -103,7 +104,11 @@ export default function ExecutionHistoryTable({
               const modeStyle = getModeStyle(isDark, ex.mode)
               return (
                 <TableRow key={ex.id} hover sx={{ cursor: 'pointer' }} onClick={() => onRowClick(ex)}>
-                  <TableCell>#{ex.id}</TableCell>
+                  <TableCell>
+                    <ButtonBase type="button" aria-label={`Open logs for execution ${ex.id}`} sx={TABLE_ACTION_BUTTON_SX}>
+                      #{ex.id}
+                    </ButtonBase>
+                  </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       {ex.direction === 'sleep'

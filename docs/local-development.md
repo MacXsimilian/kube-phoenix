@@ -2,20 +2,6 @@
 
 This guide walks through setting up a complete local development environment for kube-phoenix, including a local Kubernetes cluster for testing policy-based scaling, scheduled exceptions, node draining, and live metrics.
 
-## Prerequisites
-
-| Tool | Version | Install | Purpose |
-| :--- | :------ | :------ | :------ |
-| Go | 1.26.8+ | `brew install go` | Backend compilation; minimum from `backend/go.mod` |
-| Node.js | 24+ | `brew install node` | Frontend build (Next.js) |
-| Docker | any | [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/) | Image builds, local PostgreSQL |
-| minikube | latest | `brew install minikube` | Local Kubernetes cluster |
-| kubectl | any | `brew install kubectl` | Cluster interaction |
-| Helm | 3.x | `brew install helm` | In-cluster deployment |
-| golangci-lint | v2+ | `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest` | Backend linting (optional) |
-
----
-
 ## Development Modes
 
 kube-phoenix supports three local development modes. Choose the one that fits your workflow.
@@ -26,21 +12,45 @@ kube-phoenix supports three local development modes. Choose the one that fits yo
 | [Backend + frontend (no cluster)](#mode-2----backend--frontend-without-a-cluster) | API, scheduler logic, auth, audit log | Medium |
 | [Frontend only (mock API)](#mode-3----frontend-only-mock-api) | UI components, layouts, client-side state | Minimal |
 
+## Prerequisites
+
+Run the examples from the repository root. All modes use Git and Make; install only the tools needed for your chosen mode. The install examples below use Homebrew on macOS. Linux users should install the corresponding versions through their package manager or the tool's official distribution.
+
+| Mode | Required tools on the host |
+| :--- | :------------------------- |
+| In-cluster | Docker with Buildx, minikube, kubectl, Helm; Go and Node.js run inside the Docker build |
+| Backend + frontend | Go, Node.js/npm, Docker Compose for PostgreSQL |
+| Frontend only | Node.js/npm |
+
+| Tool | Version | macOS install example |
+| :--- | :------ | :-------------------- |
+| Go | 1.27.1+; minimum from `backend/go.mod` | `brew install go` |
+| Node.js | 26 (Current); use Node 26 on `PATH` to match Docker and CI | `brew install node` |
+| Docker | Docker Engine/Desktop with Buildx and Compose | [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/) |
+| minikube | No repository pin | `brew install minikube` |
+| kubectl | Within one minor version of the API server | `brew install kubectl` |
+| Helm | 3.8+; CI uses 4.3.0 | `brew install helm` |
+| golangci-lint | Optional for backend linting; v2.14.0 matches CI | `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0` |
+
 ---
 
 ## Mode 1 -- In-Cluster with minikube
 
-This deploys kube-phoenix into minikube via Helm, exactly as it runs in production. It is the only mode that exercises real scaling, node draining, and scheduled exceptions.
+This deploys kube-phoenix into minikube via Helm using the production serving model: one Go binary with an embedded frontend. Real scaling and node operations require cluster access.
 
 ### One-command setup
 
-The setup script provisions the cluster, creates sample workloads, builds the image, and deploys kube-phoenix:
+The setup script provisions the cluster, creates sample workloads, builds the image, and deploys kube-phoenix. Its original baseline is a 32 GB Mac with Docker Desktop, using three nodes with 4096 MiB and two CPUs per node. Allocate enough memory to Docker Desktop for the nodes and build processes.
 
 ```bash
 make minikube-setup
 ```
 
-When it finishes, open `http://localhost:8080` and log in with `admin` / `adminadmin`.
+Check that the application and database pods are ready and the port-forward is listening, then open `http://localhost:8080` and log in with `admin` / `adminadmin`.
+
+The current script requires Docker and explicitly labels two worker nodes. Its environment overrides (`MINIKUBE_PROFILE`, `MINIKUBE_NODES`, `MINIKUBE_MEMORY`, `MINIKUBE_CPUS`, and `MINIKUBE_K8S_VERSION`) do not remove that worker-node assumption. On a smaller Linux host or with rootless Podman, cluster sizing, runtime setup, image loading, and deployment need manual coordination. A one-node cluster can run the application and sample workloads, but cannot exercise migration between worker nodes during drain tests. Resource tiers and portable runtime selection are separate future work.
+
+When reusing an existing cluster, verify `kubectl config current-context` is `local-cluster` (or the selected profile). The setup script uses the current context for its kubectl and Helm commands.
 
 To tear everything down:
 
@@ -62,31 +72,26 @@ Two worker nodes allow testing node drain where workloads migrate from one worke
 
 **Addons:** metrics-server (for CPU/memory display in the cluster UI).
 
-**Namespaces and workloads:** Twelve namespaces simulating team-owned environments (~43 workloads across multiple deployment types). Most workloads use `busybox` with lightweight activity (HTTP serve, log lines, DNS lookups, compute, cron jobs, file watchers); a handful use `pause` for idle pods. Each container has resource requests (5m CPU / 8Mi mem) and limits (20m CPU / 32Mi mem).
+**Namespaces and workloads:** Nine team namespaces containing 50 Deployments and 55 desired replicas. These counts exclude Kubernetes system pods and the application's namespace. Most workloads use `busybox:1.37` with lightweight activity (HTTP serve, log lines, DNS lookups, compute, cron jobs, file watchers); two use `pause:3.10.2` for idle pods. Each container has resource requests (5m CPU / 8Mi mem) and limits (20m CPU / 32Mi mem).
 
-| Namespace | Pods | What it tests |
-| :-------- | :--: | :------------ |
-| `team-backend` | 30 | Single-namespace policy. Exception: keep `api`. |
-| `team-web` | 25 | Multi-deployment sleep. Exception: `cdn-origin`. |
-| `team-data` | 30 | Cross-namespace policy (data + web). |
-| `team-qa` | 25 | Nightly sleep. Guardrail: release freeze. |
-| `team-platform` | 30 | Infra/observability stack. Guardrail target. |
-| `team-ml` | 25 | GPU-style workloads. Exception: `model-serve`. |
-| `team-mobile` | 25 | Multi-service mobile backend. Bulk sleep/wake. |
-| `team-payments` | 25 | Compliance-sensitive. Guardrail: always protect. |
-| `team-infra` | 25 | Cluster services. Node drain testing. |
+| Namespace | Deployments | Desired pods | What it tests |
+| :-------- | :---------: | :----------: | :------------ |
+| `team-backend` | 7 | 9 | Single-namespace policy. Exception: keep `api`. |
+| `team-web` | 5 | 6 | Multi-deployment sleep. Exception: `assets`. |
+| `team-data` | 6 | 7 | Cross-namespace policy (data + web). |
+| `team-qa` | 5 | 5 | Nightly sleep. Guardrail: release freeze. |
+| `team-platform` | 6 | 6 | Infra/observability stack. Guardrail target. |
+| `team-ml` | 4 | 5 | Model-serving fixtures. Exception: `model-serve`. |
+| `team-mobile` | 5 | 5 | Multi-service mobile backend. Bulk sleep/wake. |
+| `team-payments` | 6 | 6 | Compliance-sensitive. Guardrail: always protect. |
+| `team-infra` | 6 | 6 | Cluster services. Node drain testing. |
+| **Total** | **50** | **55** | |
 
 ### Suggested testing flow
 
-1. **Basic policy:** Create a policy targeting `team-backend`. Sleep now. Verify `api`, `worker`, `cron` all scale to 0. Wake now. Replicas restored.
+Start with [Your first policy](first-policy.md), which protects every node before previewing and applying a sleep/wake cycle to `team-backend`. A namespace filter limits workload scaling; it does not limit the nodes considered for drain and deletion.
 
-2. **Scheduled exception:** Create a scheduled exception on `team-backend/api`. Sleep the policy. `worker` and `cron` scale to 0 but `api` stays at 3.
-
-3. **Cross-namespace policy:** Create a policy targeting `team-data,team-web`. Test multi-namespace sleep/wake in a single operation.
-
-4. **Guardrails:** Add `team-qa` to guardrails Protected Namespaces. Verify policies cannot scale it.
-
-5. **Node drain:** Sleep a policy with node drain enabled. Verify worker nodes are cordoned (`SchedulingDisabled`). Wake. Nodes uncordoned.
+Use the [policy smoke checklist](testing/policy-smoke-test.md) to record a short verification run. The [policy scenario catalogue](test-plan-policy.md) covers exceptions, cross-namespace policies, guardrails, and separate destructive node-operation scenarios.
 
 ### Manual step-by-step setup
 
@@ -134,6 +139,7 @@ minikube image load ghcr.io/macxsimilian/kube-phoenix:$(git rev-parse --short HE
 helm upgrade --install kube-phoenix helm/kube-phoenix \
   --namespace kube-phoenix \
   --create-namespace \
+  --set createNamespace=false \
   --set-string image.tag=$(git rev-parse --short HEAD) \
   --set image.pullPolicy=Never \
   --set secret.adminUser=admin \
@@ -144,6 +150,7 @@ helm upgrade --install kube-phoenix helm/kube-phoenix \
 | Flag | Why |
 | :--- | :-- |
 | `image.pullPolicy=Never` | Use the locally loaded image instead of pulling from a registry |
+| `createNamespace=false` | Let Helm's `--create-namespace` own namespace creation |
 | `session.cookieSecure=false` | Allow session cookies over plain HTTP (no TLS on localhost) |
 
 Wait for both pods to become ready:
@@ -152,7 +159,7 @@ Wait for both pods to become ready:
 kubectl -n kube-phoenix get pods -w
 ```
 
-You should see two pods: `kube-phoenix-<hash>` (the application) and `kube-phoenix-postgresql-0` (the database). Both should reach `Running` / `1/1` within 30 seconds.
+You should see two pods: `kube-phoenix-<hash>` (the application) and `kube-phoenix-postgresql-0` (the database). Wait for both to reach `Running` / `1/1`; initial image downloads and storage provisioning can take longer than 30 seconds.
 
 #### 6. Access the UI
 
@@ -171,8 +178,16 @@ After modifying backend or frontend code:
 ```bash
 make docker-build
 minikube image load ghcr.io/macxsimilian/kube-phoenix:$(git rev-parse --short HEAD) -p local-cluster
+helm upgrade kube-phoenix helm/kube-phoenix \
+  --namespace kube-phoenix \
+  --reuse-values \
+  --set-string image.tag=$(git rev-parse --short HEAD) \
+  --set image.pullPolicy=Never
 kubectl -n kube-phoenix rollout restart deploy/kube-phoenix
+kubectl -n kube-phoenix rollout status deploy/kube-phoenix
 ```
+
+The Helm upgrade selects the new commit's image tag. The explicit restart also replaces pods when you rebuilt uncommitted changes under the same tag. Restart the port-forward if its selected pod was replaced.
 
 ---
 
@@ -187,31 +202,32 @@ make dev              # Terminal 1 -- start PostgreSQL via Docker Compose
 ```bash
 ADMIN_USER=admin \
 ADMIN_PASSWORD=adminadmin \
+COOKIE_SECURE=false \
 CORS_ALLOWED_ORIGIN=http://localhost:3000 \
 make dev-backend      # Terminal 2 -- backend on :8080
+```
+
+Before starting the frontend, create or update `frontend/.env.local` with this entry, preserving any other settings in that file:
+
+```dotenv
+NEXT_PUBLIC_API_URL=http://localhost:8080
 ```
 
 ```bash
 make dev-frontend     # Terminal 3 -- frontend on :3000
 ```
 
-The frontend needs a `.env.local` file to know where the backend is:
-
-```bash
-echo 'NEXT_PUBLIC_API_URL=http://localhost:8080' > frontend/.env.local
-```
-
-> **Important:** `NEXT_PUBLIC_*` variables are baked in at startup. Restart the frontend after creating or changing `.env.local`.
+`NEXT_PUBLIC_*` variables are read when the frontend starts; restart it after later changes to `.env.local`.
 
 Without in-cluster credentials or a valid kubeconfig, the backend starts with a nil Kubernetes client. Cluster endpoints return HTTP 503 (`kubernetes client unavailable`) and scaling operations are skipped. The backend uses `client-go` directly; installing kubectl alone does not provide cluster access. Everything else -- policies, guardrails, audit log, authentication -- works as expected.
 
 ### Authentication
 
-Authentication is always enforced. Set `ADMIN_USER` and `ADMIN_PASSWORD` to seed an admin account on first startup. Without them, the backend starts but no one can log in.
+Authentication is always enforced. Set `ADMIN_USER` and `ADMIN_PASSWORD` to seed an admin account on first startup. Without them, a fresh database has no local account to log in with. Set `COOKIE_SECURE=false` for this HTTP-only development setup; HTTPS deployments retain the default `true`.
 
 ### CORS
 
-When the frontend (`:3000`) and backend (`:8080`) run on different origins, `CORS_ALLOWED_ORIGIN` must be set. Without it, the browser blocks all API requests.
+The backend command above sets `ADMIN_USER`, so a separate frontend origin must be allowed with `CORS_ALLOWED_ORIGIN`. An explicit origin always takes precedence. If both variables are empty, the backend permits all origins for development; authentication is still enforced. See [configuration](configuration.md#backend-runtime).
 
 ---
 
@@ -253,48 +269,9 @@ The seed data is designed to exercise every UI state:
 
 ## Testing Scaling End-to-End
 
-With Mode 1 running, walk through a complete sleep/wake cycle. See also the [suggested testing flow](#suggested-testing-flow) above for a structured sequence.
+Use [Your first policy](first-policy.md) for the complete plan → apply → sleep → wake walkthrough, including baseline capture, node protection, restoration, and cleanup. It uses the real `team-backend` fixtures and works on a prepared single-node or multi-node test cluster when every node is protected.
 
-### Create a policy
-
-1. Open `http://localhost:8080` and navigate to **Policies**.
-2. Create a new policy targeting the `team-backend` namespace.
-3. Add a sleep window (e.g., a cron expression that fires in a few minutes).
-4. The policy starts in **plan mode** -- executions are logged but nothing scales.
-
-### Execute manually
-
-1. On the policy card, select **Sleep Now**.
-2. The `team-backend` deployments scale to zero. Verify:
-
-```bash
-kubectl -n team-backend get deployments
-# All replicas should be 0
-```
-
-3. Select **Wake Now**. Replicas restore to their previous counts.
-
-### Test scheduled exceptions
-
-Exceptions allow specific workloads to be excluded from a policy during a time window.
-
-1. Create a policy targeting `team-web` and switch it to **apply** mode.
-2. Create a scheduled exception that exempts `team-web/assets` from sleep.
-3. Trigger a sleep. The `web` and `bff` deployments scale to zero, but `assets` remains running.
-
-### Verify node operations
-
-With multi-node minikube, test node draining:
-
-1. Check node status before and after a sleep:
-
-```bash
-kubectl get nodes
-```
-
-2. After a policy sleeps workloads and drains nodes, cordoned nodes appear as `SchedulingDisabled`.
-
-> **Note:** minikube does not auto-replace deleted nodes. If a policy deletes a node, re-add it with `minikube node add -p local-cluster` or recreate the cluster.
+The [smoke checklist](testing/policy-smoke-test.md) is the short companion for recording results. The [scenario catalogue](test-plan-policy.md) covers scheduled exceptions and advanced cases. Mock mode can illustrate the UI but cannot verify real workload or node operations.
 
 ---
 
@@ -331,7 +308,7 @@ What works in each local setup:
 | `NEXT_PUBLIC_API_URL` | `''` (empty string, same-origin) | Backend URL for the frontend dev server (build-time, Mode 2 only). `make dev-mock` sets this to `http://localhost:4444`. |
 | `NEXT_PUBLIC_APP_VERSION` | Build-dependent | About modal version; standalone frontend builds fall back to `frontend/package.json` when unset. See [Application Build Versions](configuration.md#application-build-versions) for Docker and release builds. |
 
-See `.env.example` for a copy-paste template.
+See [`.env.example`](../.env.example) for a template and the [configuration reference](configuration.md) for the complete runtime settings, including `COOKIE_SECURE`.
 
 ---
 
@@ -362,7 +339,7 @@ helm template kube-phoenix helm/kube-phoenix \
   --kube-version 1.25.0
 ```
 
-This override only supplies capabilities for local rendering. It does not change the Helm installation minimum or the version of a running cluster. CI uses Helm 4.2.0, whose default rendering capabilities satisfy the chart requirement.
+This override only supplies capabilities for local rendering. It does not change the Helm installation minimum or the version of a running cluster. CI uses Helm 4.3.0, whose default rendering capabilities satisfy the chart requirement.
 
 ---
 
@@ -374,7 +351,7 @@ This override only supplies capabilities for local rendering. It does not change
 
 **Cause:** The PVC was created with incorrect ownership from a previous deployment.
 
-**Solution:** Delete the StatefulSet and PVC, then redeploy:
+**Solution for disposable local data:** The commands below delete the database volume and its contents. If you need the data, back it up and repair the volume permissions before proceeding. For a fresh local database, delete the StatefulSet and PVC, then redeploy:
 
 ```bash
 kubectl -n kube-phoenix delete statefulset kube-phoenix-postgresql --cascade=foreground
@@ -440,7 +417,7 @@ Restart the frontend after creating the file.
 **Cause (Mode 2):** `CORS_ALLOWED_ORIGIN` is not set. The backend rejects cross-origin requests. Restart with:
 
 ```bash
-CORS_ALLOWED_ORIGIN=http://localhost:3000 make dev-backend
+COOKIE_SECURE=false CORS_ALLOWED_ORIGIN=http://localhost:3000 make dev-backend
 ```
 
 ### Cannot log in -- no users exist
@@ -462,7 +439,7 @@ helm upgrade kube-phoenix helm/kube-phoenix \
 **Solution (Mode 2):**
 
 ```bash
-ADMIN_USER=admin ADMIN_PASSWORD=adminadmin make dev-backend
+ADMIN_USER=admin ADMIN_PASSWORD=adminadmin COOKIE_SECURE=false make dev-backend
 ```
 
 ### Metrics columns are empty
@@ -470,7 +447,7 @@ ADMIN_USER=admin ADMIN_PASSWORD=adminadmin make dev-backend
 Enable the metrics server addon. Metrics take 60--90 seconds to populate:
 
 ```bash
-minikube addons enable metrics-server
+minikube addons enable metrics-server -p local-cluster
 ```
 
 ### Pod eviction timeout during drain
@@ -486,13 +463,14 @@ kubectl get pdb --all-namespaces
 kube-phoenix can delete Kubernetes node objects during sleep. minikube does not auto-replace them. Re-add with:
 
 ```bash
-minikube node add
+minikube node add -p local-cluster
 ```
 
 Or recreate the cluster:
 
 ```bash
-minikube delete && minikube start --nodes=3 --memory=4096 --cpus=2
+minikube delete -p local-cluster
+minikube start -p local-cluster --nodes=3 --memory=4096 --cpus=2
 ```
 
 ---
@@ -515,8 +493,8 @@ kubectl delete namespace team-backend team-web team-data team-qa team-platform t
 ### Stop minikube
 
 ```bash
-minikube stop       # pause the cluster (keeps state)
-minikube delete     # destroy the cluster entirely
+minikube stop -p local-cluster       # pause the cluster (keeps state)
+minikube delete -p local-cluster     # destroy the cluster entirely
 ```
 
 ### Stop local PostgreSQL (Mode 2)

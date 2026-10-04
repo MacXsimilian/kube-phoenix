@@ -12,6 +12,7 @@ export const queryKeys = {
   policyExecutionsTable: (page: number, rowsPerPage: number, status: string, direction: string) =>
     ['policy-executions', 'table', page, rowsPerPage, status, direction] as const,
   policyExecutionPoll: (id: number | undefined) => ['policy-execution-poll', id] as const,
+  policyExecution: (id: number | undefined) => ['policy-execution', id] as const,
   policyExecutionsFetch: (id: number) => ['policy-executions', 'fetch', id] as const,
   auditLogs: (page: number, pageSize: number, user: string, action: string, from: string, to: string) =>
     ['audit-logs', page, pageSize, user, action, from, to] as const,
@@ -30,4 +31,5 @@ export const queryKeys = {
   sessions: () => ['sessions'] as const,
   oidcConfig: () => ['oidc-config'] as const,
   overview: () => ['overview'] as const,
+  observabilityHistory: (range: string) => ['observability-history', range] as const,
 } as const

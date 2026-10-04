@@ -1,60 +1,99 @@
 # Deployment Guide
 
+Install a release into an existing cluster, then follow [Your first policy](first-policy.md) on disposable workloads. For a local development cluster and sample workloads, start with the [local development guide](local-development.md).
+
 ## Prerequisites
 
 | Requirement | Minimum Version | Notes |
 | :---------- | :-------------- | :---- |
 | Kubernetes | 1.25+ | Minimum declared by `kubeVersion` in `helm/kube-phoenix/Chart.yaml` |
-| Helm | 3.8+ | OCI support enabled by default; CI and chart publishing use 4.2.0 |
-| PostgreSQL | 14+ | Bundled in-cluster by default; external instance recommended for production |
+| Helm | 3.8+ | OCI support enabled by default; CI and chart publishing use 4.3.0 |
+| PostgreSQL | 14+ | Bundled database defaults to 18.6; external instance recommended for production |
+
+You also need `kubectl` configured for the intended cluster, permission to create the chart's cluster-wide RBAC resources, and a default StorageClass for the bundled database (or an explicit `postgresql.persistence.storageClass`). Verify `kubectl config current-context` before installation.
 
 ## Quick Install
+
+For a local HTTP evaluation, create `values-local.yaml`. Replace the password placeholder before running Helm; admin credentials seed a fresh database only.
+
+```yaml
+# values-local.yaml
+createNamespace: false
+secret:
+  adminUser: admin
+  adminPassword: "replace-with-your-local-password"
+session:
+  cookieSecure: false
+```
 
 ```bash
 helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
   --namespace kube-phoenix \
   --create-namespace \
-  --set secret.adminPassword=<your-password>
+  -f values-local.yaml \
+  --wait --timeout 5m
 ```
 
 ```bash
 kubectl port-forward -n kube-phoenix svc/kube-phoenix 8080:80
 ```
 
-Open `http://localhost:8080` and log in with `admin` / `<your-password>`.
+Keep the port-forward running, open `http://localhost:8080`, and log in as `admin` with the password from your values file. `session.cookieSecure=false` permits cookies over local HTTP. Use `true` with HTTPS. `createNamespace=false` lets Helm's `--create-namespace` handle namespace creation instead of also rendering the chart's Namespace resource.
 
-> **Tip:** New policies start in **plan mode** -- nothing scales until you explicitly switch a policy to `apply` mode.
+New policies default to **plan mode**. Manual trigger dialogs offer an explicit **Apply (live)** override, so inspect the selected mode before confirming. Continue with [Your first policy](first-policy.md), which protects every node before any live scaling.
 
 ## Production Deployment
+
+Keep a `values-production.yaml` file for deployment-specific settings and pass it on every install or upgrade. The examples below extend that same file. Configure real credentials through a [pre-existing Secret](#pre-existing-secret) or a local values file excluded from version control; do not use the chart's default bootstrap passwords.
+
+```yaml
+# values-production.yaml — base settings; add database and ingress settings below
+createNamespace: false
+session:
+  cookieSecure: true
+secret:
+  adminUser: admin
+  adminPassword: "replace-before-installing"
+```
+
+Use one application replica. The current scheduler and live execution-log broker operate within the application process; increasing `replicaCount` is not a documented high-availability setup. See [architecture](../ARCHITECTURE.md#why-sse-and-websocket).
 
 ### External Database
 
 For production workloads, use a managed PostgreSQL instance (Amazon RDS, Aurora, Cloud SQL, Azure Database for PostgreSQL) instead of the bundled StatefulSet.
 
+Add one of these alternatives to `values-production.yaml`, replacing the example host and credentials.
+
 **Option A -- Full DSN:**
 
-```bash
-helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
-  --namespace kube-phoenix \
-  --create-namespace \
-  --set postgresql.enabled=false \
-  --set externalDatabase.url="host=my-rds.example.com user=kube_phoenix password=secret dbname=kube_phoenix port=5432 sslmode=require"
+```yaml
+postgresql:
+  enabled: false
+externalDatabase:
+  url: "host=my-rds.example.com user=kube_phoenix password=replace-me dbname=kube_phoenix port=5432 sslmode=require"
 ```
 
 **Option B -- Individual fields:**
 
-```bash
-helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
-  --namespace kube-phoenix \
-  --create-namespace \
-  --set postgresql.enabled=false \
-  --set externalDatabase.host=my-rds.example.com \
-  --set externalDatabase.password=secret
+```yaml
+postgresql:
+  enabled: false
+externalDatabase:
+  host: my-rds.example.com
+  username: kube_phoenix
+  password: "replace-me"
+  database: kube_phoenix
+  port: 5432
+  sslmode: require
 ```
 
-> **Warning:** The default in-cluster PostgreSQL password is `kube_phoenix`. Always change `postgresql.auth.password` or use an external database in non-local environments.
+Persist the selected database settings in the values file used for installation and future upgrades. If you intentionally use the bundled database outside a disposable local environment, replace its default `postgresql.auth.password` and plan for persistent-volume backups.
+
+The bundled PostgreSQL 18 image stores data under `/var/lib/postgresql/18/docker` on a volume mounted at `/var/lib/postgresql`. Existing PostgreSQL 17 volumes require a database migration to a fresh volume; changing the image tag does not convert their data. Follow [PostgreSQL 17 to 18 migration](postgresql-upgrade.md) before upgrading an existing bundled database. External PostgreSQL 14+ remains supported; use your database provider's upgrade procedure for a managed instance.
 
 ### Ingress with TLS
+
+Add these settings to `values-production.yaml`. This example assumes an nginx ingress controller, cert-manager, and an existing `letsencrypt-prod` ClusterIssuer; the chart does not install them.
 
 ```yaml
 # values-production.yaml
@@ -75,18 +114,23 @@ ingress:
 helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
   --namespace kube-phoenix \
   --create-namespace \
-  -f values-production.yaml \
-  --set secret.adminPassword=<your-password>
+  -f values-production.yaml
 ```
 
 ### Pre-existing Secret
 
-To manage credentials outside of Helm values, create a Secret containing `DATABASE_URL`, `ADMIN_USER`, and `ADMIN_PASSWORD`, then reference it:
+To manage credentials outside of Helm values, create a Secret in the application's namespace containing `DATABASE_URL`, `ADMIN_USER`, and `ADMIN_PASSWORD`, then reference it. Include `OIDC_CLIENT_SECRET` when using an OIDC confidential client. The chart uses the supplied Secret instead of generating an application Secret:
 
 ```yaml
+postgresql:
+  enabled: false
+externalDatabase:
+  host: my-rds.example.com
 secret:
   existingSecret: my-kube-phoenix-secret
 ```
+
+For an external database, the chart still requires `externalDatabase.host` or `externalDatabase.url` when `postgresql.enabled=false`, even with an existing Secret. Set the host to your actual database as shown above; the running application reads its full `DATABASE_URL` from the Secret. Changing bootstrap admin credentials does not reset an existing account's password. Local users change their own password through the authenticated `PUT /api/auth/password` endpoint with `currentPassword` and `newPassword`; see [API authentication](api.md#authentication).
 
 ### Security Hardening
 
@@ -98,22 +142,9 @@ The default Helm values include:
 - Seccomp profile set to `RuntimeDefault`
 - Secure, HTTP-only, SameSite=Strict session cookies
 - `app.kubernetes.io/part-of` and `app.kubernetes.io/version` labels on all resources
-- Automatic rolling restart on secret changes (checksum annotation)
+- Automatic rolling restart when the chart-generated application Secret changes
 
-For multi-replica deployments, also enable:
-
-```yaml
-replicaCount: 2
-podDisruptionBudget:
-  enabled: true
-  maxUnavailable: 1
-topologySpreadConstraints:
-  - maxSkew: 1
-    topologyKey: kubernetes.io/hostname
-    whenUnsatisfiable: DoNotSchedule
-    labelSelector:
-      matchLabels: {}
-```
+Updates to a separately managed `secret.existingSecret` do not change the chart's Secret checksum. Restart the Deployment after changing that Secret so the process receives the new environment values.
 
 ## AWS-Specific: ALB with TargetGroupBinding
 
@@ -213,11 +244,11 @@ spec:
     targetRevision: "<chart-version>"
     helm:
       values: |
+        createNamespace: false
         postgresql:
           enabled: false
         externalDatabase:
           host: my-rds.example.com
-          password: ${DB_PASSWORD}
         secret:
           existingSecret: kube-phoenix-secret
   destination:
@@ -236,7 +267,7 @@ spec:
 
 - **Node operations are out-of-band.** kube-phoenix cordons, drains, and deletes nodes during sleep cycles. These are not tracked in git. If cluster-autoscaler or Karpenter is itself ArgoCD-managed, there is no conflict; just be aware that node state during a sleep window will not match anything in a repo.
 - **Bundled PostgreSQL StatefulSet.** If you keep `postgresql.enabled=true` under ArgoCD, set `prune: false` (or use `Prune=false` per-resource) so a sync failure cannot remove the PVC. For production, prefer an external managed database -- see [External Database](#external-database).
-- **First-run admin secret.** `secret.adminPassword` only seeds the admin user on first startup. Storing it in git is acceptable for the bootstrap, but rotate it via the UI or a `secret.existingSecret` afterwards.
+- **First-run admin secret.** Bootstrap credentials only seed a fresh database. Keep credentials out of plain-text Git manifests and provision the referenced Secret separately. Changing that Secret does not reset an existing user's password; local users can use the authenticated `PUT /api/auth/password` endpoint.
 
 ## Observability
 
@@ -258,13 +289,17 @@ metrics:
 
 ## Upgrading
 
+For an existing bundled PostgreSQL 17 database, complete the [database migration](postgresql-upgrade.md) before using the normal upgrade command below. The chart refuses legacy data directories to prevent an empty database from being initialized alongside them. GORM AutoMigrate updates application tables; it does not upgrade PostgreSQL's storage format.
+
 ```bash
 helm upgrade kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
   --namespace kube-phoenix \
-  --reuse-values
+  -f values-production.yaml
 ```
 
-The deployment strategy defaults to `RollingUpdate` with `maxUnavailable: 0` for zero-downtime rollouts. Database migrations run automatically on startup via GORM AutoMigrate. Secret changes (password rotation, DB URL update) trigger an automatic rolling restart via the `checksum/secret` pod annotation — no manual restart needed.
+For the local HTTP installation, pass `values-local.yaml` instead. Keep the same database configuration and credentials when upgrading.
+
+The deployment strategy defaults to `RollingUpdate` with `maxUnavailable: 0`. Database migrations run on startup via GORM AutoMigrate unless disabled. Changes to the chart-generated application Secret trigger a rollout through `checksum/secret`; changes to a separately managed existing Secret require a Deployment restart. These deployment mechanics do not rotate existing application or database passwords.
 
 > **Tip:** Pin a full image version in production with `--set-string image.tag=<version>`. Using `--set-string` preserves numeric tags as strings, as required by the chart's values schema.
 
@@ -274,159 +309,64 @@ The chart ships a `values.schema.json` that validates values at install/upgrade 
 
 ## Uninstalling
 
+The examples in this guide use `createNamespace=false`, so Helm leaves the namespace and the StatefulSet's database PVC behind. If an older release renders a chart-owned Namespace (`createNamespace=true`), uninstalling that Namespace also deletes its contents; check ownership and preserve required data before uninstalling.
+
 ```bash
 helm uninstall kube-phoenix --namespace kube-phoenix
 ```
 
-This removes all chart-managed resources. The PostgreSQL PVC is **not** deleted automatically to prevent data loss. To remove it:
+To deliberately remove the default release's database volume and namespace after uninstalling:
 
 ```bash
-kubectl delete pvc -n kube-phoenix -l app.kubernetes.io/name=kube-phoenix-postgresql
+kubectl delete pvc -n kube-phoenix data-kube-phoenix-postgresql-0
 kubectl delete namespace kube-phoenix
 ```
 
 ## Helm Values Reference
 
+Use the chart's [commented values file](../helm/kube-phoenix/values.yaml) for current defaults and the [values schema](../helm/kube-phoenix/values.schema.json) for accepted types and ranges. For a published chart version, inspect its matching values with:
+
+```bash
+helm show values oci://ghcr.io/macxsimilian/helm/kube-phoenix --version '<chart-version>'
+```
+
+The sections below identify the main settings without duplicating every default. [Example overlays](../examples/) provide complete ingress, ALB, external-database, and monitoring configurations.
+
 ### General
 
-| Value | Default | Description |
-| :---- | :------ | :---------- |
-| `nameOverride` | `""` | Override chart name |
-| `fullnameOverride` | `""` | Override full release name |
-| `image.repository` | `ghcr.io/macxsimilian/kube-phoenix` | Image repository |
-| `image.tag` | `""` | Image tag (defaults to `Chart.AppVersion`) |
-| `image.pullPolicy` | `IfNotPresent` | Image pull policy |
-| `replicaCount` | `1` | Number of application replicas |
-| `revisionHistoryLimit` | `2` | Number of old ReplicaSets to retain |
-| `imagePullSecrets` | `[]` | Image pull secrets |
-| `namespaceOverride` | `""` | Override deploy namespace |
-| `createNamespace` | `true` | Create namespace via chart template |
-
-> **Tip:** When using `helm --create-namespace`, set `createNamespace: false` to avoid a double-creation conflict.
+`image.*` selects the application image; use `--set-string image.tag=...` for numeric-looking tags. Keep `replicaCount: 1` for normal operation; use `0` during database maintenance. `nameOverride`, `fullnameOverride`, and `namespaceOverride` change generated names. Set `createNamespace: false` when using Helm's `--create-namespace` or a namespace managed outside the chart.
 
 ### RBAC and Service Account
 
-| Value | Default | Description |
-| :---- | :------ | :---------- |
-| `serviceAccount.create` | `true` | Create a ServiceAccount |
-| `serviceAccount.name` | `""` | ServiceAccount name (defaults to release name) |
-| `serviceAccount.annotations` | `{}` | Annotations (use for IRSA: `eks.amazonaws.com/role-arn`) |
-| `serviceAccount.automountServiceAccountToken` | `true` | Mount the SA token into the pod. The app needs it to call the Kubernetes API; set `false` only if it no longer does. |
-| `rbac.create` | `true` | Create ClusterRole and ClusterRoleBinding |
+`rbac.create` and `serviceAccount.*` control cluster permissions and the ServiceAccount. The backend uses the mounted service-account token to call Kubernetes; keep `serviceAccount.automountServiceAccountToken` enabled for in-cluster operation. Review the generated [RBAC rules](../helm/kube-phoenix/templates/clusterrole.yaml) before deployment.
 
 ### Database
 
-| Value | Default | Description |
-| :---- | :------ | :---------- |
-| `postgresql.enabled` | `true` | Deploy in-cluster PostgreSQL StatefulSet |
-| `postgresql.image.repository` | `postgres` | PostgreSQL image |
-| `postgresql.image.tag` | `17.10-alpine` | PostgreSQL version |
-| `postgresql.auth.username` | `kube_phoenix` | PostgreSQL username |
-| `postgresql.auth.password` | `kube_phoenix` | PostgreSQL password |
-| `postgresql.auth.database` | `kube_phoenix` | PostgreSQL database name |
-| `postgresql.persistence.enabled` | `true` | Persist data via PVC |
-| `postgresql.persistence.size` | `1Gi` | PVC size |
-| `postgresql.persistence.storageClass` | `""` | StorageClass (empty = cluster default) |
-| `postgresql.resources.requests.cpu` | `100m` | CPU request |
-| `postgresql.resources.requests.memory` | `128Mi` | Memory request |
-| `postgresql.resources.limits.cpu` | `500m` | CPU limit |
-| `postgresql.resources.limits.memory` | `512Mi` | Memory limit |
-| `externalDatabase.url` | `""` | Full DSN (when `postgresql.enabled=false`) |
-| `externalDatabase.host` | `""` | DB host (required when `postgresql.enabled=false` and `url` is empty) |
-| `externalDatabase.port` | `5432` | DB port |
-| `externalDatabase.username` | `kube_phoenix` | DB username |
-| `externalDatabase.password` | `""` | DB password |
-| `externalDatabase.database` | `kube_phoenix` | DB name |
-| `externalDatabase.sslmode` | `require` | SSL mode |
+`postgresql.*` configures the bundled database, credentials, resources, and persistent storage. For an external database, disable `postgresql.enabled` and configure `externalDatabase.*` or supply `DATABASE_URL` through `secret.existingSecret`. `db.*` configures the application's connection pool. See [External Database](#external-database).
+
+With persistence enabled, `postgresql.persistence.existingClaim` mounts an existing operator-managed PVC and omits the StatefulSet's `volumeClaimTemplates`. Create and retain that PVC separately; `size` and `storageClass` apply only to automatically generated claims. Switching an existing StatefulSet to a different claim requires recreating the StatefulSet while retaining its old PVC. The [PostgreSQL migration guide](postgresql-upgrade.md) covers that sequence and rollback.
 
 ### Secret and Auth
 
-| Value | Default | Description |
-| :---- | :------ | :---------- |
-| `secret.existingSecret` | `""` | Pre-existing Secret name (must contain `DATABASE_URL`, `ADMIN_USER`, `ADMIN_PASSWORD`) |
-| `secret.adminUser` | `admin` | Admin username (seeded on first startup) |
-| `secret.adminPassword` | `kube-phoenix` | Admin password |
-| `session.idleTimeout` | `8h` | Sliding-window session timeout |
-| `session.maxLifetime` | `24h` | Absolute session hard cap |
-| `session.cookieSecure` | `true` | Set `false` for HTTP-only environments |
-| `auditRetentionDays` | `90` | Auto-delete audit entries older than this (0 = keep forever) |
-| `k8s.qps` | `100` | Sustained K8s API requests per second (client-go default: 5) |
-| `k8s.burst` | `200` | Short spike allowance above QPS (client-go default: 10) |
+`secret.*` supplies bootstrap credentials or an existing Secret. `session.*` controls cookie security and session lifetimes; `auditRetentionDays` controls audit retention. `k8s.qps` and `k8s.burst` set the Kubernetes client's request limits. See the [authentication reference](configuration.md#authentication).
 
 ### OIDC
 
-| Value | Default | Description |
-| :---- | :------ | :---------- |
-| `oidc.enabled` | `false` | Enable Keycloak OIDC SSO |
-| `oidc.issuerURL` | `""` | Keycloak realm URL |
-| `oidc.clientID` | `""` | OIDC client ID |
-| `oidc.clientSecret` | `""` | OIDC client secret |
-| `oidc.redirectURL` | `""` | OIDC callback URL |
-| `oidc.groupsClaim` | `groups` | ID token claim for AD groups |
-| `oidc.roleAdminGroups` | `""` | AD groups mapped to admin role |
-| `oidc.roleOperatorGroups` | `""` | AD groups mapped to operator role |
-| `oidc.skipTLSVerify` | `false` | Skip TLS verification (dev only) |
-| `oidc.caConfigMap` | `""` | ConfigMap containing CA certificate |
-| `oidc.caCertKey` | `cacert.pem` | Key in the ConfigMap holding the CA bundle |
+`oidc.*` configures the provider, client, callback, group mappings, and provider TLS trust. Enabling OIDC requires corresponding identity-provider setup; follow [Keycloak Client Setup](configuration.md#keycloak-client-setup).
 
 ### Networking
 
-| Value | Default | Description |
-| :---- | :------ | :---------- |
-| `service.type` | `ClusterIP` | Service type |
-| `service.port` | `80` | Service port |
-| `service.targetPort` | `8080` | Container port |
-| `ingress.enabled` | `false` | Enable Kubernetes Ingress |
-| `ingress.className` | `""` | Ingress class name |
-| `ingress.annotations` | `{}` | Ingress annotations |
-| `ingress.host` | `""` | Hostname |
-| `ingress.tls` | `[]` | TLS configuration |
-| `targetGroupBinding.enabled` | `false` | Enable AWS TargetGroupBinding |
-| `targetGroupBinding.targetGroupARN` | `""` | Target group ARN |
-| `targetGroupBinding.targetType` | `ip` | `ip` or `instance` |
-| `targetGroupBinding.vpcID` | `""` | VPC ID (if auto-detect fails) |
-| `networkPolicy.enabled` | `false` | Enable NetworkPolicy |
+`service.*`, `ingress.*`, and `targetGroupBinding.*` control access to the application. Ingress and TargetGroupBinding require their respective controllers. `networkPolicy.enabled` assumes a CNI that enforces NetworkPolicy. The [example overlays](../examples/) show supported configurations.
+
+The NetworkPolicy allows the bundled PostgreSQL port or `externalDatabase.port`, plus DNS and the standard HTTPS/Kubernetes API ports. Add custom OIDC or Kubernetes endpoint ports to `networkPolicy.extraEgressPorts`. When the database DSN comes from `externalDatabase.url`, an existing Secret, or an environment override, add its port to this list if it differs from the configured database rule. For example, `extraEgressPorts: [6543, 8443]` permits a database on 6543 and an identity provider on 8443.
 
 ### Resources and Scheduling
 
-| Value | Default | Description |
-| :---- | :------ | :---------- |
-| `resources.requests.cpu` | `50m` | CPU request |
-| `resources.requests.memory` | `64Mi` | Memory request |
-| `resources.limits.cpu` | `200m` | CPU limit |
-| `resources.limits.memory` | `256Mi` | Memory limit |
-| `strategy.type` | `RollingUpdate` | Deployment strategy |
-| `strategy.rollingUpdate.maxSurge` | `1` | Max pods above desired during rollout |
-| `strategy.rollingUpdate.maxUnavailable` | `0` | Max unavailable during rollout (0 = zero-downtime) |
-| `startupProbe.failureThreshold` | `30` | Startup probe failures before kill (30 x 5s = 150s max) |
-| `startupProbe.periodSeconds` | `5` | Startup probe interval |
-| `livenessProbe.initialDelaySeconds` | `15` | Liveness probe delay |
-| `readinessProbe.initialDelaySeconds` | `5` | Readiness probe delay |
-| `terminationGracePeriodSeconds` | `45` | Graceful shutdown timeout. Sized to fit `srv.Shutdown` (≤30s) + audit-writer drain (≤5s) + buffer. Lower values risk truncating the audit drain on busy shutdowns. |
-| `nodeSelector` | `{}` | Node selector |
-| `tolerations` | `[]` | Tolerations |
-| `affinity` | `{}` | Affinity rules |
-| `topologySpreadConstraints` | `[]` | Topology spread constraints |
-| `priorityClassName` | `""` | Pod priority class |
-| `podDisruptionBudget.enabled` | `false` | Enable PDB |
-| `podDisruptionBudget.maxUnavailable` | `1` | Max unavailable pods |
-| `podAnnotations` | `{}` | Extra pod annotations |
-| `podLabels` | `{}` | Extra pod labels |
-| `extraEnv` | `[]` | Extra environment variables |
-| `extraEnvFrom` | `[]` | Extra envFrom sources |
+`resources`, probe settings, and `terminationGracePeriodSeconds` control application resource use and lifecycle. `nodeSelector`, `tolerations`, `affinity`, and `topologySpreadConstraints` place application pods; they do not configure the policy scaler's node-protection guardrails. `extraEnv` and `extraEnvFrom` add runtime configuration.
 
 ### Metrics
 
-| Value | Default | Description |
-| :---- | :------ | :---------- |
-| `metrics.podAnnotations.enabled` | `true` | Add `prometheus.io/*` annotations |
-| `metrics.serviceMonitor.enabled` | `false` | Create ServiceMonitor CRD |
-| `metrics.serviceMonitor.namespace` | `""` | ServiceMonitor namespace |
-| `metrics.serviceMonitor.interval` | `30s` | Scrape interval |
-| `metrics.serviceMonitor.scrapeTimeout` | `10s` | Scrape timeout |
-| `metrics.serviceMonitor.labels` | `{}` | Labels to match Prometheus Operator selector |
-
-Full source: [`helm/kube-phoenix/values.yaml`](../helm/kube-phoenix/values.yaml)
+`metrics.podAnnotations` configures scrape annotations. `metrics.serviceMonitor` creates a ServiceMonitor when the Prometheus Operator CRD is already installed. See [Observability](#observability).
 
 ### Supply Chain Security
 
@@ -434,5 +374,5 @@ Released images are:
 
 - **Digest-pinned** — the Dockerfile pins all base images (`node`, `golang`, `distroless`) by manifest digest, not mutable tags.
 - **Signed** — each release image is signed with [cosign](https://github.com/sigstore/cosign) using keyless OIDC. Verify with: `cosign verify ghcr.io/macxsimilian/kube-phoenix:<tag> --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'`
-- **SBOM attached** — a Syft-generated SPDX SBOM is attached to each image via `cosign attach sbom`.
-- **Image tags** — a stable Git release tag `vX.Y.Z` produces image tags `X.Y.Z`, `X.Y`, and `X` (without the leading `v`). The release workflow also generates `latest` through the metadata action's default behavior. Pin the full version or digest for reproducible deployments; the shorter tags and `latest` move with subsequent releases.
+- **SBOM attested** — Syft generates an SPDX SBOM, and Cosign signs an attestation attached to the image digest.
+- **Image tags** — a stable Git release tag `vX.Y.Z` produces the full image tag `X.Y.Z` without the leading `v`. Guarded promotion advances `X.Y`, `X`, and `latest` only when the release is newer within each alias's scope; replaying an older release cannot move them backwards. Prereleases do not update stable aliases. Pin the full version or digest for reproducible deployments.

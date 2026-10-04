@@ -111,14 +111,14 @@ export default function CreatePolicyDialog({
     mutationFn: () => {
       const payload: PolicyInput = {
         name: form.name,
-        description: form.description || undefined,
+        description: form.description ?? '',
         sleepWindows: form.editingWindows.filter(w => w.daysOfWeek.length > 0),
         timezone: form.timezone,
         mode: form.mode,
         enabled: form.enabled,
         timeoutMinutes: form.timeoutMinutes,
-        namespaceFilter: form.namespaceFilter || undefined,
-        labelSelector: form.labelSelector || undefined,
+        namespaceFilter: form.namespaceFilter ?? '',
+        labelSelector: form.labelSelector ?? '',
       }
       return isEdit ? updatePolicy(existing!.id, payload) : createPolicy(payload)
     },

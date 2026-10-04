@@ -26,3 +26,19 @@ export const TABLE_BODY_CELL_MONO_SX = {
   fontSize: 13,
   fontFamily: 'monospace',
 } as const
+
+/** Native action buttons inherit cell typography and retain visible keyboard focus. */
+export const TABLE_ACTION_BUTTON_SX = {
+  color: 'inherit',
+  fontFamily: 'inherit',
+  fontSize: 'inherit',
+  fontWeight: 'inherit',
+  justifyContent: 'flex-start',
+  textAlign: 'left',
+  borderRadius: 0.5,
+  '&:focus-visible, &.Mui-focusVisible': {
+    outline: '2px solid',
+    outlineColor: 'primary.main',
+    outlineOffset: 2,
+  },
+} as const

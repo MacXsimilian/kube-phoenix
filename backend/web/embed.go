@@ -23,17 +23,25 @@ func SPAHandler() http.Handler {
 	if err != nil {
 		panic("web: failed to sub static FS: " + err.Error())
 	}
+	return spaHandler(fsys)
+}
+
+func spaHandler(fsys fs.FS) http.Handler {
 	fileServer := http.FileServer(http.FS(fsys))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
+		// Trailing-slash page URLs use an index file in the static export.
+		if path == "" || strings.HasSuffix(path, "/") {
+			path += "index.html"
+		}
 
-		// Try to open the requested path
-		f, err := fsys.Open(path)
-		if err == nil {
-			_ = f.Close()
-			fileServer.ServeHTTP(w, r)
-			return
+		if fs.ValidPath(path) {
+			if f, err := fsys.Open(path); err == nil {
+				_ = f.Close()
+				fileServer.ServeHTTP(w, r)
+				return
+			}
 		}
 
 		// Path not found — serve root index.html for client-side routing

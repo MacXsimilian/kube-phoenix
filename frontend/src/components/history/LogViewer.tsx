@@ -2,7 +2,8 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { getPolicyExecution } from '@/lib/api'
 import { queryKeys } from '@/lib/queryKeys'
 import Drawer from '@mui/material/Drawer'
 import Box from '@mui/material/Box'
@@ -497,7 +498,7 @@ const LogLineRow = React.memo(function LogLineRow({
 })
 
 export default function LogViewer({
-  execution,
+  execution: selectedExecution,
   onClose,
 }: {
   execution: PolicyExecution | null
@@ -513,6 +514,33 @@ export default function LogViewer({
   const [currentErrorIdx, setCurrentErrorIdx] = useState(-1)
   const [autoScroll, setAutoScroll] = useState(true)
   const logContainerRef = useRef<HTMLDivElement>(null)
+
+  const { data: refreshedExecution, isError: executionError } = useQuery({
+    queryKey: queryKeys.policyExecution(selectedExecution?.id),
+    queryFn: ({ signal }) => getPolicyExecution(selectedExecution!.id, signal),
+    enabled: !!selectedExecution,
+    initialData: selectedExecution ?? undefined,
+    staleTime: 0,
+    refetchInterval: query => query.state.data?.status === 'running' ? 2_000 : false,
+    refetchOnWindowFocus: true,
+  })
+  const execution = selectedExecution ? (refreshedExecution ?? selectedExecution) : null
+  const executionId = execution?.id
+  const executionStatus = execution?.status
+  const policyId = execution?.policyId
+  const selectedStatus = selectedExecution?.status
+  const lastExecutionRef = useRef<{ id: number; status: PolicyExecution['status'] } | null>(null)
+
+  useEffect(() => {
+    const previous = lastExecutionRef.current
+    lastExecutionRef.current = executionId && executionStatus ? { id: executionId, status: executionStatus } : null
+    const wasRunning = previous && previous.id === executionId ? previous.status === 'running' : selectedStatus === 'running'
+    if (!executionId || !executionStatus || executionStatus === 'running' || !wasRunning) return
+    queryClient.invalidateQueries({ queryKey: queryKeys.policyExecutions() })
+    queryClient.invalidateQueries({ queryKey: queryKeys.policies() })
+    if (policyId != null) queryClient.invalidateQueries({ queryKey: queryKeys.policy(policyId) })
+    queryClient.invalidateQueries({ queryKey: queryKeys.overview() })
+  }, [executionId, executionStatus, selectedStatus, policyId, queryClient])
 
   const isRunning = execution?.status === 'running'
   const [wsToastOpen, setWsToastOpen] = useState(false)
@@ -707,6 +735,12 @@ export default function LogViewer({
             </Box>
 
             <Divider />
+
+            {executionError && (
+              <Alert severity="warning" sx={{ borderRadius: 0 }}>
+                Could not refresh execution status — showing last known values.
+              </Alert>
+            )}
 
             <RolloutProgressBar lines={lines} status={execution.status} direction={execution.direction} />
 

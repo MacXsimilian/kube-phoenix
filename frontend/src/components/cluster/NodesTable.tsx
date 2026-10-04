@@ -15,6 +15,7 @@ import TablePagination from '@mui/material/TablePagination'
 import Chip from '@mui/material/Chip'
 import Tooltip from '@mui/material/Tooltip'
 import Box from '@mui/material/Box'
+import ButtonBase from '@mui/material/ButtonBase'
 import TextField from '@mui/material/TextField'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Switch from '@mui/material/Switch'
@@ -30,6 +31,7 @@ import { useColors } from '@/lib/colors'
 import { NODES_REFETCH_MS } from '@/lib/constants'
 import { useTriStateSort, type SortDir } from '@/lib/useTriStateSort'
 import SortHeader from '@/lib/SortHeader'
+import { TABLE_ACTION_BUTTON_SX } from '@/lib/tableStyles'
 import MiniBar from './MiniBar'
 import NodeDetailDrawer from './NodeDetailDrawer'
 
@@ -84,7 +86,11 @@ const NodeRow = React.memo(function NodeRow({ node, groupByZone, isSelected, onS
       onClick={() => onSelect(isSelected ? null : node)}
       sx={{ cursor: 'pointer', ...(isSelected ? { bgcolor: SELECTED_ROW_BG } : {}) }}
     >
-      <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>{node.name}</TableCell>
+      <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+        <ButtonBase type="button" aria-label={`View node ${node.name}`} sx={TABLE_ACTION_BUTTON_SX}>
+          {node.name}
+        </ButtonBase>
+      </TableCell>
       <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{podAge(node.createdAt)}</TableCell>
       <TableCell sx={{ fontSize: 13 }}>{node.instanceType || '—'}</TableCell>
       {!groupByZone && <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{node.zone || '—'}</TableCell>}

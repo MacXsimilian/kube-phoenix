@@ -98,58 +98,68 @@ export function hasSleepWindows(
   return !!windows && windows.length > 0
 }
 
-/**
- * Compute total weekly sleep and awake hours from sleep windows.
- */
+/** Count the union of all sleep intervals in the recurring week. */
+function weeklySleepMinutes(windows: SleepWindow[]): number {
+  const days: [number, number][][] = Array.from({ length: 7 }, () => [])
+  for (const sw of windows) {
+    const [startHour, startMinute] = sw.startTime.split(':').map(Number)
+    const [endHour, endMinute] = sw.endTime.split(':').map(Number)
+    const startMin = sw.allDay ? 0 : startHour * MINUTES_PER_HOUR + startMinute
+    const endMin = sw.allDay ? MINUTES_PER_DAY : endHour * MINUTES_PER_HOUR + endMinute
+    for (const day of sw.daysOfWeek) {
+      if (endMin > startMin) {
+        days[day].push([startMin, endMin])
+      } else {
+        days[day].push([startMin, MINUTES_PER_DAY])
+        days[(day + 1) % 7].push([0, endMin])
+      }
+    }
+  }
+
+  let total = 0
+  for (const intervals of days) {
+    intervals.sort(([a], [b]) => a - b)
+    let start = 0
+    let end = 0
+    for (const [nextStart, nextEnd] of intervals) {
+      if (nextStart > end) {
+        total += end - start
+        start = nextStart
+        end = nextEnd
+      } else {
+        end = Math.max(end, nextEnd)
+      }
+    }
+    total += end - start
+  }
+  return total
+}
+
+/** Compute rounded weekly sleep and awake hours, merging overlapping windows. */
 export function computeWeeklyStats(windows: SleepWindow[]): {
   sleepHours: number
   awakeHours: number
 } {
-  let sleepMinutes = 0
-
-  for (const sw of windows) {
-    if (sw.daysOfWeek.length === 0) continue
-    let minutesPerDay: number
-    if (sw.allDay) {
-      minutesPerDay = MINUTES_PER_DAY
-    } else {
-      const [sh, sm] = sw.startTime.split(':').map(Number)
-      const [eh, em] = sw.endTime.split(':').map(Number)
-      const startMin = sh * MINUTES_PER_HOUR + sm
-      const endMin = eh * MINUTES_PER_HOUR + em
-      minutesPerDay =
-        endMin <= startMin
-          ? MINUTES_PER_DAY - startMin + endMin // overnight
-          : endMin - startMin
-    }
-    sleepMinutes += minutesPerDay * sw.daysOfWeek.length
-  }
-
-  const sleepHours = Math.round(sleepMinutes / MINUTES_PER_HOUR)
+  const sleepHours = Math.round(weeklySleepMinutes(windows) / MINUTES_PER_HOUR)
   return { sleepHours, awakeHours: HOURS_PER_WEEK - sleepHours }
 }
 
-/**
- * Weekly sleep time as a percentage of the full week, clamped to 100.
- * `overcounted` is true when overlapping windows pushed the raw total past
- * 100% — computeWeeklyStats sums each window independently, so overlaps are
- * double-counted.
- */
-export function weeklySavingsPercent(windows: SleepWindow[]): {
-  percent: number
-  overcounted: boolean
-} {
-  const { sleepHours } = computeWeeklyStats(windows)
-  const rawPercent = (sleepHours / HOURS_PER_WEEK) * 100
-  return { percent: Math.min(100, Math.round(rawPercent)), overcounted: rawPercent > 100 }
+/** Weekly savings percentage, calculated from merged minutes before rounding. */
+export function weeklySavingsPercent(windows: SleepWindow[]): { percent: number } {
+  return { percent: Math.round(weeklySleepMinutes(windows) / (HOURS_PER_WEEK * MINUTES_PER_HOUR) * 100) }
 }
 
 /**
- * Project a Date into an IANA timezone by reconstructing it from
- * Intl.DateTimeFormat parts. Returns a local Date whose field values
- * (getDay, getHours, …) reflect the target timezone.
+ * Encode civil timezone fields in a UTC Date so the browser's DST rules cannot
+ * normalize them. Read these internal dates with UTC getters only.
  */
-function dateInTimezone(date: Date, tz: string): Date {
+function dateInTimezone(date: Date, tz?: string): Date {
+  if (!tz) {
+    return new Date(Date.UTC(
+      date.getFullYear(), date.getMonth(), date.getDate(),
+      date.getHours(), date.getMinutes(), date.getSeconds(),
+    ))
+  }
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
     year: 'numeric',
@@ -158,17 +168,13 @@ function dateInTimezone(date: Date, tz: string): Date {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false,
+    hourCycle: 'h23',
   })
   const parts = Object.fromEntries(fmt.formatToParts(date).map((p) => [p.type, p.value]))
-  return new Date(
-    +parts.year,
-    +parts.month - 1,
-    +parts.day,
-    +parts.hour,
-    +parts.minute,
-    +parts.second,
-  )
+  return new Date(Date.UTC(
+    +parts.year, +parts.month - 1, +parts.day,
+    +parts.hour, +parts.minute, +parts.second,
+  ))
 }
 
 /**
@@ -177,10 +183,10 @@ function dateInTimezone(date: Date, tz: string): Date {
  */
 export function nowInTimezone(tz?: string): { dayOfWeek: number; fractionalHour: number } {
   const now = new Date()
-  const d = tz ? dateInTimezone(now, tz) : now
+  const d = dateInTimezone(now, tz)
   return {
-    dayOfWeek: d.getDay(),
-    fractionalHour: d.getHours() + d.getMinutes() / 60,
+    dayOfWeek: d.getUTCDay(),
+    fractionalHour: d.getUTCHours() + d.getUTCMinutes() / 60,
   }
 }
 
@@ -191,10 +197,9 @@ const MONDAY_FIRST_DOW_MAP = [1, 2, 3, 4, 5, 6, 0] // Mon..Sun
 
 export const DOW_MAP = MONDAY_FIRST_DOW_MAP
 
-/** Convert an ISO timestamp to a Date in the given IANA timezone. */
+/** Convert an ISO timestamp to an internal UTC-encoded civil date. */
 function toTimezone(iso: string, tz?: string): Date {
   const d = new Date(iso)
-  if (!tz) return d
   return dateInTimezone(d, tz)
 }
 
@@ -215,24 +220,24 @@ export function computeTimeRangeBlocks(startISO: string, endISO: string, tz?: st
   const end = toTimezone(endISO, tz)
 
   const cursor = new Date(start)
-  cursor.setHours(0, 0, 0, 0)
+  cursor.setUTCHours(0, 0, 0, 0)
   const endDay = new Date(end)
-  endDay.setHours(0, 0, 0, 0)
+  endDay.setUTCHours(0, 0, 0, 0)
 
   while (cursor <= endDay) {
-    const row = MONDAY_FIRST_DOW_MAP.indexOf(cursor.getDay())
+    const row = MONDAY_FIRST_DOW_MAP.indexOf(cursor.getUTCDay())
     if (row !== -1) {
       const isSameAsStart =
         cursor.getTime() ===
-        new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
+        new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())).getTime()
       const isSameAsEnd = cursor.getTime() === endDay.getTime()
-      const sh = isSameAsStart ? start.getHours() + start.getMinutes() / 60 : 0
-      const eh = isSameAsEnd ? end.getHours() + end.getMinutes() / 60 : 24
+      const sh = isSameAsStart ? start.getUTCHours() + start.getUTCMinutes() / 60 : 0
+      const eh = isSameAsEnd ? end.getUTCHours() + end.getUTCMinutes() / 60 : 24
       if (eh > sh) {
         blocks.push({ row, startHour: sh, endHour: eh })
       }
     }
-    cursor.setDate(cursor.getDate() + 1)
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
   }
   return blocks
 }

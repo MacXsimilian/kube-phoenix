@@ -32,12 +32,15 @@ export function useExecutionLogs(executionId: number | undefined, isRunning: boo
   if (prevExecIdRef.current !== executionId) {
     prevExecIdRef.current = executionId
     setLiveLines([])
+    setIsConnected(false)
+    setCleanClose(false)
+    setMaxRetriesReached(false)
   }
 
   const { data: historicLines, isError: logsError } = useQuery({
     queryKey: queryKeys.logs(executionId),
     queryFn: () => getPolicyExecutionLogs(executionId!),
-    enabled: !!executionId && !isRunning && !isConnected,
+    enabled: !!executionId && !isRunning,
     staleTime: Infinity,
   })
 
@@ -141,7 +144,13 @@ export function useExecutionLogs(executionId: number | undefined, isRunning: boo
         rafRef.current = null
       }
       bufferRef.current = []
-      wsRef.current?.close()
+      if (wsRef.current) {
+        wsRef.current.onopen = null
+        wsRef.current.onmessage = null
+        wsRef.current.onerror = null
+        wsRef.current.onclose = null
+        wsRef.current.close()
+      }
       wsRef.current = null
     }
   }, [executionId, isRunning, scheduleReconnect])

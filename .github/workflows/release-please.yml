@@ -53,16 +53,3 @@ jobs:
       contents: write
       packages: write
       id-token: write
-
-  # ── Go Report Card refresh (runs on every merge to master) ──────────────────
-  goreportcard:
-    name: Refresh Go Report Card
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Trigger rescan
-        run: |
-          curl -fsS -X POST https://goreportcard.com/checks \
-            -d "repo=github.com/macxsimilian/kube-phoenix/backend"

@@ -1,0 +1,101 @@
+{
+  "createdAt": "2026-10-04T21:13:58.237681+00:00",
+  "sourceCommit": "5345b52e6f4abc437a4fb4ea01aa6c1e03d0d70f",
+  "dataSource": "Bundled frontend/mock-api fixtures. All displayed cluster, user, execution, and monitoring data are mock data.",
+  "captureNotes": "Viewport captures. Font loading and populated content checked; Next.js development overlay hidden. No image retouching.",
+  "observabilityNotes": "The metrics dashboard is alpha; API Rivers is illustrative. Monitoring screenshots use generated mock metrics.",
+  "knownUiDetails": [
+    "Mock execution6 reports5 scaled in its header and6 scaled in its seeded log summary. The screenshot preserves the bundled fixture values."
+  ],
+  "imageCount": 8,
+  "records": [
+    {
+      "file": "overview.png",
+      "title": "Overview",
+      "route": "/overview/",
+      "theme": "dark",
+      "status": "captured",
+      "capturedAt": "2026-10-04T21:05:12.814Z",
+      "width": 1600,
+      "height": 1000,
+      "sha256": "82f550a4dfd9a674aaf1ded9649384165e25657edf9451a04c90c8ddf9651426"
+    },
+    {
+      "file": "policies.png",
+      "title": "Policies",
+      "route": "/policies/",
+      "theme": "dark",
+      "status": "captured",
+      "capturedAt": "2026-10-04T21:10:03.854Z",
+      "width": 1600,
+      "height": 1000,
+      "sha256": "1820bed4a4744ef71a8fa999335a830a952db644c3ad8b77bc7960b56db7505b"
+    },
+    {
+      "file": "policy-editor.png",
+      "title": "Policy schedule editor",
+      "route": "/policies/",
+      "theme": "dark",
+      "status": "captured",
+      "capturedAt": "2026-10-04T21:12:40.233Z",
+      "width": 1600,
+      "height": 1000,
+      "sha256": "650efa8f077eaf29d15c62eb2b2645b2eefa9d57525f703c8c7ed7e218d05a19"
+    },
+    {
+      "file": "workloads.png",
+      "title": "Cluster workloads",
+      "route": "/cluster/",
+      "theme": "dark",
+      "status": "captured",
+      "capturedAt": "2026-10-04T21:06:02.864Z",
+      "width": 1600,
+      "height": 1000,
+      "sha256": "8cd32e5153066e9df14f8ab87121174deb1797e34a8a0d92cfd7bf0de43337ce"
+    },
+    {
+      "file": "execution-logs.png",
+      "title": "Execution logs",
+      "route": "/history/",
+      "theme": "dark",
+      "status": "captured",
+      "capturedAt": "2026-10-04T21:12:45.813Z",
+      "width": 1600,
+      "height": 1000,
+      "sha256": "1f587acfe097c42885aeafdc51b1eb27f21b4d50c02f79955cbc02e9c8b93e22"
+    },
+    {
+      "file": "guardrails.png",
+      "title": "Guardrails",
+      "route": "/guardrails/",
+      "theme": "dark",
+      "status": "captured",
+      "capturedAt": "2026-10-04T21:11:39.310Z",
+      "width": 1600,
+      "height": 1000,
+      "sha256": "23cc023ef1a1757aaffedc31511fe0695eb12ee0c6660a8da8a795b54b12e4cf"
+    },
+    {
+      "file": "metrics-dashboard.png",
+      "title": "Metrics dashboard (alpha)",
+      "route": "/observability/?tab=metrics&range=1h",
+      "theme": "dark",
+      "status": "captured",
+      "capturedAt": "2026-10-04T21:12:50.030Z",
+      "width": 1600,
+      "height": 1000,
+      "sha256": "0f0305a52428599c273325cc357ca5a1ea225dcc5c21d6c207602120ed1b862d"
+    },
+    {
+      "file": "api-rivers.png",
+      "title": "API Rivers (illustrative)",
+      "route": "/observability/?tab=rivers",
+      "theme": "dark",
+      "status": "captured",
+      "capturedAt": "2026-10-04T21:08:36.648Z",
+      "width": 1600,
+      "height": 1000,
+      "sha256": "bd834b99cd43d35c3fe22a34d42dcdd702bce107fee23d02161aea0b9636e14d"
+    }
+  ]
+}

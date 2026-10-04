@@ -60,8 +60,8 @@ export default function ErrorTimeline({ events, history }: ErrorTimelineProps) {
 
 function useTimeRange(history: MetricSnapshot[]) {
   return useMemo(() => {
-    const startMs = new Date(history[0].timestamp).getTime()
-    const endMs = Date.now()
+    const endMs = history.length > 0 ? Date.parse(history[history.length - 1].timestamp) : 0
+    const startMs = history.length > 0 ? Date.parse(history[0].timestamp) : endMs
     return { startMs, endMs }
   }, [history])
 }

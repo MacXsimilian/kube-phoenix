@@ -1,6 +1,7 @@
-import type { Guardrails, Workload, Node, NodePod, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecutionPage, LogLine, ScheduledException, ScheduledExceptionInput, ClusterInfo, VersionInfo } from './types'
+import type { Guardrails, Workload, Node, NodePod, PodDetail, Overview, User, AuditLogPage, Policy, PolicyInput, PolicyExecution, PolicyExecutionPage, LogLine, ScheduledException, ScheduledExceptionInput, ClusterInfo, VersionInfo } from './types'
 import { getCSRFToken } from './auth'
 import { REQUEST_TIMEOUT_MS } from './constants'
+import type { MetricSnapshot, TimeRange } from './observability-types'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? ''
 
@@ -68,6 +69,11 @@ export const getClusterInfo = (): Promise<ClusterInfo> =>
 
 export const getVersionInfo = (): Promise<VersionInfo> =>
   apiFetch<VersionInfo>('/api/version')
+
+// ── Observability history ────────────────────────────────────────────────────
+
+export const getObservabilityHistory = async (range: TimeRange, signal?: AbortSignal): Promise<MetricSnapshot[]> =>
+  (await apiFetch<MetricSnapshot[] | null>(`/api/observability/history?range=${range}`, { signal })) ?? []
 
 // ── User settings ────────────────────────────────────────────────────────────
 
@@ -360,6 +366,9 @@ export const getPolicyExecutions = (params?: {
   return apiFetch<PolicyExecutionPage>(`/api/policy-executions?${q}`)
 }
 
+export const getPolicyExecution = (id: number, signal?: AbortSignal): Promise<PolicyExecution> =>
+  apiFetch<PolicyExecution>(`/api/policy-executions/${id}`, { signal })
+
 export const getPolicyExecutionLogs = (id: number): Promise<LogLine[]> =>
   apiFetch<LogLine[]>(`/api/policy-executions/${id}/logs`)
 
@@ -403,8 +412,8 @@ export const previewGuardrailsImport = (payload: unknown): Promise<unknown> =>
     body: JSON.stringify(payload),
   })
 
-export const applyGuardrailsImport = (payload: unknown): Promise<unknown> =>
-  apiFetch<unknown>('/api/guardrails/import/apply', {
+export const applyGuardrailsImport = (payload: unknown): Promise<{ guardrails: Guardrails }> =>
+  apiFetch<{ guardrails: Guardrails }>('/api/guardrails/import/apply', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
@@ -415,8 +424,8 @@ export const previewPolicyImport = (payload: unknown): Promise<unknown> =>
     body: JSON.stringify(payload),
   })
 
-export const applyPolicyImport = (payload: unknown): Promise<unknown> =>
-  apiFetch<unknown>('/api/policies/import/apply', {
+export const applyPolicyImport = (payload: unknown): Promise<{ policy: Policy }> =>
+  apiFetch<{ policy: Policy }>('/api/policies/import/apply', {
     method: 'POST',
     body: JSON.stringify(payload),
   })

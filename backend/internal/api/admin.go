@@ -11,15 +11,14 @@ import (
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const resetConfirmPhrase = "RESET DATABASE"
 
-// destructiveOpTimeout bounds long-running admin operations (resetDB,
-// emergencyScale) so they can finish even if the operator closes the browser
-// tab mid-flight. Without it the in-flight K8s scale calls and DB writes would
-// inherit the request context and abort on client disconnect, potentially
-// leaving workloads half-scaled.
+// destructiveOpTimeout bounds emergency workload scaling independently of the
+// request so closing the browser does not abort recovery midway. It does not
+// govern the scheduler's application lifetime or non-context-aware store calls.
 const destructiveOpTimeout = 5 * time.Minute
 
 type resetEvent struct {
@@ -86,11 +85,8 @@ func (h *Handler) resetDB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	opCtx, opCancel := context.WithTimeout(context.Background(), destructiveOpTimeout)
-	defer opCancel()
-
 	emit("step", "Restarting policy scheduler...")
-	if err := h.policyScheduler.Restart(opCtx); err != nil {
+	if err := h.policyScheduler.Restart(); err != nil {
 		slog.Error("admin: policy scheduler restart failed", "err", err)
 		emit("error", "Policy scheduler restart failed — see server logs for details")
 		return
@@ -173,76 +169,142 @@ func (h *Handler) emergencyScale(w http.ResponseWriter, r *http.Request) {
 	opCtx, opCancel := context.WithTimeout(context.Background(), destructiveOpTimeout)
 	defer opCancel()
 
+	var result emergencyScaleCounts
 	if len(snapshots) == 0 {
 		emit("step", "No sleeping workloads found — skipping scaling")
 	} else {
-		h.emergencyScaleSnapshots(opCtx, snapshots, emit)
+		result = emergencyScaleSnapshots(opCtx, h.store, h.k8s, snapshots, emit)
 	}
 
 	// Step 7: Restart the scheduler (all policies are now disabled, so it idles).
 	emit("step", "Restarting policy scheduler...")
-	if err := h.policyScheduler.Restart(opCtx); err != nil {
+	if err := h.policyScheduler.Restart(); err != nil {
 		slog.Error("admin: policy scheduler restart failed", "err", err)
 		emit("error", "Policy scheduler restart failed — see server logs for details")
 		return
 	}
 
-	emit("done", "Emergency scale complete. All policies disabled, sleeping workloads scaled to 1 replica.")
+	if result.failed > 0 {
+		emit("error", "Emergency scale finished with errors. All policies disabled; failed workload restores retain their snapshots for retry. See progress and server logs for details.")
+		return
+	}
+	emit("done", "Emergency scale complete. All policies disabled; existing sleeping workloads scaled to 1 replica, missing workloads skipped.")
+}
+
+// emergencyScaleStore contains the persistence operations needed by emergency
+// recovery. Keeping this boundary narrow allows failure-path regression tests.
+type emergencyScaleStore interface {
+	CreatePolicyExecution(*store.PolicyExecution) error
+	FinishPolicyExecution(uint, string, map[string]int) error
+	UpdatePolicyState(uint, string, *time.Time) error
+	CloseSnapshot(uint, uint, int32) error
+	MarkSnapshotDeletedAtWake(uint, uint) error
+}
+
+type emergencyScaleCounts struct {
+	scaled  int
+	skipped int
+	failed  int
+}
+
+type emergencyPolicyExecution struct {
+	id     uint
+	counts emergencyScaleCounts
 }
 
 // emergencyScaleSnapshots groups snapshots by policy, creates synthetic wake
 // executions, scales every workload to one replica, closes snapshots, and
 // finalises each execution. Progress is reported via emit.
-func (h *Handler) emergencyScaleSnapshots(
+func emergencyScaleSnapshots(
 	ctx context.Context,
+	st emergencyScaleStore,
+	k8sClient k8sScaler,
 	snapshots []store.WorkloadSnapshot,
 	emit func(typ, msg string),
-) {
-	policyExecs := h.createEmergencyExecutions(snapshots, emit)
+) emergencyScaleCounts {
+	policyExecs := createEmergencyExecutions(st, snapshots, emit)
 
-	var scaled, failed int
 	for _, snap := range snapshots {
-		execID, ok := policyExecs[snap.PolicyID]
-		if !ok {
-			failed++
+		exec := policyExecs[snap.PolicyID]
+		if exec.id == 0 {
+			exec.counts.failed++
 			continue
 		}
-		if err := scaleWorkloadTo(ctx, h.k8s, snap, 1); err != nil {
+		if err := scaleWorkloadTo(ctx, k8sClient, snap, 1); err != nil {
+			if apierrors.IsNotFound(err) {
+				if err := st.MarkSnapshotDeletedAtWake(snap.ID, exec.id); err != nil {
+					slog.Error("admin: mark missing snapshot failed", "snapID", snap.ID, "err", err)
+					emit("step", fmt.Sprintf("Failed to record missing %s %s/%s; snapshot retained for retry", snap.Kind, snap.Namespace, snap.Name))
+					exec.counts.failed++
+				} else {
+					emit("step", fmt.Sprintf("Skipped missing %s %s/%s", snap.Kind, snap.Namespace, snap.Name))
+					exec.counts.skipped++
+				}
+				continue
+			}
 			slog.Error("admin: emergency scale workload failed",
 				"kind", snap.Kind, "namespace", snap.Namespace, "name", snap.Name, "err", err)
 			emit("step", fmt.Sprintf("Failed to scale %s %s/%s: %v", snap.Kind, snap.Namespace, snap.Name, err))
-			_ = h.store.MarkSnapshotDeletedAtWake(snap.ID, execID)
-			failed++
+			exec.counts.failed++
 			continue
 		}
-		if err := h.store.CloseSnapshot(snap.ID, execID, 1); err != nil {
+		exec.counts.scaled++
+		if err := st.CloseSnapshot(snap.ID, exec.id, 1); err != nil {
 			slog.Error("admin: close snapshot failed", "snapID", snap.ID, "err", err)
+			emit("step", fmt.Sprintf("Scaled %s %s/%s to 1 replica, but failed to close its snapshot; retained for retry", snap.Kind, snap.Namespace, snap.Name))
+			exec.counts.failed++
+			continue
 		}
 		emit("step", fmt.Sprintf("Scaled %s %s/%s to 1 replica", snap.Kind, snap.Namespace, snap.Name))
-		scaled++
 	}
 
-	for policyID, execID := range policyExecs {
-		_ = h.store.FinishPolicyExecution(execID, store.ExecStatusSuccess, map[string]int{
-			"scaled": scaled, "errors": failed,
-		})
-		_ = h.store.UpdatePolicyState(policyID, store.PolicyStateAwake, nil)
+	var result emergencyScaleCounts
+	for policyID, exec := range policyExecs {
+		state := store.PolicyStateAwake
+		if exec.counts.failed > 0 {
+			state = store.PolicyStateUnknown
+		}
+		if err := st.UpdatePolicyState(policyID, state, nil); err != nil {
+			slog.Error("admin: update emergency policy state failed", "policyID", policyID, "err", err)
+			emit("step", fmt.Sprintf("Failed to record recovery state for policy %d", policyID))
+			exec.counts.failed++
+		}
+		if exec.id != 0 {
+			status := store.ExecStatusSuccess
+			if exec.counts.failed > 0 {
+				status = store.ExecStatusFailed
+			}
+			if err := st.FinishPolicyExecution(exec.id, status, map[string]int{
+				"scaled": exec.counts.scaled, "skipped": exec.counts.skipped, "errors": exec.counts.failed,
+			}); err != nil {
+				slog.Error("admin: finish emergency execution failed", "execID", exec.id, "err", err)
+				emit("step", fmt.Sprintf("Failed to finalize recovery execution for policy %d", policyID))
+				exec.counts.failed++
+			}
+		}
+		result.scaled += exec.counts.scaled
+		result.skipped += exec.counts.skipped
+		result.failed += exec.counts.failed
 	}
 
-	emit("step", fmt.Sprintf("Scaling complete: %d succeeded, %d failed", scaled, failed))
+	emit("step", fmt.Sprintf("Scaling complete: %d scaled, %d skipped, %d errors", result.scaled, result.skipped, result.failed))
+	return result
 }
 
-// createEmergencyExecutions returns a map of policyID → executionID, creating
+// createEmergencyExecutions returns a map of policyID → execution, creating
 // one synthetic wake execution per distinct policy referenced by the snapshots.
-func (h *Handler) createEmergencyExecutions(
+// Failed creations retain an entry with a zero ID so scaling is skipped safely.
+func createEmergencyExecutions(
+	st emergencyScaleStore,
 	snapshots []store.WorkloadSnapshot,
 	emit func(typ, msg string),
-) map[uint]uint {
-	policyExecs := map[uint]uint{}
+) map[uint]*emergencyPolicyExecution {
+	policyExecs := map[uint]*emergencyPolicyExecution{}
 	for _, snap := range snapshots {
 		if _, ok := policyExecs[snap.PolicyID]; ok {
 			continue
 		}
+		policyExecs[snap.PolicyID] = &emergencyPolicyExecution{}
 		exec := &store.PolicyExecution{
 			PolicyID:  snap.PolicyID,
 			Direction: "wake",
@@ -251,12 +313,12 @@ func (h *Handler) createEmergencyExecutions(
 			Status:    store.ExecStatusRunning,
 			Mode:      store.PolicyModeApply,
 		}
-		if err := h.store.CreatePolicyExecution(exec); err != nil {
+		if err := st.CreatePolicyExecution(exec); err != nil {
 			slog.Error("admin: create emergency execution failed", "policyID", snap.PolicyID, "err", err)
 			emit("step", fmt.Sprintf("Warning: could not create execution record for policy %d", snap.PolicyID))
 			continue
 		}
-		policyExecs[snap.PolicyID] = exec.ID
+		policyExecs[snap.PolicyID].id = exec.ID
 	}
 	return policyExecs
 }

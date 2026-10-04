@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { User } from './types'
 import { REQUEST_TIMEOUT_MS } from './constants'
 
@@ -60,11 +61,19 @@ export function getCSRFToken(): string {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient()
   const [user, setUser] = useState<User | null>(null)
   const [checking, setChecking] = useState(true)
   const [backendError, setBackendError] = useState(false)
   const [oidcEnabled, setOidcEnabled] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const userRef = useRef<User | null>(null)
+
+  const updateUser = useCallback((nextUser: User | null) => {
+    if (userRef.current?.id !== nextUser?.id) queryClient.clear()
+    userRef.current = nextUser
+    setUser(prev => usersEqual(prev, nextUser) ? prev : nextUser)
+  }, [queryClient])
 
   const fetchMe = useCallback(async (): Promise<FetchMeResult> => {
     try {
@@ -93,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchMe()
       .then(result => {
         if (result.kind === 'user') {
-          setUser(result.user)
+          updateUser(result.user)
         } else if (result.kind === 'unauthenticated') {
           // Probe if backend requires auth at all (dev mode check). The probe
           // intentionally bypasses apiFetch because 401/403 is the expected
@@ -105,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .then(res => {
               if (res.ok) {
                 // No auth required — dev mode. Create a synthetic user.
-                setUser({
+                updateUser({
                   id: 0, username: 'dev', role: 'admin', source: 'local',
                   enabled: true, createdAt: '', permissions: [...DEV_PERMISSIONS],
                 })
@@ -120,19 +129,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       })
       .finally(() => setChecking(false))
-  }, [fetchMe])
+  }, [fetchMe, updateUser])
 
   // Listen for session-expired events from the API layer (401 responses).
   useEffect(() => {
-    const handler = () => setUser(null)
+    const handler = () => updateUser(null)
     window.addEventListener('kp-session-expired', handler)
     return () => window.removeEventListener('kp-session-expired', handler)
-  }, [])
-
-  // Keep a ref to the current user so the poll interval callback can read the
-  // latest value without restarting the interval every time `user` changes.
-  const userRef = useRef(user)
-  useEffect(() => { userRef.current = user }, [user])
+  }, [updateUser])
 
   // Periodic refresh — detect role changes, session expiry, disabled accounts.
   // Derive a stable boolean so the interval starts/stops on login/logout but does
@@ -142,19 +146,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!shouldPoll) return
     intervalRef.current = setInterval(async () => {
       if (!userRef.current || userRef.current.id === 0) return
+      const requestedUserId = userRef.current.id
       const result = await fetchMe()
+      if (userRef.current?.id !== requestedUserId) return
       if (result.kind === 'user') {
-        setUser(prev => usersEqual(prev, result.user) ? prev : result.user)
+        updateUser(result.user)
       } else if (result.kind === 'unauthenticated') {
         // Session expired or user disabled — log out.
-        setUser(null)
+        updateUser(null)
       }
       // 'error' (network / 5xx): preserve current user; the next poll will retry.
     }, ME_POLL_INTERVAL)
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [shouldPoll, fetchMe])
+  }, [shouldPoll, fetchMe, updateUser])
 
   const login = useCallback(async (username: string, password: string) => {
     const res = await fetch(`${BASE}/api/auth/login`, {
@@ -170,13 +176,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // After login, fetch full me (with permissions) — the login response has
     // the user but the /me endpoint is authoritative with permissions.
     const me = await fetchMe()
-    setUser(me.kind === 'user' ? me.user : data.user)
-  }, [fetchMe])
+    updateUser(me.kind === 'user' ? me.user : data.user)
+  }, [fetchMe, updateUser])
 
   const refreshUser = useCallback(async () => {
+    const requestedUserId = userRef.current?.id
     const me = await fetchMe()
-    if (me.kind === 'user') setUser(me.user)
-  }, [fetchMe])
+    if (userRef.current?.id !== requestedUserId) return
+    if (me.kind === 'user') updateUser(me.user)
+    else if (me.kind === 'unauthenticated') updateUser(null)
+  }, [fetchMe, updateUser])
 
   const logout = useCallback(async () => {
     try {
@@ -190,13 +199,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (res.ok && res.status === 200) {
         const data = await res.json()
         if (data.oidcLogoutUrl) {
+          updateUser(null)
           window.location.href = data.oidcLogoutUrl
           return
         }
       }
     } catch (err) { if (process.env.NODE_ENV === 'development') console.warn('[kp] logout failed:', err) }
-    setUser(null)
-  }, [])
+    updateUser(null)
+  }, [updateUser])
 
   const value = useMemo(() => ({
     isAuthenticated: !!user,

@@ -22,10 +22,10 @@ and navigate the review process.
 
 | Tool | Version | Purpose |
 | :--- | :------ | :------ |
-| Go | 1.26.8+ | Backend compilation and tests; minimum from `backend/go.mod` |
-| Node.js | 24+ | Frontend build (Next.js) |
+| Go | 1.27.1+ | Backend compilation and tests; minimum from `backend/go.mod` |
+| Node.js | 26 (Current) | Frontend build (Next.js); matches Docker and CI |
 | Docker | any | Local PostgreSQL via `docker compose` |
-| golangci-lint | v2.12.2 | Matches CI (`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2`) |
+| golangci-lint | v2.14.0 | Matches CI (`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0`) |
 | govulncheck | latest | Vulnerability scanning (`go install golang.org/x/vuln/cmd/govulncheck@latest`) |
 | kubectl | Within one minor version of the API server | Optional CLI for cluster setup and inspection; the backend uses `client-go` directly |
 
@@ -49,7 +49,7 @@ make dev
 
 # 3. Start the backend (separate terminal) -- http://localhost:8080
 ADMIN_USER=admin ADMIN_PASSWORD=adminadmin \
-  CORS_ALLOWED_ORIGIN=http://localhost:3000 make dev-backend
+  COOKIE_SECURE=false CORS_ALLOWED_ORIGIN=http://localhost:3000 make dev-backend
 
 # 4. Create frontend env file (one-time)
 echo 'NEXT_PUBLIC_API_URL=http://localhost:8080' > frontend/.env.local
@@ -70,8 +70,9 @@ The backend auto-migrates the database schema and seeds default data on startup.
 manual migration step is needed.
 
 > **Note:** Authentication is always enforced. `ADMIN_USER` and `ADMIN_PASSWORD` must be
-> set to seed an admin account -- without them the backend starts but no one can log in.
+> set to seed an admin account -- without them a fresh database has no local account to log in with.
 > `CORS_ALLOWED_ORIGIN` is required when the frontend and backend run on different ports.
+> `COOKIE_SECURE=false` permits session cookies for this local HTTP setup.
 > `NEXT_PUBLIC_API_URL` tells the frontend where to find the backend (baked in at
 > startup -- restart the frontend after changing it).
 

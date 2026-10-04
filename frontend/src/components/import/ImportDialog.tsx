@@ -25,7 +25,7 @@ import TableRow from '@mui/material/TableRow'
 import { queryKeys } from '@/lib/queryKeys'
 import { formatError, fmtDt } from '@/lib/formatters'
 import { windowsToText } from '@/lib/windowUtils'
-import type { SleepWindow } from '@/lib/types'
+import type { Guardrails, Policy, SleepWindow } from '@/lib/types'
 import {
   previewGuardrailsImport, applyGuardrailsImport,
   previewPolicyImport, applyPolicyImport,
@@ -120,9 +120,10 @@ interface ImportDialogProps {
   onClose: () => void
   kind: ImportKind
   onNotify?: (msg: string, severity: 'success' | 'error') => void
+  onGuardrailsImported?: (guardrails: Guardrails) => void
 }
 
-export default function ImportDialog({ open, onClose, kind, onNotify }: ImportDialogProps) {
+export default function ImportDialog({ open, onClose, kind, onNotify, onGuardrailsImported }: ImportDialogProps) {
   const qc = useQueryClient()
   const [pastedText, setPastedText] = useState('')
   const [parseError, setParseError] = useState<string | null>(null)
@@ -182,7 +183,17 @@ export default function ImportDialog({ open, onClose, kind, onNotify }: ImportDi
     setBusy(true)
     setError(null)
     try {
-      await applyByKind(kind, previewedPayload, resolution, newName)
+      const result = await applyByKind(kind, previewedPayload, resolution, newName)
+      if (kind === 'guardrails') {
+        const { guardrails } = result as { guardrails: Guardrails }
+        await qc.cancelQueries({ queryKey: queryKeys.guardrails() })
+        qc.setQueryData(queryKeys.guardrails(), guardrails)
+        onGuardrailsImported?.(guardrails)
+      } else if (kind === 'policy') {
+        const { policy } = result as { policy: Policy }
+        await qc.cancelQueries({ queryKey: queryKeys.policy(policy.id) })
+        qc.setQueryData(queryKeys.policy(policy.id), policy)
+      }
       invalidateAfterImport(qc, kind)
       onNotify?.(successMessage(kind), 'success')
       onClose()
@@ -241,7 +252,7 @@ export default function ImportDialog({ open, onClose, kind, onNotify }: ImportDi
             <Button
               variant="contained"
               onClick={runApply}
-              disabled={busy || (kind === 'policy' && resolution === 'rename' && newName.trim() === '')}
+              disabled={busy || (kind === 'policy' && resolution === 'rename' && newName.trim() === '') || (kind === 'exception' && !(preview as ExceptionPreviewResp).parentPolicyId)}
               startIcon={busy ? <CircularProgress size={14} /> : null}
             >
               Apply
@@ -542,10 +553,10 @@ function ExceptionPreview({ preview }: { preview: ExceptionPreviewResp }) {
   const typeColor = ex.exceptionType === 'stay_awake' ? 'success' : 'warning'
   return (
     <>
-      <Alert severity="success">
+      <Alert severity={preview.parentPolicyName ? 'success' : 'error'}>
         {preview.parentPolicyName
           ? `Will be created and attached to policy "${preview.parentPolicyName}".`
-          : 'Will be created as a freestanding exception (no parent policy).'}
+          : 'A parent policy is required. Parentless exceptions cannot be imported.'}
       </Alert>
       <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>

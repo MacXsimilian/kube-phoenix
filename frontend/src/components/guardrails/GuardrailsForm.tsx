@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useReducer } from 'react'
+import { useState, useEffect, useRef, useReducer, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/queryKeys'
 import { formatError } from '@/lib/formatters'
@@ -38,6 +38,7 @@ import { useAuth } from '@/lib/auth'
 import { canEditGuardrails } from '@/lib/rbac'
 import { useSnackbar } from '@/lib/useSnackbar'
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges'
+import type { Guardrails } from '@/lib/types'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -180,28 +181,34 @@ export default function GuardrailsForm() {
     setField(field, clamped)
   }
 
+  const loadGuardrails = useCallback((guardrails: Guardrails) => {
+    const loaded: FormState = {
+      protectedNs: splitCommaList(guardrails.protectedNamespaces).sort(),
+      skipNsNode: splitCommaList(guardrails.skipNsNode),
+      skipLabels: splitCommaList(guardrails.skipNodeLabels),
+      skipTaints: splitCommaList(guardrails.skipNodeTaints),
+      priorityNs: splitCommaList(guardrails.scalingPriorityNamespaces),
+      scalingConcurrency: guardrails.scalingConcurrency,
+      wakeWaveSize: guardrails.wakeWaveSize,
+      wakeWavePauseSeconds: guardrails.wakeWavePauseSeconds,
+      evalInterval: guardrails.schedulerEvalInterval,
+      autoWake: guardrails.schedulerAutoWake,
+      reconcileWhileAwake: guardrails.schedulerReconcileWhileAwake,
+      enforceSleep: guardrails.schedulerEnforceSleep,
+      protectCriticalPodNodes: guardrails.protectCriticalPodNodes,
+    }
+    dispatch({ type: 'SET', payload: loaded })
+    savedSnapshot.current = buildSnapshot(loaded)
+    setSaveError(null)
+    setDirty(false)
+  }, [setDirty])
+
   useEffect(() => {
     if (guardrails && !initialised.current) {
       initialised.current = true
-      const loaded: FormState = {
-        protectedNs: splitCommaList(guardrails.protectedNamespaces).sort(),
-        skipNsNode: splitCommaList(guardrails.skipNsNode),
-        skipLabels: splitCommaList(guardrails.skipNodeLabels),
-        skipTaints: splitCommaList(guardrails.skipNodeTaints),
-        priorityNs: splitCommaList(guardrails.scalingPriorityNamespaces),
-        scalingConcurrency: guardrails.scalingConcurrency,
-        wakeWaveSize: guardrails.wakeWaveSize,
-        wakeWavePauseSeconds: guardrails.wakeWavePauseSeconds,
-        evalInterval: guardrails.schedulerEvalInterval,
-        autoWake: guardrails.schedulerAutoWake,
-        reconcileWhileAwake: guardrails.schedulerReconcileWhileAwake,
-        enforceSleep: guardrails.schedulerEnforceSleep,
-        protectCriticalPodNodes: guardrails.protectCriticalPodNodes,
-      }
-      dispatch({ type: 'SET', payload: loaded })
-      savedSnapshot.current = buildSnapshot(loaded)
+      loadGuardrails(guardrails)
     }
-  }, [guardrails])
+  }, [guardrails, loadGuardrails])
 
   useEffect(() => {
     setDirty(isDirty(form, savedSnapshot.current))
@@ -541,6 +548,7 @@ export default function GuardrailsForm() {
         onClose={() => setImportOpen(false)}
         kind="guardrails"
         onNotify={notify}
+        onGuardrailsImported={loadGuardrails}
       />
       {SnackbarAlert}
       <Dialog open={!!nsToRemove} onClose={() => setNsToRemove(null)} maxWidth="xs" fullWidth>

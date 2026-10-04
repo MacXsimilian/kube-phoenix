@@ -21,10 +21,9 @@ const (
 // of the replay buffer alongside the live channel, ensuring no lines
 // are lost between a database fetch and the subscription start.
 type Broker struct {
-	mu             sync.RWMutex
-	subs           map[uint][]chan store.PolicyLogLine
-	closedChannels map[uint]map[chan store.PolicyLogLine]bool
-	replay         map[uint]*replayRing
+	mu     sync.RWMutex
+	subs   map[uint][]chan store.PolicyLogLine
+	replay map[uint]*replayRing
 }
 
 // replayRing is a fixed-size ring buffer of recently published lines
@@ -54,9 +53,8 @@ func (r *replayRing) snapshot() []store.PolicyLogLine {
 
 func NewBroker() *Broker {
 	return &Broker{
-		subs:           map[uint][]chan store.PolicyLogLine{},
-		closedChannels: map[uint]map[chan store.PolicyLogLine]bool{},
-		replay:         map[uint]*replayRing{},
+		subs:   map[uint][]chan store.PolicyLogLine{},
+		replay: map[uint]*replayRing{},
 	}
 }
 
@@ -90,11 +88,15 @@ func (b *Broker) Unsubscribe(execID uint, ch chan store.PolicyLogLine) {
 	subs := b.subs[execID]
 	for i, s := range subs {
 		if s == ch {
-			b.subs[execID] = append(subs[:i], subs[i+1:]...)
-			if !b.isClosed(execID, ch) {
-				close(ch)
-				b.markClosed(execID, ch)
+			copy(subs[i:], subs[i+1:])
+			subs[len(subs)-1] = nil
+			subs = subs[:len(subs)-1]
+			if len(subs) == 0 {
+				delete(b.subs, execID)
+			} else {
+				b.subs[execID] = subs
 			}
+			close(ch)
 			return
 		}
 	}
@@ -124,25 +126,8 @@ func (b *Broker) Close(execID uint) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for _, ch := range b.subs[execID] {
-		if !b.isClosed(execID, ch) {
-			close(ch)
-			b.markClosed(execID, ch)
-		}
+		close(ch)
 	}
 	delete(b.subs, execID)
-	delete(b.closedChannels, execID)
 	delete(b.replay, execID)
-}
-
-// markClosed records that a channel has been closed. Must be called under mu.
-func (b *Broker) markClosed(execID uint, ch chan store.PolicyLogLine) {
-	if b.closedChannels[execID] == nil {
-		b.closedChannels[execID] = map[chan store.PolicyLogLine]bool{}
-	}
-	b.closedChannels[execID][ch] = true
-}
-
-// isClosed checks if a channel was already closed. Must be called under mu.
-func (b *Broker) isClosed(execID uint, ch chan store.PolicyLogLine) bool {
-	return b.closedChannels[execID] != nil && b.closedChannels[execID][ch]
 }

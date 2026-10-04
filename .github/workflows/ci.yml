@@ -26,11 +26,11 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
-          node-version: "24"
+          node-version: "26"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -106,13 +106,14 @@ jobs:
       contents: read
     defaults:
       run:
+        shell: bash
         working-directory: backend
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6.4.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.26"
+          go-version: "1.27"
           cache-dependency-path: backend/go.sum
 
       - name: Copy OpenAPI spec into embed path
@@ -126,21 +127,23 @@ jobs:
 
       - name: golangci-lint
         id: be_lint
-        uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee  # v9.2.1
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a  # v9.3.0
         with:
-          version: v2.12.2
+          version: v2.14.0
           working-directory: backend
 
       - name: Test
         id: be_test
         run: |
           START=$(date +%s)
-          go test -race -coverprofile=coverage.out ./... 2>&1 | tee /tmp/test.out
+          TEST_EXIT=0
+          go test -race -coverprofile=coverage.out ./... 2>&1 | tee /tmp/test.out || TEST_EXIT=$?
           echo "duration=$(( $(date +%s) - START ))" >> "$GITHUB_OUTPUT"
           PASSED=$(grep -c '^ok' /tmp/test.out || true)
           FAILED=$(grep -c '^FAIL' /tmp/test.out || true)
           echo "passed=${PASSED:-0}" >> "$GITHUB_OUTPUT"
           echo "failed=${FAILED:-0}" >> "$GITHUB_OUTPUT"
+          exit "$TEST_EXIT"
 
       - name: Coverage
         id: be_cov
@@ -154,10 +157,16 @@ jobs:
         run: |
           PASSED="${{ steps.be_test.outputs.passed }}"
           FAILED="${{ steps.be_test.outputs.failed }}"
-          if [ "${FAILED}" -gt 0 ] 2>/dev/null; then
+          TEST_OUTCOME="${{ steps.be_test.outcome }}"
+          if [ "$TEST_OUTCOME" = "failure" ]; then
             TEST_STATUS="🔴 ${PASSED} passed, ${FAILED} failed"
-          else
+            RACE_STATUS="🔴 Test step failed (-race enabled)"
+          elif [ "$TEST_OUTCOME" = "success" ]; then
             TEST_STATUS="✅ ${PASSED} passed"
+            RACE_STATUS="✅ Passed with -race"
+          else
+            TEST_STATUS="🟡 ${TEST_OUTCOME}"
+            RACE_STATUS="🟡 Not run"
           fi
 
           LINT_STATUS="${{ steps.be_lint.outcome }}"
@@ -176,7 +185,7 @@ jobs:
             echo "| Tests | ${TEST_STATUS} |"
             echo "| Test duration | ${{ steps.be_test.outputs.duration }}s |"
             echo "| Coverage | ${{ steps.be_cov.outputs.total }} |"
-            echo "| Race detector | ✅ Clean (-race enabled) |"
+            echo "| Race detector | ${RACE_STATUS} |"
             echo "| Lint | ${LINT} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -188,13 +197,16 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2  # v5.0.0
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5.0.1
         with:
-          version: "4.2.0"
+          version: "4.3.0"
 
       - run: helm lint helm/kube-phoenix
+
+      - name: Test PostgreSQL storage and upgrade guards
+        run: python3 -B -m unittest discover -s hack/tests -p 'test_postgresql_*.py' -v
 
       - name: Lint with example values
         run: |
@@ -205,7 +217,7 @@ jobs:
 
       - name: Install kubeconform
         run: |
-          KUBECONFORM_VERSION="v0.7.0"
+          KUBECONFORM_VERSION="v0.8.0"
           curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
             | tar -xz -C /usr/local/bin kubeconform
           kubeconform -v
@@ -235,18 +247,18 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
       - name: Lint Dockerfile (hadolint)
-        uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5  # v3.3.0
+        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387  # v3.5.0
         with:
           dockerfile: Dockerfile
           ignore: DL3018  # apk add --no-cache not needed in our alpine stages
 
       - name: Build image (no push)
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
           platforms: linux/amd64

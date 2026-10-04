@@ -1,4 +1,22 @@
-# Feature: Policy-Based Scheduled Scaling
+# Policy-Based Scaling — Design and Requirements Record
+
+This document records the motivation, requirements, and acceptance criteria for policy-based scaling. It is a design record, not an installation guide or a test-results report. The status below describes the current source implementation; an implemented requirement does not mean its acceptance scenario has been executed in every environment.
+
+For current operation, use [Your first policy](first-policy.md), [window scheduling semantics](window-native-scheduling.md), and the [configuration reference](configuration.md). Record actual validation in the [smoke checklist](testing/policy-smoke-test.md) or a run of the [scenario catalogue](test-plan-policy.md).
+
+## Current Status
+
+| Area | Current implementation | Scope or qualification |
+| :--- | :--------------------- | :--------------------- |
+| Window scheduling (R1, R5) | Implemented: recurring local-time windows, union evaluation, configurable tick, recovery and reconciliation | `nextTransitionAt` predicts window changes; exceptions and execution delays are not included in that prediction |
+| Workload sleep/wake (R2.1–R2.5, R2.7) | Implemented for Deployments and StatefulSets with database snapshots and execution timeouts | Wake depends on saved database state; API/scaling failures can leave partial work to inspect and recover |
+| Annotation recovery (R2.6) | **Superseded** for policy executions | Policy wake reads database snapshots; it does not reconstruct lost snapshots from workload annotations |
+| Exceptions (R3) | Implemented: parent policy, lifecycle, type-based start action, optional scoped actions | End action follows the current schedule rather than blindly reversing the start action |
+| Guardrails and overlap checks (R4) | Implemented: namespace protection during sleep, node label/taint protection, priority order, conservative namespace overlap checks | Node processing is cluster-wide; a workload namespace filter does not restrict node candidates. Label-selector intersections are not used to permit same-namespace apply policies |
+| Execution records (R6) | Implemented: database history, streamed logs, counters and metrics | Plan executions also record state/history; displayed policy state alone does not prove cluster replicas changed |
+| Acceptance scenarios below | Defined verification targets | No pass/fail results or deployment-wide completion claim are recorded here |
+
+Implementation entry points: [window evaluator](../backend/internal/policy/evaluator.go), [scheduler](../backend/internal/scheduler/policy_scheduler.go), [policy scaler](../backend/internal/scaler/policy_scaler.go), [node processing](../backend/internal/scaler/nodes.go), and [overlap/snapshot store](../backend/internal/store/policies.go).
 
 ## Problem Statement
 
@@ -15,7 +33,7 @@ A platform team wants dev-environment Deployments and StatefulSets scaled to zer
 The same team wants all staging workloads fully shut down Friday 8 PM → Monday 7 AM.
 
 **UC-3: Selective Targeting**
-Only workloads in specific namespaces (e.g., `dev`, `staging`) or matching specific labels (e.g., `cost-group=non-prod`) should be affected. System namespaces (`kube-system`, `monitoring`) must never be touched.
+Only workloads in specific namespaces (e.g., `dev`, `staging`) or matching specific labels (e.g., `cost-group=non-prod`) should be scaled. Configured protected namespaces must be excluded from workload sleep. Wake may still restore existing snapshots in those namespaces. Node drain/deletion is a separate cluster-wide phase with its own guardrails.
 
 **UC-4: Safe Preview Before Enforcement**
 An operator wants to see what a policy *would* do before it actually scales anything — a dry-run/plan mode.
@@ -39,6 +57,8 @@ During a critical incident, an admin needs to immediately disable all policies, 
 
 ## Requirements
 
+Requirement IDs are retained for traceability. Superseded wording is called out where the implemented design changed. These are behavior requirements, not claims that cluster operations always succeed.
+
 ### R1 — Policy Definition
 
 | #    | Requirement                                                                                                                          |
@@ -55,12 +75,12 @@ During a critical incident, an admin needs to immediately disable all policies, 
 
 | #    | Requirement                                                                                                                          |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| R2.1 | **Sleep**: for each matching Deployment/StatefulSet, capture current replica count, then scale to 0                                   |
+| R2.1 | **Sleep**: read each matching Deployment/StatefulSet's replica count, scale to 0, and persist a restoration snapshot; inspect errors if either operation fails                                   |
 | R2.2 | **Wake**: restore each workload to its pre-sleep replica count                                                                       |
 | R2.3 | Workloads already at 0 replicas at sleep time must be recorded but not re-scaled on wake                                             |
 | R2.4 | If a workload is deleted while sleeping, wake must handle this gracefully (log, skip, mark)                                          |
 | R2.5 | Replica snapshots must be persisted to survive system restarts                                                                       |
-| R2.6 | An annotation-based fallback must exist on the workload itself in case the database is lost                                          |
+| R2.6 | **Superseded:** the original annotation-fallback requirement is not the policy wake path. Database snapshots are required for restoration                                          |
 | R2.7 | Each execution must have a configurable **timeout**                                                                                  |
 
 ### R3 — Scheduled Exceptions
@@ -70,17 +90,17 @@ During a critical incident, an admin needs to immediately disable all policies, 
 | R3.1 | Exceptions define a future time window that overrides the normal policy schedule                                                     |
 | R3.2 | Exceptions have a lifecycle: `pending` → `active` → `completed` (or `cancelled`)                                                    |
 | R3.3 | Exception type (`stay_awake` or `force_sleep`) must determine the action taken on start — wake for stay_awake, sleep for force_sleep |
-| R3.4 | An exception may optionally trigger the inverse action on end (e.g., re-sleep after a stay_awake window)                             |
+| R3.4 | **Revised:** `sleepOnEnd=true` requests the current schedule's sleep/wake action at end, using the exception scope; it is not necessarily the inverse action                             |
 | R3.5 | Only pending exceptions can be edited                                                                                                |
 
 ### R4 — Guardrails & Protection
 
 | #    | Requirement                                                                                                                          |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| R4.1 | A global list of **system namespaces** that are never scaled (e.g., `kube-system`)                                                   |
-| R4.2 | Nodes can be **protected** by label or taint — protected nodes are never drained                                                     |
+| R4.1 | A configurable list of **protected namespaces** excluded from sleep/scaling-down; seeded defaults include `kube-system`. Wake can still restore existing snapshots                                                   |
+| R4.2 | Nodes can be **protected** by exact label or taint matches, excluding them from the sleep execution's cluster-wide drain/delete phase                                                     |
 | R4.3 | **Priority namespaces** are processed first during both sleep and wake                                                               |
-| R4.4 | Two `apply`-mode policies must not target overlapping workloads — overlap detection at creation time                                 |
+| R4.4 | Reject potentially overlapping `apply` policies on creation or update using namespace scope; disabled apply policies also participate in this conservative check                                 |
 
 ### R5 — Evaluation Loop
 
@@ -91,7 +111,7 @@ During a critical incident, an admin needs to immediately disable all policies, 
 | R5.3 | State transitions are **atomically claimed** to prevent concurrent executions of the same policy                                     |
 | R5.4 | Stuck transitions (no completion within policy timeout + grace period) are automatically reset                                        |
 | R5.5 | On startup, the scheduler must run **recovery** — detect mismatches and self-correct                                                |
-| R5.6 | While a policy is awake, **reconciliation** should detect open snapshots (drift) and attempt corrective wakes with backoff           |
+| R5.6 | While a policy is awake, optional **reconciliation** detects open snapshots and attempts corrective wakes with a fixed five-minute minimum delay between attempts           |
 
 ### R6 — Observability
 
@@ -106,15 +126,17 @@ During a critical incident, an admin needs to immediately disable all policies, 
 
 ## Success Criteria
 
+These are acceptance scenarios to execute and record separately. Timing criteria depend on the cluster and failures; they are not availability guarantees. Protect all nodes for workload-only scenarios, as shown in the tutorial, and keep destructive node tests separate.
+
 | #     | Criteria                                                                                                        | Verification                                                                                    |
 | ----- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | SC-1  | Workloads in targeted namespaces reach 0 replicas within the configured timeout after a sleep window starts     | Query replica counts via k8s API after sleep execution completes                                |
 | SC-2  | Workloads are restored to their exact pre-sleep replica counts when the sleep window ends                       | Compare post-wake replicas against stored snapshots                                             |
-| SC-3  | System namespaces and protected workloads are **never** scaled, under any policy configuration                  | Create a policy targeting `kube-system` — verify 0 workloads affected                          |
-| SC-4  | `plan` mode produces execution logs identical to `apply` mode but changes 0 replicas                           | Run same policy in both modes, diff execution logs vs. actual cluster state                     |
-| SC-5  | Exceptions take precedence in the correct order (`force_sleep` > `stay_awake` > schedule)                      | Create conflicting exceptions, verify the highest-priority one wins                             |
-| SC-6  | After a system restart mid-execution, the scheduler recovers and reaches the correct state within 2 ticks      | Kill the process during a sleep, restart, verify workloads reach intended state                 |
-| SC-7  | Two `apply`-mode policies cannot be created with overlapping scope                                              | Attempt to create overlapping policies, verify rejection                                        |
+| SC-3  | Workloads in the configured protected namespaces are excluded from sleep/scaling-down; this does not block restoration of existing snapshots                  | Confirm `kube-system` remains protected, then verify a targeted plan excludes its workloads                          |
+| SC-4  | `plan` previews intended targets and changes neither workload replicas nor nodes; log levels/text differ from apply                           | Inspect plan targets and node protection, then compare captured Kubernetes state; record apply separately                     |
+| SC-5  | Exceptions take precedence in the correct order (`force_sleep` > `stay_awake` > schedule)                      | Check engine tests for precedence; API-created opposite-type overlaps should be rejected                             |
+| SC-6  | After restart, recovery detects eligible mismatches and attempts correction; the former two-tick target is not a guaranteed bound      | In a separate recovery test, record interruption handling, retries, elapsed time, and restored replicas                 |
+| SC-7  | Potentially overlapping `apply` namespace scopes are rejected on creation and update                                              | Attempt to create overlapping policies, verify rejection                                        |
 | SC-8  | Snapshots survive process restarts and are correctly used for wake restoration                                  | Sleep workloads, restart the system, trigger wake, verify correct restoration                   |
 | SC-9  | A `force_sleep` exception triggers a sleep action (not a wake)                                                  | Create a force_sleep exception, verify workloads are scaled to zero on start                    |
 | SC-10 | Manual sleep/wake triggers work while respecting the transition claim lock (no double-execution)                | Rapidly trigger sleep twice, verify only one execution runs                                     |
@@ -125,16 +147,29 @@ During a critical incident, an admin needs to immediately disable all policies, 
 
 - Webhook/notification integrations (Slack, PagerDuty)
 - Per-policy RBAC (namespace-level access control)
-- Workload-level exclusions within a policy
+- A dedicated permanent per-policy exclusion list (positive targeting and scoped exceptions already exist)
 - CronJob and DaemonSet support
 - Multi-cluster policy federation
 - Cost estimation and reporting
 
 ---
 
+## Settled Current Behavior
+
+| Former question | Current behavior |
+| :-------------- | :--------------- |
+| Are node operations limited by the workload namespace filter? | No. Sleep considers cluster-wide node candidates and applies node-protection guardrails. Wake does not recreate or uncordon nodes |
+| Do failed scheduled transitions retry immediately? | No. They use a fixed five-minute minimum retry delay, as do corrective attempts |
+| Does changing an apply policy to plan automatically restore sleeping workloads? | No. Saving the mode change does not itself perform a live wake; use an explicit Apply wake when restoration is intended |
+| Can exceptions exist without a policy? | No. API validation requires a parent policy |
+| Does `sleepOnEnd` always invert an exception? | No. The end action evaluates current policy windows without exceptions; ordinary subsequent evaluation still applies active-exception precedence |
+
 ## Open Questions
 
-1. Should node draining be scoped to the policy's namespace filter, or remain cluster-wide?
-2. Should failed scheduled transitions have exponential backoff (like reconciliation does), or is immediate retry acceptable?
-3. Should switching a policy from `apply` → `plan` while workloads are sleeping force a wake first?
-4. ~~How should freestanding exceptions (no parent policy) work — independent targeting, or disallowed?~~ **Resolved:** Freestanding exceptions are rejected at the API layer. All exceptions must reference a policy.
+These are possible future design decisions, not undocumented switches in the current product:
+
+1. Should a separate node-targeting control be introduced alongside workload namespace/label targeting?
+2. Should fixed retry delays become configurable or exponential?
+3. Should switching apply → plan while snapshots remain open offer an explicit restore-first workflow?
+
+No implementation or delivery commitment is made for these questions. Changes would need their own requirements and acceptance scenarios.

@@ -1,7 +1,7 @@
 # ── Stage 1: Build frontend ───────────────────────────────────────────────────
 # Always build on the host platform — Next.js output is arch-independent.
-# Digest pins the exact image; update with: docker pull node:24.21.0-alpine && docker inspect --format='{{index .RepoDigests 0}}' node:24.21.0-alpine
-FROM --platform=$BUILDPLATFORM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS frontend-builder
+# Digest pins the exact image; update with: docker pull node:26.10.0-alpine && docker inspect --format='{{index .RepoDigests 0}}' node:26.10.0-alpine
+FROM --platform=$BUILDPLATFORM node:26.10.0-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS frontend-builder
 
 ARG NEXT_PUBLIC_APP_VERSION=dev
 
@@ -22,7 +22,7 @@ RUN --mount=type=cache,target=/app/frontend/.next/cache \
 
 # ── Stage 2: Build backend ────────────────────────────────────────────────────
 # Always compile on the host platform using Go cross-compilation (no QEMU).
-FROM --platform=$BUILDPLATFORM golang:1.26.8-alpine@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.27.1-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS backend-builder
 ARG TARGETARCH
 ARG NEXT_PUBLIC_APP_VERSION=dev
 

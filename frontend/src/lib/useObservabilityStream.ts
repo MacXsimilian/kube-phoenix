@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { waitForStreamRetry } from '@/lib/streamRetry'
 import type {
   ObservabilityStreamPayload,
   MetricSnapshot,
@@ -36,9 +37,7 @@ export function useObservabilityStream(): ObservabilityStreamState {
   const [recentCalls, setRecentCalls] = useState<ApiCall[]>([])
   const [runtimeConfig, setRuntimeConfig] = useState<RuntimeConfig | null>(null)
   const [disconnected, setDisconnected] = useState(false)
-  const mountedRef = useRef(true)
   const prevThresholdsRef = useRef<Record<string, string>>({})
-  const failCountRef = useRef(0)
 
   const checkThresholdCrossing = useCallback(
     (snap: MetricSnapshot, thresholds: ObservabilityThreshold[]) => {
@@ -112,63 +111,64 @@ export function useObservabilityStream(): ObservabilityStreamState {
   }, [])
 
   useEffect(() => {
-    mountedRef.current = true
     const controller = new AbortController()
+    let failCount = 0
 
     async function connect() {
-      while (mountedRef.current) {
+      while (!controller.signal.aborted) {
+        let connectedAt = 0
         try {
           const res = await fetch(
             `${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/observability/stream`,
             { signal: controller.signal, credentials: 'include' },
           )
-          if (!res.ok || !res.body) {
-            failCountRef.current += 1
-            if (failCountRef.current > 1) setDisconnected(true)
-            await new Promise((r) => setTimeout(r, reconnectDelay(failCountRef.current)))
-            if (controller.signal.aborted) break
-            continue
-          }
-          failCountRef.current = 0
-          setDisconnected(false)
+          if (!res.ok || !res.body) throw new Error(`Observability stream unavailable (${res.status})`)
+          connectedAt = Date.now()
           const reader = res.body.getReader()
           const decoder = new TextDecoder()
           let buf = ''
-          while (mountedRef.current) {
-            const { done, value } = await reader.read()
-            if (done) break
-            buf += decoder.decode(value, { stream: true })
-            const lines = buf.split('\n')
-            buf = lines.pop() ?? ''
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const payload: ObservabilityStreamPayload = JSON.parse(line.slice(6))
-                  setLatest(payload)
-                  setHistory((prev) => {
-                    const next = [...prev, payload.snapshot]
-                    return next.length > HISTORY_SIZE ? next.slice(-HISTORY_SIZE) : next
-                  })
-                  if (payload.recentCalls?.length) {
-                    setRecentCalls((prev) => {
-                      const seen = new Set(prev.map((c) => c.id))
-                      const fresh = payload.recentCalls.filter((c) => !seen.has(c.id))
-                      if (fresh.length === 0) return prev
-                      return [...fresh, ...prev].slice(0, MAX_CALLS)
+          try {
+            while (!controller.signal.aborted) {
+              const { done, value } = await reader.read()
+              if (done || controller.signal.aborted) break
+              buf += decoder.decode(value, { stream: true })
+              const lines = buf.split('\n')
+              buf = lines.pop() ?? ''
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const payload: ObservabilityStreamPayload = JSON.parse(line.slice(6))
+                    setDisconnected(false)
+                    setLatest(payload)
+                    setHistory((prev) => {
+                      const next = [...prev, payload.snapshot]
+                      return next.length > HISTORY_SIZE ? next.slice(-HISTORY_SIZE) : next
                     })
+                    if (payload.recentCalls?.length) {
+                      setRecentCalls((prev) => {
+                        const seen = new Set(prev.map((c) => c.id))
+                        const fresh = payload.recentCalls.filter((c) => !seen.has(c.id))
+                        if (fresh.length === 0) return prev
+                        return [...fresh, ...prev].slice(0, MAX_CALLS)
+                      })
+                    }
+                    checkThresholdCrossing(payload.snapshot, payload.thresholds)
+                  } catch {
+                    // skip malformed events
                   }
-                  checkThresholdCrossing(payload.snapshot, payload.thresholds)
-                } catch {
-                  // skip malformed events
                 }
               }
             }
+          } finally {
+            reader.releaseLock()
           }
+          throw new Error('Observability stream closed')
         } catch {
-          if (!mountedRef.current) break
-          failCountRef.current += 1
-          if (failCountRef.current > 1) setDisconnected(true)
-          await new Promise((r) => setTimeout(r, reconnectDelay(failCountRef.current)))
+          if (controller.signal.aborted) break
+          if (connectedAt && Date.now() - connectedAt >= RECONNECT_MAX_MS) failCount = 0
+          failCount += 1
+          setDisconnected(true)
+          await waitForStreamRetry(reconnectDelay(failCount), controller.signal)
           if (controller.signal.aborted) break
         }
       }
@@ -176,7 +176,6 @@ export function useObservabilityStream(): ObservabilityStreamState {
 
     connect()
     return () => {
-      mountedRef.current = false
       controller.abort()
     }
   }, [checkThresholdCrossing])

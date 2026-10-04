@@ -14,6 +14,7 @@ import TableRow from '@mui/material/TableRow'
 import TablePagination from '@mui/material/TablePagination'
 import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
+import ButtonBase from '@mui/material/ButtonBase'
 import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
 import Alert from '@mui/material/Alert'
@@ -29,6 +30,7 @@ import { useColors } from '@/lib/colors'
 import { WORKLOADS_REFETCH_MS } from '@/lib/constants'
 import { useTriStateSort } from '@/lib/useTriStateSort'
 import SortHeader from '@/lib/SortHeader'
+import { TABLE_ACTION_BUTTON_SX } from '@/lib/tableStyles'
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
 import WorkloadDetailDrawer from './WorkloadDetailDrawer'
 
@@ -83,7 +85,11 @@ const WorkloadRow = memo(function WorkloadRow({
           )}
         </Box>
       </TableCell>
-      <TableCell sx={NAME_CELL_SX}>{workload.name}</TableCell>
+      <TableCell sx={NAME_CELL_SX}>
+        <ButtonBase type="button" aria-label={`View workload ${workload.namespace}/${workload.name}`} sx={TABLE_ACTION_BUTTON_SX}>
+          {workload.name}
+        </ButtonBase>
+      </TableCell>
       <TableCell>
         <Chip label={workload.kind} size="small" sx={KIND_CHIP_SX} />
       </TableCell>
