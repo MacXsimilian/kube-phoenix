@@ -145,11 +145,16 @@ export function weeklySavingsPercent(windows: SleepWindow[]): {
 }
 
 /**
- * Project a Date into an IANA timezone by reconstructing it from
- * Intl.DateTimeFormat parts. Returns a local Date whose field values
- * (getDay, getHours, …) reflect the target timezone.
+ * Encode civil timezone fields in a UTC Date so the browser's DST rules cannot
+ * normalize them. Read these internal dates with UTC getters only.
  */
-function dateInTimezone(date: Date, tz: string): Date {
+function dateInTimezone(date: Date, tz?: string): Date {
+  if (!tz) {
+    return new Date(Date.UTC(
+      date.getFullYear(), date.getMonth(), date.getDate(),
+      date.getHours(), date.getMinutes(), date.getSeconds(),
+    ))
+  }
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
     year: 'numeric',
@@ -158,17 +163,13 @@ function dateInTimezone(date: Date, tz: string): Date {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false,
+    hourCycle: 'h23',
   })
   const parts = Object.fromEntries(fmt.formatToParts(date).map((p) => [p.type, p.value]))
-  return new Date(
-    +parts.year,
-    +parts.month - 1,
-    +parts.day,
-    +parts.hour,
-    +parts.minute,
-    +parts.second,
-  )
+  return new Date(Date.UTC(
+    +parts.year, +parts.month - 1, +parts.day,
+    +parts.hour, +parts.minute, +parts.second,
+  ))
 }
 
 /**
@@ -177,10 +178,10 @@ function dateInTimezone(date: Date, tz: string): Date {
  */
 export function nowInTimezone(tz?: string): { dayOfWeek: number; fractionalHour: number } {
   const now = new Date()
-  const d = tz ? dateInTimezone(now, tz) : now
+  const d = dateInTimezone(now, tz)
   return {
-    dayOfWeek: d.getDay(),
-    fractionalHour: d.getHours() + d.getMinutes() / 60,
+    dayOfWeek: d.getUTCDay(),
+    fractionalHour: d.getUTCHours() + d.getUTCMinutes() / 60,
   }
 }
 
@@ -191,10 +192,9 @@ const MONDAY_FIRST_DOW_MAP = [1, 2, 3, 4, 5, 6, 0] // Mon..Sun
 
 export const DOW_MAP = MONDAY_FIRST_DOW_MAP
 
-/** Convert an ISO timestamp to a Date in the given IANA timezone. */
+/** Convert an ISO timestamp to an internal UTC-encoded civil date. */
 function toTimezone(iso: string, tz?: string): Date {
   const d = new Date(iso)
-  if (!tz) return d
   return dateInTimezone(d, tz)
 }
 
@@ -215,24 +215,24 @@ export function computeTimeRangeBlocks(startISO: string, endISO: string, tz?: st
   const end = toTimezone(endISO, tz)
 
   const cursor = new Date(start)
-  cursor.setHours(0, 0, 0, 0)
+  cursor.setUTCHours(0, 0, 0, 0)
   const endDay = new Date(end)
-  endDay.setHours(0, 0, 0, 0)
+  endDay.setUTCHours(0, 0, 0, 0)
 
   while (cursor <= endDay) {
-    const row = MONDAY_FIRST_DOW_MAP.indexOf(cursor.getDay())
+    const row = MONDAY_FIRST_DOW_MAP.indexOf(cursor.getUTCDay())
     if (row !== -1) {
       const isSameAsStart =
         cursor.getTime() ===
-        new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
+        new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())).getTime()
       const isSameAsEnd = cursor.getTime() === endDay.getTime()
-      const sh = isSameAsStart ? start.getHours() + start.getMinutes() / 60 : 0
-      const eh = isSameAsEnd ? end.getHours() + end.getMinutes() / 60 : 24
+      const sh = isSameAsStart ? start.getUTCHours() + start.getUTCMinutes() / 60 : 0
+      const eh = isSameAsEnd ? end.getUTCHours() + end.getUTCMinutes() / 60 : 24
       if (eh > sh) {
         blocks.push({ row, startHour: sh, endHour: eh })
       }
     }
-    cursor.setDate(cursor.getDate() + 1)
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
   }
   return blocks
 }
