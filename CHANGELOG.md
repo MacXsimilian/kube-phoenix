@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.7...v0.8.0) (2026-10-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* Existing PostgreSQL 17 data must be dumped and restored into fresh PostgreSQL 18 storage before upgrading. See docs/postgresql-upgrade.md for migration and rollback instructions.
+
+### Bug Fixes
+
+* **deps:** patch vulnerable dependencies and container images ([#433](https://github.com/MacXsimilian/kube-phoenix/issues/433)) ([5fe9703](https://github.com/MacXsimilian/kube-phoenix/commit/5fe97033802b6045293c332302b7881d10e4a7e6))
+* harden policy execution, releases and build tooling ([#436](https://github.com/MacXsimilian/kube-phoenix/issues/436)) ([bda8436](https://github.com/MacXsimilian/kube-phoenix/commit/bda843635fa67f8bb5e517ba9364c941f8eb7c4e))
+
 ## [0.7.7](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.6...v0.7.7) (2026-05-29)
 
 
