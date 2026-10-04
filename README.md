@@ -10,99 +10,73 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/MacXsimilian/kube-phoenix/badge)](https://securityscorecards.dev/viewer/?uri=github.com/MacXsimilian/kube-phoenix)
 [![Docker](https://img.shields.io/badge/ghcr.io-kube--phoenix-2496ED?logo=docker&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/pkgs/container/kube-phoenix)
 [![Helm Chart](https://img.shields.io/badge/helm-oci%3A%2F%2Fghcr.io-0F1689?logo=helm&logoColor=white)](https://github.com/MacXsimilian/kube-phoenix/pkgs/container/helm%2Fkube-phoenix)
-[![Prometheus](https://img.shields.io/badge/metrics-prometheus-E6522C?logo=prometheus&logoColor=white)](#observability)
+[![Prometheus](https://img.shields.io/badge/metrics-prometheus-E6522C?logo=prometheus&logoColor=white)](docs/observability.md#prometheus-metrics)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/MacXsimilian/kube-phoenix/blob/master/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/MacXsimilian/kube-phoenix)](https://github.com/MacXsimilian/kube-phoenix/stargazers)
 [![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](https://github.com/MacXsimilian/kube-phoenix/issues)
 
-**Scheduled sleep and wake for Kubernetes clusters.**
 
-kube-phoenix replaces ad-hoc cron scripts with a proper operator for scheduling cluster downtime. Define sleep windows like "Mon--Fri 7 PM -- 7 AM," and kube-phoenix scales workloads to zero, drains nodes, and restores everything on schedule. A single Go binary serves both the API and a full-featured web UI -- deploy with one Helm command.
+**Scheduled sleep and wake for Kubernetes workloads.**
 
----
+kube-phoenix uses policies to scale Deployments and StatefulSets to zero during off-hours and restore saved replica counts on wake. Configure sleep windows such as Monday–Friday, 19:00–07:00 in a chosen timezone, preview the work in plan mode, and explicitly choose apply mode for live changes. One Go binary serves the API and browser interface.
 
-## Key Features
+![kube-phoenix overview with mock cluster status and recent executions](docs/images/screenshots/overview.png)
 
-- **Policy-based scheduling** -- Declare sleep windows with cron expressions, namespace filters, and label selectors. Plan mode lets you verify before anything scales.
-- **DB-backed replica snapshots** -- Replica counts are persisted in PostgreSQL, not just annotations. Restores are reliable even if annotations are overwritten.
-- **Startup recovery** -- On restart, the intended state is recomputed and any mismatch triggers automatic correction.
-- **Scheduled exceptions** -- Time-windowed exceptions (`stay_awake`, `force_sleep`) with ticket references for release weekends or on-call periods.
-- **Live cluster visibility** -- Real-time view of deployments, stateful sets, nodes, pod metrics, Kubernetes events, and streaming container logs with search.
-- **Guardrails** -- Protect namespaces, node labels, and taints from the scaler. Priority namespace scaling ensures critical workloads are processed first.
-- **RBAC and OIDC** -- Session-based auth with admin/operator/viewer roles. Optional Keycloak SSO with AD group-to-role mapping.
-- **Enforce sleep** -- Detects and corrects external scale-ups during sleeping policies, ensuring workloads stay at zero until the wake window.
-- **Emergency scale** -- Danger-zone admin action that disables all policies and scales sleeping workloads to 1 replica for minimum availability.
-- **Config export / import** -- Per-section JSON export/import for guardrails, policies, and exceptions. Paste between environments, preview the diff, and apply.
-- **Prometheus metrics** -- Built-in `/metrics` endpoint with 29 metrics covering HTTP requests, K8s API calls, policy executions, CRUD operations, scheduler health, WebSocket connections, auth, caching, and database connection pool.
-- **Observability Center** -- Dual-view dashboard combining a Metrics Dashboard (6 real-time panels with eCharts, live API call feed, system overview, configurable thresholds) and an API Rivers topology visualization (animated particle flows through 15 Go backend components with live metrics, trace mode, and scenario filtering).
+*Actual application screenshot with mock data; the cluster status and executions are illustrative.*
 
----
+## What It Does
 
-## How It Works
+- **Policies and exceptions:** recurring sleep windows, namespace/workload selectors, and one-time stay-awake or force-sleep exceptions.
+- **Replica restoration:** PostgreSQL snapshots preserve pre-sleep replica counts across process restarts.
+- **Guardrails:** protected namespaces, node labels/taints, priority ordering, and configurable scaling concurrency.
+- **Recovery and drift handling:** startup reconciliation, corrective wakes, and optional sleep enforcement.
+- **Operator visibility:** cluster inventories, pod details/logs, execution history, audit logs, and Prometheus metrics.
+- **Access and portability:** session authentication, admin/operator/viewer roles, optional OIDC, and per-resource JSON export/import.
 
-A **policy** declares when workloads should sleep using sleep windows -- human-readable time ranges evaluated on a 30-second tick loop. When the intended state (sleeping or awake) differs from the actual state, kube-phoenix executes a transition: scaling deployments and stateful sets to zero and draining nodes on sleep, or restoring saved replica counts and uncordoning nodes on wake. Scheduled exceptions take precedence over the normal schedule when active.
+Sleep also considers cordoning, draining, and deleting unprotected nodes **across the cluster**. A namespace filter scopes workload scaling; node protection is separate. Wake restores workloads and relies on an external autoscaler such as Karpenter for missing capacity. It does not uncordon or recreate nodes.
 
-| Sleep | Wake |
-| :-- | :-- |
-| Save replica counts (DB + annotation) | Read saved replica counts |
-| Scale replicas to 0 | Restore replicas |
-| Cordon nodes | Uncordon nodes |
-| Evict pods | Autoscaler provisions new nodes as pending pods appear |
-| Delete nodes | |
-
----
+The Metrics Dashboard is alpha. API Rivers is a cosmetic/mock visualization. See [observability](docs/observability.md) for the distinction between measurements, estimates, and illustrative animation.
 
 ## Quick Start
 
-Requires Helm 3.8+ (OCI support) and a Kubernetes cluster (v1.25+, as declared by the chart). CI validates the chart with Helm 4.3.0.
+For evaluation, use a disposable Kubernetes cluster with Helm OCI support. The chart declares Kubernetes 1.25 or later; see [deployment](docs/deployment.md) for the full requirements and production configuration.
+
+Create a local values file; these example credentials are for a disposable local environment:
 
 ```bash
+cat > /tmp/kube-phoenix-local-values.yaml <<'YAML'
+createNamespace: false
+secret:
+  adminUser: admin
+  adminPassword: change-this-local-password
+session:
+  cookieSecure: false
+YAML
+
 helm upgrade --install kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
   --namespace kube-phoenix --create-namespace \
-  --set secret.adminUser=admin \
-  --set secret.adminPassword=changeme
-```
-
-```bash
+  -f /tmp/kube-phoenix-local-values.yaml --wait --timeout 5m
 kubectl port-forward -n kube-phoenix svc/kube-phoenix 8080:80
 ```
 
-Open `http://localhost:8080`. New policies start in **plan mode** -- nothing scales until you switch to `apply`.
+Open **http://localhost:8080**, then sign in with `admin` / `change-this-local-password`. The HTTP cookie setting is for this port-forward; use Secure cookies with HTTPS deployments.
 
-See [docs/deployment.md](docs/deployment.md) for production setup with external PostgreSQL, Ingress, and AWS ALB.
-
----
+New policies default to plan mode. Follow [your first policy](docs/first-policy.md) to protect nodes, verify the preview, apply a sleep, and check restoration. For a frontend preview without Kubernetes or PostgreSQL, run `make dev-mock`; see [local development](docs/local-development.md).
 
 ## Documentation
 
-| Topic | Link |
-| :-- | :-- |
-| Deployment guide | [docs/deployment.md](docs/deployment.md) |
-| Configuration reference | [docs/configuration.md](docs/configuration.md) |
-| API reference and Swagger UI | [docs/api.md](docs/api.md) |
-| Architecture and system design | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
-| Local development | [docs/local-development.md](docs/local-development.md) |
-| Backend dev guide | [docs/backend-dev-guide.md](docs/backend-dev-guide.md) |
-| Frontend dev guide | [docs/frontend-dev-guide.md](docs/frontend-dev-guide.md) |
-| Policy-based scaling | [docs/feature-policy-based-scaling.md](docs/feature-policy-based-scaling.md) |
-| Config export / import | [docs/config-export-import.md](docs/config-export-import.md) |
-| Window-native scheduling | [docs/window-native-scheduling.md](docs/window-native-scheduling.md) |
-| Test plan (policy) | [docs/test-plan-policy.md](docs/test-plan-policy.md) |
-| Observability Center | [docs/observability.md](docs/observability.md) |
-| Changelog | [CHANGELOG.md](CHANGELOG.md) |
+Choose a starting point, or browse the complete [documentation home](docs/README.md).
 
----
+| I want to… | Read |
+| :--------- | :--- |
+| Install and operate kube-phoenix | [Deployment](docs/deployment.md) → [First policy](docs/first-policy.md) → [Configuration](docs/configuration.md) |
+| Work on the code | [Local development](docs/local-development.md) → [Architecture](ARCHITECTURE.md) → [Backend](docs/backend-dev-guide.md) or [Frontend](docs/frontend-dev-guide.md) |
+| Integrate or investigate behavior | [API guide](docs/api.md), [OpenAPI](openapi.yaml), [Troubleshooting](docs/troubleshooting.md), [Policy smoke test](docs/testing/policy-smoke-test.md) |
 
 ## Community and Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, branching conventions, and the PR checklist.
-
-- [Open an issue](https://github.com/MacXsimilian/kube-phoenix/issues/new)
-- [Browse open issues](https://github.com/MacXsimilian/kube-phoenix/issues)
-
----
+See [CONTRIBUTING.md](CONTRIBUTING.md) for branching, commit conventions, and the PR checklist. Report problems or discuss ideas in [GitHub issues](https://github.com/MacXsimilian/kube-phoenix/issues). Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-Apache License 2.0 -- see [LICENSE](LICENSE) for details.
+Apache License 2.0 — see [LICENSE](LICENSE).
