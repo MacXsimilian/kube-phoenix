@@ -28,6 +28,9 @@ memory/
 mockups/
 **/mockups/
 
+# Local project instructions
+/AGENTS.md
+
 # ── OS / editors ──────────────────────────────────────────────────────────────
 .DS_Store
 *.swp
