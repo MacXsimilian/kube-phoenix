@@ -116,15 +116,15 @@ require minikube kubectl helm docker
 
 # ── Cluster ──────────────────────────────────────────────────────────────────
 #
-# Node topology (3 nodes by default):
+# Node topology (default local-cluster profile, 3 nodes):
 #
-#   kube-phoenix         control-plane   Runs system pods + kube-phoenix itself
-#   kube-phoenix-m02     worker          General workload node
-#   kube-phoenix-m03     worker          General workload node
+#   local-cluster       control-plane   Runs system pods and can host workloads
+#   local-cluster-m02   worker          General workload node
+#   local-cluster-m03   worker          General workload node
 #
-# The profile name "kube-phoenix" gives nodes deterministic, recognizable
-# names. Two worker nodes allow testing node drain where workloads migrate
-# from one worker to the other.
+# Node names follow MINIKUBE_PROFILE. The worker-labeling commands below
+# require both workers. Two workers allow testing node drain where workloads
+# migrate from one worker to the other.
 
 create_cluster() {
   if minikube status -p "$PROFILE" &>/dev/null; then
@@ -152,23 +152,23 @@ create_cluster() {
 
 # ── Workloads ────────────────────────────────────────────────────────────────
 #
-# The test environment simulates a company with four teams, each owning a
-# namespace. This structure exercises the main kube-phoenix features:
+# The test environment has nine team namespaces with 50 deployments and 55
+# desired pods, excluding system/application resources. Suggested scenarios:
 #
 #   ┌──────────────────────────────────────────────────────────────────────────┐
 #   │ Namespace     │ Pods │ What it tests                                   │
 #   ├──────────────────────────────────────────────────────────────────────────┤
-#   │ team-backend  │  30  │ Single-namespace policy. Exception: keep api.   │
-#   │ team-web      │  25  │ Multi-deployment sleep. Exception: cdn-origin.  │
-#   │ team-data     │  30  │ Cross-namespace policy (data + web).            │
-#   │ team-qa       │  25  │ Nightly sleep. Guardrail: release freeze.       │
-#   │ team-platform │  30  │ Infra/observability stack. Guardrail target.    │
-#   │ team-ml       │  25  │ GPU-style workloads. Exception: model-serve.    │
-#   │ team-mobile   │  25  │ Multi-service mobile backend. Bulk sleep/wake.  │
-#   │ team-payments │  25  │ Compliance-sensitive. Guardrail: always protect. │
-#   │ team-infra    │  25  │ Cluster services. Node drain testing.           │
+#   │ team-backend  │   9  │ Single-namespace policy. Exception: keep api.   │
+#   │ team-web      │   6  │ Multi-deployment sleep. Exception: keep assets. │
+#   │ team-data     │   7  │ Cross-namespace policy (data + web).            │
+#   │ team-qa       │   5  │ Nightly sleep. Guardrail: release freeze.       │
+#   │ team-platform │   6  │ Infra/observability names. Guardrail target.    │
+#   │ team-ml       │   5  │ Model-serving names. Exception: model-serve.    │
+#   │ team-mobile   │   5  │ Multi-service mobile backend. Bulk sleep/wake.  │
+#   │ team-payments │   6  │ Guardrail: protect payment workloads.          │
+#   │ team-infra    │   6  │ Cluster-service names. Node drain testing.      │
 #   ├──────────────────────────────────────────────────────────────────────────┤
-#   │ TOTAL         │ 240  │ ~80 pods per node across 3 nodes                │
+#   │ TOTAL         │  55  │ Placement determined by the scheduler          │
 #   └──────────────────────────────────────────────────────────────────────────┘
 #
 # Suggested testing flow:
@@ -177,7 +177,7 @@ create_cluster() {
 #      worker, cron all scale to 0 → wake now → replicas restored.
 #
 #   2. Create a scheduled exception on "team-backend/api" → sleep now →
-#      worker and cron scale to 0, api stays at 3.
+#      worker and cron scale to 0, api stays at 2.
 #
 #   3. Create a cross-namespace policy targeting "team-data,team-web" →
 #      test multi-namespace sleep/wake.

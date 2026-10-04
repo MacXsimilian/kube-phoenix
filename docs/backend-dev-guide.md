@@ -436,7 +436,7 @@ Downstream constructors take their own typed inputs (`store.PoolConfig`, `k8scli
 **Purpose:** Embeds the compiled Next.js static export via `//go:embed all:static` and serves it with SPA fallback.
 
 **Key function:**
-- `SPAHandler() http.Handler` -- file server that tries the requested path first; on 404, serves `index.html` for client-side routing.
+- `SPAHandler() http.Handler` -- serves existing static files and exported route directories, including trailing-slash and nested URLs. For example, `/policies/` serves `policies/index.html`; the file server redirects `/policies` to its trailing-slash form. Unknown paths serve the root `index.html` for client-side routing.
 
 **Dependencies:** `embed`, `io/fs`, `net/http`.
 

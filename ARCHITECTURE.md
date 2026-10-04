@@ -88,8 +88,8 @@ Prometheus metrics from a single HTTP listener on port 8080.
   panic recovery, HTTP security headers, CORS, body size limit, session auth, CSRF protection, RBAC.
 - Expose 45+ REST endpoints under `/api/*` for policies, executions, cluster
   state, guardrails, users, audit logs, exceptions, observability, and system info.
-- Serve the embedded Next.js SPA for all non-API paths (SPA fallback to
-  `index.html` for client-side routing).
+- Serve embedded Next.js pages and assets, including each exported route's
+  `index.html`; unknown paths fall back to the root page for client-side routing.
 - Expose `/healthz` (liveness probe) and `/metrics` (Prometheus) without
   authentication.
 

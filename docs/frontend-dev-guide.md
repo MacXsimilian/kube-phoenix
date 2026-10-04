@@ -48,9 +48,9 @@ The kube-phoenix frontend is the operator-facing UI for managing Kubernetes slee
 make dev-frontend    # starts Next.js dev server on port 3000
 ```
 
-The dev server proxies API requests to the Go backend (default `http://localhost:8080`). Set `NEXT_PUBLIC_API_URL` to override the backend URL.
+For a separate Go backend, set `NEXT_PUBLIC_API_URL=http://localhost:8080` in `frontend/.env.local` before starting the dev server. The browser sends API requests directly to that URL; when the variable is unset, requests use the frontend's own origin. See the [local development guide](local-development.md#mode-2----backend--frontend-without-a-cluster) for backend CORS and local HTTP cookie settings.
 
-**Build output:** `next build` produces a fully static SPA in `frontend/out/`. The Go binary embeds this directory via `//go:embed` and serves it with an SPA fallback handler (all non-API paths return `index.html`). There is no SSR, no API routes in Next.js, and no Node.js runtime in production.
+**Build output:** `next build` produces static pages and assets in `frontend/out/`. The Go binary embeds this directory via `//go:embed`. Exported routes serve their own HTML, including trailing-slash and nested URLs: `/policies/` serves `policies/index.html`. Existing assets are served directly; unknown paths fall back to the root `index.html` for client-side routing. There is no request-time SSR, no API routes in Next.js, and no Node.js runtime in production.
 
 ---
 
@@ -235,8 +235,8 @@ The Next.js config sets `output: 'export'`, which produces plain HTML/JS/CSS fil
 - No `getServerSideProps`, `getStaticProps`, or server actions
 - No API routes in Next.js -- all API calls go to the Go backend
 - No `next/image` optimization (set to `unoptimized: true`)
-- Dynamic routes are not supported; pages use `useSearchParams()` for parameters
-- The Go binary serves `index.html` for all non-API paths (SPA fallback)
+- Dynamic path segments must be enumerated at build time with `generateStaticParams()`; resource detail pages use `useSearchParams()` for parameters
+- The Go binary serves each exported route's `index.html` and its assets; only unknown paths use the root SPA fallback
 
 ### Provider Stack
 

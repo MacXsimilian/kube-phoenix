@@ -1,7 +1,7 @@
 # Policy Feature — Test Planbook
 
 > Target environment: minikube 3-node cluster (local-cluster)
-> 9 namespaces, 72 deployments, 240 pods (`busybox:1.37` with role-based activity, some `pause:3.10.2` for idle workloads)
+> 9 namespaces, 50 deployments, 55 pods (`busybox:1.37` with role-based activity, some `pause:3.10.2` for idle workloads)
 > Access: `http://localhost:8080` — admin / adminadmin
 
 ---
@@ -44,16 +44,16 @@
 
 ## 1. Pre-flight Checks
 
-Verify the environment is ready before running any policy tests.
+Verify the environment is ready before running any policy tests. The counts below assume the baseline fixtures from `hack/minikube-setup.sh`; restore those fixtures between scenarios that change or delete workloads. The node-drain scenarios assume the documented three-node topology and do not cover a manually prepared single-node cluster.
 
 | # | Step | Expected Result |
 |---|------|-----------------|
 | 1.1 | Run `kubectl get nodes` | 3 nodes: `local-cluster` (control-plane), `local-cluster-m02`, `local-cluster-m03`, all `Ready` |
-| 1.2 | Run `kubectl get deployments -A \| grep team- \| wc -l` | 72 deployments |
-| 1.3 | Run `kubectl get pods -A \| grep team- \| grep Running \| wc -l` | 240 pods in `Running` state |
+| 1.2 | Run `kubectl get deployments -A \| grep team- \| wc -l` | 50 deployments |
+| 1.3 | Run `kubectl get pods -A \| grep team- \| grep Running \| wc -l` | 55 pods in `Running` state |
 | 1.4 | Open `http://localhost:8080`, log in as admin | Dashboard loads, Cluster State shows all 9 namespaces |
 | 1.5 | Navigate to Policies page | Empty state — no policies exist yet |
-| 1.6 | Navigate to Guardrails page | Default settings loaded, no protected namespaces |
+| 1.6 | Navigate to Guardrails page | Seeded defaults loaded: system/application namespaces protected, no `team-*` namespaces protected |
 | 1.7 | Check metrics-server: `kubectl top nodes` | Returns CPU/memory for all 3 nodes |
 
 ---
@@ -200,7 +200,7 @@ Verify the environment is ready before running any policy tests.
 |---|------|-----------------|
 | 5.1.1 | Create policy in plan mode targeting `team-backend` | Mode badge shows "plan" |
 | 5.1.2 | Trigger manual sleep | Execution created with mode=plan |
-| 5.1.3 | Check execution logs | Log lines with level=`plan`: "Would scale deployment api 5→0", etc. |
+| 5.1.3 | Check execution logs | Log lines with level=`plan`: "Would scale deployment api 2→0", etc. |
 | 5.1.4 | Check `countScaled` | Reflects number that would be scaled |
 | 5.1.5 | `kubectl get pods -n team-backend` | All pods still running — no actual scaling |
 | 5.1.6 | Check workload snapshots | No snapshots created (plan mode does not persist snapshots) |
@@ -211,11 +211,11 @@ Verify the environment is ready before running any policy tests.
 |---|------|-----------------|
 | 5.2.1 | Create policy in apply mode targeting `team-qa` | Overlap check passes (no other apply policy on team-qa) |
 | 5.2.2 | Trigger manual sleep | Execution with mode=apply |
-| 5.2.3 | Check execution logs | Log lines with level=`ok`: "Scaled deployment test-runner 5→0" |
+| 5.2.3 | Check execution logs | Log lines with level=`ok`: "Scaled deployment test-runner 1→0" |
 | 5.2.4 | `kubectl get pods -n team-qa` | 0 pods running |
-| 5.2.5 | Check workload snapshots | 7 snapshots created (one per deployment), each with `replicasBefore` set |
+| 5.2.5 | Check workload snapshots | 5 snapshots created (one per deployment), each with `replicasBefore` set |
 | 5.2.6 | Trigger wake | All deployments restored to original replica counts |
-| 5.2.7 | `kubectl get pods -n team-qa` | 25 pods running again |
+| 5.2.7 | `kubectl get pods -n team-qa` | 5 pods running again |
 
 ### 5.3 Mode Override on Trigger
 
@@ -234,16 +234,16 @@ Verify the environment is ready before running any policy tests.
 | # | Step | Expected Result |
 |---|------|-----------------|
 | 6.1.1 | Create policy: namespaceFilter=`team-backend`, mode=apply | Only team-backend targeted |
-| 6.1.2 | Trigger sleep | 8 deployments in team-backend scale to 0 (30 pods) |
-| 6.1.3 | Verify other namespaces untouched | `kubectl get pods -n team-web` — still 25 running |
-| 6.1.4 | Wake | team-backend restored to 30 pods |
+| 6.1.2 | Trigger sleep | 7 deployments in team-backend scale to 0 (9 pods) |
+| 6.1.3 | Verify other namespaces untouched | `kubectl get pods -n team-web` — still 6 running |
+| 6.1.4 | Wake | team-backend restored to 9 pods |
 
 ### 6.2 Multiple Namespaces
 
 | # | Step | Expected Result |
 |---|------|-----------------|
 | 6.2.1 | Create policy: namespaceFilter=`team-web,team-data` | Targets both namespaces |
-| 6.2.2 | Trigger sleep (apply mode) | team-web (25 pods) and team-data (30 pods) scale to 0 |
+| 6.2.2 | Trigger sleep (apply mode) | team-web (6 pods) and team-data (7 pods) scale to 0 |
 | 6.2.3 | Verify team-backend, team-qa, etc. untouched | No change |
 | 6.2.4 | Wake | Both namespaces restored |
 
@@ -252,7 +252,7 @@ Verify the environment is ready before running any policy tests.
 | # | Step | Expected Result |
 |---|------|-----------------|
 | 6.3.1 | Create policy: namespaceFilter empty | Targets all non-system namespaces |
-| 6.3.2 | Trigger sleep (plan mode) | Logs show all 72 deployments across 9 team namespaces |
+| 6.3.2 | Trigger sleep (plan mode) | Logs show all 50 deployments across 9 team namespaces |
 | 6.3.3 | Verify kube-system, kube-phoenix namespaces excluded | System namespaces never targeted |
 
 ---
@@ -273,7 +273,7 @@ Verify the environment is ready before running any policy tests.
 |---|------|-----------------|
 | 7.2.1 | Create policy: namespaceFilter=`team-backend`, labelSelector=`tier=batch` | Only batch-tier deployments targeted |
 | 7.2.2 | Trigger sleep (apply mode) | Only `worker` and `cron` scale to 0 |
-| 7.2.3 | Verify `api` still running at 5 replicas | Not matched by label selector |
+| 7.2.3 | Verify `api` still running at 2 replicas | Not matched by label selector |
 | 7.2.4 | Wake | `worker` and `cron` restored |
 
 ### 7.3 Invalid Label Selector
@@ -291,18 +291,18 @@ Verify the environment is ready before running any policy tests.
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 8.1.1 | Create policy: namespaceFilter=`team-data,team-web,team-ml` | Targets 3 namespaces (80 pods total) |
+| 8.1.1 | Create policy: namespaceFilter=`team-data,team-web,team-ml` | Targets 3 namespaces (18 pods total) |
 | 8.1.2 | Trigger sleep (apply) | All 3 namespaces scale to 0 |
-| 8.1.3 | Verify execution counts: `countScaled` = 23 (9+7+7 deployments) | Correct deployment count |
-| 8.1.4 | Wake | All 80 pods restored across 3 namespaces |
+| 8.1.3 | Verify execution counts: `countScaled` = 15 (6+5+4 deployments) | Correct deployment count |
+| 8.1.4 | Wake | All 18 pods restored across 3 namespaces |
 
 ### 8.2 All-Namespace Policy
 
 | # | Step | Expected Result |
 |---|------|-----------------|
 | 8.2.1 | Create policy: no namespace filter, no label selector | Targets everything |
-| 8.2.2 | Trigger sleep (plan mode) | Logs show 72 deployments across 9 namespaces would be scaled |
-| 8.2.3 | Verify `countScaled` = 72 in plan mode | All deployments counted |
+| 8.2.2 | Trigger sleep (plan mode) | Logs show 50 deployments across 9 namespaces would be scaled |
+| 8.2.3 | Verify `countScaled` = 50 in plan mode | All deployments counted |
 
 ---
 
@@ -315,7 +315,7 @@ Verify the environment is ready before running any policy tests.
 | 9.1.1 | Create policy targeting `team-backend`, apply mode, with a window that covers now | Policy sleeping, team-backend at 0 |
 | 9.1.2 | Create exception: type=`stay_awake`, starts=now, ends=+2h | Exception created in `pending` state |
 | 9.1.3 | Wait for scheduler tick (≤30s) | Exception transitions to `active`. Wake execution fires for team-backend |
-| 9.1.4 | Verify team-backend pods restored | 30 pods running |
+| 9.1.4 | Verify team-backend pods restored | 9 pods running |
 | 9.1.5 | Policy `currentState` during exception | `awake` (exception overrides window) |
 | 9.1.6 | Wait for exception to end (or shorten `endsAt`) | Exception → `completed`. If `sleepOnEnd=true`, sleep re-triggered |
 | 9.1.7 | Verify team-backend scales back to 0 | Policy reverts to schedule-driven state |
@@ -324,7 +324,7 @@ Verify the environment is ready before running any policy tests.
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 9.2.1 | Create policy targeting `team-qa`, apply mode, currently in awake window | Policy awake, team-qa has 25 pods |
+| 9.2.1 | Create policy targeting `team-qa`, apply mode, currently in awake window | Policy awake, team-qa has 5 pods |
 | 9.2.2 | Create exception: type=`force_sleep`, starts=now, ends=+1h | Pending → active |
 | 9.2.3 | Wait for activation | Sleep execution fires. team-qa scales to 0 |
 | 9.2.4 | Policy `currentState` during exception | `sleeping` (force_sleep overrides awake window) |
@@ -347,18 +347,18 @@ Verify the environment is ready before running any policy tests.
 | # | Step | Expected Result |
 |---|------|-----------------|
 | 10.1.1 | Create policy targeting `team-backend,team-web` (apply mode) | Both namespaces in scope |
-| 10.1.2 | Sleep the policy | Both namespaces scale to 0 (55 pods total) |
+| 10.1.2 | Sleep the policy | Both namespaces scale to 0 (15 pods total) |
 | 10.1.3 | Create exception: type=`stay_awake`, namespaceFilter=`team-backend` only | Scoped to team-backend |
-| 10.1.4 | Exception activates | Only team-backend wakes (30 pods). team-web stays at 0 |
+| 10.1.4 | Exception activates | Only team-backend wakes (9 pods). team-web stays at 0 |
 | 10.1.5 | Exception ends with sleepOnEnd=true | Only team-backend re-sleeps. team-web unaffected (already at 0) |
 
 ### 10.2 Label-Scoped Exception
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 10.2.1 | Policy targets `team-backend` (all deployments). Sleep it | 8 deployments at 0 |
+| 10.2.1 | Policy targets `team-backend` (all deployments). Sleep it | 7 deployments at 0 |
 | 10.2.2 | Create exception: type=`stay_awake`, labelSelector=`tier=critical` | Only `api` deployment matches |
-| 10.2.3 | Exception activates | Only `api` wakes to 5 replicas. Other 7 deployments stay at 0 |
+| 10.2.3 | Exception activates | Only `api` wakes to 2 replicas. Other 6 deployments stay at 0 |
 | 10.2.4 | Exception ends | `api` scales back to 0 |
 
 ### 10.3 Exception Scope Wider Than Policy
@@ -429,16 +429,16 @@ Verify the environment is ready before running any policy tests.
 | 12.1.1 | Add `team-payments` to guardrails Protected Namespaces | Guardrails updated |
 | 12.1.2 | Create policy targeting `team-payments` (or all namespaces) | Policy created (no error at creation) |
 | 12.1.3 | Trigger sleep (apply mode) | team-payments deployments skipped. Execution log shows `countProtected` for those deployments |
-| 12.1.4 | Verify `kubectl get pods -n team-payments` | All 25 pods still running |
-| 12.1.5 | Check execution `countProtected` | = 8 (all team-payments deployments) |
+| 12.1.4 | Verify `kubectl get pods -n team-payments` | All 6 pods still running |
+| 12.1.5 | Check execution `countProtected` | = 6 (all team-payments deployments) |
 
 ### 12.2 Protected Namespace in Multi-NS Policy
 
 | # | Step | Expected Result |
 |---|------|-----------------|
 | 12.2.1 | Policy targets `team-payments,team-infra`. team-payments is protected | Policy created |
-| 12.2.2 | Trigger sleep | team-infra scales to 0 (25 pods). team-payments untouched (25 pods remain) |
-| 12.2.3 | Execution counts: `countScaled`=8, `countProtected`=8 | team-infra deployments scaled, team-payments protected |
+| 12.2.2 | Trigger sleep | team-infra scales to 0 (6 pods). team-payments untouched (6 pods remain) |
+| 12.2.3 | Execution counts: `countScaled`=6, `countProtected`=6 | team-infra deployments scaled, team-payments protected |
 
 ### 12.3 Priority Namespaces
 
@@ -485,7 +485,7 @@ Verify the environment is ready before running any policy tests.
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 14.1.1 | Create apply-mode policy on `team-infra`, trigger sleep | All 25 pods at 0 |
+| 14.1.1 | Create apply-mode policy on `team-infra`, trigger sleep | All 6 pods at 0 |
 | 14.1.2 | Manually: `kubectl -n team-infra scale deployment dns --replicas=3` | dns externally scaled to 3 |
 | 14.1.3 | If `schedulerEnforceSleep=true`, wait for tick | Scheduler detects drift via `HasDriftedFromSleep()` |
 | 14.1.4 | Enforce-sleep execution fires | dns re-scaled to 0. Trigger=`enforce_sleep` |
@@ -495,7 +495,7 @@ Verify the environment is ready before running any policy tests.
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 14.2.1 | Policy on `team-backend` is sleeping. stay_awake exception active on `api` only | api at 5 replicas, others at 0 |
+| 14.2.1 | Policy on `team-backend` is sleeping. stay_awake exception active on `api` only | api at 2 replicas, others at 0 |
 | 14.2.2 | Manually scale `worker` to 2 | External drift on non-excepted workload |
 | 14.2.3 | Enforce-sleep fires | `worker` re-scaled to 0. `api` untouched (covered by exception) |
 
@@ -592,9 +592,9 @@ Verify the environment is ready before running any policy tests.
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 17.3.1 | Create policy targeting all 9 namespaces (72 deployments) | Large scope |
+| 17.3.1 | Create policy targeting all 9 namespaces (50 deployments) | Large scope |
 | 17.3.2 | Trigger sleep | Scaling operations bounded by `scalingConcurrency` (default 10) |
-| 17.3.3 | Verify all 72 deployments processed | No deployments missed due to concurrency limiting |
+| 17.3.3 | Verify all 50 deployments processed | No deployments missed due to concurrency limiting |
 
 ---
 
@@ -604,17 +604,17 @@ Verify the environment is ready before running any policy tests.
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 18.1.1 | `kubectl -n team-mobile scale deployment crash-report --replicas=0` | crash-report already at 0 |
-| 18.1.2 | Sleep the policy targeting team-mobile | crash-report snapshot: `wasAlreadyZero=true` |
-| 18.1.3 | Wake the policy | crash-report NOT scaled (stays at 0). Snapshot closed without restore |
+| 18.1.1 | `kubectl -n team-mobile scale deployment sync --replicas=0` | sync already at 0 |
+| 18.1.2 | Sleep the policy targeting team-mobile | sync snapshot: `wasAlreadyZero=true` |
+| 18.1.3 | Wake the policy | sync NOT scaled (stays at 0). Snapshot closed without restore |
 
 ### 18.2 Workload Deleted During Sleep
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 18.2.1 | Sleep team-mobile (apply mode) | Snapshots created for all 8 deployments |
-| 18.2.2 | `kubectl -n team-mobile delete deployment ab-testing` | Deployment gone |
-| 18.2.3 | Wake the policy | ab-testing snapshot: `wasDeletedAtWake=true`. Warning logged. Other deployments restored normally |
+| 18.2.1 | Sleep team-mobile (apply mode) | Snapshots created for all 5 deployments |
+| 18.2.2 | `kubectl -n team-mobile delete deployment chat-service` | Deployment gone |
+| 18.2.3 | Wake the policy | chat-service snapshot: `wasDeletedAtWake=true`. Warning logged. Other deployments restored normally |
 
 ### 18.3 Externally Scaled During Sleep
 
@@ -636,10 +636,10 @@ Verify the environment is ready before running any policy tests.
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 18.5.1 | Sleep `team-infra` | 8 deployments at 0 |
+| 18.5.1 | Sleep `team-infra` | 6 deployments at 0 |
 | 18.5.2 | `kubectl -n team-infra create deployment new-svc --image=registry.k8s.io/pause:3.10.2 --replicas=3` | New deployment created during sleep window |
 | 18.5.3 | If enforce-sleep runs, it has no snapshot for `new-svc` | New deployment not enforced (no snapshot = not managed) |
-| 18.5.4 | Wake fires | Only original 8 deployments restored. `new-svc` untouched at 3 |
+| 18.5.4 | Wake fires | Only original 6 deployments restored. `new-svc` untouched at 3 |
 
 ---
 
@@ -695,7 +695,7 @@ Verify the environment is ready before running any policy tests.
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 20.3.1 | Execute against 72 deployments multiple times | Logs accumulate |
+| 20.3.1 | Execute against 50 deployments multiple times | Logs accumulate |
 | 20.3.2 | Verify max 5000 log lines retained per execution | Older lines not returned beyond limit |
 
 ---
@@ -706,8 +706,8 @@ Verify the environment is ready before running any policy tests.
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 21.1.1 | Sleep `team-backend` (apply mode, 8 deployments) | 8 snapshots created |
-| 21.1.2 | `GET /api/policies/{id}/snapshots?open=true` | Returns 8 open snapshots |
+| 21.1.1 | Sleep `team-backend` (apply mode, 7 deployments) | 7 snapshots created |
+| 21.1.2 | `GET /api/policies/{id}/snapshots?open=true` | Returns 7 open snapshots |
 | 21.1.3 | Each snapshot has: `kind`, `namespace`, `name`, `replicasBefore`, `sleepExecutionId` | Fields populated correctly |
 | 21.1.4 | `wakeExecutionId` is null | Not yet woken |
 
@@ -717,7 +717,7 @@ Verify the environment is ready before running any policy tests.
 |---|------|-----------------|
 | 21.2.1 | Wake the policy | Snapshots closed |
 | 21.2.2 | `GET /api/policies/{id}/snapshots?open=true` | Returns empty array |
-| 21.2.3 | `GET /api/policies/{id}/snapshots` (all) | Returns 8 snapshots with `wakeExecutionId` set, `replicasRestored` populated |
+| 21.2.3 | `GET /api/policies/{id}/snapshots` (all) | Returns 7 snapshots with `wakeExecutionId` set, `replicasRestored` populated |
 
 ### 21.3 Snapshot Edge Cases
 
@@ -765,7 +765,7 @@ Verify the environment is ready before running any policy tests.
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 23.2.1 | Trigger sleep on a large policy (72 deployments) | Execution running |
+| 23.2.1 | Trigger sleep on a large policy (50 deployments) | Execution running |
 | 23.2.2 | Kill the pod mid-execution | Execution interrupted |
 | 23.2.3 | `ResetStuckTransitionPolicies()` runs on startup | Stuck policies reset to `unknown` |
 | 23.2.4 | Scheduler re-evaluates, fires recovery execution | Correct state restored |
@@ -938,12 +938,12 @@ Verify the environment is ready before running any policy tests.
 
 | # | Step | Expected Result |
 |---|------|-----------------|
-| 31.1.1 | Create apply-mode policy with no namespace filter | Targets all 72 deployments, 240 pods |
-| 31.1.2 | Trigger sleep | All 240 pods scale to 0. Execution completes within timeout |
-| 31.1.3 | Verify `countScaled` = 72 | All deployments processed |
-| 31.1.4 | Verify 72 snapshots created | One per deployment |
-| 31.1.5 | Trigger wake | All 240 pods restored |
-| 31.1.6 | Verify `countScaled` = 72 on wake | All restored |
+| 31.1.1 | Create apply-mode policy with no namespace filter | Targets all 50 deployments, 55 pods |
+| 31.1.2 | Trigger sleep | All 55 pods scale to 0. Execution completes within timeout |
+| 31.1.3 | Verify `countScaled` = 50 | All deployments processed |
+| 31.1.4 | Verify 50 snapshots created | One per deployment |
+| 31.1.5 | Trigger wake | All 55 pods restored |
+| 31.1.6 | Verify `countScaled` = 50 on wake | All restored |
 
 ### 32.2 Multiple Concurrent Policies
 
@@ -974,15 +974,15 @@ Verify the environment is ready before running any policy tests.
 
 Quick reference for available test targets:
 
-| Namespace | Deployments | Pods |
-|-----------|------------|------|
-| team-backend | api(5), worker(5), cron(3), gateway(5), auth(4), notifications(3), cache(3), search(2) | 30 |
-| team-web | web(5), bff(4), assets(3), ssr(4), cdn-origin(3), analytics(3), preview(3) | 25 |
-| team-data | pipeline(5), scheduler(3), dashboard(3), etl(4), warehouse(3), spark-driver(2), spark-worker(5), airflow(3), metabase(2) | 30 |
-| team-qa | test-runner(5), selenium(4), mock-api(3), cypress(4), load-test(3), coverage(3), report(3) | 25 |
-| team-platform | consul(4), vault(3), prometheus(3), grafana(2), alertmanager(2), loki(3), tempo(3), otel-collector(4), cert-manager(3), ingress(3) | 30 |
-| team-ml | model-serve(5), trainer(3), feature-store(3), notebook(4), labeling(3), inference(4), vector-db(3) | 25 |
-| team-mobile | push-service(4), media-api(3), chat-service(4), sync(3), deeplink(3), config-server(3), ab-testing(3), crash-report(2) | 25 |
-| team-payments | ledger(4), processor(3), fraud(3), invoicing(3), webhook(4), reconciler(3), pci-proxy(3), audit(2) | 25 |
-| team-infra | dns(3), ntp(2), log-shipper(4), backup(3), registry(3), artifact(3), scanner(4), policy-agent(3) | 25 |
-| **Total** | **72 deployments** | **240** |
+| Namespace | Deployments (desired replicas) | Desired pods |
+|-----------|-------------------------------|--------------|
+| team-backend | api(2), worker(1), cron(1), gateway(2), auth(1), notifications(1), cache(1) | 9 |
+| team-web | web(2), bff(1), assets(1), ssr(1), analytics(1) | 6 |
+| team-data | pipeline(2), scheduler(1), dashboard(1), etl(1), warehouse(1), metabase(1) | 7 |
+| team-qa | test-runner(1), selenium(1), mock-api(1), cypress(1), load-test(1) | 5 |
+| team-platform | vault(1), prometheus(1), grafana(1), alertmanager(1), loki(1), ingress(1) | 6 |
+| team-ml | model-serve(2), trainer(1), feature-store(1), notebook(1) | 5 |
+| team-mobile | push-service(1), media-api(1), chat-service(1), sync(1), deeplink(1) | 5 |
+| team-payments | ledger(1), processor(1), fraud(1), invoicing(1), webhook(1), reconciler(1) | 6 |
+| team-infra | dns(1), log-shipper(1), backup(1), registry(1), scanner(1), policy-agent(1) | 6 |
+| **Total** | **50 deployments** | **55** |
