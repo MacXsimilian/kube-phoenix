@@ -1406,6 +1406,8 @@ Policy and user updates use a partial-update pattern:
 
 This allows clients to send only the fields they want to change, and prevents accidental overwrites of unrelated fields.
 
+Exception updates use a separate `exceptionUpdateInput` with pointer fields for optional text. Omitted text fields preserve the stored value; an explicit empty string clears `ticketRef`, `reason`, `namespaceFilter`, or `labelSelector`. The parent policy is immutable, and the create input retains its required-field validation.
+
 ### WebSocket Conventions
 
 All WebSocket handlers follow the same structure:

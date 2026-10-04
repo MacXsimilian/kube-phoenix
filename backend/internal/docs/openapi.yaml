@@ -1080,6 +1080,35 @@ components:
         - startsAt
         - endsAt
 
+    ScheduledExceptionUpdate:
+      description: Partial update of a pending exception. Omitted fields are preserved. Empty strings clear ticketRef, reason, namespaceFilter, and labelSelector. The parent policy cannot be changed.
+      type: object
+      properties:
+        exceptionType:
+          type: string
+          enum: [stay_awake, force_sleep]
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        ticketRef:
+          type: string
+        reason:
+          type: string
+        sleepOnEnd:
+          type: boolean
+        namespaceFilter:
+          type: string
+        labelSelector:
+          type: string
+        workloadTargets:
+          type: array
+          description: Only non-empty target lists replace the current targets.
+          items:
+            $ref: "#/components/schemas/WorkloadTarget"
+
     # ── Observability models ─────────────────────────────────────────────────
 
     MetricSnapshot:
@@ -2778,7 +2807,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ScheduledExceptionCreate"
+              $ref: "#/components/schemas/ScheduledExceptionUpdate"
       responses:
         "200":
           description: Updated exception.

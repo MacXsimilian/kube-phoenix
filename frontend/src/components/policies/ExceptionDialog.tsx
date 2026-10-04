@@ -98,11 +98,11 @@ export default function ExceptionDialog({
         exceptionType: form.exceptionType,
         startsAt: form.startsAt,
         endsAt: form.endsAt,
-        ticketRef: form.ticketRef || undefined,
-        reason: form.reason || undefined,
+        ticketRef: form.ticketRef ?? '',
+        reason: form.reason ?? '',
         sleepOnEnd: form.sleepOnEnd,
-        namespaceFilter: form.namespaceFilter || undefined,
-        labelSelector: form.labelSelector || undefined,
+        namespaceFilter: form.namespaceFilter ?? '',
+        labelSelector: form.labelSelector ?? '',
       }
       if (existing) {
         return updateException(existing.id, payload)
