@@ -329,7 +329,7 @@ What works in each local setup:
 | `CORS_ALLOWED_ORIGIN` | _(empty)_ | Allowed origin for CORS (required in Mode 2) |
 | `CLUSTER_NAME` | _(empty)_ | Human-readable cluster name shown in `GET /api/cluster/info` |
 | `NEXT_PUBLIC_API_URL` | `''` (empty string, same-origin) | Backend URL for the frontend dev server (build-time, Mode 2 only). `make dev-mock` sets this to `http://localhost:4444`. |
-| `NEXT_PUBLIC_APP_VERSION` | `dev` | Version string shown in the About modal |
+| `NEXT_PUBLIC_APP_VERSION` | Build-dependent | About modal version; standalone frontend builds fall back to `frontend/package.json` when unset. See [Application Build Versions](configuration.md#application-build-versions) for Docker and release builds. |
 
 See `.env.example` for a copy-paste template.
 
