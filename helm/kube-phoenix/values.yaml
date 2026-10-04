@@ -262,6 +262,10 @@ priorityClassName: ""   # e.g. system-cluster-critical
 # Kubernetes API server. Disable if your cluster does not support NetworkPolicy.
 networkPolicy:
   enabled: false
+  # Additional TCP ports for custom OIDC/Kubernetes endpoints or a DATABASE_URL
+  # supplied via externalDatabase.url, secret.existingSecret, or extraEnv.
+  # The database rule uses 5432 for bundled PostgreSQL or externalDatabase.port.
+  extraEgressPorts: []
 
 # ── Pod Disruption Budget ───────────────────────────────────────────────────
 # Protects against voluntary disruptions (node drains, cluster upgrades).

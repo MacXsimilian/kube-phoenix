@@ -1,4 +1,8 @@
 {{- if .Values.networkPolicy.enabled }}
+{{- $databasePort := 5432 }}
+{{- if not .Values.postgresql.enabled }}
+{{- $databasePort = int .Values.externalDatabase.port }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -27,7 +31,7 @@ spec:
           protocol: TCP
     # Allow traffic to PostgreSQL
     - ports:
-        - port: 5432
+        - port: {{ $databasePort }}
           protocol: TCP
     # Allow traffic to Kubernetes API server
     - ports:
@@ -35,4 +39,12 @@ spec:
           protocol: TCP
         - port: 6443
           protocol: TCP
+    {{- with .Values.networkPolicy.extraEgressPorts }}
+    # Allow additional database, identity-provider, or Kubernetes endpoint ports
+    - ports:
+        {{- range . }}
+        - port: {{ . }}
+          protocol: TCP
+        {{- end }}
+    {{- end }}
 {{- end }}

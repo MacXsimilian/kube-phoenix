@@ -352,6 +352,8 @@ The sections below identify the main settings without duplicating every default.
 
 `service.*`, `ingress.*`, and `targetGroupBinding.*` control access to the application. Ingress and TargetGroupBinding require their respective controllers. `networkPolicy.enabled` assumes a CNI that enforces NetworkPolicy. The [example overlays](../examples/) show supported configurations.
 
+The NetworkPolicy allows the bundled PostgreSQL port or `externalDatabase.port`, plus DNS and the standard HTTPS/Kubernetes API ports. Add custom OIDC or Kubernetes endpoint ports to `networkPolicy.extraEgressPorts`. When the database DSN comes from `externalDatabase.url`, an existing Secret, or an environment override, add its port to this list if it differs from the configured database rule. For example, `extraEgressPorts: [6543, 8443]` permits a database on 6543 and an identity provider on 8443.
+
 ### Resources and Scheduling
 
 `resources`, probe settings, and `terminationGracePeriodSeconds` control application resource use and lifecycle. `nodeSelector`, `tolerations`, `affinity`, and `topologySpreadConstraints` place application pods; they do not configure the policy scaler's node-protection guardrails. `extraEnv` and `extraEnvFrom` add runtime configuration.

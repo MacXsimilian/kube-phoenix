@@ -263,7 +263,7 @@ kubectl logs -n kube-phoenix deployment/kube-phoenix
 **Solution:**
 
 1. Verify your CNI supports NetworkPolicy (Calico, Cilium). If not, set `networkPolicy.enabled=false`.
-2. If using an external database on a non-standard port, the default egress rules (port 5432) may not cover it. Disable the NetworkPolicy or customize egress rules.
+2. For an external database configured with individual fields, verify `externalDatabase.port`. For DSNs supplied through `externalDatabase.url` or a Secret, and custom OIDC/Kubernetes endpoints, add their TCP ports to `networkPolicy.extraEgressPorts`.
 3. Inspect the policy: `kubectl describe networkpolicy -n kube-phoenix`.
 
 ## ServiceMonitor CRD not found
