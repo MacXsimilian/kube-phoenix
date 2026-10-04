@@ -403,11 +403,11 @@ func (h *Handler) checkImportedExceptionOverlap(policyID *uint, body exceptionEx
 	return "", http.StatusOK
 }
 
-// resolveExceptionParent looks up a policy by name or returns nil for a freestanding
-// exception. Returns (id, errorMessage, httpStatus).
+// resolveExceptionParent looks up the required parent policy by name.
+// Returns (id, errorMessage, httpStatus).
 func (h *Handler) resolveExceptionParent(name *string) (*uint, string, int) {
-	if name == nil || *name == "" {
-		return nil, "", http.StatusOK
+	if msg := validateExceptionParentName(name); msg != "" {
+		return nil, msg, http.StatusBadRequest
 	}
 	p, err := h.store.GetPolicyByName(*name)
 	if errors.Is(err, gorm.ErrRecordNotFound) {

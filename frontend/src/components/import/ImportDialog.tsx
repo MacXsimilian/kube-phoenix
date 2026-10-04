@@ -248,7 +248,7 @@ export default function ImportDialog({ open, onClose, kind, onNotify, onGuardrai
             <Button
               variant="contained"
               onClick={runApply}
-              disabled={busy || (kind === 'policy' && resolution === 'rename' && newName.trim() === '')}
+              disabled={busy || (kind === 'policy' && resolution === 'rename' && newName.trim() === '') || (kind === 'exception' && !(preview as ExceptionPreviewResp).parentPolicyId)}
               startIcon={busy ? <CircularProgress size={14} /> : null}
             >
               Apply
@@ -549,10 +549,10 @@ function ExceptionPreview({ preview }: { preview: ExceptionPreviewResp }) {
   const typeColor = ex.exceptionType === 'stay_awake' ? 'success' : 'warning'
   return (
     <>
-      <Alert severity="success">
+      <Alert severity={preview.parentPolicyName ? 'success' : 'error'}>
         {preview.parentPolicyName
           ? `Will be created and attached to policy "${preview.parentPolicyName}".`
-          : 'Will be created as a freestanding exception (no parent policy).'}
+          : 'A parent policy is required. Parentless exceptions cannot be imported.'}
       </Alert>
       <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>

@@ -26,6 +26,9 @@ function validateExceptionEnvelope(payload) {
   }
   const ex = payload.exception
   if (!ex || typeof ex !== 'object') return { msg: 'exception payload is required', status: 400 }
+  if (typeof ex.policyName !== 'string' || !ex.policyName.trim()) {
+    return { msg: 'policyName is required (freestanding exceptions are not supported)', status: 400 }
+  }
   if (!['stay_awake', 'force_sleep'].includes(ex.exceptionType)) {
     return { msg: 'exceptionType must be stay_awake or force_sleep', status: 400 }
   }
@@ -41,7 +44,7 @@ function validateExceptionEnvelope(payload) {
 }
 
 function resolveParent(name) {
-  if (name == null || name === '') return { policyId: null, msg: '', status: 0 }
+  if (typeof name !== 'string' || !name.trim()) return { policyId: null, msg: 'policyName is required (freestanding exceptions are not supported)', status: 400 }
   const parent = db.policies.find((p) => p.name === name)
   if (!parent) {
     return {
@@ -68,6 +71,7 @@ export function register(router) {
   })
 
   router.add('POST', '/api/exceptions', (req, res) => {
+    if (req.body.policyId == null) return res.json(400, { error: 'policyId is required (freestanding exceptions are not yet supported)' })
     const now = new Date().toISOString()
     const ex = {
       id: nextId('exception'),
@@ -97,7 +101,7 @@ export function register(router) {
   router.add('PUT', '/api/exceptions/:id', (req, res) => {
     const ex = db.exceptions.find((e) => e.id === Number(req.params.id))
     if (!ex) return res.json(404, { error: 'Exception not found' })
-    const editable = ['exceptionType', 'startsAt', 'endsAt', 'ticketRef', 'reason', 'sleepOnEnd', 'namespaceFilter', 'labelSelector', 'workloadTargets', 'policyId']
+    const editable = ['exceptionType', 'startsAt', 'endsAt', 'ticketRef', 'reason', 'sleepOnEnd', 'namespaceFilter', 'labelSelector', 'workloadTargets']
     for (const key of editable) {
       if (req.body[key] !== undefined) ex[key] = req.body[key]
     }

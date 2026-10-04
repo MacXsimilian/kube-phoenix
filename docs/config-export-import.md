@@ -58,6 +58,8 @@ match the endpoint.
 
 Exception exports replace the `policyId` foreign key with `policyName`
 so the target environment can resolve the reference locally.
+Historical parentless records export `policyName: null`, but cannot be
+imported without supplying an existing parent policy name.
 
 ## Conflict resolution
 
@@ -87,6 +89,9 @@ target environment, the backend returns:
   endpoint — a window that collides with an existing opposite-type
   exception on the same policy is rejected with 409 in both preview
   and apply.
+- Exception imports require a non-blank `policyName`. Missing, null, or
+  blank names are rejected with 400 in both preview and apply because
+  parentless exceptions cannot run.
 - Every apply produces an audit entry: `guardrail.import`,
   `policy.import`, or `exception.import`. Every export does too:
   `guardrail.export`, `policy.export`, or `exception.export`. Export
