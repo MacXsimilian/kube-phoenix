@@ -352,6 +352,18 @@ See `.env.example` for a copy-paste template.
 | `make minikube-workloads` | Create sample workloads only |
 | `make minikube-teardown` | Destroy the minikube cluster |
 
+### Offline Rendering with Older Helm Clients
+
+`make helm-template` renders locally without contacting a cluster. Helm 3.8.0 assumes Kubernetes 1.23.0 for this operation, which fails the chart's `>=1.25.0-0` requirement. Set the intended Kubernetes version explicitly when rendering with an older client; this example uses the chart's declared minimum:
+
+```bash
+helm template kube-phoenix helm/kube-phoenix \
+  --namespace kube-phoenix \
+  --kube-version 1.25.0
+```
+
+This override only supplies capabilities for local rendering. It does not change the Helm installation minimum or the version of a running cluster. CI uses Helm 4.2.0, whose default rendering capabilities satisfy the chart requirement.
+
 ---
 
 ## Troubleshooting
