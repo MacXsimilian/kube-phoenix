@@ -33,7 +33,7 @@ The kube-phoenix frontend is the operator-facing UI for managing Kubernetes slee
 | MUI (Material UI) | v9 | |
 | TanStack Query | v5 | |
 | Emotion | v11 (MUI's styling engine) | |
-| Framer Motion | 12 | Sidebar morph, drawer slide, log animations |
+| Framer Motion | 14 | Sidebar morph, drawer slide, log animations |
 | TypeScript | 6 | |
 
 **Dependency notes:**
