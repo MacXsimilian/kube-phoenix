@@ -1,4 +1,5 @@
 import Chip from '@mui/material/Chip'
+import ButtonBase from '@mui/material/ButtonBase'
 import TableCell from '@mui/material/TableCell'
 import TableRow from '@mui/material/TableRow'
 import Tooltip from '@mui/material/Tooltip'
@@ -7,6 +8,7 @@ import { useIsDark } from '@/lib/useIsDark'
 import { fmtCpu, fmtMem, podAge } from '@/lib/formatters'
 import { getPodStatusStyle } from '@/components/cluster/statusColors'
 import { useColors } from '@/lib/colors'
+import { TABLE_ACTION_BUTTON_SX } from '@/lib/tableStyles'
 
 export interface PodData {
   name: string
@@ -56,14 +58,21 @@ export default function PodRow({
     : pod.readyContainers > 0
     ? colors.warning
     : colors.errorLight
+  const name = (
+    <Typography component="span" sx={{ fontSize: 12, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: showOwner ? 160 : 170, display: 'block' }}>
+      {pod.name}
+    </Typography>
+  )
 
   return (
     <TableRow hover onClick={onClick} sx={{ cursor: onClick ? 'pointer' : 'default' }}>
       <TableCell sx={{ maxWidth: showOwner ? 170 : 180, py: 0.75 }}>
         <Tooltip title={pod.name} arrow placement="top-start">
-          <Typography sx={{ fontSize: 12, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: showOwner ? 160 : 170, display: 'block' }}>
-            {pod.name}
-          </Typography>
+          {onClick ? (
+            <ButtonBase type="button" aria-label={`View pod ${pod.name}`} sx={{ ...TABLE_ACTION_BUTTON_SX, maxWidth: '100%' }}>
+              {name}
+            </ButtonBase>
+          ) : name}
         </Tooltip>
         <Chip label={pod.status} size="small" sx={{ height: 15, fontSize: 10, bgcolor: statusStyle.bgcolor, color: statusStyle.color, mt: 0.25 }} />
       </TableCell>

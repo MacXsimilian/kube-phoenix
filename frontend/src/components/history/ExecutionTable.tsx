@@ -14,6 +14,7 @@ import TableRow from '@mui/material/TableRow'
 import TablePagination from '@mui/material/TablePagination'
 import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
+import ButtonBase from '@mui/material/ButtonBase'
 import Skeleton from '@mui/material/Skeleton'
 import Typography from '@mui/material/Typography'
 import Tooltip from '@mui/material/Tooltip'
@@ -34,7 +35,7 @@ import { getModeStyle, SMALL_CHIP_SX } from '@/lib/statusColors'
 import StatusChip from '@/components/shared/StatusChip'
 import TriggerChip from '@/components/shared/TriggerChip'
 import type { PolicyExecution } from '@/lib/types'
-import { TABLE_HEAD_CELL_SX } from '@/lib/tableStyles'
+import { TABLE_HEAD_CELL_SX, TABLE_ACTION_BUTTON_SX } from '@/lib/tableStyles'
 
 const FILTER_BAR_SX = { display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' } as const
 const FILTER_FIELD_SX = { minWidth: 140 } as const
@@ -105,7 +106,11 @@ type ExecutionRowProps = {
 const ExecutionRow = memo(function ExecutionRow({ exec, modeStyle, onClick }: ExecutionRowProps) {
   return (
     <TableRow hover sx={ROW_SX} onClick={() => onClick(exec)}>
-      <TableCell sx={STARTED_CELL_SX}>{fmtDtShort(exec.startedAt)}</TableCell>
+      <TableCell sx={STARTED_CELL_SX}>
+        <ButtonBase type="button" aria-label={`Open logs for execution ${exec.id}`} sx={TABLE_ACTION_BUTTON_SX}>
+          {fmtDtShort(exec.startedAt)}
+        </ButtonBase>
+      </TableCell>
       <TableCell>
         <Typography variant="body2" noWrap sx={POLICY_NAME_SX}>
           {exec.policy?.name ?? `Policy #${exec.policyId}`}

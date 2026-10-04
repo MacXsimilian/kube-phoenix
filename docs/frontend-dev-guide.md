@@ -835,6 +835,7 @@ Props:
 Behavior:
 
 - Click a day to set the start; click a second day to set the end. Clicking a day earlier than the current start re-anchors the range with the original start as the new end.
+- Calendar days are native buttons with full date labels and selection state; Tab, Enter, and Space support choosing a range. Disabled days cannot receive focus or activate.
 - Hovering after picking a start shows a dashed-outline preview range.
 - Today is outlined in primary; days before `minDate` and out-of-month days are disabled and dimmed.
 - A "FROM … → TO …" header above the calendar shows the current selection plus a duration chip (e.g. `2d 5h`).

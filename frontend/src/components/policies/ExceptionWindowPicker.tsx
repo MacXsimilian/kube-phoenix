@@ -162,15 +162,26 @@ function MonthView({ anchor, startDay, endDay, hoverDay, minDate, onPick, onHove
           return (
             <Box
               key={idx}
+              component="button"
+              type="button"
+              disabled={disabled}
+              aria-label={d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+              aria-pressed={Boolean(selected)}
+              aria-current={isToday ? 'date' : undefined}
               onClick={() => !disabled && onPick(d)}
               onMouseEnter={() => !disabled && onHover(d)}
               onMouseLeave={() => onHover(null)}
+              onFocus={() => onHover(d)}
+              onBlur={() => onHover(null)}
               sx={{
                 position: 'relative',
                 textAlign: 'center',
                 py: 0.75,
+                px: 0,
                 borderRadius: 1,
                 cursor: disabled ? 'default' : 'pointer',
+                fontFamily: 'inherit',
+                lineHeight: 'inherit',
                 fontSize: 13,
                 fontWeight: selected || isToday ? 600 : 400,
                 color: !inMonth
@@ -192,6 +203,12 @@ function MonthView({ anchor, startDay, endDay, hoverDay, minDate, onPick, onHove
                 borderStyle: isPreviewEnd ? 'dashed' : 'solid',
                 opacity: disabled ? 0.4 : 1,
                 transition: 'background-color 120ms ease, border-color 120ms ease',
+                '&:focus-visible': {
+                  outline: '2px solid',
+                  outlineColor: 'primary.main',
+                  outlineOffset: 2,
+                  zIndex: 1,
+                },
                 '&:hover': disabled
                   ? undefined
                   : {
@@ -237,7 +254,7 @@ function TimeStepper({ label, value, onChange }: TimeStepperProps) {
         {label}
       </Typography>
       <Tooltip title="−15 min">
-        <IconButton size="small" onClick={() => step(-15)} sx={{ width: 24, height: 24, fontSize: 14 }}>−</IconButton>
+        <IconButton size="small" aria-label={`Decrease ${label.toLowerCase()} time by 15 minutes`} onClick={() => step(-15)} sx={{ width: 24, height: 24, fontSize: 14 }}>−</IconButton>
       </Tooltip>
       <TextField
         select
@@ -245,7 +262,7 @@ function TimeStepper({ label, value, onChange }: TimeStepperProps) {
         value={hh}
         onChange={e => onChange(`${e.target.value}:${mm}`)}
         sx={{ width: 68 }}
-        slotProps={{ select: { MenuProps: { slotProps: { paper: { sx: { maxHeight: 280 } } } } } }}
+        slotProps={{ select: { SelectDisplayProps: { 'aria-label': `${label} hour` }, MenuProps: { slotProps: { paper: { sx: { maxHeight: 280 } } } } } }}
       >
         {HOURS.map(h => <MenuItem key={h} value={h}>{h}</MenuItem>)}
       </TextField>
@@ -256,12 +273,12 @@ function TimeStepper({ label, value, onChange }: TimeStepperProps) {
         value={mm}
         onChange={e => onChange(`${hh}:${e.target.value}`)}
         sx={{ width: 68 }}
-        slotProps={{ select: { MenuProps: { slotProps: { paper: { sx: { maxHeight: 280 } } } } } }}
+        slotProps={{ select: { SelectDisplayProps: { 'aria-label': `${label} minute` }, MenuProps: { slotProps: { paper: { sx: { maxHeight: 280 } } } } } }}
       >
         {MINUTES.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
       </TextField>
       <Tooltip title="+15 min">
-        <IconButton size="small" onClick={() => step(15)} sx={{ width: 24, height: 24, fontSize: 14 }}>+</IconButton>
+        <IconButton size="small" aria-label={`Increase ${label.toLowerCase()} time by 15 minutes`} onClick={() => step(15)} sx={{ width: 24, height: 24, fontSize: 14 }}>+</IconButton>
       </Tooltip>
     </Box>
   );
@@ -331,17 +348,17 @@ export default function ExceptionWindowPicker({ value, onChange, minDate }: Prop
             </Button>
           )}
           <Tooltip title="Previous month">
-            <IconButton size="small" onClick={() => setAnchor(addMonths(anchor, -1))}>
+            <IconButton size="small" aria-label="Previous month" onClick={() => setAnchor(addMonths(anchor, -1))}>
               <ChevronLeftIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           <Tooltip title="Jump to today">
-            <IconButton size="small" onClick={() => setAnchor(addMonths(new Date(), 0))}>
+            <IconButton size="small" aria-label="Jump to today" onClick={() => setAnchor(addMonths(new Date(), 0))}>
               <EventIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           <Tooltip title="Next month">
-            <IconButton size="small" onClick={() => setAnchor(addMonths(anchor, 1))}>
+            <IconButton size="small" aria-label="Next month" onClick={() => setAnchor(addMonths(anchor, 1))}>
               <ChevronRightIcon fontSize="small" />
             </IconButton>
           </Tooltip>
