@@ -193,7 +193,7 @@ func (ps *PolicyScheduler) UpdateSettings(cfg SchedulerConfig) error {
 	ps.mu.Unlock()
 
 	if intervalChanged && parentCtx != nil {
-		return ps.Restart(parentCtx)
+		return ps.Restart()
 	}
 	return nil
 }
@@ -208,9 +208,16 @@ func (ps *PolicyScheduler) Reload() error {
 // Restart stops and restarts the ticker loop without running recovery.
 // Recovery is only needed on cold boot when state may be stale from a crash;
 // a restart happens in a running process where the previous tick already
-// left state consistent.
-func (ps *PolicyScheduler) Restart(ctx context.Context) error {
+// left state consistent. The lifetime context established by Start is retained
+// so finishing an administrative operation cannot stop the restarted scheduler.
+func (ps *PolicyScheduler) Restart() error {
 	ps.Stop()
+	ps.mu.Lock()
+	ctx := ps.parentCtx
+	ps.mu.Unlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return ps.start(ctx, false)
 }
 
