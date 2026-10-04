@@ -14,6 +14,9 @@ info:
     cookie. Include the CSRF token as `X-CSRF-Token` header on mutations.
 
     WebSocket connections use cookies automatically on same-origin upgrades.
+
+    info.version identifies this API document. Query /api/version for the
+    application build tag and Go runtime version.
   version: "1.1.0"
   contact:
     name: kube-phoenix
@@ -587,10 +590,10 @@ components:
       properties:
         version:
           type: string
-          description: Build version set via -ldflags (e.g. 0.4.2). "dev" when unset.
+          description: Application build tag set via -ldflags (vX.Y.Z for releases). "dev" when unset.
         goVersion:
           type: string
-          description: Go runtime version (e.g. go1.26).
+          description: Go runtime version reported by the running binary's runtime.Version().
         uptime:
           type: string
           description: Server uptime as a Go duration string (e.g. 2h15m30s).
