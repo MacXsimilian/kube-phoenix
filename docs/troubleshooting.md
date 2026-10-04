@@ -1,5 +1,9 @@
 # Troubleshooting
 
+Start with the symptom below. [Configuration](configuration.md) owns setting defaults; [deployment](deployment.md) and [local development](local-development.md) contain complete setup commands.
+
+[Policy execution](#policy-ran-but-nothing-was-scaled) · [Login and connections](#ui-logs-the-user-out-on-transient-network-errors) · [Deployment](#backend-crashes-on-startup) · [Alpha observability](#observability-dashboard)
+
 ## Policy ran but nothing was scaled
 
 **Problem:** A policy execution completed successfully but no workloads were affected.
@@ -10,7 +14,7 @@
 
 1. Open the execution log in the **History** page. Every skip is logged with a reason.
 2. Confirm the policy is in **apply** mode, not **plan** mode. New policies default to plan mode.
-3. Confirm the policy is **enabled**.
+3. For scheduled runs, confirm the policy is **enabled**. Manual triggers also work while scheduling is disabled.
 4. Check the **Namespace Filter**. If set, only matching namespaces are targeted.
 5. Check the **Label Selector**. If set, only matching workloads are targeted.
 6. Verify the target namespaces are not in **Guardrails > Protected Namespaces**.
@@ -23,7 +27,7 @@
 
 **Solution:**
 
-The scheduler automatically recovers stuck `transitioning` policies. If a policy has been in `transitioning` for longer than its execution timeout plus a 5-minute grace period (minimum 15 minutes), it is reset to `unknown` and re-evaluated on the next tick. No manual intervention is required.
+The scheduler resets stale `transitioning` policies after the execution timeout plus a 5-minute grace period (minimum 15 minutes). Enabled policies are then re-evaluated; successful recovery still depends on database and Kubernetes access. Check execution logs if the policy remains uncertain.
 
 If you need to resolve it immediately:
 
@@ -36,13 +40,13 @@ If you need to resolve it immediately:
 
 **Problem:** A policy's `currentState` is `unknown` after a pod restart.
 
-**Cause:** Recovery could not determine the intended state because no sleep windows are configured.
+**Cause:** Startup reset an interrupted transition, an execution failed, or recovery could not determine intent from a legacy/malformed stored window configuration. Current create/import endpoints require valid windows and initialize policy state from them.
 
 **Solution:**
 
-1. Ensure the policy has at least one sleep window configured.
-2. If the policy is newly created with no past ticks, trigger a manual **Sleep Now** or **Wake Now** to set an initial state.
-3. Once sleep windows are configured and a tick has fired, recovery will work automatically on subsequent restarts.
+1. Check the latest execution and backend recovery logs for database or Kubernetes errors.
+2. Confirm the policy has valid windows and a timezone. Enabled policies are evaluated automatically; disabled policies need a manual trigger.
+3. After correcting the cause, use **Sleep Now** or **Wake Now** in the intended mode and verify real replicas. A recorded policy state alone does not prove the cluster matches it.
 
 ## Execution stuck in `running` or marked `interrupted`
 
@@ -82,17 +86,17 @@ Then review the failed execution log to understand the root cause.
 
 **Problem:** After a wake execution, some workloads were not restored to their original replica count.
 
-**Cause:** The scaler intentionally skips restoration in several cases.
+**Cause:** A snapshot can describe an intentional skip, an external replica change, or a failed restore.
 
 **Solution:** Check the wake execution log for these status values:
 
-| Log Status | Meaning | Action |
+| Snapshot Flag | Meaning | Action |
 | :--------- | :------ | :----- |
-| `WasAlreadyZero` | Workload was at zero replicas before the sleep run | No restore needed; it was intentionally stopped |
-| `WasDeletedAtWake` | Workload was deleted between sleep and wake | No action needed |
-| `WasExternallyScaled` | Replica count was changed while sleeping | Skipped to avoid overwriting the manual change |
+| `wasAlreadyZero` | Workload was at zero replicas before the sleep run | No restore needed; it was intentionally stopped |
+| `wasDeletedAtWake` | Workload was deleted between sleep and wake | No action needed |
+| `wasExternallyScaled` | Nonzero replica count was observed while sleeping | If already at the saved count, close without rescaling; otherwise restore the saved count and log the change |
 
-If none of the above apply, check whether a guardrail is excluding the workload's namespace.
+If none of these explain the result, check the wake's namespace filter, lookup/scale errors, and snapshot-write warnings in the sleep log. Namespace protection excludes future sleep operations; it does not prevent restoring existing snapshots. A failed snapshot insert after scaling needs manual recovery from a verified baseline.
 
 ## Audit log CSV export is truncated or missing rows
 
@@ -114,7 +118,7 @@ If none of the above apply, check whether a guardrail is excluding the workload'
 
 **Problem:** A scheduled exception's `startsAt` has passed but it is still in `pending` status.
 
-**Cause:** The exception tick loop (runs every minute) may have encountered an error, or the exception's policy does not exist.
+**Cause:** Exception evaluation runs on the configured scheduler evaluation interval (30 seconds by default). It may have encountered an error, or the exception's policy does not exist.
 
 **Solution:**
 
@@ -174,8 +178,8 @@ kubectl logs -n kube-phoenix deployment/kube-phoenix
 **Solution:**
 
 1. Verify you are logged in. The `__kp_session` cookie must be present.
-2. Confirm the WebSocket URL is same-origin as the page. In development, set `NEXT_PUBLIC_API_URL` so the frontend knows the backend URL.
-3. Check browser DevTools > Network > WS for the close code. Code `4401` means no valid session.
+2. Confirm the browser's Origin host matches the WebSocket request host. `NEXT_PUBLIC_API_URL` alone does not satisfy this check; use a same-origin development proxy for live logs.
+3. Check the upgrade request in browser DevTools > Network. An expired or missing session returns HTTP 401 before the upgrade; an origin mismatch returns HTTP 403. See [the WebSocket protocol](api.md#websocket-protocol).
 
 ## Pod log viewer lines arrive in bursts (deployed environments)
 
@@ -197,7 +201,7 @@ kubectl logs -n kube-phoenix deployment/kube-phoenix
 
 **Solution:** Set `CORS_ALLOWED_ORIGIN=http://localhost:3000` on the backend process when running the frontend dev server separately.
 
-> **Tip:** When `ADMIN_USER` is unset, CORS allows all origins automatically. Authentication is always enforced — only the CORS behavior changes.
+> **Tip:** An explicit `CORS_ALLOWED_ORIGIN` always wins. The all-origins fallback applies only when both it and `ADMIN_USER` are empty. Authentication remains enforced. See [CORS configuration](configuration.md#cors).
 
 ## Image pull errors (ImagePullBackOff)
 
@@ -343,12 +347,12 @@ curl localhost:8080/metrics | grep kube_phoenix
 
 **Problem:** The API Rivers visualization renders but particles are static or absent.
 
-**Cause:** The SSE stream is not delivering the required data, or the selected scenario does not produce particle flow.
+**Cause:** API Rivers is a cosmetic visualization driven by illustrative scenarios. Its particles are not a trace of actual requests; an idle scenario intentionally produces no flow. The metrics dashboard is also an alpha feature. See [observability scope](observability.md).
 
 **Solution:**
 
-1. Ensure the SSE stream is connected and delivering `components` and `links` data.
-2. Check that a scenario other than "Idle" is selected. The Idle scenario intentionally shows no particles.
+1. Check the selected scenario. Use an active scenario to preview the animation.
+2. Use execution logs and cluster state to assess scaling behavior; particle movement is not evidence of a successful operation.
 3. If particles appear but do not follow paths, the SVG path elements may not be rendering correctly. Check the browser console for JavaScript errors.
 
 ### Historical data gaps or missing time ranges

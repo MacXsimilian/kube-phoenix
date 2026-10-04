@@ -1464,7 +1464,8 @@ paths:
       summary: SSE overview stream
       description: |
         Server-Sent Events stream. Sends the current overview immediately on connect,
-        then pushes a new `data:` event on every ClusterCache refresh (~10 s cadence).
+        then pushes a new `data:` event on each event-driven ClusterCache rebuild.
+        Keepalive comments are sent every 30 seconds; data events have no fixed cadence.
         Each event payload is a JSON-serialised `OverviewResponse`.
       tags: [Overview]
       responses:
@@ -2376,7 +2377,7 @@ paths:
             type: integer
             default: 50
             maximum: 1000
-          description: Number of items per page. Max 1000 — use a high value with page=0 to export all matching records.
+          description: Number of items per page, capped at 1000. Page 0 is the first page; iterate through pages to read all matching records.
       responses:
         "200":
           description: OK
