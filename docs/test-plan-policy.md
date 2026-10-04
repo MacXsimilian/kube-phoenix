@@ -1,7 +1,7 @@
 # Policy Feature — Test Planbook
 
 > Target environment: minikube 3-node cluster (local-cluster)
-> 9 namespaces, 72 deployments, 240 pods (`busybox:1.37` with role-based activity, some `pause:3.10` for idle workloads)
+> 9 namespaces, 72 deployments, 240 pods (`busybox:1.37` with role-based activity, some `pause:3.10.2` for idle workloads)
 > Access: `http://localhost:8080` — admin / adminadmin
 
 ---
@@ -637,7 +637,7 @@ Verify the environment is ready before running any policy tests.
 | # | Step | Expected Result |
 |---|------|-----------------|
 | 18.5.1 | Sleep `team-infra` | 8 deployments at 0 |
-| 18.5.2 | `kubectl -n team-infra create deployment new-svc --image=registry.k8s.io/pause:3.10 --replicas=3` | New deployment created during sleep window |
+| 18.5.2 | `kubectl -n team-infra create deployment new-svc --image=registry.k8s.io/pause:3.10.2 --replicas=3` | New deployment created during sleep window |
 | 18.5.3 | If enforce-sleep runs, it has no snapshot for `new-svc` | New deployment not enforced (no snapshot = not managed) |
 | 18.5.4 | Wake fires | Only original 8 deployments restored. `new-svc` untouched at 3 |
 

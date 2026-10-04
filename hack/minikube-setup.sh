@@ -72,7 +72,7 @@ apply_deployment() {
       ;;
     pause)
       # Do nothing — near-zero resource usage, like idle pods in a real cluster
-      image="registry.k8s.io/pause:3.10"
+      image="registry.k8s.io/pause:3.10.2"
       cmd='["/pause"]'
       ;;
     *)
