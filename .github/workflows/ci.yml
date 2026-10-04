@@ -106,6 +106,7 @@ jobs:
       contents: read
     defaults:
       run:
+        shell: bash
         working-directory: backend
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -135,12 +136,14 @@ jobs:
         id: be_test
         run: |
           START=$(date +%s)
-          go test -race -coverprofile=coverage.out ./... 2>&1 | tee /tmp/test.out
+          TEST_EXIT=0
+          go test -race -coverprofile=coverage.out ./... 2>&1 | tee /tmp/test.out || TEST_EXIT=$?
           echo "duration=$(( $(date +%s) - START ))" >> "$GITHUB_OUTPUT"
           PASSED=$(grep -c '^ok' /tmp/test.out || true)
           FAILED=$(grep -c '^FAIL' /tmp/test.out || true)
           echo "passed=${PASSED:-0}" >> "$GITHUB_OUTPUT"
           echo "failed=${FAILED:-0}" >> "$GITHUB_OUTPUT"
+          exit "$TEST_EXIT"
 
       - name: Coverage
         id: be_cov
@@ -154,10 +157,16 @@ jobs:
         run: |
           PASSED="${{ steps.be_test.outputs.passed }}"
           FAILED="${{ steps.be_test.outputs.failed }}"
-          if [ "${FAILED}" -gt 0 ] 2>/dev/null; then
+          TEST_OUTCOME="${{ steps.be_test.outcome }}"
+          if [ "$TEST_OUTCOME" = "failure" ]; then
             TEST_STATUS="🔴 ${PASSED} passed, ${FAILED} failed"
-          else
+            RACE_STATUS="🔴 Test step failed (-race enabled)"
+          elif [ "$TEST_OUTCOME" = "success" ]; then
             TEST_STATUS="✅ ${PASSED} passed"
+            RACE_STATUS="✅ Passed with -race"
+          else
+            TEST_STATUS="🟡 ${TEST_OUTCOME}"
+            RACE_STATUS="🟡 Not run"
           fi
 
           LINT_STATUS="${{ steps.be_lint.outcome }}"
@@ -176,7 +185,7 @@ jobs:
             echo "| Tests | ${TEST_STATUS} |"
             echo "| Test duration | ${{ steps.be_test.outputs.duration }}s |"
             echo "| Coverage | ${{ steps.be_cov.outputs.total }} |"
-            echo "| Race detector | ✅ Clean (-race enabled) |"
+            echo "| Race detector | ${RACE_STATUS} |"
             echo "| Lint | ${LINT} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
