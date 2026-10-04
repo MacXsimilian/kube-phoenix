@@ -49,7 +49,7 @@ postgresql:
 
   image:
     repository: postgres
-    tag: "17.10-alpine"
+    tag: "17.11-alpine"
     pullPolicy: IfNotPresent
 
   auth:
