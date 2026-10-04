@@ -15,7 +15,8 @@ import {
   exportPolicy,
 } from '@/lib/api'
 import ExportMenu from '@/components/import/ExportMenu'
-import type { PolicyExecution, ScheduledException } from '@/lib/types'
+import type { Policy, PolicyExecution, ScheduledException } from '@/lib/types'
+import { POLICIES_REFETCH_MS, EXECUTIONS_REFETCH_MS, EXCEPTIONS_REFETCH_MS } from '@/lib/constants'
 import CreatePolicyDialog from '@/components/policies/CreatePolicyDialog'
 import ExceptionDialog from '@/components/policies/ExceptionDialog'
 import LedGlowTimeline from '@/components/policies/LedGlowTimeline'
@@ -48,6 +49,7 @@ function PolicyDetailContent() {
   const policyId = raw ? parseInt(raw, 10) : NaN
 
   const [editOpen, setEditOpen] = useState(false)
+  const [editingPolicy, setEditingPolicy] = useState<Policy>()
   const [exceptionOpen, setExceptionOpen] = useState(false)
   const [editingException, setEditingException] = useState<ScheduledException | undefined>()
   const { notify, SnackbarAlert } = useSnackbar()
@@ -60,18 +62,24 @@ function PolicyDetailContent() {
     queryKey: queryKeys.policy(policyId),
     queryFn: () => getPolicy(policyId),
     enabled: !isNaN(policyId),
+    refetchInterval: query => query.state.data?.currentState === 'transitioning' ? 2_000 : POLICIES_REFETCH_MS,
+    refetchOnWindowFocus: true,
   })
 
   const { data: executions } = useQuery({
     queryKey: queryKeys.policyExecutions(policyId),
     queryFn: () => getPolicyExecutions({ policyId, pageSize: 20 }),
     enabled: !isNaN(policyId),
+    refetchInterval: EXECUTIONS_REFETCH_MS,
+    refetchOnWindowFocus: true,
   })
 
   const { data: exceptions } = useQuery({
     queryKey: queryKeys.exceptions(policyId),
     queryFn: () => getExceptions({ policyId }),
     enabled: !isNaN(policyId),
+    refetchInterval: EXCEPTIONS_REFETCH_MS,
+    refetchOnWindowFocus: true,
   })
 
   const { sleepMut, wakeMut, isBusy } = usePolicyTriggers(policyId, notify)
@@ -106,7 +114,7 @@ function PolicyDetailContent() {
             onWake: () => setTriggerDialog('wake'),
           }}
           onBack={() => router.push('/policies')}
-          onEdit={() => { setExceptionOpen(false); setEditOpen(true) }}
+          onEdit={() => { setExceptionOpen(false); setEditingPolicy(policy); setEditOpen(true) }}
           onExport={(anchor) => setExportAnchor(anchor)}
         />
 
@@ -245,7 +253,7 @@ function PolicyDetailContent() {
         <CreatePolicyDialog
           open={editOpen}
           onClose={() => setEditOpen(false)}
-          existing={policy}
+          existing={editingPolicy ?? policy}
           onNotify={notify}
         />
         <ExceptionDialog
