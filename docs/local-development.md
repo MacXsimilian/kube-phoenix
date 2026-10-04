@@ -6,7 +6,7 @@ This guide walks through setting up a complete local development environment for
 
 | Tool | Version | Install | Purpose |
 | :--- | :------ | :------ | :------ |
-| Go | 1.26+ | `brew install go` | Backend compilation |
+| Go | 1.26.8+ | `brew install go` | Backend compilation; minimum from `backend/go.mod` |
 | Node.js | 24+ | `brew install node` | Frontend build (Next.js) |
 | Docker | any | [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/) | Image builds, local PostgreSQL |
 | minikube | latest | `brew install minikube` | Local Kubernetes cluster |
@@ -203,7 +203,7 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:8080' > frontend/.env.local
 
 > **Important:** `NEXT_PUBLIC_*` variables are baked in at startup. Restart the frontend after creating or changing `.env.local`.
 
-The backend starts with a nil Kubernetes client. Cluster endpoints return empty data and scaling operations are skipped. Everything else -- policies, guardrails, audit log, authentication -- works as expected.
+Without in-cluster credentials or a valid kubeconfig, the backend starts with a nil Kubernetes client. Cluster endpoints return HTTP 503 (`kubernetes client unavailable`) and scaling operations are skipped. The backend uses `client-go` directly; installing kubectl alone does not provide cluster access. Everything else -- policies, guardrails, audit log, authentication -- works as expected.
 
 ### Authentication
 
@@ -329,7 +329,7 @@ What works in each local setup:
 | `CORS_ALLOWED_ORIGIN` | _(empty)_ | Allowed origin for CORS (required in Mode 2) |
 | `CLUSTER_NAME` | _(empty)_ | Human-readable cluster name shown in `GET /api/cluster/info` |
 | `NEXT_PUBLIC_API_URL` | `''` (empty string, same-origin) | Backend URL for the frontend dev server (build-time, Mode 2 only). `make dev-mock` sets this to `http://localhost:4444`. |
-| `NEXT_PUBLIC_APP_VERSION` | `dev` | Version string shown in the About modal |
+| `NEXT_PUBLIC_APP_VERSION` | Build-dependent | About modal version; standalone frontend builds fall back to `frontend/package.json` when unset. See [Application Build Versions](configuration.md#application-build-versions) for Docker and release builds. |
 
 See `.env.example` for a copy-paste template.
 
@@ -351,6 +351,18 @@ See `.env.example` for a copy-paste template.
 | `make minikube-setup` | One-command: cluster + workloads + build + deploy |
 | `make minikube-workloads` | Create sample workloads only |
 | `make minikube-teardown` | Destroy the minikube cluster |
+
+### Offline Rendering with Older Helm Clients
+
+`make helm-template` renders locally without contacting a cluster. Helm 3.8.0 assumes Kubernetes 1.23.0 for this operation, which fails the chart's `>=1.25.0-0` requirement. Set the intended Kubernetes version explicitly when rendering with an older client; this example uses the chart's declared minimum:
+
+```bash
+helm template kube-phoenix helm/kube-phoenix \
+  --namespace kube-phoenix \
+  --kube-version 1.25.0
+```
+
+This override only supplies capabilities for local rendering. It does not change the Helm installation minimum or the version of a running cluster. CI uses Helm 4.2.0, whose default rendering capabilities satisfy the chart requirement.
 
 ---
 

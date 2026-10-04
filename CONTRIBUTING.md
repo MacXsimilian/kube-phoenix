@@ -22,12 +22,14 @@ and navigate the review process.
 
 | Tool | Version | Purpose |
 | :--- | :------ | :------ |
-| Go | 1.26+ | Backend compilation and tests |
+| Go | 1.26.8+ | Backend compilation and tests; minimum from `backend/go.mod` |
 | Node.js | 24+ | Frontend build (Next.js) |
 | Docker | any | Local PostgreSQL via `docker compose` |
-| golangci-lint | v2+ | Backend linting (`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`) |
+| golangci-lint | v2.12.2 | Matches CI (`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2`) |
 | govulncheck | latest | Vulnerability scanning (`go install golang.org/x/vuln/cmd/govulncheck@latest`) |
-| kubectl | any | Optional -- cluster endpoints return empty data without it |
+| kubectl | Within one minor version of the API server | Optional CLI for cluster setup and inspection; the backend uses `client-go` directly |
+
+Follow the [Kubernetes kubectl version-skew policy](https://kubernetes.io/releases/version-skew-policy/#kubectl). Backend cluster access depends on in-cluster credentials or a valid kubeconfig. If the Kubernetes client cannot be configured, cluster endpoints return HTTP 503 (`kubernetes client unavailable`); the absence of the kubectl executable alone does not disable them.
 
 ### Quick Start
 
@@ -233,7 +235,7 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 3. Merging the Release PR triggers the release pipeline. `release-please.yml` chains
    the release build via `workflow_call` because `GITHUB_TOKEN`-generated events do not
    trigger other workflows (so a `release: published` trigger would be silently skipped).
-   - Docker image pushed to `ghcr.io/macxsimilian/kube-phoenix` (semver tags only — no `latest`).
+   - Docker image pushed to `ghcr.io/macxsimilian/kube-phoenix` (full, minor, and major semver tags without the Git tag's leading `v`, plus `latest` for stable releases).
    - Image signed with [cosign](https://github.com/sigstore/cosign) (keyless / OIDC).
    - SBOM generated with [Syft](https://github.com/anchore/syft) and attached to the image.
    - Helm chart pushed to `oci://ghcr.io/macxsimilian/helm/kube-phoenix`.

@@ -49,7 +49,20 @@ These are Next.js build-time variables baked into the static export, not backend
 | Variable | Default | Description |
 | :------- | :------ | :---------- |
 | `NEXT_PUBLIC_API_URL` | `""` | API base URL for dev mode (empty = same-origin) |
-| `NEXT_PUBLIC_APP_VERSION` | `""` | Version string shown in the About modal |
+| `NEXT_PUBLIC_APP_VERSION` | Build-dependent; see below | Version string used by the About modal; Docker builds also inject it into the backend binary |
+
+### Application Build Versions
+
+| Build mode | Version source |
+| :--------- | :------------- |
+| Standalone frontend (`make dev-frontend`, `make dev-mock`, or `npm run build`) | When `NEXT_PUBLIC_APP_VERSION` is unset, the About modal falls back to `version` in `frontend/package.json` |
+| Direct Docker build without a version build argument | The Dockerfile defaults `NEXT_PUBLIC_APP_VERSION` to `dev` |
+| `make docker-build` | Passes `TAG` as `NEXT_PUBLIC_APP_VERSION`; `TAG` defaults to the short Git commit hash and can be overridden |
+| Release workflow | Passes the release tag, such as `vX.Y.Z`, as `NEXT_PUBLIC_APP_VERSION` |
+
+An explicitly empty `NEXT_PUBLIC_APP_VERSION` does not trigger the frontend fallback. Setting it to `dev`, as in `.env.example`, is an explicit override.
+
+Docker builds embed the same supplied value in the backend's `GET /api/version` response through Go linker flags. A backend started with `go run` or built without those flags reports `dev`; setting a runtime environment variable does not change that embedded value.
 
 ## Authentication
 
