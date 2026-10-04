@@ -85,6 +85,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # v6.2.0
         with:
+          context: git
           images: ${{ steps.image.outputs.name }}
           tags: |
             type=semver,pattern={{version}},value=${{ steps.tag.outputs.tag }}
@@ -101,6 +102,7 @@ jobs:
           sbom: false
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             NEXT_PUBLIC_APP_VERSION=${{ steps.tag.outputs.tag }}
           cache-from: type=gha
