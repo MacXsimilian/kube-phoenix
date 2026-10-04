@@ -1037,8 +1037,8 @@ The Scheduler Behaviour section uses stacked label-left/control-right rows for E
 | `windowsToText(windows)` | Full human-readable summary: `"Mon-Fri 7 PM - 7 AM, Sat-Sun all day"` |
 | `timeToHours(time)` | `"19:30"` -> `19.5` (fractional hours for timeline rendering) |
 | `hasSleepWindows(windows)` | Type guard: returns `true` if the array is non-null and non-empty (narrows `SleepWindow[] \| null` to `SleepWindow[]`) |
-| `computeWeeklyStats(windows)` | Returns `{ sleepHours, awakeHours }` per 168-hour week |
-| `weeklySavingsPercent(windows)` | Returns `{ percent, overcounted }` — share of the 168-hour week asleep, clamped to 100%; `overcounted` flags overlapping windows whose raw total exceeds 100% |
+| `computeWeeklyStats(windows)` | Returns rounded `{ sleepHours, awakeHours }` per 168-hour week after merging overlapping and overnight intervals |
+| `weeklySavingsPercent(windows)` | Returns `{ percent }` — share of the 168-hour week asleep, computed from merged minutes before rounding |
 | `nowInTimezone(tz?)` | Returns `{ dayOfWeek, fractionalHour }` in the given IANA timezone |
 | `toTimezone(iso, tz?)` | Converts ISO timestamp to a Date in the given timezone |
 | `computeTimeRangeBlocks(start, end, tz?)` | Splits an absolute time range into per-day `TimeBlock[]` for timeline rendering |
