@@ -10,9 +10,9 @@ This guide walks through setting up a complete local development environment for
 | Node.js | 24+ | `brew install node` | Frontend build (Next.js) |
 | Docker | any | [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/) | Image builds, local PostgreSQL |
 | minikube | latest | `brew install minikube` | Local Kubernetes cluster |
-| kubectl | Within one minor version of the API server | `brew install kubectl` | Cluster setup and inspection; see the [version-skew policy](https://kubernetes.io/releases/version-skew-policy/#kubectl) |
-| Helm | 3.8+ | `brew install helm` | In-cluster deployment; CI uses 4.2.0 |
-| golangci-lint | v2.12.2 | `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2` | Backend linting (optional; matches CI) |
+| kubectl | any | `brew install kubectl` | Cluster interaction |
+| Helm | 3.x | `brew install helm` | In-cluster deployment |
+| golangci-lint | v2+ | `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest` | Backend linting (optional) |
 
 ---
 
