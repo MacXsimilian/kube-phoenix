@@ -41,31 +41,47 @@ jobs:
     name: Docker build & push
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    concurrency:
+      group: release-image-publishing-${{ github.repository }}
+      queue: max
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write
       id-token: write   # cosign keyless signing via OIDC
     outputs:
       image: ${{ steps.image.outputs.name }}
-      version: ${{ steps.meta.outputs.version }}
-      digest: ${{ steps.build.outputs.digest }}
+      version: ${{ steps.tag.outputs.version }}
+      digest: ${{ steps.artifact.outputs.digest }}
     steps:
+      - name: Check out release workflow
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+
       - name: Resolve tag
         id: tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          TAG="${{ inputs.tag }}"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          cp .github/scripts/release_images.py "$RUNNER_TEMP/release_images.py"
+          python3 "$RUNNER_TEMP/release_images.py" validate "$RELEASE_TAG"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ steps.tag.outputs.tag }}
+          ref: ${{ steps.tag.outputs.ref }}
 
-      - name: Validate tag exists
+      - name: Validate release commit
+        id: source
+        env:
+          RELEASE_REF: ${{ steps.tag.outputs.ref }}
         run: |
-          git rev-parse "${{ steps.tag.outputs.tag }}" >/dev/null 2>&1 || {
-            echo "::error::Tag '${{ steps.tag.outputs.tag }}' does not exist"
+          REVISION=$(git rev-parse "${RELEASE_REF}^{commit}")
+          if [ "$REVISION" != "$(git rev-parse HEAD)" ]; then
+            echo "::error::Checked-out source does not match the release tag"
             exit 1
-          }
+          fi
+          echo "revision=${REVISION}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
@@ -87,13 +103,26 @@ jobs:
         with:
           context: git
           images: ${{ steps.image.outputs.name }}
+          flavor: latest=false
           tags: |
             type=semver,pattern={{version}},value=${{ steps.tag.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }}
-            type=semver,pattern={{major}},value=${{ steps.tag.outputs.tag }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.tag.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.source.outputs.revision }}
+
+      - name: Resolve published release image
+        id: existing
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE: ${{ steps.image.outputs.name }}
+          VERSION: ${{ steps.tag.outputs.version }}
+          REVISION: ${{ steps.source.outputs.revision }}
+        run: python3 "$RUNNER_TEMP/release_images.py" resolve "$IMAGE" "$VERSION" "$REVISION"
 
       - name: Build & push
         id: build
+        if: steps.existing.outputs.exists == 'false'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
@@ -108,6 +137,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Verify release image identity
+        id: artifact
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE: ${{ steps.image.outputs.name }}
+          VERSION: ${{ steps.tag.outputs.version }}
+          REVISION: ${{ steps.source.outputs.revision }}
+          EXISTING_DIGEST: ${{ steps.existing.outputs.digest }}
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          flags=()
+          if [ -n "$EXISTING_DIGEST" ]; then
+            DIGEST="$EXISTING_DIGEST"
+            flags=(--allow-legacy)
+          else
+            DIGEST="$BUILD_DIGEST"
+          fi
+          python3 "$RUNNER_TEMP/release_images.py" verify "$IMAGE" "$VERSION" "$REVISION" "$DIGEST" "${flags[@]}"
+
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
         with:
@@ -115,23 +164,32 @@ jobs:
 
       - name: Sign image (keyless)
         run: |
-          cosign sign --yes "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
+          cosign sign --yes "${{ steps.image.outputs.name }}@${{ steps.artifact.outputs.digest }}"
 
       - name: Generate SBOM
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c  # v0.24.3
         with:
-          image: "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
+          image: "${{ steps.image.outputs.name }}@${{ steps.artifact.outputs.digest }}"
           artifact-name: sbom-kube-phoenix.spdx.json
           output-file: sbom-kube-phoenix.spdx.json
 
       - name: Attest SBOM to image
         run: |
-          cosign attest --yes --predicate sbom-kube-phoenix.spdx.json --type spdxjson "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
+          cosign attest --yes --predicate sbom-kube-phoenix.spdx.json --type spdxjson "${{ steps.image.outputs.name }}@${{ steps.artifact.outputs.digest }}"
 
       - name: Smoke test — verify image runs
         run: |
-          docker pull "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}"
-          docker run --rm "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}" --version || true
+          docker pull "${{ steps.image.outputs.name }}@${{ steps.artifact.outputs.digest }}"
+          docker run --rm "${{ steps.image.outputs.name }}@${{ steps.artifact.outputs.digest }}" --version || true
+
+      - name: Promote stable image aliases
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE: ${{ steps.image.outputs.name }}
+          VERSION: ${{ steps.tag.outputs.version }}
+          DIGEST: ${{ steps.artifact.outputs.digest }}
+        run: python3 "$RUNNER_TEMP/release_images.py" promote "$IMAGE" "$VERSION" "$DIGEST"
 
   # ── Helm chart package & push ───────────────────────────────────────────────
   helm-publish:
@@ -152,7 +210,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ steps.tag.outputs.tag }}
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5.0.1
         with:
@@ -190,7 +248,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: ${{ inputs.tag }}
+          ref: refs/tags/${{ inputs.tag }}
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
