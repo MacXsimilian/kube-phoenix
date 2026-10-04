@@ -6,13 +6,13 @@ This guide walks through setting up a complete local development environment for
 
 | Tool | Version | Install | Purpose |
 | :--- | :------ | :------ | :------ |
-| Go | 1.26+ | `brew install go` | Backend compilation |
+| Go | 1.26.8+ | `brew install go` | Backend compilation; minimum from `backend/go.mod` |
 | Node.js | 24+ | `brew install node` | Frontend build (Next.js) |
 | Docker | any | [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/) | Image builds, local PostgreSQL |
 | minikube | latest | `brew install minikube` | Local Kubernetes cluster |
 | kubectl | any | `brew install kubectl` | Cluster interaction |
 | Helm | 3.x | `brew install helm` | In-cluster deployment |
-| golangci-lint | v2+ | `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest` | Backend linting (optional) |
+| golangci-lint | v2.12.2 | `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2` | Backend linting (optional; matches CI) |
 
 ---
 
