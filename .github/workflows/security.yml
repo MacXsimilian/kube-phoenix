@@ -86,24 +86,18 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Test npm audit gate
+        run: node --test ../.github/scripts/check-npm-audit.test.mjs
+
       - run: npm ci
 
       - name: npm audit
         id: npm_audit
         run: |
-          AUDIT=$(npm audit --omit=dev 2>&1) && STATUS="clean" || STATUS="found"
-          echo "$AUDIT"
-          HIGH=$(echo "$AUDIT" | grep -oP '\d+ high' | grep -oP '\d+' || echo 0)
-          CRITICAL=$(echo "$AUDIT" | grep -oP '\d+ critical' | grep -oP '\d+' || echo 0)
-          MODERATE=$(echo "$AUDIT" | grep -oP '\d+ moderate' | grep -oP '\d+' || echo 0)
-          {
-            echo "high=${HIGH}"
-            echo "critical=${CRITICAL}"
-            echo "moderate=${MODERATE}"
-            echo "status=${STATUS}"
-          } >> "$GITHUB_OUTPUT"
-          # Fail only on high+
-          if [ "$HIGH" -gt 0 ] || [ "$CRITICAL" -gt 0 ]; then exit 1; fi
+          AUDIT_EXIT=0
+          npm audit --omit=dev --json > npm-audit.json || AUDIT_EXIT=$?
+          cat npm-audit.json
+          node ../.github/scripts/check-npm-audit.mjs npm-audit.json "$AUDIT_EXIT"
 
       - name: npm audit summary
         if: always()
@@ -112,7 +106,10 @@ jobs:
           HIGH="${{ steps.npm_audit.outputs.high }}"
           MOD="${{ steps.npm_audit.outputs.moderate }}"
 
-          if [ "$CRIT" -gt 0 ] 2>/dev/null; then
+          STATUS="${{ steps.npm_audit.outputs.status }}"
+          if [ "$STATUS" != "clean" ] && [ "$STATUS" != "found" ]; then
+            RESULT="🔴 Audit did not complete"
+          elif [ "$CRIT" -gt 0 ] 2>/dev/null; then
             RESULT="🔴 ${CRIT} critical, ${HIGH} high, ${MOD} moderate"
           elif [ "$HIGH" -gt 0 ] 2>/dev/null; then
             RESULT="🟡 ${HIGH} high, ${MOD} moderate"
