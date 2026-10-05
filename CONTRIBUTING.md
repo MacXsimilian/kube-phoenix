@@ -243,6 +243,40 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 
 Never create Git tags manually -- release-please owns all tags and releases.
 
+### Complete Release Notes
+
+Release-please builds the changelog from Conventional Commit messages. It does not
+copy the full pull request description into the release notes. When squash-merging
+a PR with several independent fixes, add their Conventional Commit entries as plain
+footers at the bottom of the squash commit message, separated by blank lines:
+
+```text
+fix!: improve policy editing and bundled database upgrades
+
+fix(policies): persist cleared optional fields
+
+fix(api): retain failed emergency restores for retry
+
+fix(deps)!: upgrade bundled PostgreSQL to 18
+
+BREAKING CHANGE: Restore PostgreSQL 17 data into fresh PostgreSQL 18 storage before upgrading.
+```
+
+Do not prefix those footer entries with Markdown bullets. Keep detailed migration
+instructions and dependency version tables in the PR description. See the
+[release-please guidance for multiple changes](https://github.com/googleapis/release-please#what-if-my-pr-contains-multiple-fixes-or-features).
+
+Before merging a release PR, review its changelog against every PR in the release
+range. Confirm that user-facing fixes, breaking behavior, migration steps, and
+important dependency upgrades are visible. Maintenance entries such as `docs:`,
+`ci:`, and `chore:` are hidden by the default changelog configuration.
+
+For a squash-merged PR whose release is still pending, use the documented
+[commit override](https://github.com/googleapis/release-please#how-can-i-fix-release-notes)
+in its PR body and let release-please regenerate the notes. For an already published
+release, correct its GitHub release description and submit a documentation PR for
+the matching `CHANGELOG.md` entry.
+
 ---
 
 ## Code of Conduct
