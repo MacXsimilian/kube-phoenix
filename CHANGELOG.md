@@ -2,15 +2,139 @@
 
 ## [0.8.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.7...v0.8.0) (2026-10-04)
 
+This release fixes policy editing, execution history, scheduler cleanup, emergency recovery, and authentication. It also upgrades bundled PostgreSQL to 18, moves frontend builds to Node 26, updates dependencies, and makes release replays preserve existing images and newer floating tags.
 
 ### ⚠ BREAKING CHANGES
 
-* Existing PostgreSQL 17 data must be dumped and restored into fresh PostgreSQL 18 storage before upgrading. See docs/postgresql-upgrade.md for migration and rollback instructions.
+- **Bundled PostgreSQL 17 storage cannot be reused by PostgreSQL 18.** Before upgrading, stop writers, back up the database, restore into fresh PostgreSQL 18 storage, verify the restored data, and resume the application. Follow the [PostgreSQL migration and rollback guide](https://github.com/MacXsimilian/kube-phoenix/blob/v0.8.0/docs/postgresql-upgrade.md).
+- Frontend development and builds use Node 26; backend builds require Go 1.27.1 or newer.
+- Exception imports require an existing parent policy. Existing parentless exceptions remain editable.
+- Only the configured OIDC groups claim determines membership. A missing claim grants viewer access; malformed membership rejects login.
+- Invalid guardrail namespaces, labels, and taints are rejected on updates and imports. Protected namespaces must contain at least one valid entry.
+- Manual releases require canonical version tags such as `v0.8.0` or `v0.8.0-rc.1`.
 
-### Bug Fixes
+### Policy Editing, History, and Frontend
 
-* **deps:** patch vulnerable dependencies and container images ([#433](https://github.com/MacXsimilian/kube-phoenix/issues/433)) ([5fe9703](https://github.com/MacXsimilian/kube-phoenix/commit/5fe97033802b6045293c332302b7881d10e4a7e6))
-* harden policy execution, releases and build tooling ([#436](https://github.com/MacXsimilian/kube-phoenix/issues/436)) ([bda8436](https://github.com/MacXsimilian/kube-phoenix/commit/bda843635fa67f8bb5e517ba9364c941f8eb7c4e))
+- Save cleared optional policy and exception fields correctly while preserving exception fields omitted from requests.
+- Refresh settings and policy-detail caches after imports so mounted editors show imported values.
+- Refresh execution history until completion, support links to execution logs, and reset log streams when the selected execution changes.
+- Clear account caches when authentication changes and apply reconnect backoff to closed live streams.
+- Load historical metrics for the selected time range.
+- Preserve policy times across browser timezones, prevent calendar month navigation from skipping months, and merge overlapping weekly sleep windows in displayed statistics.
+- Enable keyboard calendar and table actions and serve exported frontend pages on direct navigation.
+
+### Backend Reliability and Access Controls
+
+- Preserve application context across scheduler restarts.
+- Clean up execution resources after panics and promptly release disconnected log subscribers.
+- Retain snapshots when emergency restoration fails so failed policies can be retried; report per-policy restoration outcomes.
+- Match complete Kubernetes workload selectors during readiness checks.
+- Make configured OIDC groups authoritative and apply consistent guardrail validation during updates and imports.
+
+### PostgreSQL and Deployment
+
+- Upgrade bundled PostgreSQL from 17.10 to 18.6 in Compose and Helm.
+- Use the PostgreSQL 18 volume layout and reject legacy data before initializing the new database.
+- Support operator-managed PostgreSQL PVCs through `postgresql.persistence.existingClaim`, application maintenance with `replicaCount: 0`, and TCP readiness probes.
+- Allow configured database ports and additional endpoint ports through Helm NetworkPolicies using `networkPolicy.extraEgressPorts`.
+
+### Release Automation and CI
+
+- Preserve backend test failures when CI captures output through a pipeline.
+- Add PostgreSQL chart and storage regression checks and strengthen manifest validation.
+- Publish images and Helm charts from the requested release tag and derive image labels from that tag's source commit.
+- Reuse existing version-image digests on release replays. Advance floating aliases only when the release version is newer, preventing older releases from moving aliases backwards.
+- Remove the retired Go Report Card integration and update build, security, and publication tools while retaining full SHA pins for GitHub Actions.
+
+### Dependency Changes
+
+Versions below compare the complete `v0.7.7` → `v0.8.0` release range, including the security updates in [PR #433](https://github.com/MacXsimilian/kube-phoenix/pull/433).
+
+**Build tooling and bundled database**
+
+| Component | Previous → Updated |
+|---|---|
+| Node build series | 24 → 26.10.0 |
+| Go minimum | 1.26.3 → 1.27.1 |
+| PostgreSQL | 17.10 → 18.6 |
+| Helm in CI/publication | 4.2.0 → 4.3.0 |
+| golangci-lint | 2.12.2 → 2.14.0 |
+| kubeconform | 0.7.0 → 0.8.0 |
+| gosec | 2.26.1 → 2.29.0; action replaced with pinned CLI |
+| Cosign | 2.6.3 → 2.6.5 |
+
+**Application and development dependencies**
+
+| Dependency | Previous → Updated |
+|---|---|
+| Kubernetes Go modules | 0.36.1 → 0.37.1 |
+| go-oidc | 3.18.0 → 3.21.0 |
+| Chi | 5.3.0 → 5.3.2 |
+| GORM / PostgreSQL driver | 1.31.1 / 1.6.0 → 1.31.2 / 1.6.3 |
+| Prometheus client / model | 1.23.2 / 0.6.2 → 1.24.1 / 0.6.3 |
+| Swagger UI | 1.8.7 → 1.8.9 |
+| Go crypto / OAuth2 libraries | 0.52.0 / 0.36.0 → 0.57.0 / 0.37.0 |
+| React / React DOM | 19.2.6 → 19.3.0 |
+| MUI | 9.0.1 → 9.4.0 |
+| Framer Motion | 12.40.0 → 14.0.0 |
+| TanStack React Query | 5.100.14 → 5.104.1 |
+| TanStack React Virtual | 3.13.26 → 3.14.13 |
+| Node types | 25.9.1 → 26.6.4 |
+| Undici types | 7.24.6 → 8.9.0 |
+| React / React DOM types | 19.2.15 / 19.2.3 → 19.3.0 |
+| ESLint | 10.4.0 → 10.12.0 |
+| Prettier | 3.8.3 → 3.9.9 |
+| TypeScript ESLint | 8.60.0 → 8.71.0 |
+| `ws` | 8.21.0 → 8.22.0 |
+| Next.js and related tooling | 16.2.6 → 16.3.8 |
+| PostCSS (locked version) | 8.5.15 → 8.5.28 |
+| nanoid (transitive) | 3.3.12 → 3.3.19 |
+| sharp (transitive) | 0.34.5 → 0.35.5 |
+| Go net / text libraries | 0.55.0 / 0.37.0 → 0.58.0 / 0.42.0 |
+
+Node, Go, and distroless runtime image digests were refreshed. Additional transitive updates are recorded in the Go and npm dependency files.
+
+**GitHub Actions — full SHA pins retained**
+
+| Action | Previous → Updated |
+|---|---|
+| Checkout | 6.0.2 → 7.0.1 |
+| Setup Go / Setup Node | 6.4.0 → 7.0.0 |
+| Setup Helm | 5.0.0 → 5.0.1 |
+| Docker Buildx | 4.1.0 → 4.4.1 |
+| Docker Build Push | 7.2.0 → 7.4.0 |
+| Docker Login | 4.2.0 → 4.6.0 |
+| Docker Metadata | 6.1.0 → 6.2.0 |
+| SBOM Action | 0.24.0 → 0.24.3 |
+| CodeQL | 4.36.0 → 4.38.2 |
+| govulncheck Action | 1.0.4 → 1.1.0 |
+| golangci-lint Action | 9.2.1 → 9.3.0 |
+| Hadolint Action | 3.3.0 → 3.5.0 |
+| Scorecard Action | 2.4.3 → 2.4.4 |
+| TruffleHog | 3.95.3 → 3.97.9 |
+
+### Documentation
+
+- Reorganize user and developer documentation around setup, deployment, operations, and implementation guides.
+- Add first-policy and policy smoke-test walkthroughs, PostgreSQL migration instructions, and a labeled mock screenshot gallery.
+- Clarify Kubernetes, Helm, and local tooling prerequisites; distinguish API document versions from application build versions.
+- Synchronize embedded OpenAPI descriptions and document guarded image-tag promotion and signed SBOM attestations.
+
+### Migration Notes
+
+- Install Node 26 and Go 1.27.1+, then run `npm ci` in `frontend/`.
+- For bundled PostgreSQL, use the [migration guide](https://github.com/MacXsimilian/kube-phoenix/blob/v0.8.0/docs/postgresql-upgrade.md) before upgrading. Preserve PostgreSQL 17 storage and previous configuration for rollback; writes accepted after migration require reconciliation before reverting.
+- Keep the chosen Compose override or Helm `postgresql.persistence.existingClaim` in future deployment configuration.
+- External PostgreSQL 14+ remains supported. Follow the provider's upgrade procedure for a managed database.
+- Review configured OIDC group claims, imported exception `policyName` values, and guardrail settings.
+- Set `networkPolicy.extraEgressPorts` for custom endpoint ports not covered by the chart's database rule.
+
+### Included Pull Requests
+
+- [#433 — Patch vulnerable dependencies and container images](https://github.com/MacXsimilian/kube-phoenix/pull/433)
+- [#435 — Align version references and release guidance](https://github.com/MacXsimilian/kube-phoenix/pull/435)
+- [#436 — Harden policy execution, releases, and build tooling](https://github.com/MacXsimilian/kube-phoenix/pull/436)
+- [#434 — Release 0.8.0](https://github.com/MacXsimilian/kube-phoenix/pull/434)
 
 ## [0.7.7](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.6...v0.7.7) (2026-05-29)
 
