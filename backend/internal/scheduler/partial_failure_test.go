@@ -43,3 +43,15 @@ func TestPartialExecutionIsFailedAndEligibleForRetry(t *testing.T) {
 		t.Fatal("failed execution never becomes retryable")
 	}
 }
+
+func TestFailedScopedCompletionRemainsRetryable(t *testing.T) {
+	st := &finalizationStore{}
+	ps := newTestSchedulerWithRunner(st, &partialRunner{})
+	p := store.Policy{ID: 1, Mode: "apply", CurrentState: store.PolicyStateSleeping,
+		ExceptionScope: &store.ScheduledException{NamespaceFilter: "a"}}
+	ps.policies[1] = cachedPolicy{policy: p}
+	ps.executeAndFinalize(context.Background(), p, directionSleep, "exception_end", 1, time.Now())
+	if st.status != store.ExecStatusFailed || ps.policies[1].policy.CurrentState != store.PolicyStateUnknown {
+		t.Fatal("failed exception completion was treated as completed baseline sleep")
+	}
+}

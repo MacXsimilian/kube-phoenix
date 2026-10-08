@@ -326,17 +326,17 @@ func (ps *PolicyScheduler) RecoverPolicies(ctx context.Context) error {
 		windows := parsePolicyWindows(p)
 		exceptions, err := ps.store.ListActiveExceptionsForPolicy(p.ID, now)
 		if err != nil {
-			slog.Warn("failed to list active exceptions", "policyID", p.ID, "err", err)
-			exceptions = nil
+			return fmt.Errorf("recovery: read active exceptions for policy %d: %w", p.ID, err)
 		}
 		intended := IntendedState(StateInput{
 			Windows: windows, Timezone: p.Timezone,
-			Exceptions: exceptions, Now: now,
+			Exceptions: policyWideExceptions(exceptions), Now: now,
 		})
 		if intended == PolicyStateUnknown {
 			continue
 		}
 		if p.CurrentState == string(intended) {
+			ps.reconcileScopedExceptions(p, evalContext{now: now, exceptionsByPolicy: map[uint][]store.ScheduledException{p.ID: exceptions}})
 			continue
 		}
 		direction := directionSleep
@@ -426,7 +426,7 @@ func (ps *PolicyScheduler) maybeEndException(ex store.ScheduledException, now ti
 
 // RunExceptionAction dispatches the initial action for an exception:
 // stay_awake → wake, force_sleep → sleep. When the exception carries its own
-// namespace or label filters, those override the policy's defaults for this
+// targeting filters, they intersect the parent policy boundary for this
 // execution so only the targeted workloads are affected.
 func RunExceptionAction(ps *PolicyScheduler, policyID uint, ex store.ScheduledException, trigger string) (uint, error) {
 	if ex.ExceptionType == store.ExceptionTypeForceSleep {
@@ -557,7 +557,7 @@ func (ps *PolicyScheduler) evaluateAll() {
 	exceptionMap, err := ps.store.ListActiveExceptionsForPolicies(policyIDs, start)
 	if err != nil {
 		slog.Warn("failed to batch-fetch active exceptions", "err", err)
-		exceptionMap = map[uint][]store.ScheduledException{}
+		return
 	}
 	ctx.exceptionsByPolicy = exceptionMap
 
@@ -575,15 +575,9 @@ func (ps *PolicyScheduler) evaluatePolicy(cp cachedPolicy, ctx evalContext) {
 		return
 	}
 	exceptions := ctx.exceptionsByPolicy[p.ID]
-	global := make([]store.ScheduledException, 0, len(exceptions))
-	for _, ex := range exceptions {
-		if !ex.HasTargetingFilters() {
-			global = append(global, ex)
-		}
-	}
 	intended := IntendedState(StateInput{
 		Windows: cp.windows, Location: cp.loc,
-		Exceptions: global, Now: ctx.now,
+		Exceptions: policyWideExceptions(exceptions), Now: ctx.now,
 	})
 
 	if intended == PolicyStateUnknown {
@@ -1019,7 +1013,7 @@ func (ps *PolicyScheduler) executeAndFinalize(ctx context.Context, p store.Polic
 	countMap := ps.finalizeExecution(execID, status, counts)
 	recordExecutionMetrics(p.Mode, direction, status, time.Since(startedAt).Seconds(), counts)
 	if p.ExceptionScope != nil {
-		ps.restoreBaselineState(p)
+		ps.restoreBaselineState(p, status)
 	} else {
 		ps.updatePolicyState(p.ID, direction, status)
 	}
@@ -1029,9 +1023,9 @@ func (ps *PolicyScheduler) executeAndFinalize(ctx context.Context, p store.Polic
 		"status", status, "scaled", countMap["scaled"], "errors", countMap["errors"])
 }
 
-func (ps *PolicyScheduler) restoreBaselineState(p store.Policy) {
+func (ps *PolicyScheduler) restoreBaselineState(p store.Policy, status string) {
 	state := p.CurrentState
-	if state == "" || state == store.PolicyStateTransitioning {
+	if status != store.ExecStatusSuccess || state == "" || state == store.PolicyStateTransitioning {
 		state = store.PolicyStateUnknown
 	}
 	if err := ps.store.UpdatePolicyState(p.ID, state, ps.NextTransition(p.ID)); err != nil {
@@ -1164,4 +1158,16 @@ func mustLocation(name string) *time.Location {
 		return time.UTC
 	}
 	return loc
+}
+
+// policyWideExceptions supplies intent only for the baseline policy state.
+// Scoped exceptions are reconciled separately against their workload targets.
+func policyWideExceptions(exceptions []store.ScheduledException) []store.ScheduledException {
+	var global []store.ScheduledException
+	for _, ex := range exceptions {
+		if !ex.HasTargetingFilters() {
+			global = append(global, ex)
+		}
+	}
+	return global
 }

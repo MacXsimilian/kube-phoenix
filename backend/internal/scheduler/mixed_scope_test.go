@@ -17,6 +17,33 @@ type mixedRunner struct {
 	wakes []store.Policy
 }
 
+type activeExceptionStore struct {
+	mockStore
+	active []store.ScheduledException
+}
+
+func (s *activeExceptionStore) ListActiveExceptionsForPolicy(uint, time.Time) ([]store.ScheduledException, error) {
+	return s.active, nil
+}
+
+func TestStartupRecoveryKeepsExceptionScoped(t *testing.T) {
+	windows := []policy.SleepWindow{{DaysOfWeek: []int{0, 1, 2, 3, 4, 5, 6}, AllDay: true}}
+	encoded, _ := json.Marshal(windows)
+	p := store.Policy{ID: 1, Enabled: true, Mode: "apply", Timezone: "UTC", NamespaceFilter: "a,b", SleepWindows: string(encoded), CurrentState: store.PolicyStateSleeping}
+	ex := store.ScheduledException{ID: 1, PolicyID: &p.ID, ExceptionType: store.ExceptionTypeStayAwake, NamespaceFilter: "a", Status: store.ExceptionStatusActive}
+	st := &activeExceptionStore{mockStore: mockStore{policies: []store.Policy{p}}, active: []store.ScheduledException{ex}}
+	r := &mixedRunner{awake: map[string]bool{}}
+	ps := newTestSchedulerWithRunner(st, r)
+	ps.policies[1] = cachedPolicy{policy: p, windows: windows, loc: time.UTC}
+	if err := ps.RecoverPolicies(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ps.inflight.Wait()
+	if !r.awake["a"] || r.awake["b"] {
+		t.Fatalf("startup broadened exception: awake=%v", r.awake)
+	}
+}
+
 func (r *mixedRunner) RunPolicyWake(_ context.Context, p store.Policy, _ uint, _ chan<- scaler.LogLine) (*scaler.Counts, error) {
 	r.wakes = append(r.wakes, p)
 	for _, ns := range []string{"a", "b"} {
