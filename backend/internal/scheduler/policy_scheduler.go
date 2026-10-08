@@ -752,6 +752,13 @@ func stuckTimeout(p store.Policy) time.Duration {
 // resetStuckTransition resets policies stuck in "transitioning" for longer
 // than their execution timeout back to "unknown" so the next tick re-evaluates.
 func (ps *PolicyScheduler) resetStuckTransition(p store.Policy, now time.Time) {
+	ps.mu.Lock()
+	_, running := ps.inflightPolicies[p.ID]
+	ps.mu.Unlock()
+	if running {
+		return
+	}
+
 	if p.StateSince == nil || now.Sub(*p.StateSince) <= stuckTimeout(p) {
 		return
 	}

@@ -122,6 +122,18 @@ app.kubernetes.io/component: server
 Validate mutually exclusive values and required fields.
 */}}
 {{- define "kube-phoenix.validateValues" -}}
+{{- if or (lt (int .Values.replicaCount) 0) (gt (int .Values.replicaCount) 1) }}
+{{- fail "kube-phoenix supports one scheduler replica, or zero for maintenance." }}
+{{- end }}
+{{- if ne .Values.strategy.type "Recreate" }}
+{{- fail "The singleton scheduler requires strategy.type=Recreate." }}
+{{- end }}
+{{- if .Values.strategy.rollingUpdate }}
+{{- fail "Remove strategy.rollingUpdate when using Recreate." }}
+{{- end }}
+{{- if and .Values.autoscaling .Values.autoscaling.enabled }}
+{{- fail "Scheduler autoscaling is unsupported." }}
+{{- end }}
 {{- if and .Values.ingress.enabled .Values.targetGroupBinding.enabled }}
 {{- fail "ingress.enabled and targetGroupBinding.enabled cannot both be true. Use one or the other." }}
 {{- end }}

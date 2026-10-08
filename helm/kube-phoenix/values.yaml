@@ -14,12 +14,9 @@ imagePullSecrets: []   # e.g. [{name: my-registry-secret}]
 replicaCount: 1
 revisionHistoryLimit: 2
 
-# Rolling update strategy. maxUnavailable: 0 ensures zero-downtime rollouts.
+# Singleton scheduler: upgrades stop the previous pod before starting a new one.
 strategy:
-  type: RollingUpdate
-  rollingUpdate:
-    maxSurge: 1
-    maxUnavailable: 0
+  type: Recreate
 
 # Namespace to deploy into. If createNamespace is true, the chart creates it.
 namespaceOverride: ""   # defaults to .Release.Namespace

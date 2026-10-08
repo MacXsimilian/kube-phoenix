@@ -66,11 +66,45 @@ func main() {
 		os.Exit(1)
 	}
 	defer st.Close()
+	ownerCtx, ownerCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	owner, err := st.AcquireSchedulerOwnership(ownerCtx)
+	ownerCancel()
+	if err != nil {
+		slog.Error("scheduler ownership unavailable", "err", err)
+		os.Exit(1)
+	}
+	defer owner.Close()
+	// A lost database session releases its lock. Exit rather than continuing
+	// work under an ownership claim that PostgreSQL no longer recognizes.
+	watchStop, watchDone := make(chan struct{}), make(chan struct{})
+	defer func() { close(watchStop); <-watchDone }()
+	go func() {
+		defer close(watchDone)
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-watchStop:
+				return
+			case <-ticker.C:
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			err := owner.Check(ctx)
+			cancel()
+			if err != nil {
+				slog.Error("scheduler ownership lost", "err", err)
+				os.Exit(1)
+			}
+		}
+	}()
 	if err := st.SeedDefaults(cfg.AdminUser, cfg.AdminPassword); err != nil {
 		slog.Error("seed failed", "err", err)
 		os.Exit(1)
 	}
-	recoverInterruptedState(st)
+	if err := owner.RecoverInterruptedState(context.Background()); err != nil {
+		slog.Error("startup recovery failed", "err", err)
+		os.Exit(1)
+	}
 
 	// ── Kubernetes client ─────────────────────────────────────────────────
 	k8s, err := k8sclient.New(k8sclient.Config{
@@ -82,6 +116,16 @@ func main() {
 	if err != nil {
 		slog.Warn("k8s client unavailable — cluster endpoints will be non-functional", "err", err)
 		k8s = nil
+	}
+	if k8s != nil {
+		k8s.SetMutationGuard(owner.Check)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := k8s.RecoverOwnedCordons(ctx); err != nil {
+			cancel()
+			slog.Error("startup cordon recovery failed", "err", err)
+			os.Exit(1)
+		}
+		cancel()
 	}
 
 	// Two contexts so HTTP shutdown can finish (handlers may still produce
@@ -204,21 +248,6 @@ func runTracked(wg *sync.WaitGroup, name string, fn func()) {
 		}()
 		fn()
 	}()
-}
-
-// recoverInterruptedState clears any policy executions and transitions left
-// hanging by a previous crash or unclean shutdown.
-func recoverInterruptedState(st *store.Store) {
-	if n, err := st.MarkInterruptedPolicyExecutions(); err != nil {
-		slog.Error("startup: failed to mark interrupted policy executions", "err", err)
-	} else if n > 0 {
-		slog.Warn("startup: marked policy executions as interrupted", "count", n)
-	}
-	if n, err := st.ResetStuckTransitioningPolicies(); err != nil {
-		slog.Error("startup: failed to reset stuck transitioning policies", "err", err)
-	} else if n > 0 {
-		slog.Warn("startup: reset stuck transitioning policies to unknown", "count", n)
-	}
 }
 
 func startMaintenanceTickers(ctx context.Context, st *store.Store, retentionDays int, wg *sync.WaitGroup) {

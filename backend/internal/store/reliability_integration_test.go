@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -35,6 +36,71 @@ func integrationStore(t *testing.T) *Store {
 	raw.SetMaxOpenConns(5)
 	t.Cleanup(func() { _ = raw.Close() })
 	return &Store{db: scoped}
+}
+
+func TestOwnershipExcludesLiveRecoveryAndAllowsTakeover(t *testing.T) {
+	st := integrationStore(t)
+	if err := st.db.AutoMigrate(&Policy{}, &PolicyExecution{}); err != nil {
+		t.Fatal(err)
+	}
+	p := Policy{Name: "test", Mode: "apply", CurrentState: PolicyStateTransitioning}
+	if err := st.db.Create(&p).Error; err != nil {
+		t.Fatal(err)
+	}
+	ex := PolicyExecution{PolicyID: p.ID, Status: ExecStatusRunning, StartedAt: time.Now()}
+	if err := st.CreatePolicyExecution(&ex); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	owner, err := st.AcquireSchedulerOwnership(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err := owner.Check(cancelled); err == nil {
+		t.Fatal("cancelled guard passed")
+	}
+	if err := owner.Check(ctx); err != nil {
+		t.Fatalf("caller cancellation lost ownership: %v", err)
+	}
+	if other, err := st.AcquireSchedulerOwnership(ctx); err == nil {
+		other.Close()
+		t.Fatal("second live owner acquired lock")
+	}
+	var live PolicyExecution
+	st.db.First(&live, ex.ID)
+	if live.Status != ExecStatusRunning {
+		t.Fatal("live execution was reset")
+	}
+	// Terminate only this test's locked backend to simulate genuine session loss.
+	var pid int
+	if err := owner.conn.QueryRowContext(ctx, "SELECT pg_backend_pid()").Scan(&pid); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.db.Exec("SELECT pg_terminate_backend(?)", pid).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := owner.Check(ctx); err == nil {
+		t.Fatal("lost session still valid")
+	}
+	if err := owner.RecoverInterruptedState(ctx); err == nil {
+		t.Fatal("lost owner recovered state")
+	}
+	next, err := st.AcquireSchedulerOwnership(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer next.Close()
+	if err := next.RecoverInterruptedState(ctx); err != nil {
+		t.Fatal(err)
+	}
+	st.db.First(&live, ex.ID)
+	st.db.First(&p, p.ID)
+	if live.Status != ExecStatusInterrupted || p.CurrentState != PolicyStateUnknown {
+		t.Fatalf("execution=%s policy=%s", live.Status, p.CurrentState)
+	}
 }
 
 func TestSnapshotMigrationPreservesLegacyRecovery(t *testing.T) {
