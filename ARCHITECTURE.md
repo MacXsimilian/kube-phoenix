@@ -78,7 +78,7 @@ See [model definitions](backend/internal/store/models.go) for fields, [OpenAPI](
 1. A manual trigger, scheduler transition, exception, or recovery path requests sleep.
 2. The scheduler claims the policy transition and creates a running execution.
 3. The runner selects workloads, checks namespace protection, and scales in bounded parallel groups.
-4. Apply mode persists a prepared snapshot containing replicas and Kubernetes UID, conditionally scales the observed resource version to zero, then records application. Plan mode logs proposed changes.
+4. Apply mode persists a prepared snapshot containing replicas and Kubernetes UID, scales the workload by kind/namespace/name to zero with conflict retries, then records application. Plan mode logs proposed changes.
 5. Only complete workload operations permit the node phase. Scoped exception runs and preserved exception targets defer node actions; ordinary node selection remains cluster-wide. Global node protections apply.
 6. Logs and counts are recorded, execution status is finalized, and the policy claim is released.
 

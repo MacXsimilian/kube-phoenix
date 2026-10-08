@@ -3,6 +3,14 @@
 Reviewed branch: `master`. Initial full commit: `eac56428b6c3248e33ccdc3de5c0f3818cbcff42`.
 The checkout happened to match the historical reference; it was not reset. Initial user changes were `frontend/next-env.d.ts` and untracked `frontend/AGENTS.md`; they remain outside the commits. No root AGENTS.md was present. Architecture, backend development, execution/data-flow, testing, CI, and frontend guidance were inspected.
 
+## Subsequent workload identity decision
+
+The added workload UID/resource-version safeguard is removed by request. Sleep, wake and corrective sleep again identify workloads by kind/namespace/name, including same-name replacements and legacy snapshots without a UID. Scaling uses the original GetScale/UpdateScale path with bounded conflict retries rather than a conditional JSON patch pinned to the earlier observation. Kubernetes normal update conflict handling remains in place.
+
+Durable prepared/applied snapshots and scheduler ownership checks remain. The additive UID column is retained as informational metadata so existing records and migrations are not destructively rewritten. Pod-deletion preconditions and cordon ownership are separate drain protections and are unchanged. Earlier descriptions of blocked legacy recovery and workload identity enforcement below are superseded by this decision.
+
+Validation: `go test -p=1 ./...`, `go test -race -p=1 ./internal/scaler ./internal/k8s`, `go vet ./internal/scaler ./internal/k8s`, and `git diff --check` pass. New fake-client regressions cover Deployment/StatefulSet sleep, wake and corrective sleep with legacy/replacement snapshots, plus conflict retries after an older observation. Database integration tests skip without a disposable DSN; no real cluster was used.
+
 ## Compatibility audit and recommendation
 
 A follow-up audit compared every changed area against the original implementation, commit messages, tests, and documentation. Several initial findings below incorrectly classified deliberate behavior as defects. A test written to expect different behavior establishes a difference; it does not establish that the original behavior was wrong. This section supersedes those classifications.
@@ -87,7 +95,7 @@ bbb1544 test(exceptions): verify corrective scope across wake boundaries
 
 ## Changes and migration
 
-- `k8s/identity.go`, scaler workload entries, snapshot model/query methods: durable replica intent, UID/version mutation preconditions, restoration conflict handling, accurate partial results.
+- Scaler workload entries and snapshot model/query methods: durable replica intent and name-based restoration with bounded scale conflict retries. UID metadata remains informational. `k8s/mutation_guard.go` retains scheduler ownership checks.
 - `k8s/client.go`, `k8s/cordon.go`, scaler node operations and chart ClusterRole: eviction-first draining with the restored zero-grace deletion fallback, explicit failure results, cordon ownership and recovery.
 - `store/ownership.go`, server startup/shutdown, scheduler stale-transition checks and Helm values/schema/helpers: one database owner throughout recovery and execution, Recreate upgrades.
 - Shared target matching in `store/targeting.go`; API create/update/import, scaler sleep/wake/reconciliation and scheduler startup/evaluation: consistent exception scope and baseline scheduling.
@@ -147,13 +155,13 @@ It contained only disposable test schemas and was stopped after validation. Inte
 ## Upgrade and remaining decisions
 
 1. Back up PostgreSQL and retain all open snapshots. Apply the additive migration before starting with `AUTO_MIGRATE=false`; otherwise normal AutoMigrate adds the fields.
-2. Inspect open legacy nonzero snapshots before upgrading. They deliberately fail automatic restoration without an original UID. Verify the workload identity and baseline through operator evidence before an explicit manual recovery; do not populate guessed UIDs or discard open records.
+2. Legacy snapshots remain eligible for name-based restoration without a UID. Same-name replacement workloads can receive the saved replica count, matching the original recovery contract. Preserve open records and replica baselines; no UID backfill is required.
 3. Stop all old scheduler processes for the first upgrade: older binaries do not participate in the new lock. Use `strategy.type=Recreate`, remove old `strategy.rollingUpdate` overrides, and use replicas 1 (or 0 during maintenance). Expect brief application downtime. Helm reuse-values may retain incompatible old overrides and will now fail validation.
 4. Allow at least two DB connections because ownership reserves one. Use a direct PostgreSQL connection or session pooling; transaction-pooling proxies do not preserve the session advisory-lock contract. Losing that dedicated session intentionally stops the process even though liveness itself is independent of ordinary readiness failures.
 5. Apply the corrected core eviction permission. The restored force-delete fallback requires separate `delete` authorization on core `pods`; the default chart does not grant it. Direct deletion intentionally bypasses PDBs and graceful termination. External systems that take over an owned cordon must remove/replace the ownership marker so cleanup will not undo their intent.
 6. Scoped filters now narrow by intersection. An exception outside its parent scope matches nothing; invalid syntax/kinds/names are rejected. Ordinary policy wake still restores snapshots after label changes. The policy state describes baseline schedule progress; scoped workload states can differ.
 7. Node actions remain destructive and cluster-wide for ordinary policy sleep. Keep node protections and external autoscaler capacity configured. Scoped exception executions and incomplete workload prerequisites defer node actions.
-8. Database ownership is a singleton safeguard, not a distributed fencing protocol or HA implementation. A request already accepted by Kubernetes can finish after process/session loss. UID/version preconditions prevent stale workload patches; they do not make all PostgreSQL/Kubernetes side effects transactional. Database loss, concurrent external actors, and conflicting overlapping parent policies still require operational care.
+8. Database ownership is a singleton safeguard, not a distributed fencing protocol or HA implementation. A request already accepted by Kubernetes can finish after process/session loss. Workload scaling follows names and normal Kubernetes conflict retries; PostgreSQL/Kubernetes side effects are not transactional. Database loss, concurrent external actors, and conflicting overlapping parent policies still require operational care.
 9. Credential hardening proposal: add an explicit production installation mode in a separate compatibility change, requiring an operator-managed application secret and independently managed database credentials; retain demo credentials only behind an explicit development opt-in. Upgrades must preserve existing secret values and never generate replacement passwords automatically. Current `secret.existingSecret` support is verified; no installed credentials were changed here.
 
 Passing unit, fake-client and PostgreSQL tests does not establish production readiness. A disposable real Kubernetes validation of eviction/force-delete behavior, RBAC, node deletion failure and upgrade shutdown remains recommended before deployment.

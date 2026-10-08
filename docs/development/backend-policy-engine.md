@@ -47,10 +47,10 @@ Sleep lists Deployments and StatefulSets using the workload selector, filters na
 | :----------------- | :------------- |
 | Already at zero | Record `wasAlreadyZero`; do not claim ownership of a later wake |
 | Existing open snapshot | Reconcile live state; retain the original UID and replica baseline |
-| Positive replicas | Persist prepared intent, conditionally scale to zero, record applied phase |
+| Positive replicas | Persist prepared intent, scale by name to zero, record applied phase |
 | Persistence or scale failure | Retain any durable intent, count an error, fail the execution and defer nodes |
 
-Kubernetes and PostgreSQL remain separate systems. A prepared intent precedes scaling and is retained after ambiguous failures. On retry, zero replicas can confirm application; nonzero replicas are conditionally scaled using the saved identity. Snapshot closure failures also count as incomplete work. Workload UID and resource-version tests are part of the Kubernetes mutation itself. Legacy snapshots with no UID remain open and require operator review; their identity is not inferred.
+Kubernetes and PostgreSQL remain separate systems. A prepared intent precedes scaling and is retained after ambiguous failures. On retry, zero replicas can confirm application; nonzero replicas are scaled by kind/namespace/name with the original conflict retries. Snapshot closure failures also count as incomplete work. Saved UIDs are informational and do not gate scaling or restoration. Legacy snapshots and same-name replacement workloads follow the original name-based recovery contract. Kubernetes retains its normal scale-update conflict handling; conflicts re-read the scale and retry.
 
 Snapshots in PostgreSQL are the current restoration source. There is no annotation fallback. Plan mode logs proposed actions without creating workload snapshots or mutating Kubernetes resources.
 

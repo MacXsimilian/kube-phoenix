@@ -7,7 +7,6 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/k8s"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestScopedSleepAndWake(t *testing.T) {
@@ -19,7 +18,7 @@ func TestScopedSleepAndWake(t *testing.T) {
 	} {
 		a, b := recoveryDeployment("a", "a-id", 3), recoveryDeployment("b", "b-id", 5)
 		a.Labels, b.Labels = map[string]string{"app": "a"}, map[string]string{"app": "b"}
-		cs := fake.NewClientset(a, b)
+		cs := recoveryClient(a, b)
 		st := &memorySnapshots{}
 		r := &PolicyRunner{base: New(k8s.NewForClientset(cs), nil), store: st}
 		p := store.Policy{ID: 1, Mode: "apply", NamespaceFilter: "test", ExceptionScope: &scope}

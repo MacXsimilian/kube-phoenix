@@ -171,11 +171,9 @@ type sleepWorkloadParams struct {
 func (r *PolicyRunner) sleepWorkload(p sleepWorkloadParams, e workloadEntry) (scaled, skipped, errored bool) {
 	wl := formatWorkload(e.Kind, e.Namespace, e.Name)
 
+	// Snapshots intentionally follow kind/namespace/name across recreation, as in
+	// the original restoration contract. UID metadata does not gate recovery.
 	snap, exists := p.snapped[workloadKey(e.Kind, e.Namespace, e.Name)]
-	if exists && snap.WorkloadUID != e.UID {
-		emit(p.logCh, "error", fmt.Sprintf("Identity conflict for %s: snapshot UID differs from live workload", wl))
-		return false, false, true
-	}
 	if !exists {
 		snap = store.WorkloadSnapshot{
 			PolicyID: p.policy.ID, SleepExecutionID: p.execID,
@@ -358,11 +356,6 @@ func (r *PolicyRunner) wakeWorkload(p wakeWorkloadParams, snap store.WorkloadSna
 			}
 		}
 		return false, true, false
-	}
-
-	if snap.WorkloadUID == "" || entry.UID != snap.WorkloadUID {
-		emit(p.logCh, "error", fmt.Sprintf("Identity conflict for %s: missing legacy UID or replacement workload; snapshot retained for operator review", wl))
-		return false, false, true
 	}
 
 	allowed, scopeErr := r.filterEntries(p.policy, []workloadEntry{*entry}, "wake")
@@ -740,11 +733,6 @@ func (r *PolicyRunner) reconcileSnapshotSleep(
 	}
 	if len(allowed) == 0 {
 		counts.Skipped++
-		return
-	}
-	if snap.WorkloadUID == "" || entry.UID != snap.WorkloadUID {
-		emit(logCh, "error", fmt.Sprintf("Identity conflict for %s; snapshot retained", wl))
-		counts.Errors++
 		return
 	}
 	currentReplicas := entry.Replicas
