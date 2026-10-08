@@ -3,15 +3,57 @@
 Reviewed branch: `master`. Initial full commit: `eac56428b6c3248e33ccdc3de5c0f3818cbcff42`.
 The checkout happened to match the historical reference; it was not reset. Initial user changes were `frontend/next-env.d.ts` and untracked `frontend/AGENTS.md`; they remain outside the commits. No root AGENTS.md was present. Architecture, backend development, execution/data-flow, testing, CI, and frontend guidance were inspected.
 
+## Compatibility audit and recommendation
+
+A follow-up audit compared every changed area against the original implementation, commit messages, tests, and documentation. Several initial findings below incorrectly classified deliberate behavior as defects. A test written to expect different behavior establishes a difference; it does not establish that the original behavior was wrong. This section supersedes those classifications.
+
+Recommendation: preserve documented product behavior and repair failures within that contract. Keep best-effort shutdown, the double-sleep guard, exception precedence, and the original rollout objective. Retain changes that make those operations recoverable or implement targeting already promised. The force-delete fallback has already been restored. Other restorations below are recommendations from this audit, not implemented changes.
+
+### Deliberate behavior to restore
+
+| Area | Original evidence | Recommendation |
+|---|---|---|
+| Partial execution results | `554980d` explicitly introduced failure only when `Errors > 0 && Scaled == 0`, for sleep and wake. `f643fa1` used the same threshold for enforce-sleep. The backend guide documented it. | Restore the threshold; preserve individual error counts and logs. Returning failure on every partial error changes status and retry behavior. A new partial-success status would be a separate product decision. |
+| Node phase after workload errors | The original sleep pipeline attempted node operations after workloads, including failures. `554980d` placed total-failure detection after that phase. | Restore best-effort continuation with cancellation and existing node protections. A failed drain must still prevent deletion of that node; workload scale failures and node drain failures are distinct. |
+| Ordinary repeat sleep | `e860b36` introduced a double-sleep guard. The original policy-engine guide says existing open snapshots skip ordinary sleep and retain the baseline. `f643fa1` introduced separate configurable Enforce Sleep. | Skip completed and legacy open snapshots during ordinary sleep; retry new `prepared` intents using their original baseline. Reapplying completed snapshots bypasses the Enforce Sleep choice. |
+| Scoped exception precedence | `554980d` integrated exceptions into policy-level intent to stop normal ticks reversing them. `beaeaed` retained scoped exceptions in this model, including the test `scoped exception still holds policy-level state`. Original documentation explains the same reason. | Restore policy-level precedence/state. Independent baseline/scoped scheduling is a product redesign, not a demonstrated defect fix. |
+| Exception filter replacement | `beaeaed` explicitly makes supplied exception filters override runtime policy scope without changing the saved policy. Wake is also limited to snapshots owned by that policy. | Restore runtime replacement of supplied namespace/label filters. Keep exact target matching and owned wake snapshots. Universal parent-selector intersection is a new restriction. |
+| Node phase for scoped actions | Scoped sleeps inherited the ordinary pipeline. The original guide says namespace filters do not scope node deletion; no exception-specific exemption was found. | Preserve cluster-wide protected-node selection. Suppression for all scoped sleeps changes behavior; a separate rationale for this particular original edge case was not found. |
+| Kubernetes conflict retries | `1955e3c` deliberately introduced bounded conflict retries with 500 ms / 1.5 s / 3 s backoff for scaling and cordoning. New conditional scale/owned-cordon paths bypass those helpers. | Restore retries while retaining identity/version checks. Re-read and validate identity, scope and the replica baseline before retrying; blindly replacing the resource version is insufficient. |
+| Rolling deployments | `4ab2389` added RollingUpdate. Original values promise zero-downtime rollouts with `maxUnavailable: 0`; `298eba7` preserves graceful shutdown during rolling updates. | Preserve this objective with safe scheduler ownership handoff. Merely reverting the chart while keeping startup-fatal lock contention would stall rollout: the new pod cannot become ready while the old owner remains. Mandatory Recreate is a compatibility change. |
+
+### Reliability changes to retain
+
+| Area | Historical evidence and decision |
+|---|---|
+| Durable snapshot intents | `012246d` moved snapshot persistence after scaling to prevent orphan records **while annotation recovery existed**. `720900f` later removed that recovery and made PostgreSQL the sole restoration source. Keep durable `prepared` / `applied` phases: the old ordering lost its recovery prerequisite, and phases explicitly represent incomplete work. Preserve the original replica baseline across retries. |
+| Persistence errors | No evidence makes lost restoration data a desired outcome. Keep required snapshot reads/writes/closure errors visible and recoverable. Whether a mixed execution returns success is the separate best-effort contract above. |
+| Explicit targets and label-scoped wake | The model/UI already promised workload targeting; test catalogue §10.2 expected only matching workloads to wake. Keep exact targets, label filtering, input validation and clearing target lists. Ordinary full wake must still restore owned snapshots after labels change. |
+| Scoped recovery/corrective sleep | Startup should preserve an exception action's scope even with policy-level intended state restored. `f643fa1` intended corrective sleep to respect stay-awake protection; exact labels/targets complete that intent. |
+| Owned cordons and eviction RBAC | No rationale was found for abandoning cordons after failed operations. Keep cleanup limited to matching ownership markers and the corrected eviction permission. `f120b63` established that failed/timed-out drains must prevent deletion of that node. |
+| Scheduler ownership | Original architecture/deployment docs support one application replica. Preventing overlapping startup recovery and mutations supports that contract, but new rollout/DB requirements need compatibility treatment below. |
+| Health and CI | No evidence was found that database-dependent liveness was an intentional restart policy. Keep separate liveness/readiness and compatibility `/healthz`. Keep frontend/chart regression coverage; it changes verification, not functionality. |
+
+### Additional compatibility concerns
+
+- **Legacy snapshots:** refusing every nonzero record without a UID prevents automatic wake of pre-upgrade snapshots, including unchanged workloads. Previously restoration used names; no explicit motive for restoring replacements was found. Keep UID checks for new records and provide an explicit legacy recovery path. Missing historical identity cannot be reconstructed with certainty.
+- **DB requirements:** reserving one connection, requiring at least two pooled connections, requiring session-preserving access, and exiting on ownership-session loss are new constraints. `9c4a4d6` deliberately exposed pool tuning. Keep scheduler exclusion without describing these requirements as unchanged behavior. Enforcing the documented one-replica limit is distinct from removing rolling updates.
+- **Startup cleanup:** failure to list/recover cordons now stops startup, whereas earlier Kubernetes initialization could warn and allow the API to start. Cleanup should retry under valid ownership without a transient cleanup failure alone preventing the UI/API from serving.
+- **Intent within an execution:** `012246d` rejected mid-execution override rechecks to avoid half-finished operations. Those overrides were later removed, so this is not conclusive evidence about exceptions. Nevertheless, new per-workload exception queries deserve review; prefer a consistent exception view per execution while retaining cancellation and identity checks.
+
+Already-zero ownership, ordinary wake replica restoration, missing-workload handling, reliance on an external autoscaler, default credentials, and global operator permissions were also checked; their original behavior was retained. Initial test results below remain evidence of what ran, not proof that disputed product decisions were correct.
+
+Audit validation: historical source/commit review, coverage cross-check against all 41 changed files, and `git diff --check`. This follow-up changes documentation only; no new runtime test pass or functional restoration is claimed.
+
 ## Subsequent drain behavior decision
 
 The requested original force-delete fallback is restored. Eviction is attempted first; any eviction error other than an already-removed pod leads to an immediate zero-grace deletion attempt, subject to cancellation, ownership and pod UID checks. This deliberately favors shutdown completion over PDB availability and graceful termination. The default chart permissions are unchanged, so the fallback can still be forbidden unless pod deletion is authorized separately. Failed fallback attempts remain visible and trigger owned-cordon recovery. The earlier eviction-only change below is historical and superseded by this decision.
 
 Validation of the restored fallback: `go test -race ./internal/k8s ./internal/scaler` and `go vet ./internal/k8s` both pass using the local Go toolchain. Kubernetes behavior is covered with fake clients; no real cluster was used.
 
-## Findings and evidence
+## Initial findings and evidence
 
-“Reproduced” below identifies the actual test level. No production cluster was contacted and no Kubernetes rollout or real PDB rejection was reproduced.
+These are the initial review's dispositions and implemented changes. The compatibility audit above corrects classifications and separates current behavior from recommended restorations. “Reproduced” below identifies the actual test level. No production cluster was contacted and no Kubernetes rollout or real PDB rejection was reproduced.
 
 | Issue | Disposition | Current evidence | Reproduction / verification | Fix or decision |
 |---|---|---|---|---|
