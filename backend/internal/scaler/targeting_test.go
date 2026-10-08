@@ -42,6 +42,17 @@ func TestScopedSleepAndWake(t *testing.T) {
 		if *liveB.Spec.Replicas != 0 {
 			t.Fatal("scoped wake touched B")
 		}
+		// Corrective sleep must retain exactly the same explicit/label scope.
+		five := int32(5)
+		liveB.Spec.Replicas = &five
+		_, _ = cs.AppsV1().Deployments("test").Update(ctx, liveB, metav1.UpdateOptions{})
+		if _, err := r.RunPolicySleepReconcile(ctx, p, 3, nil); err != nil {
+			t.Fatal(err)
+		}
+		liveB, _ = cs.AppsV1().Deployments("test").Get(ctx, "b", metav1.GetOptions{})
+		if *liveB.Spec.Replicas != 5 {
+			t.Fatal("corrective scoped sleep touched B")
+		}
 		// Full-policy wake ignores changed labels and restores owned recovery data.
 		p.ExceptionScope = nil
 		p.LabelSelector = "app=changed"

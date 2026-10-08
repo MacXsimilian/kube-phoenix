@@ -57,6 +57,9 @@ func TestScopedExceptionDoesNotSuppressScheduledWake(t *testing.T) {
 	for _, tick := range []time.Time{now.Add(10 * time.Minute), now.Add(time.Hour)} {
 		ps.evaluatePolicy(ps.policies[1], evalContext{now: tick, autoWake: true, reconcileWhileAwake: true, exceptionsByPolicy: map[uint][]store.ScheduledException{1: {ex}}})
 		ps.inflight.Wait()
+		if tick.Before(now.Add(time.Hour)) && r.awake["b"] {
+			t.Fatal("corrective exception wake restored B before its schedule")
+		}
 	}
 	if !r.awake["b"] {
 		t.Fatalf("07:00 B remained asleep; wakes=%+v", r.wakes)
