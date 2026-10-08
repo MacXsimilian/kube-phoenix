@@ -264,7 +264,12 @@ func (r *PolicyRunner) RunPolicySleep(
 	}
 
 	entries := r.base.collectFilteredEntries(deps, ssets, skipNS, policy.NamespaceFilter, counts)
-	skipNodeActions := false
+	selectedCount := len(entries)
+	entries, err = r.filterEntries(policy, entries, "sleep")
+	if err != nil {
+		return counts, err
+	}
+	skipNodeActions := policy.ExceptionScope != nil || len(entries) != selectedCount
 	entries = sortByPriorityNamespaces(entries, guardrails.ScalingPriorityNamespaces)
 	if _, hasPriority := parsePriorityList(guardrails.ScalingPriorityNamespaces); hasPriority {
 		emit(logCh, "info", fmt.Sprintf("Scaling priority namespaces first: %s", guardrails.ScalingPriorityNamespaces))
@@ -360,6 +365,15 @@ func (r *PolicyRunner) wakeWorkload(p wakeWorkloadParams, snap store.WorkloadSna
 		return false, false, true
 	}
 
+	allowed, scopeErr := r.filterEntries(p.policy, []workloadEntry{*entry}, "wake")
+	if scopeErr != nil {
+		emit(p.logCh, "error", scopeErr.Error())
+		return false, false, true
+	}
+	if len(allowed) == 0 {
+		return false, true, false
+	}
+
 	target := snap.ReplicasBefore
 
 	if currentReplicas != 0 {
@@ -442,6 +456,11 @@ func (r *PolicyRunner) RunPolicyWake(
 	// exception), only restore snapshots that belong to those namespaces.
 	if policy.NamespaceFilter != "" {
 		snaps = filterSnapshotsByNamespace(snaps, policy.NamespaceFilter)
+	}
+
+	snaps, err = r.filterWakeSnapshots(ctx, policy, snaps)
+	if err != nil {
+		return counts, fmt.Errorf("resolve wake scope: %w", err)
 	}
 
 	guardrails, err := r.store.GetGuardrails()
@@ -625,17 +644,6 @@ func (r *PolicyRunner) HasDriftedFromSleep(ctx context.Context, policyID uint) (
 		return false, fmt.Errorf("guardrails: %w", err)
 	}
 	skipNS := stringutil.SplitCSVSet(guardrails.ProtectedNamespaces)
-	exceptions, err := r.store.ListActiveExceptionsForPolicy(policyID, time.Now())
-	if err != nil {
-		return false, err
-	}
-	for _, ex := range exceptions {
-		if ex.ExceptionType == store.ExceptionTypeStayAwake {
-			for ns := range stringutil.SplitCSVSet(ex.NamespaceFilter) {
-				skipNS[ns] = true
-			}
-		}
-	}
 
 	for _, snap := range snaps {
 		if skipNS[snap.Namespace] {
@@ -646,6 +654,13 @@ func (r *PolicyRunner) HasDriftedFromSleep(ctx context.Context, policyID uint) (
 			return false, lookupErr
 		}
 		if entry == nil {
+			continue
+		}
+		allowed, scopeErr := r.filterEntries(store.Policy{ID: policyID}, []workloadEntry{*entry}, "sleep")
+		if scopeErr != nil {
+			return false, scopeErr
+		}
+		if len(allowed) == 0 {
 			continue
 		}
 		if entry.Replicas > 0 {
@@ -676,17 +691,6 @@ func (r *PolicyRunner) RunPolicySleepReconcile(
 		return nil, fmt.Errorf("guardrails: %w", err)
 	}
 	skipNS := stringutil.SplitCSVSet(guardrails.ProtectedNamespaces)
-	exceptions, err := r.store.ListActiveExceptionsForPolicy(p.ID, time.Now())
-	if err != nil {
-		return counts, err
-	}
-	for _, ex := range exceptions {
-		if ex.ExceptionType == store.ExceptionTypeStayAwake {
-			for ns := range stringutil.SplitCSVSet(ex.NamespaceFilter) {
-				skipNS[ns] = true
-			}
-		}
-	}
 
 	emit(logCh, "info", fmt.Sprintf("Enforce sleep — checking %d open snapshots for drift", len(snaps)))
 
@@ -725,6 +729,16 @@ func (r *PolicyRunner) reconcileSnapshotSleep(
 		return
 	}
 	if entry == nil {
+		counts.Skipped++
+		return
+	}
+	allowed, err := r.filterEntries(p, []workloadEntry{*entry}, "sleep")
+	if err != nil {
+		emit(logCh, "error", err.Error())
+		counts.Errors++
+		return
+	}
+	if len(allowed) == 0 {
 		counts.Skipped++
 		return
 	}

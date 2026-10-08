@@ -254,7 +254,7 @@ func newExceptionFromInput(body exceptionInput, r *http.Request) (*store.Schedul
 		LabelSelector:   body.LabelSelector,
 		Status:          store.ExceptionStatusPending,
 	}
-	if len(body.WorkloadTargets) > 0 {
+	if body.WorkloadTargets != nil {
 		if err := ex.SetWorkloadTargets(body.WorkloadTargets); err != nil {
 			return nil, fmt.Errorf("encode workload targets: %w", err)
 		}
@@ -278,6 +278,13 @@ type exceptionUpdateInput struct {
 }
 
 func buildExceptionUpdates(body exceptionUpdateInput) (map[string]interface{}, error) {
+	selector := ""
+	if body.LabelSelector != nil {
+		selector = *body.LabelSelector
+	}
+	if err := store.ValidateExceptionTargets(selector, body.WorkloadTargets); err != nil {
+		return nil, err
+	}
 	updates := map[string]interface{}{}
 	if body.ExceptionType != "" {
 		updates["exception_type"] = body.ExceptionType
@@ -303,7 +310,7 @@ func buildExceptionUpdates(body exceptionUpdateInput) (map[string]interface{}, e
 	if body.LabelSelector != nil {
 		updates["label_selector"] = *body.LabelSelector
 	}
-	if len(body.WorkloadTargets) > 0 {
+	if body.WorkloadTargets != nil {
 		b, err := json.Marshal(body.WorkloadTargets)
 		if err != nil {
 			return nil, fmt.Errorf("encode workload targets: %w", err)
@@ -346,6 +353,9 @@ func validateExceptionUpdates(updates map[string]interface{}) error {
 }
 
 func validateExceptionInput(b exceptionInput) error {
+	if err := store.ValidateExceptionTargets(b.LabelSelector, b.WorkloadTargets); err != nil {
+		return err
+	}
 	if b.PolicyID == nil {
 		return errors.New("policyId is required (freestanding exceptions are not yet supported)")
 	}

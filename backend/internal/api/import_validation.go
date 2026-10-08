@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/policy"
+	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
 // ─── Decoders ────────────────────────────────────────────────────────────────
@@ -109,6 +110,9 @@ func validatePolicyImportFields(b policyExportBody) string {
 // for malformed input and 422 when the time window is in the past — these are
 // reachable when an exception JSON is shared after its startsAt.
 func validateExceptionImport(b exceptionExportBody) (string, int) {
+	if err := store.ValidateExceptionTargets(b.LabelSelector, b.WorkloadTargets); err != nil {
+		return err.Error(), http.StatusBadRequest
+	}
 	if msg := validateExceptionParentName(b.PolicyName); msg != "" {
 		return msg, http.StatusBadRequest
 	}
