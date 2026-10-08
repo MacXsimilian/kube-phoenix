@@ -69,6 +69,9 @@ type Client struct {
 	rsAt     time.Time
 }
 
+// NewForClientset wraps a typed Kubernetes client, including disposable test clients.
+func NewForClientset(cs kubernetes.Interface) *Client { return &Client{cs: cs} }
+
 // ClusterInfoResult holds metadata about the connected Kubernetes cluster.
 type ClusterInfoResult struct {
 	APIServer         string `json:"apiServer"`
@@ -279,6 +282,9 @@ func (c *Client) scaleWithRetry(ctx context.Context, namespace, name string, rep
 		if err != nil {
 			return fmt.Errorf("get scale %s/%s: %w", namespace, name, err)
 		}
+		if err := c.checkMutation(ctx); err != nil {
+			return err
+		}
 		scale.Spec.Replicas = replicas
 		_, err = updateScale(ctx, name, scale, metav1.UpdateOptions{})
 		if err != nil {
@@ -374,6 +380,9 @@ func (c *Client) CordonNode(ctx context.Context, name string) error {
 		if err != nil {
 			return fmt.Errorf("get node %q: %w", name, err)
 		}
+		if err := c.checkMutation(ctx); err != nil {
+			return err
+		}
 		node.Spec.Unschedulable = true
 		_, err = c.cs.CoreV1().Nodes().Update(ctx, node, metav1.UpdateOptions{})
 		if err != nil {
@@ -421,11 +430,22 @@ func (c *Client) CountNonDaemonSetPods(ctx context.Context, nodeName string) (in
 
 // DrainNode cordons and evicts all non-DaemonSet pods from a node, waiting
 // up to the given timeout for them to terminate.
-func (c *Client) DrainNode(ctx context.Context, name string, timeout time.Duration) error {
-	if err := c.CordonNode(ctx, name); err != nil {
-		return fmt.Errorf("cordon %s: %w", name, err)
+func (c *Client) DrainNode(ctx context.Context, name string, timeout time.Duration) (result error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	owner, err := c.cordonForDrain(ctx, name)
+	defer func() {
+		if result != nil && owner != "" {
+			cleanup, done := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer done()
+			if err := c.recoverCordon(cleanup, name, owner); err != nil {
+				result = fmt.Errorf("%w; cordon recovery failed: %v", result, err)
+			}
+		}
+	}()
+	if err != nil {
+		return err
 	}
-
 	start := time.Now()
 	drainPods, err := paginatedList(metav1.ListOptions{FieldSelector: "spec.nodeName=" + name}, func(opts metav1.ListOptions) ([]corev1.Pod, string, error) {
 		list, err := c.cs.CoreV1().Pods("").List(ctx, opts)
@@ -435,39 +455,50 @@ func (c *Client) DrainNode(ctx context.Context, name string, timeout time.Durati
 		return list.Items, list.Continue, nil
 	})
 	if err != nil {
-		recordK8sOpWith(c.callRecorder, "drain", "node", start, err)
 		return fmt.Errorf("list pods on %s: %w", name, err)
 	}
-
-	c.evictPods(ctx, name, drainPods)
+	if err := c.evictPods(ctx, name, drainPods); err != nil {
+		return err
+	}
 	drainErr := c.waitForDrain(ctx, name, timeout)
 	recordK8sOpWith(c.callRecorder, "drain", "node", start, drainErr)
 	return drainErr
 }
 
-// evictPods attempts to evict all non-DaemonSet pods, falling back to force delete.
-func (c *Client) evictPods(ctx context.Context, nodeName string, pods []corev1.Pod) {
+// evictPods respects disruption budgets. Only retryable API failures are retried;
+// the drain's context bounds both eviction and termination waits.
+func (c *Client) evictPods(ctx context.Context, nodeName string, pods []corev1.Pod) error {
 	for _, pod := range pods {
 		if isDaemonSetPod(pod) {
 			continue
 		}
-		eviction := &policyv1.Eviction{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      pod.Name,
-				Namespace: pod.Namespace,
-			},
-		}
-		if err := c.cs.PolicyV1().Evictions(pod.Namespace).Evict(ctx, eviction); err != nil {
-			grace := int64(0)
-			if delErr := c.cs.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
-				GracePeriodSeconds: &grace,
-			}); delErr != nil {
-				slog.Warn("drain: eviction failed and force-delete also failed",
-					"node", nodeName, "namespace", pod.Namespace, "pod", pod.Name,
-					"evictErr", err, "deleteErr", delErr)
+		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			eviction := &policyv1.Eviction{ObjectMeta: metav1.ObjectMeta{Name: pod.Name, Namespace: pod.Namespace},
+				DeleteOptions: &metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &pod.UID}}}
+			if err := c.checkMutation(ctx); err != nil {
+				return err
+			}
+			err := c.cs.PolicyV1().Evictions(pod.Namespace).Evict(ctx, eviction)
+			if err == nil || apierrors.IsNotFound(err) {
+				break
+			}
+			if apierrors.IsForbidden(err) {
+				return fmt.Errorf("evict %s/%s on %s: authorize create on core pods/eviction: %w", pod.Namespace, pod.Name, nodeName, err)
+			}
+			if !(apierrors.IsTooManyRequests(err) || apierrors.IsTimeout(err) || apierrors.IsServerTimeout(err) || apierrors.IsServiceUnavailable(err)) {
+				return fmt.Errorf("evict %s/%s on %s: %w", pod.Namespace, pod.Name, nodeName, err)
+			}
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("evict %s/%s: %w (last rejection: %v)", pod.Namespace, pod.Name, ctx.Err(), err)
+			case <-time.After(time.Second):
 			}
 		}
 	}
+	return nil
 }
 
 // waitForDrain polls until all non-DaemonSet pods are gone or timeout expires.
@@ -503,6 +534,9 @@ func (c *Client) waitForDrain(ctx context.Context, nodeName string, timeout time
 }
 
 func (c *Client) DeleteNode(ctx context.Context, name string) error {
+	if err := c.checkMutation(ctx); err != nil {
+		return err
+	}
 	start := time.Now()
 	err := c.cs.CoreV1().Nodes().Delete(ctx, name, metav1.DeleteOptions{})
 	recordK8sOpWith(c.callRecorder, "delete", "node", start, err)
@@ -830,6 +864,3 @@ func (c *Client) GetPodEvents(ctx context.Context, namespace, podName string) ([
 	}
 	return items, nil
 }
-
-// NewForClientset wraps a typed Kubernetes client, including disposable test clients.
-func NewForClientset(cs kubernetes.Interface) *Client { return &Client{cs: cs} }
