@@ -46,11 +46,12 @@ type Config struct {
 }
 
 type Client struct {
-	cs           *kubernetes.Clientset
-	apiServer    string
-	inCluster    bool
-	clusterName  string
-	callRecorder CallRecorder
+	mutationGuard func(context.Context) error
+	cs            kubernetes.Interface
+	apiServer     string
+	inCluster     bool
+	clusterName   string
+	callRecorder  CallRecorder
 
 	// Cached cluster info to avoid hitting k8s Discovery on every request.
 	clusterInfoMu     sync.Mutex
@@ -693,7 +694,7 @@ func (c *Client) GetAllPodMetrics(ctx context.Context) (map[string]ContainerMetr
 // Returns a map keyed by "namespace/podName" with the summed CPU+mem across all containers.
 func (c *Client) fetchAllPodMetrics(ctx context.Context) (map[string]ContainerMetrics, error) {
 	start := time.Now()
-	res := c.cs.RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/pods").Do(ctx)
+	res := c.cs.Discovery().RESTClient().Get().AbsPath("/apis/metrics.k8s.io/v1beta1/pods").Do(ctx)
 	data, err := res.Raw()
 	recordK8sOpWith(c.callRecorder, "get", "podmetrics", start, err)
 	if err != nil {
@@ -743,7 +744,7 @@ func (c *Client) fetchAllPodMetrics(ctx context.Context) (map[string]ContainerMe
 // Returns an empty map (no error) when Metrics Server is unavailable.
 func (c *Client) GetPodMetrics(ctx context.Context, namespace, name string) (map[string]ContainerMetrics, error) {
 	start := time.Now()
-	data, err := c.cs.RESTClient().
+	data, err := c.cs.Discovery().RESTClient().
 		Get().
 		AbsPath(fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods/%s", namespace, name)).
 		DoRaw(ctx)
@@ -829,3 +830,6 @@ func (c *Client) GetPodEvents(ctx context.Context, namespace, podName string) ([
 	}
 	return items, nil
 }
+
+// NewForClientset wraps a typed Kubernetes client, including disposable test clients.
+func NewForClientset(cs kubernetes.Interface) *Client { return &Client{cs: cs} }
