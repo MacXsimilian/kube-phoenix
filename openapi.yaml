@@ -1400,6 +1400,26 @@ components:
                   description: Non-blank name of an existing policy in the target environment.
 
 paths:
+  /livez:
+    get:
+      operationId: livenessCheck
+      summary: Process liveness without dependency checks
+      security: []
+      tags: [Health]
+      responses:
+        "200":
+          description: Process is serving HTTP
+  /readyz:
+    get:
+      operationId: readinessCheck
+      summary: Database-dependent readiness
+      security: []
+      tags: [Health]
+      responses:
+        "200":
+          description: Database reachable
+        "503":
+          description: Database unavailable
   /healthz:
     get:
       operationId: healthCheck

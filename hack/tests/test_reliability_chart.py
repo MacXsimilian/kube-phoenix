@@ -14,6 +14,8 @@ class ReliabilityChartTests(unittest.TestCase):
         self.assertIn("replicas: 1", deployment)
         self.assertIn("type: Recreate", deployment)
         self.assertNotIn("rollingUpdate:", deployment)
+        for probe, path in [("livenessProbe", "/livez"), ("readinessProbe", "/readyz"), ("startupProbe", "/livez")]:
+            self.assertRegex(deployment, probe + r":\n(?: {12,}[^\n]*\n)*? {12}httpGet:\s+path: " + path)
 
     def test_unsupported_ownership_configurations_are_rejected(self):
         for setting in ["replicaCount=2", "strategy.type=RollingUpdate", "autoscaling.enabled=true", "strategy.rollingUpdate.maxSurge=1"]:

@@ -220,14 +220,14 @@ containerSecurityContext:
 
 livenessProbe:
   httpGet:
-    path: /healthz
+    path: /livez
     port: 8080
   initialDelaySeconds: 15
   periodSeconds: 20
 
 readinessProbe:
   httpGet:
-    path: /healthz
+    path: /readyz
     port: 8080
   initialDelaySeconds: 5
   periodSeconds: 10
@@ -236,7 +236,7 @@ readinessProbe:
 # failureThreshold * periodSeconds = max startup time (30 * 5 = 150s).
 startupProbe:
   httpGet:
-    path: /healthz
+    path: /livez
     port: 8080
   failureThreshold: 30
   periodSeconds: 5

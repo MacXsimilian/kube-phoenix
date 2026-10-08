@@ -6,6 +6,7 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"time"
@@ -224,12 +225,13 @@ func (s *Store) Close() {
 	}
 }
 
-func (s *Store) Ping() error {
+func (s *Store) Ping() error { return s.PingContext(context.Background()) }
+func (s *Store) PingContext(ctx context.Context) error {
 	db, err := s.db.DB()
 	if err != nil {
 		return err
 	}
-	return db.Ping()
+	return db.PingContext(ctx)
 }
 
 // UpdatePoolMetrics publishes current sql.DBStats to Prometheus gauges.
