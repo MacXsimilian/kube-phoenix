@@ -795,8 +795,8 @@ Node-object deletion and node replacement depend on the cluster's kubelet/contro
 |---|------|-----------------|
 | 24.1 | Navigate to `/policies` | Page loads with all policies displayed as cards |
 | 24.2 | Each card shows: name, mode badge, enabled state, current state (LED), weekly savings ring, next transition countdown | All data visible |
-| 24.3 | Disabled policy has reduced opacity | Visual distinction |
-| 24.4 | Cards show correct state colors: green (awake), purple/blue (sleeping), yellow (transitioning) | Color coding correct |
+| 24.3 | Disabled policy shows a prominent Disabled badge, scheduling-off explanation, neutral accent, and muted schedule/statistics | Scheduling state is clear; permitted manual actions remain readable and usable |
+| 24.4 | Enabled cards show correct state colors: green (awake), purple/blue (sleeping), yellow (transitioning) | Color coding correct; disabled accents and LEDs stay neutral |
 | 24.5 | Page auto-refetches every 30s | State changes appear without manual refresh |
 | 24.6 | Click a policy card → navigates to detail page | Routing works |
 | 24.7 | Trigger button shows Sleep Now when awake and Wake Now when sleeping; for unknown/transitioning it opens a Sleep/Wake pick-menu | Contextual trigger reflects current state |

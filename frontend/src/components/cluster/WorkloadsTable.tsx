@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback, memo } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef, memo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/queryKeys'
 import { useSearchParams } from 'next/navigation'
@@ -14,6 +14,7 @@ import TableRow from '@mui/material/TableRow'
 import TablePagination from '@mui/material/TablePagination'
 import Chip from '@mui/material/Chip'
 import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
 import ButtonBase from '@mui/material/ButtonBase'
 import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
@@ -32,6 +33,7 @@ import { useTriStateSort } from '@/lib/useTriStateSort'
 import SortHeader from '@/lib/SortHeader'
 import { TABLE_ACTION_BUTTON_SX } from '@/lib/tableStyles'
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
+import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import WorkloadDetailDrawer from './WorkloadDetailDrawer'
 
 const validStatuses = ['running', 'sleeping', 'partial']
@@ -43,6 +45,7 @@ const SEARCH_FIELD_SX = { minWidth: 200 } as const
 const NS_FIELD_SX = { minWidth: 160 } as const
 const STATUS_FIELD_SX = { minWidth: 140 } as const
 const PROTECTION_FIELD_SX = { minWidth: 150 } as const
+const CLEAR_FILTERS_SX = { textTransform: 'none', whiteSpace: 'nowrap' } as const
 const FLEX_SPACER_SX = { flex: 1 } as const
 const UPDATED_CAPTION_SX = { color: 'text.disabled' } as const
 const ROW_COUNT_SX = { color: 'text.disabled', display: 'block', mb: 1 } as const
@@ -123,6 +126,7 @@ const WorkloadRow = memo(function WorkloadRow({
 
 export default function WorkloadsTable() {
   const searchParams = useSearchParams()
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const { data: workloads = [], isLoading, isError, error, dataUpdatedAt } = useQuery({
     queryKey: queryKeys.workloads(),
     queryFn: getWorkloads,
@@ -149,6 +153,7 @@ export default function WorkloadsTable() {
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(20)
   const [selectedWorkload, setSelectedWorkload] = useState<Workload | null>(null)
+  const hasActiveFilters = search !== '' || nsFilter !== 'all' || statusFilter !== 'all' || protectionFilter !== 'all'
   const isDark = useIsDark()
   const colors = useColors()
   const STATUS_COLORS = statusColors(isDark)
@@ -195,6 +200,21 @@ export default function WorkloadsTable() {
   useEffect(() => { setPage(0) }, [search, nsFilter, statusFilter, protectionFilter])
 
   const handleRowClick = useCallback((w: Workload) => setSelectedWorkload(w), [])
+  const clearFilters = () => {
+    setSearch('')
+    setNsFilter('all')
+    setStatusFilter('all')
+    setProtectionFilter('all')
+    setPage(0)
+
+    // Clear deep-linked status too, so URL synchronization cannot restore it.
+    const url = new URL(window.location.href)
+    if (url.searchParams.has('status')) {
+      url.searchParams.delete('status')
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+    }
+    searchInputRef.current?.focus()
+  }
 
   return (
     <>
@@ -204,6 +224,7 @@ export default function WorkloadsTable() {
           label="Search"
           size="small"
           value={search}
+          inputRef={searchInputRef}
           onChange={(e) => setSearch(e.target.value)}
           sx={SEARCH_FIELD_SX}
         />
@@ -247,6 +268,11 @@ export default function WorkloadsTable() {
           <MenuItem value="protected">Protected</MenuItem>
           <MenuItem value="unprotected">Unprotected</MenuItem>
         </TextField>
+        {hasActiveFilters && (
+          <Button size="small" startIcon={<RestartAltIcon />} onClick={clearFilters} sx={CLEAR_FILTERS_SX}>
+            Clear filters
+          </Button>
+        )}
         <Box sx={FLEX_SPACER_SX} />
         <Typography variant="caption" sx={UPDATED_CAPTION_SX}>
           {dataUpdatedAt ? `Updated ${sinceMs(dataUpdatedAt)}` : ''}
