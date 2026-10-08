@@ -975,7 +975,7 @@ components:
           type: boolean
 
     WorkloadTarget:
-      description: A specific workload targeted by a scheduled exception.
+      description: A specific workload targeted by a scheduled exception. Targets intersect namespace and label filters and cannot broaden the parent policy scope.
       type: object
       properties:
         kind:

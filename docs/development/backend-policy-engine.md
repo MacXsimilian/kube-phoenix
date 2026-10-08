@@ -37,7 +37,7 @@ The runner executes with a cancellable timeout context. A policy timeout of zero
 
 `success`, `failed`, and `interrupted` describe the execution result; `awake`, `sleeping`, `transitioning`, and `unknown` describe policy state. Plan runs can update recorded state without touching Kubernetes. A state badge alone does not prove replicas or pod readiness.
 
-On startup, unfinished execution records are marked interrupted and stale transition state is reset. Recovery then compares enabled policies with their current window/exception intent. This is reconciliation, not a replay of every missed schedule boundary. It depends on the database, Kubernetes access, and the configured execution mode.
+Before recovery, the process acquires a dedicated PostgreSQL session advisory lock. Recovery updates run on that locked session; a second live owner is rejected. The lock remains held until HTTP shutdown, execution cancellation and completion. Mutation checks and a watchdog fail closed if the session is lost. On startup, unfinished execution records are marked interrupted and stale transition state is reset. Recovery then compares enabled policies with their current window/exception intent. This is reconciliation, not a replay of every missed schedule boundary. It depends on the database, Kubernetes access, and the configured execution mode.
 
 ## Sleep and snapshots
 
@@ -46,17 +46,17 @@ Sleep lists Deployments and StatefulSets using the workload selector, filters na
 | Workload condition | Apply behavior |
 | :----------------- | :------------- |
 | Already at zero | Record `wasAlreadyZero`; do not claim ownership of a later wake |
-| Existing open snapshot | Skip ordinary double-sleep; retain the original baseline |
-| Positive replicas | Scale to zero, then persist the captured replica count |
-| Scale failure | Log the failure and count an error |
+| Existing open snapshot | Reconcile live state; retain the original UID and replica baseline |
+| Positive replicas | Persist prepared intent, conditionally scale to zero, record applied phase |
+| Persistence or scale failure | Retain any durable intent, count an error, fail the execution and defer nodes |
 
-The Kubernetes scale and database insert are separate operations. A snapshot write can fail after replicas reach zero; the runner logs a warning that automatic restoration is unavailable for that workload. Do not describe this as an atomic transaction or guaranteed recovery after database loss. Operators need execution logs and a verified replica baseline for that case.
+Kubernetes and PostgreSQL remain separate systems. A prepared intent precedes scaling and is retained after ambiguous failures. On retry, zero replicas can confirm application; nonzero replicas are conditionally scaled using the saved identity. Snapshot closure failures also count as incomplete work. Workload UID and resource-version tests are part of the Kubernetes mutation itself. Legacy snapshots with no UID remain open and require operator review; their identity is not inferred.
 
 Snapshots in PostgreSQL are the current restoration source. There is no annotation fallback. Plan mode logs proposed actions without creating workload snapshots or mutating Kubernetes resources.
 
 ## Wake and snapshot closure
 
-Wake reads open snapshots for the policy, applies a namespace filter when present, and restores the recorded counts. It does not rediscover an arbitrary desired replica count from live labels. Priority namespace ordering and optional wake waves control processing; wave readiness waits are bounded.
+Wake reads open snapshots for the policy, applies a namespace filter when present, and restores the recorded counts. Scoped exceptions additionally intersect explicit targets, labels, namespaces, and the parent policy boundary. Ordinary wake ignores current label selection so owned snapshots remain restorable after labels change. It does not rediscover an arbitrary desired replica count from live labels. Priority namespace ordering and optional wake waves control processing; wave readiness waits are bounded.
 
 | Snapshot/workload condition | Apply behavior |
 | :-------------------------- | :------------- |
@@ -72,15 +72,15 @@ Snapshot closure writes can also fail after a successful scale. Keep retries tol
 
 After workload sleep, the runner considers nodes across the cluster. A policy's namespace filter does not scope node deletion. Node protection checks labels, taints, configured critical namespaces, and optionally critical-priority non-DaemonSet pods. Critical-priority protection is off by default.
 
-Unprotected nodes can be cordoned, drained, and deleted. The drain uses evictions and can fall back to force deletion on eviction failure; do not imply it guarantees PodDisruptionBudget preservation. Inspect [nodes.go](../../backend/internal/scaler/nodes.go) and [client.go](../../backend/internal/k8s/client.go) before changing this behavior.
+Unprotected nodes can be cordoned, drained, and deleted. The drain uses eviction only, with bounded context-aware retries for disruption-budget and transient rejection. Forbidden eviction fails with a core pods/eviction RBAC error; it never falls back to direct pod deletion. Cordon ownership is recorded in a node annotation in the same update as the cordon. Failure and startup cleanup restore only marked cordons. Inspect [nodes.go](../../backend/internal/scaler/nodes.go) and [client.go](../../backend/internal/k8s/client.go) before changing this behavior.
 
-Wake restores workloads only; it does not uncordon surviving nodes or recreate deleted ones. An external autoscaler, such as Karpenter, must replace missing capacity. Use [explicit all-node protection](../first-policy.md#2-protect-every-node) for local scaling exercises.
+Wake restores workloads only; failure/startup recovery handles owned cordons separately and never recreates deleted nodes. An external autoscaler, such as Karpenter, must replace missing capacity. Use [explicit all-node protection](../first-policy.md#2-protect-every-node) for local scaling exercises.
 
 ## Scheduled exceptions
 
-Each exception references a parent policy. Activation and completion run on the configured evaluator interval. `stay_awake` requests a wake and `force_sleep` requests a sleep; a disabled parent skips execution. Scoped exception operations use an in-memory copy of the policy with supplied filters rather than changing its saved targeting.
+Each exception references a parent policy. Activation and completion run on the configured evaluator interval. `stay_awake` requests a wake and `force_sleep` requests a sleep; a disabled parent skips execution. Scoped exception operations carry an in-memory scope alongside the unchanged parent policy. Namespace filters, label selectors and explicit workload targets intersect; they cannot broaden the parent. Scoped runs do not drain cluster nodes.
 
-Scoped exceptions still affect the policy-level intended state so the ordinary evaluator does not immediately contradict them. API validation rejects overlapping opposite-type exceptions on the same parent; the engine retains force-sleep precedence for stored inputs.
+Unscoped exceptions retain policy-level precedence. For scoped exceptions, the scheduler evaluates baseline intent for other workloads and excludes active opposite targets in the runner. Scoped execution preserves the baseline policy state and has its own corrective retry clock. Thus a stay-awake exception from 06:00 to 08:00 for namespace A does not suppress B’s normal 07:00 wake. API validation rejects overlapping opposite-type exceptions on the same parent; force-sleep retains precedence where stored inputs overlap.
 
 When `sleepOnEnd` is true, completion or active cancellation computes the normal schedule's current intended state and requests sleep or wake accordingly. The name is historical: it does not mean the end action always sleeps. Unknown intent or a disabled parent skips the return execution.
 

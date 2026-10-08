@@ -24,7 +24,7 @@ flowchart TB
     A["External autoscaler"] --> K
 ```
 
-The normal deployment uses one application replica. Policy coordination, cached state, and the live broker have process-local parts; database persistence alone does not provide a supported multi-replica scheduler.
+The deployment supports one application replica (zero during maintenance) and uses Recreate upgrades. A dedicated PostgreSQL session advisory lock covers startup recovery and the process lifetime; Kubernetes mutations check that session. Cached state and the live broker remain process-local, so this is not a supported multi-replica scheduler. See [reliability review and upgrade notes](docs/reliability-review.md).
 
 ### Technology Stack
 
@@ -78,23 +78,23 @@ See [model definitions](backend/internal/store/models.go) for fields, [OpenAPI](
 1. A manual trigger, scheduler transition, exception, or recovery path requests sleep.
 2. The scheduler claims the policy transition and creates a running execution.
 3. The runner selects workloads, checks namespace protection, and scales in bounded parallel groups.
-4. Apply mode scales positive replicas to zero and persists the captured baseline; plan mode logs proposed changes.
-5. The node phase checks global node protections before any cordon, drain, or deletion.
+4. Apply mode persists a prepared snapshot containing replicas and Kubernetes UID, conditionally scales the observed resource version to zero, then records application. Plan mode logs proposed changes.
+5. Only complete workload operations permit the node phase. Scoped exception runs and preserved exception targets defer node actions; ordinary node selection remains cluster-wide. Global node protections apply.
 6. Logs and counts are recorded, execution status is finalized, and the policy claim is released.
 
-Kubernetes mutations and snapshot inserts are separate operations. A database failure after scaling can leave a workload at zero without a usable snapshot; execution logs report that condition. Do not assume restoration is guaranteed after losing the database.
+Kubernetes and PostgreSQL do not share a transaction. Prepared snapshots survive failures and process termination on either side of scaling; retries compare live state without replacing the original baseline. Partial failures produce failed executions and retryable policy state. Database loss still destroys the recovery source.
 
 ### 2. Wake Execution
 
 Wake reads open policy snapshots and restores their replica counts. Originally-zero workloads are skipped, deleted workloads are marked, and external scaling is handled explicitly. Optional wake waves wait for readiness between groups with a bounded timeout.
 
-Wake does not recreate nodes or uncordon them. An external autoscaler can respond to pending pods by providing capacity. A completed execution and a recorded `awake` state still require separate pod-readiness verification.
+Wake does not recreate nodes. Failed drain/deletion and startup recovery undo only marked execution-owned cordons. An external autoscaler can respond to pending pods by providing capacity. A completed execution and a recorded `awake` state still require separate pod-readiness verification.
 
 ### 3. Policy Evaluation Loop
 
 The scheduler evaluates enabled policies on a configurable interval, defaulting to 30 seconds. Active `force_sleep` takes precedence over `stay_awake`, then the window evaluator supplies intent. The scheduler compares this with recorded state and uses transition claims to prevent duplicate work on a policy.
 
-Recovery runs at startup. Optional reconciliation retries incomplete wakes; sleep enforcement detects external scale-ups during sleeping periods. These paths have distinct gates and backoff. Manual triggers remain available when scheduling is disabled.
+Recovery runs at startup after acquiring exclusive database ownership. Optional reconciliation retries incomplete wakes; sleep enforcement detects external scale-ups during sleeping periods. These paths have distinct gates and backoff. Manual triggers remain available when scheduling is disabled.
 
 Read [window semantics](docs/window-native-scheduling.md) and [policy execution](docs/development/backend-policy-engine.md) for boundary cases and exception completion.
 

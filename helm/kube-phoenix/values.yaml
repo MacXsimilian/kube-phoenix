@@ -249,7 +249,7 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 topologySpreadConstraints: []
-  # Uncomment to spread replicas across nodes when replicaCount > 1:
+  # Optional placement constraints; application replicaCount must remain 0 or 1:
   # - maxSkew: 1
   #   topologyKey: kubernetes.io/hostname
   #   whenUnsatisfiable: DoNotSchedule
