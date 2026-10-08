@@ -158,8 +158,7 @@ type PolicyLogLine struct {
 }
 
 // WorkloadSnapshot records the replica count of a workload at sleep time.
-// The wake execution reads from these rows instead of K8s annotations (which
-// are also written as a belt-and-suspenders fallback).
+// The wake execution reads from these rows; there is no annotation fallback.
 type WorkloadSnapshot struct {
 	ID               uint            `gorm:"primaryKey" json:"id"`
 	PolicyID         uint            `gorm:"index;index:idx_ws_policy_wake,priority:1" json:"policyId"`
@@ -167,11 +166,14 @@ type WorkloadSnapshot struct {
 	SleepExecutionID uint            `gorm:"index" json:"sleepExecutionId"`
 	SleepExecution   PolicyExecution `gorm:"foreignKey:SleepExecutionID;constraint:OnDelete:CASCADE" json:"-"`
 	// WakeExecutionID is null while the workload is still sleeping.
-	WakeExecutionID  *uint      `gorm:"index;index:idx_ws_policy_wake,priority:2" json:"wakeExecutionId"`
-	Kind             string     `gorm:"size:50" json:"kind"`
-	Namespace        string     `gorm:"size:63;index" json:"namespace"`
-	Name             string     `gorm:"size:253" json:"name"`
-	ReplicasBefore   int32      `json:"replicasBefore"`
+	WakeExecutionID *uint  `gorm:"index;index:idx_ws_policy_wake,priority:2" json:"wakeExecutionId"`
+	Kind            string `gorm:"size:50" json:"kind"`
+	Namespace       string `gorm:"size:63;index" json:"namespace"`
+	Name            string `gorm:"size:253" json:"name"`
+	ReplicasBefore  int32  `json:"replicasBefore"`
+	WorkloadUID     string `gorm:"size:128;default:''" json:"workloadUid"`
+	// Empty phase denotes a legacy snapshot. New intents are durable before scaling.
+	Phase            string     `gorm:"size:20;default:''" json:"phase"`
 	ReplicasRestored *int32     `json:"replicasRestored"` // nil until woken
 	RestoredAt       *time.Time `json:"restoredAt"`
 

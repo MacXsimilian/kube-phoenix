@@ -338,6 +338,11 @@ func (s *Store) CreateWorkloadSnapshot(snap *WorkloadSnapshot) error {
 	return s.db.Create(snap).Error
 }
 
+func (s *Store) MarkSnapshotApplied(id uint) error {
+	return s.db.Model(&WorkloadSnapshot{}).Where("id = ? AND wake_execution_id IS NULL", id).
+		Update("phase", "applied").Error
+}
+
 // GetOpenSnapshots returns all snapshots for a policy that have not yet been
 // consumed by a wake execution (WakeExecutionID IS NULL).
 func (s *Store) GetOpenSnapshots(policyID uint) ([]WorkloadSnapshot, error) {
@@ -386,6 +391,7 @@ func (s *Store) CloseSnapshot(id uint, wakeExecID uint, replicasRestored int32) 
 		"wake_execution_id": wakeExecID,
 		"replicas_restored": replicasRestored,
 		"restored_at":       now,
+		"phase":             "restored",
 	}).Error
 }
 

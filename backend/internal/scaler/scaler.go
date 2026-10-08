@@ -114,6 +114,8 @@ type workloadEntry struct {
 	Namespace string
 	Name      string
 	Replicas  int32
+	UID       string
+	Labels    map[string]string
 	Scale     func(ctx context.Context, ns, name string, replicas int32) error
 }
 
@@ -126,7 +128,10 @@ func (r *Runner) deploymentToEntry(d appsv1.Deployment) workloadEntry {
 	}
 	return workloadEntry{
 		Kind: "Deployment", Namespace: d.Namespace, Name: d.Name,
-		Replicas: replicas, Scale: r.k8s.ScaleDeployment,
+		Replicas: replicas, UID: string(d.UID), Labels: d.Labels,
+		Scale: func(ctx context.Context, ns, name string, replicas int32) error {
+			return r.k8s.ScaleWorkloadObserved(ctx, "Deployment", ns, name, string(d.UID), d.ResourceVersion, replicas)
+		},
 	}
 }
 
@@ -138,7 +143,10 @@ func (r *Runner) statefulSetToEntry(ss appsv1.StatefulSet) workloadEntry {
 	}
 	return workloadEntry{
 		Kind: "StatefulSet", Namespace: ss.Namespace, Name: ss.Name,
-		Replicas: replicas, Scale: r.k8s.ScaleStatefulSet,
+		Replicas: replicas, UID: string(ss.UID), Labels: ss.Labels,
+		Scale: func(ctx context.Context, ns, name string, replicas int32) error {
+			return r.k8s.ScaleWorkloadObserved(ctx, "StatefulSet", ns, name, string(ss.UID), ss.ResourceVersion, replicas)
+		},
 	}
 }
 

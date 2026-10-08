@@ -950,6 +950,13 @@ components:
           enum: [Deployment, StatefulSet]
         name:
           type: string
+        workloadUid:
+          type: string
+          description: Original Kubernetes UID. Empty legacy identities require operator review before restore.
+        phase:
+          type: string
+          enum: ["", prepared, applied, restored]
+          description: Durable sleep intent phase; empty denotes a legacy snapshot.
         replicasBefore:
           type: integer
         replicasRestored:
