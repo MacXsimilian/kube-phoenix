@@ -16,7 +16,46 @@ import (
 	ktesting "k8s.io/client-go/testing"
 )
 
-func TestDrainFailurePreservesPDBAndRecoversOnlyOwnedCordon(t *testing.T) {
+func TestEvictionFailureFallsBackToZeroGraceDeletion(t *testing.T) {
+	for name, evictionErr := range map[string]error{
+		"budget":    apierrors.NewTooManyRequests("PDB denied eviction", 0),
+		"forbidden": apierrors.NewForbidden(schema.GroupResource{Resource: "pods/eviction"}, "p", errors.New("RBAC denied")),
+		"transient": apierrors.NewServiceUnavailable("temporarily unavailable"),
+		"other":     errors.New("eviction failed"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			cs := fake.NewClientset(
+				&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n", UID: "node-id"}},
+				&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "test", UID: "pod-id"}, Spec: corev1.PodSpec{NodeName: "n"}},
+			)
+			cs.PrependReactor("create", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
+				return true, nil, evictionErr
+			})
+			if err := NewForClientset(cs).DrainNode(context.Background(), "n", time.Second); err != nil {
+				t.Fatal(err)
+			}
+			deletes := 0
+			for _, action := range cs.Actions() {
+				if action.GetVerb() != "delete" || action.GetResource().Resource != "pods" {
+					continue
+				}
+				deletes++
+				opts := action.(ktesting.DeleteAction).GetDeleteOptions()
+				if opts.GracePeriodSeconds == nil || *opts.GracePeriodSeconds != 0 {
+					t.Fatal("fallback did not request zero grace")
+				}
+				if opts.Preconditions == nil || opts.Preconditions.UID == nil || *opts.Preconditions.UID != "pod-id" {
+					t.Fatal("fallback must target the observed pod UID")
+				}
+			}
+			if deletes != 1 {
+				t.Fatalf("pod deletions=%d, want 1", deletes)
+			}
+		})
+	}
+}
+
+func TestFailedEvictionAndDeletionRecoversOnlyOwnedCordon(t *testing.T) {
 	for _, precordoned := range []bool{false, true} {
 		for _, budget := range []bool{false, true} {
 			cs := fake.NewClientset(&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n", UID: "node-id"}, Spec: corev1.NodeSpec{Unschedulable: precordoned}},
@@ -27,22 +66,110 @@ func TestDrainFailurePreservesPDBAndRecoversOnlyOwnedCordon(t *testing.T) {
 				}
 				return true, nil, apierrors.NewForbidden(schema.GroupResource{Resource: "pods/eviction"}, "p", errors.New("RBAC denied"))
 			})
-			err := NewForClientset(cs).DrainNode(context.Background(), "n", 20*time.Millisecond)
+			cs.PrependReactor("delete", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
+				return true, nil, apierrors.NewForbidden(schema.GroupResource{Resource: "pods"}, "p", errors.New("delete denied"))
+			})
+			err := NewForClientset(cs).DrainNode(context.Background(), "n", time.Second)
 			if err == nil {
 				t.Fatal("drain succeeded despite rejection")
 			}
-			if !budget && !strings.Contains(err.Error(), "pods/eviction") {
+			if !strings.Contains(err.Error(), "delete on core pods") {
 				t.Fatalf("not actionable: %v", err)
 			}
+			deleted := false
 			for _, a := range cs.Actions() {
 				if a.GetVerb() == "delete" && a.GetResource().Resource == "pods" {
-					t.Fatal("PDB bypass via direct deletion")
+					deleted = true
 				}
+			}
+			if !deleted {
+				t.Fatal("direct deletion fallback was not attempted")
 			}
 			n, _ := cs.CoreV1().Nodes().Get(context.Background(), "n", metav1.GetOptions{})
 			if n.Spec.Unschedulable != precordoned {
 				t.Fatalf("prior cordon=%v final=%v", precordoned, n.Spec.Unschedulable)
 			}
+		}
+	}
+}
+
+func TestEvictionCancellationPreventsDeletionFallback(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cs := fake.NewClientset()
+	cs.PrependReactor("create", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
+		cancel()
+		return true, nil, apierrors.NewTooManyRequests("PDB denied eviction", 0)
+	})
+	err := NewForClientset(cs).evictPods(ctx, "n", []corev1.Pod{{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "test", UID: "pod-id"}}})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v", err)
+	}
+	for _, action := range cs.Actions() {
+		if action.GetVerb() == "delete" {
+			t.Fatal("cancelled drain attempted deletion")
+		}
+	}
+}
+
+func TestSuccessfulEvictionSkipsDirectDeletionAndDaemonSets(t *testing.T) {
+	cs := fake.NewClientset()
+	evictions := 0
+	cs.PrependReactor("create", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
+		evictions++
+		return true, nil, nil
+	})
+	pods := []corev1.Pod{
+		{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "test", UID: "pod-id"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "daemon", Namespace: "test", OwnerReferences: []metav1.OwnerReference{{Kind: "DaemonSet"}}}},
+	}
+	if err := NewForClientset(cs).evictPods(context.Background(), "n", pods); err != nil {
+		t.Fatal(err)
+	}
+	if evictions != 1 {
+		t.Fatalf("evictions=%d, want 1", evictions)
+	}
+	for _, action := range cs.Actions() {
+		if action.GetVerb() == "delete" {
+			t.Fatal("successful eviction triggered direct deletion")
+		}
+	}
+}
+
+func TestDeletionNotFoundIsAlreadyDrained(t *testing.T) {
+	cs := fake.NewClientset()
+	cs.PrependReactor("create", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewTooManyRequests("PDB denied eviction", 0)
+	})
+	// The pod disappeared after listing: the fake client's delete returns NotFound.
+	err := NewForClientset(cs).evictPods(context.Background(), "n", []corev1.Pod{{ObjectMeta: metav1.ObjectMeta{Name: "gone", Namespace: "test", UID: "old-id"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOwnershipLossPreventsDeletionFallback(t *testing.T) {
+	cs := fake.NewClientset()
+	cs.PrependReactor("create", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewTooManyRequests("PDB denied eviction", 0)
+	})
+	c := NewForClientset(cs)
+	checks := 0
+	lost := errors.New("ownership lost")
+	c.SetMutationGuard(func(context.Context) error {
+		checks++
+		if checks > 1 {
+			return lost
+		}
+		return nil
+	})
+	err := c.evictPods(context.Background(), "n", []corev1.Pod{{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "test", UID: "pod-id"}}})
+	if !errors.Is(err, lost) {
+		t.Fatalf("err=%v", err)
+	}
+	for _, action := range cs.Actions() {
+		if action.GetVerb() == "delete" {
+			t.Fatal("lost owner attempted deletion")
 		}
 	}
 }

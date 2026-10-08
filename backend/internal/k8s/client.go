@@ -7,6 +7,7 @@ package k8s
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -465,40 +466,45 @@ func (c *Client) DrainNode(ctx context.Context, name string, timeout time.Durati
 	return drainErr
 }
 
-// evictPods respects disruption budgets. Only retryable API failures are retried;
-// the drain's context bounds both eviction and termination waits.
+// evictPods preserves the original eviction-first, force-delete fallback.
+// Sleep deliberately shuts down workloads and removes unprotected nodes, so an
+// eviction blocker (including a PDB) must not keep idle nodes running indefinitely.
+// After an eviction error, zero-grace deletion prioritizes shutdown completion:
+// it bypasses PDBs and graceful termination and requires delete on core pods.
+// Cancellation, scheduler ownership and the observed pod UID still constrain it.
 func (c *Client) evictPods(ctx context.Context, nodeName string, pods []corev1.Pod) error {
+	var failures []error
 	for _, pod := range pods {
 		if isDaemonSetPod(pod) {
 			continue
 		}
-		for {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			eviction := &policyv1.Eviction{ObjectMeta: metav1.ObjectMeta{Name: pod.Name, Namespace: pod.Namespace},
-				DeleteOptions: &metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &pod.UID}}}
-			if err := c.checkMutation(ctx); err != nil {
-				return err
-			}
-			err := c.cs.PolicyV1().Evictions(pod.Namespace).Evict(ctx, eviction)
-			if err == nil || apierrors.IsNotFound(err) {
-				break
-			}
-			if apierrors.IsForbidden(err) {
-				return fmt.Errorf("evict %s/%s on %s: authorize create on core pods/eviction: %w", pod.Namespace, pod.Name, nodeName, err)
-			}
-			if !(apierrors.IsTooManyRequests(err) || apierrors.IsTimeout(err) || apierrors.IsServerTimeout(err) || apierrors.IsServiceUnavailable(err)) {
-				return fmt.Errorf("evict %s/%s on %s: %w", pod.Namespace, pod.Name, nodeName, err)
-			}
-			select {
-			case <-ctx.Done():
-				return fmt.Errorf("evict %s/%s: %w (last rejection: %v)", pod.Namespace, pod.Name, ctx.Err(), err)
-			case <-time.After(time.Second):
-			}
+		if err := c.checkMutation(ctx); err != nil {
+			return err
+		}
+		eviction := &policyv1.Eviction{ObjectMeta: metav1.ObjectMeta{Name: pod.Name, Namespace: pod.Namespace},
+			DeleteOptions: &metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &pod.UID}}}
+		evictErr := c.cs.PolicyV1().Evictions(pod.Namespace).Evict(ctx, eviction)
+		if evictErr == nil || apierrors.IsNotFound(evictErr) {
+			continue
+		}
+		if err := c.checkMutation(ctx); err != nil {
+			return err
+		}
+		slog.Warn("drain: eviction failed, falling back to zero-grace pod deletion",
+			"node", nodeName, "namespace", pod.Namespace, "pod", pod.Name, "evictErr", evictErr)
+		grace := int64(0)
+		delErr := c.cs.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+			GracePeriodSeconds: &grace,
+			Preconditions:      &metav1.Preconditions{UID: &pod.UID},
+		})
+		if delErr != nil && !apierrors.IsNotFound(delErr) {
+			// Attempt the remaining pods as before. Report unresolved failures
+			// so the caller can recover its cordon and retain the node.
+			failures = append(failures, fmt.Errorf("evict %s/%s on %s failed: %v; force-delete also failed (requires delete on core pods): %w",
+				pod.Namespace, pod.Name, nodeName, evictErr, delErr))
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 // waitForDrain polls until all non-DaemonSet pods are gone or timeout expires.
