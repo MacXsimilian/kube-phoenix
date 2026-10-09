@@ -2,14 +2,122 @@
 
 ## [0.9.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.8.0...v0.9.0) (2026-10-09)
 
+This release makes interrupted sleep/wake operations recoverable, enforces exclusive scheduler ownership, and preserves exception scope across scheduling and recovery. It also improves policy cards and workload filtering, corrects Helm configuration and health probes, strengthens final-image verification, and updates dependencies and operational guidance.
 
 ### ⚠ BREAKING CHANGES
 
-* harden scheduler recovery, deployment reliability and build verification ([#439](https://github.com/MacXsimilian/kube-phoenix/issues/439))
+- **Application upgrades require singleton deployment with `Recreate`.** Set `strategy.type: Recreate`, remove `strategy.rollingUpdate`, and run one application replica. Zero replicas remain supported for maintenance; higher replica counts and scheduler autoscaling are rejected. Upgrades include application downtime. Stop every older backend before the first upgrade because older binaries do not participate in scheduler ownership.
+- **PostgreSQL connections must preserve sessions.** Use direct access or session pooling, with at least two connections when setting a finite application pool limit. Scheduler ownership reserves one connection; transaction pooling is incompatible, and ownership-session loss terminates the process.
+- Exception namespace, label, and explicit workload filters now intersect the parent policy scope. Scoped actions reconcile independently, preserve baseline policy state on success, and do not perform node operations.
+- Any operation error fails the execution and retains retryable recovery work. Incomplete workload prerequisites defer node actions. Ordinary repeat sleep can reapply zero replicas using an existing open snapshot, retaining the original replica baseline.
+- Failure to recover owned cordons after successful Kubernetes client initialization prevents startup.
+- Backend builds require Go 1.27.2 or newer.
 
-### Bug Fixes
+### Scheduler, Scaling, and Recovery
 
-* harden scheduler recovery, deployment reliability and build verification ([#439](https://github.com/MacXsimilian/kube-phoenix/issues/439)) ([fc91b89](https://github.com/MacXsimilian/kube-phoenix/commit/fc91b89bab02deb62a1e359821d6e54d0915e0d3))
+- Persist a `prepared` workload snapshot before scale-down, mark applied sleep, and retain the original replica count across failures and retries. Snapshot persistence and closure failures remain visible instead of losing restoration data.
+- Preserve recovery by workload kind, namespace, and name for legacy snapshots and same-name replacement workloads. Saved workload UID metadata is informational; it does not block restoration. Retry scale-update conflicts with bounded backoff.
+- Hold a dedicated PostgreSQL advisory-lock session throughout startup recovery and process lifetime. Reject a second scheduler owner, guard mutations, and exit when the ownership session is lost.
+- Recover interrupted execution records under the ownership lock, preserve scoped recovery intent, and keep failed work available for retry.
+- Defer node operations when workload scaling fails, prepared intents remain unresolved outside the selection, or exception protection applies.
+- Correct the `pods/eviction` RBAC API group and recover only cordons marked as owned by kube-phoenix after failed drains and during startup cleanup.
+- Preserve eviction-first draining and the zero-grace pod-deletion fallback, with cancellation, ownership, and pod UID checks. The fallback requires separate core pod-delete permission, absent from the default chart; when authorized, it bypasses PodDisruptionBudgets and graceful termination.
+
+Ownership coordinates a single scheduler; Kubernetes requests already accepted may still complete after ownership loss.
+
+### Exception Targeting and Reconciliation
+
+- Honor explicit workload targets during sleep, wake, and corrective sleep, including exceptions with only an explicit target list.
+- Validate targets on create, update, and import; allow an empty target array to clear existing targeting.
+- Intersect exception namespaces, labels, and explicit targets with the parent policy scope so exceptions cannot broaden it.
+- Match live labels during scoped wake while allowing ordinary full wake to restore policy-owned snapshots after labels change.
+- Reconcile scoped exceptions separately from the baseline schedule so unrelated workloads wake normally. Preserve scope across startup recovery and corrective actions, and retry scoped work independently.
+- Retain unscoped force-sleep precedence over stay-awake exceptions.
+
+### Policy Cards and Frontend
+
+- Distinguish disabled scheduling from reported workload state with a pause badge, an “Automatic scheduling is off” message, and muted schedule statistics while keeping state, mode, and permitted actions visible.
+- Improve policy-card layouts for narrow screens and long names; respect reduced-motion preferences for transitioning indicators.
+- Explain weekly savings on hover, keyboard focus, click, or tap, with Escape and click-away dismissal. Percentages describe configured recurring windows, excluding actual executions and exceptions.
+- Add **Clear filters** to the workloads table. Reset name, namespace, status, and namespace-protection filters and pagination; remove deep-linked status filters while preserving other URL parameters, sorting, and page size, then return focus to Search.
+- Split frontend settings into focused components and simplify frontend and backend code organization for maintenance.
+
+### Health, PostgreSQL, and Deployment
+
+- Add process-only `/livez` for startup and liveness probes. Use `/readyz` for a database ping with a two-second deadline; retain `/healthz` as a readiness compatibility alias. These endpoints do not check Kubernetes API access or workload readiness.
+- Enforce singleton deployment values and the `Recreate` strategy in Helm validation.
+- Fix ServiceMonitor discovery with matching application Service labels and an explicit namespace selector.
+- Preserve explicit `minAvailable: 0` and `maxUnavailable: 0` disruption-budget settings. When both fields are present, `minAvailable` takes precedence.
+- Escape generated PostgreSQL DSN values containing spaces, quotes, or backslashes, and keep bundled database configuration aligned with the application connection string.
+- Keep generated PostgreSQL Service, Secret, and StatefulSet names within Kubernetes' 63-character Service-name limit by reserving space for the `-postgresql` suffix.
+
+### Release Automation and CI
+
+- Preserve npm, Next.js, Go module, and Go build caches across workflows, and separate dependency installation from application source and version changes in Docker builds.
+- Smoke-test the final image against disposable PostgreSQL with a read-only filesystem and dropped capabilities. Verify startup, the image healthcheck, database readiness, embedded backend version, frontend HTML, and a referenced Next.js JavaScript asset.
+- Repeat smoke checks against the release image digest before signing and stable-alias promotion; replace the previous non-blocking version-only check.
+- Run ownership and migration integration tests against disposable PostgreSQL in CI, with race-enabled backend tests and fresh test execution.
+- Expand frontend window, observability-history, exception, and rendered-chart regression checks.
+- Select backend and security Go toolchains from `backend/go.mod`, use the backend checksum file for scanner caching, and upload vulnerability reports only after successful scans while reporting the actual upload outcome.
+
+### Dependency Changes
+
+Versions below compare the complete `v0.8.0` → `v0.9.0` release range.
+
+**Build tooling and application dependencies**
+
+| Component | Previous → Updated |
+|---|---|
+| Go minimum and builder | 1.27.1 → 1.27.2 |
+| Node builder | 26.10.0 → 26.11.1 |
+| Next.js and related tooling | 16.3.8 → 16.4.0 |
+| TypeScript ESLint | 8.71.0 → 8.71.1 |
+| PostCSS override | 8.5.28 → 8.5.29 |
+| Prometheus Go client | 1.24.1 → 1.25.0 |
+| Prometheus common / procfs | 0.70.1 / 0.21.1 → 0.72.0 / 0.22.0 |
+| pgx / puddle | 5.10.0 / 2.2.2 → 5.11.0 / 2.2.3 |
+| go-jose | 4.1.4 → 4.1.5 |
+| Go net / time libraries | 0.58.0 / 0.15.0 → 0.60.0 / 0.16.0 |
+| go-restful | 3.13.0 → 3.14.0 |
+| CBOR | 2.9.2 → 2.9.6 |
+| go-openapi swag modules | 0.27.1 → 0.29.2 |
+
+Node and Go builder image digests were refreshed. Bundled PostgreSQL remains at 18.6. Additional transitive updates are recorded in the Go and npm dependency files.
+
+**GitHub Actions — full SHA pins retained**
+
+| Action | Previous → Updated |
+|---|---|
+| Setup Node | 7.0.0 → 7.1.0 |
+| CodeQL | 4.38.2 → 4.38.3 |
+| TruffleHog | 3.97.9 → 3.99.2 |
+| Cache | Added at 6.1.0 |
+| BuildKit cache-dance | Added at 3.4.0 |
+
+### Documentation
+
+- Update API and embedded OpenAPI contracts for health, exception targeting, and recovery behavior.
+- Document scheduler ownership, connection-pool requirements, singleton upgrades, retained snapshots, and operational recovery.
+- Expand frontend interaction guidance, local development, final-image verification, and backend/chart regression instructions.
+- Record reliability validation and distinguish the final implemented behavior from superseded review proposals.
+- Standardize pull request descriptions and review guidance, and retain the expanded v0.8.0 release notes.
+
+### Migration Notes
+
+- Back up PostgreSQL and retain open workload snapshots. Default GORM AutoMigrate adds the snapshot-intent columns. With `AUTO_MIGRATE=false`, apply [the additive snapshot-intent migration](https://github.com/MacXsimilian/kube-phoenix/blob/v0.9.0/backend/migrations/20261008_snapshot_intents.sql) before startup; the rest of the schema must already match. No UID backfill is required. The flag does not suppress all startup SQL or bootstrap writes.
+- Stop all older application processes, including standalone and Compose instances, before starting the first upgraded backend. Configure `replicaCount: 1`, `strategy.type: Recreate`, remove `strategy.rollingUpdate`, and remove external scheduler autoscaling. Use zero replicas during maintenance and plan for upgrade downtime.
+- Use direct PostgreSQL access or session pooling. Reserve a connection for ownership and set finite `DB_MAX_OPEN_CONNS` / Helm `db.maxOpenConns` limits to at least two.
+- Review exception selectors and explicit workload targets: they now narrow parent scope. Review automation that depends on partial-success statuses, repeat-sleep behavior, or node actions during scoped exceptions.
+- Update retained probe overrides to `/livez` for startup/liveness and `/readyz` for readiness. Existing `/healthz` consumers retain database-readiness behavior.
+- Apply the corrected eviction RBAC. Review separately managed pod-delete permissions in light of the force-delete fallback's PDB and graceful-termination behavior.
+- Inspect rendered PostgreSQL names when using long name overrides, and preserve existing PVCs if resource names change. PostgreSQL 18.6 users need no new database-major migration; installations still using PostgreSQL 17 must follow the [PostgreSQL migration and rollback guide](https://github.com/MacXsimilian/kube-phoenix/blob/v0.9.0/docs/postgresql-upgrade.md).
+- Install Go 1.27.2+ for backend builds and run `npm ci` in `frontend/` after updating the checkout. After deployment, verify `/readyz`, login, policy state, execution history, and retained recovery snapshots. See the [deployment upgrade guide](https://github.com/MacXsimilian/kube-phoenix/blob/v0.9.0/docs/deployment.md#upgrading).
+
+### Included Pull Requests
+
+- [#437 — Expand v0.8.0 release notes](https://github.com/MacXsimilian/kube-phoenix/pull/437)
+- [#439 — Harden scheduler recovery, deployment reliability and build verification](https://github.com/MacXsimilian/kube-phoenix/pull/439)
+- [#440 — Release 0.9.0](https://github.com/MacXsimilian/kube-phoenix/pull/440)
 
 ## [0.8.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.7...v0.8.0) (2026-10-04)
 
