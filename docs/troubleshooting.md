@@ -18,6 +18,9 @@ Start with the symptom below. [Configuration](configuration.md) owns setting def
 4. Check the **Namespace Filter**. If set, only matching namespaces are targeted.
 5. Check the **Label Selector**. If set, only matching workloads are targeted.
 6. Verify the target namespaces are not in **Guardrails > Protected Namespaces**.
+7. Check active exceptions: `stay_awake` protects matching workloads from ordinary sleep; `force_sleep` protects them from ordinary wake and wins when both types match.
+
+Plan runs log the intended operations but do not create, close, or modify recovery snapshots. To investigate live effects, check the execution's recorded mode and the workload replicas.
 
 ## Policy is stuck in `transitioning` state
 
@@ -33,7 +36,7 @@ If you need to resolve it immediately:
 
 1. If the execution is still running, cancel it via **Cancel** on the policy card or `POST /api/policies/{id}/cancel`.
 2. Check **History > Policies** for the latest execution. If it shows `interrupted`, the pod was killed mid-run.
-3. On next startup, kube-phoenix automatically marks any `running` executions as `interrupted`.
+3. On next startup, after acquiring exclusive database ownership, kube-phoenix atomically marks `running` executions `interrupted` and resets `transitioning` policies to `unknown`.
 4. Trigger a manual **Wake Now** or **Sleep Now** from the policy card to set a known state.
 
 ## Policy shows `unknown` state after startup
@@ -52,7 +55,7 @@ If you need to resolve it immediately:
 
 **Problem:** An execution remains in `running` state, or appears as `interrupted` in the History page.
 
-**Cause:** The pod was terminated while an execution was in progress (OOMKill, eviction, rollout). On startup, kube-phoenix calls `MarkInterruptedPolicyExecutions` to transition any leftover `running` executions to `interrupted`, and `ResetStuckTransitioningPolicies` to move any policy stuck in `transitioning` back to `unknown` for immediate re-evaluation.
+**Cause:** The pod was terminated while an execution was in progress (OOMKill, eviction, rollout). On startup, the exclusive scheduler owner performs both recovery changes in one database transaction: leftover `running` executions become `interrupted`, and `transitioning` policies become `unknown` for re-evaluation. Another process cannot run this recovery while the current owner holds the database lock.
 
 **Solution:**
 
@@ -68,12 +71,12 @@ If you need to resolve it immediately:
 
 **Solution:**
 
-Trigger **Wake Now** for the policy. The wake routine reads open snapshots from the database and restores each workload to its original `ReplicasBefore` value, then closes the snapshot. If the workload no longer exists, the snapshot is marked deleted-at-wake and skipped.
+Trigger **Wake Now** in apply mode for the policy. The wake routine reads open snapshots from the database and restores each eligible workload to its original `ReplicasBefore` value, then closes the snapshot. `prepared` intents remain recoverable even if the previous process stopped between scaling and recording `applied`. Restoration follows kind, namespace, and name; a recreated workload with a different UID is still eligible. If the workload no longer exists, the snapshot is marked deleted-at-wake and skipped. Check the current policy namespace filter and any active `force_sleep` exceptions if a snapshot remains open.
 
-If you need to inspect or clean up open snapshots manually, query the `workload_snapshots` table:
+To inspect open recovery snapshots, query the `workload_snapshots` table. Preserve these rows until restoration is verified:
 
 ```sql
-SELECT id, kind, namespace, name, replicas_before
+SELECT id, policy_id, kind, namespace, name, replicas_before, phase, workload_uid
 FROM workload_snapshots
 WHERE wake_execution_id IS NULL
   AND was_deleted_at_wake = false
@@ -96,7 +99,9 @@ Then review the failed execution log to understand the root cause.
 | `wasDeletedAtWake` | Workload was deleted between sleep and wake | No action needed |
 | `wasExternallyScaled` | Nonzero replica count was observed while sleeping | If already at the saved count, close without rescaling; otherwise restore the saved count and log the change |
 
-If none of these explain the result, check the wake's namespace filter, lookup/scale errors, and snapshot-write warnings in the sleep log. Namespace protection excludes future sleep operations; it does not prevent restoring existing snapshots. A failed snapshot insert after scaling needs manual recovery from a verified baseline.
+If none of these explain the result, check the wake's namespace filter, active exceptions, and lookup/scale or snapshot-close errors. Full-policy wake can restore an owned workload after its labels change; scoped exceptions also check current labels and explicit targets. Namespace protection excludes future sleep operations; it does not prevent restoring existing snapshots.
+
+Apply-mode sleep saves its intent before scaling. `Cannot persist sleep intent` means that workload was not scaled by this attempt. If scaling or the subsequent `applied` update fails, the open intent retains the original replica count for retry. A failed snapshot close after wake also remains retryable: a subsequent wake can recognize the already restored replica count and close it without another scale.
 
 ## Audit log CSV export is truncated or missing rows
 
@@ -132,11 +137,17 @@ kubectl logs -n kube-phoenix deployment/kube-phoenix | grep "exception"
 3. Verify the exception's `policyId` points to an existing, enabled policy.
 4. Confirm `startsAt` is in the past or present for activation to occur.
 
+## Exception affects the wrong scope or leaves workloads unchanged
+
+Namespace, label, and explicit workload-target filters are combined by intersection with the parent policy. They do not expand its scope. Verify the live workload labels and the target's exact `Deployment` or `StatefulSet` kind, namespace, and name. Invalid targeting in a stored exception stops execution rather than becoming an unfiltered operation.
+
+A successful scoped exception restores the parent's baseline state; it does not mark the entire policy awake or sleeping. Check execution logs and live replicas for the affected subset. `force_sleep` wins when multiple active exceptions match the same workload. In API updates, send `workloadTargets: []` to clear the exact-target list; omitting it retains the list.
+
 ## Backend crashes on startup
 
 **Problem:** The pod enters CrashLoopBackOff immediately after starting.
 
-**Cause:** Missing or malformed `DATABASE_URL`.
+**Cause:** Database initialization, exclusive scheduler ownership, or startup recovery failed.
 
 **Solution:**
 
@@ -147,7 +158,19 @@ kubectl logs -n kube-phoenix deployment/kube-phoenix
 ```
 
 2. Verify the `DATABASE_URL` environment variable is set and the PostgreSQL instance is reachable.
-3. If using an external database, confirm the host, port, and credentials are correct.
+3. If using an external database, confirm the host, port, and credentials are correct. Individual Helm DSN fields are escaped automatically; a full `externalDatabase.url` or Secret DSN must already be valid.
+4. For `another live scheduler owns this database`, stop the duplicate application process and keep one replica. Use `Recreate`, and check for a local backend, another release, or an autoscaler using the same database. Do not manually release the active process's lock.
+5. For `DB_MAX_OPEN_CONNS must be at least 2`, increase the finite pool limit; scheduler ownership reserves one connection.
+6. For `startup recovery failed`, inspect the database/schema error. With `AUTO_MIGRATE=false`, apply [the snapshot-intent migration](../backend/migrations/20261008_snapshot_intents.sql) before this version starts.
+7. For `startup cordon recovery failed`, check Kubernetes connectivity and node get/list/update permissions. The process exits rather than starting the scheduler with incomplete cordon recovery.
+
+## Nodes remain cordoned or a drain fails
+
+A node cordoned by the drain path carries `kube-phoenix.io/cordon-owner`. Failed drains or node deletions attempt to remove that owned cordon; startup also recovers markers after acquiring scheduler ownership. A node already cordoned by an operator has no new ownership marker and is left alone. Check node annotations and execution logs before changing schedulability manually.
+
+Node operations are skipped when workload sleep fails, a scoped exception is running, active exception protections excluded workloads, or an unresolved prepared intent lies outside the current selection. Fix the workload error or targeting before retrying.
+
+The drain path requests `policy/v1` eviction through the core `pods/eviction` subresource; its RBAC rule uses `apiGroups: [""], resources: ["pods/eviction"], verbs: ["create"]`. Eviction failures still fall back to zero-grace pod deletion, which bypasses PDBs and graceful termination. Configure node protections when nodes must not be drained.
 
 ## Cluster state shows no workloads or nodes
 
@@ -157,7 +180,7 @@ kubectl logs -n kube-phoenix deployment/kube-phoenix
 
 **Solution:**
 
-- **Running locally without a cluster:** Expected behavior. Cluster endpoints return empty data.
+- **Running locally without a cluster:** Expected behavior. When Kubernetes client initialization failed, cluster endpoints return HTTP 503 (`kubernetes client unavailable`).
 - **RBAC not applied:** Verify the ClusterRoleBinding exists: `kubectl get clusterrolebinding kube-phoenix`.
 - **Cache not yet populated:** On cold start, the cluster cache waits up to 30 seconds for SharedInformer sync. If the API server is slow, `Snapshot().Ready()` may still be false. Wait a few seconds and refresh.
 
@@ -274,6 +297,10 @@ kubectl logs -n kube-phoenix deployment/kube-phoenix
 2. For an external database configured with individual fields, verify `externalDatabase.port`. For DSNs supplied through `externalDatabase.url` or a Secret, and custom OIDC/Kubernetes endpoints, add their TCP ports to `networkPolicy.extraEgressPorts`.
 3. Inspect the policy: `kubectl describe networkpolicy -n kube-phoenix`.
 
+## Helm rejects replica count or deployment strategy
+
+The chart accepts only `replicaCount: 0` or `1` and requires `strategy.type: Recreate`. Remove old `strategy.rollingUpdate` entries from saved values when upgrading, and remove any HPA that scales the backend. Do not bypass validation to run multiple schedulers. See [upgrading](deployment.md#upgrading).
+
 ## ServiceMonitor CRD not found
 
 **Problem:** Helm install fails with `no matches for kind "ServiceMonitor" in version "monitoring.coreos.com/v1"`.
@@ -285,24 +312,25 @@ kubectl logs -n kube-phoenix deployment/kube-phoenix
 1. Install the CRDs first, or set `metrics.serviceMonitor.enabled=false`.
 2. If using kube-prometheus-stack, the CRDs are included automatically.
 
+## ServiceMonitor exists but Prometheus has no target
+
+1. Check the Prometheus resource's ServiceMonitor label and namespace selectors. Set `metrics.serviceMonitor.labels.release` only if that matches your Prometheus selector; the example release label is not universal.
+2. The monitor selects the server Service by application name, release instance, and `app.kubernetes.io/component: server`. Verify those labels on the Service and its named `http` port. The bundled database Service is excluded.
+3. If `metrics.serviceMonitor.namespace` differs from the application namespace, verify Prometheus discovers the monitor there. The monitor's `namespaceSelector.matchNames` must still name the application namespace.
+4. Verify scrape access to `/metrics`, including NetworkPolicy, and disable annotation scraping if it would duplicate the ServiceMonitor target.
+
 ## Database connection lost at runtime
 
-**Problem:** The API returns 500 errors and `/healthz` fails after the application was previously running.
+**Problem:** API requests fail, `/readyz` (or `/healthz`) returns HTTP 503, or the process exits after previously running.
 
 **Cause:** The PostgreSQL instance became unreachable.
 
 **Solution:**
 
 1. Check PostgreSQL pod or RDS instance status.
-2. Test network connectivity from the app pod:
-
-```bash
-kubectl exec -n kube-phoenix <pod> -- /bin/sh -c "nc -zv <db-host> 5432"
-```
-
-> **Tip:** This only works with non-distroless images.
-
-3. The application auto-recovers when the database becomes available again. GORM reconnects automatically, and the pod becomes ready once `/healthz` succeeds.
+2. Check DNS, credentials, and NetworkPolicy from a diagnostic pod or approved debug container with access equivalent to the application. The released distroless image has no shell or `nc`.
+3. Inspect logs for `scheduler ownership lost`. The owner connection is checked every second with a bounded probe; if it is lost, the process exits instead of reconnecting that lock session. Kubernetes restarts the pod, which must reacquire ownership before recovery and scheduling resume.
+4. Verify `/readyz` succeeds after recovery, then check interrupted executions and open snapshots. `/livez` checks only the HTTP process and can still succeed briefly while database readiness fails.
 
 ---
 
@@ -347,8 +375,8 @@ curl localhost:8080/metrics | grep kube_phoenix
 **Solution:**
 
 1. Confirm the Chi middleware for call recording is in the middleware stack. Without it, no calls are captured.
-2. Note that only routes matching the 49-entry lookup table are recorded. Unmatched routes appear as "unknown".
-3. SSE streams, `/healthz`, `/metrics`, and static file routes are intentionally skipped and will never appear in the feed.
+2. The route lookup table supplies function/component labels; unmatched routes can still be recorded with function `unknown`.
+3. Cluster/observability SSE streams, pod-log streams, `/healthz`, `/metrics`, and static routes are skipped. `/livez` and `/readyz` are currently included, so Kubernetes probes can appear as `unknown` calls and contribute to HTTP metrics.
 4. Verify the SSE stream is connected by opening browser DevTools > Network and looking for an active connection to `/api/observability/stream`.
 
 ### API Rivers particles not flowing

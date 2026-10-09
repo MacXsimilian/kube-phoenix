@@ -176,7 +176,7 @@ ingress:
 #        - target type : ip   (routes directly to pod IPs via VPC CNI)
 #        - protocol    : HTTP
 #        - port        : 8080 (must match the container port)
-#        - health check: HTTP  /healthz  (200 OK)
+#        - health check: HTTP  /readyz  (200 OK; /healthz is a compatibility alias)
 #   4. A listener rule on the ALB pointing to the target group
 #      (e.g. host-header = kube-phoenix.example.com → forward to TG)
 #

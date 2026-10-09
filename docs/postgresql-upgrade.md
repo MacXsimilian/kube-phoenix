@@ -6,10 +6,12 @@ This guide uses a logical dump and restore into fresh storage. Keep the original
 
 ## Before starting
 
-- Schedule a maintenance window. Stop every kube-phoenix backend and any other database writers before the final dump. A running backend can execute scheduled policies and write migration or bootstrap data.
+- Schedule a maintenance window. Stop every kube-phoenix backend and any other database writers before the final dump. A running backend can execute scheduled policies and write migration or bootstrap data. The current backend requires exclusive scheduler ownership, but that lock does not replace stopping older versions or other database writers.
 - Suspend GitOps reconciliation, autoscalers, and any process that could restart the application during maintenance. A host process started with `make dev-backend` or another standalone command must also be stopped.
 - Save backups outside the repository on durable storage with restricted access. Database dumps, globals, resolved Compose files, and Helm values can contain credentials or user data.
 - Rehearse the restore into a disposable PostgreSQL 18 instance before production. Listing an archive's contents alone does not verify that all data restores successfully.
+
+If upgrading the application with `AUTO_MIGRATE=false`, apply [the additive snapshot-intent migration](../backend/migrations/20261008_snapshot_intents.sql) to the restored database before starting the new backend. The rest of the application schema must already match; this migration does not upgrade PostgreSQL's storage format. The flag skips GORM AutoMigrate, not all startup SQL.
 
 The commands below cover the default single application database with the same `POSTGRES_USER` and `POSTGRES_DB` on both versions. `pg_dump` includes all application tables and sequences. Cluster-wide roles are saved separately for review; do not blindly restore `globals.sql`, because the new image already creates the bootstrap role. If you added other roles, databases, extensions, or tablespaces, plan their migration and required PostgreSQL 18 packages separately. The restore uses [`pg_restore --no-owner --single-transaction`](https://www.postgresql.org/docs/18/app-pgrestore.html) against the fresh database created by the image.
 
@@ -78,7 +80,7 @@ The saved account, policy, snapshot, and execution counts must match. Also compa
 docker compose --project-name "$COMPOSE_PROJECT" -f docker-compose.yml -f compose-pg18.yaml up -d --build backend
 ```
 
-Verify health, login, policy state, and retained snapshots before ending maintenance. Keep using `compose-pg18.yaml`; omitting it selects the base file's original volume and the old-data guard will stop PostgreSQL.
+Verify `/readyz`, login, policy state, and retained snapshots before ending maintenance. Start only one backend for this database; it must acquire scheduler ownership before interrupted-execution recovery and scheduling resume. Keep using `compose-pg18.yaml`; omitting it selects the base file's original volume and the old-data guard will stop PostgreSQL.
 
 ### Compose rollback
 
@@ -95,7 +97,7 @@ Confirm that the saved configuration still mounts the recorded PostgreSQL 17 vol
 
 ## Helm
 
-The example uses release and namespace `kube-phoenix` with the default resource names. Adapt `APP`, `DB`, and `OLD_PVC` for name overrides or a different release. Switching from a generated claim to `existingClaim` changes the StatefulSet's immutable storage configuration, so the database StatefulSet must be stopped and recreated. The old PVC is retained throughout.
+The example uses release and namespace `kube-phoenix` with the default resource names. Adapt `APP`, `DB`, and `OLD_PVC` for name overrides or a different release. The current chart truncates the PostgreSQL resource-name prefix to 52 characters before adding `-postgresql`; inspect the old and new manifests if a long name override changes `DB` or `DB_POD`. Preserve the original PVC name independently of the new resource name. Switching from a generated claim to `existingClaim` changes the StatefulSet's immutable storage configuration, so the database StatefulSet must be stopped and recreated. The old PVC is retained throughout.
 
 ### 1. Save the old release and stop writers
 
@@ -180,6 +182,8 @@ Use a claim name that does not already hold data. The chart mounts this claim wi
 ```yaml
 # values-pg18.yaml
 replicaCount: 0
+strategy:
+  type: Recreate
 postgresql:
   image:
     tag: "18.6-alpine"
@@ -188,11 +192,19 @@ postgresql:
     existingClaim: kube-phoenix-postgresql-18
 ```
 
-The following command uses the updated chart from a repository checkout. For a published release, substitute its OCI chart and an explicit version that includes PostgreSQL 18 support. Keep the old credentials and other deployment settings by loading the saved values first:
+The current chart requires `strategy.type: Recreate`, no `strategy.rollingUpdate` settings, and at most one application replica. Copy the saved values into a separate working file so the rollback copy remains intact:
+
+```bash
+cp "$PG_BACKUP/values-pg17.yaml" values-current.yaml
+```
+
+In `values-current.yaml`, remove any `strategy.rollingUpdate` map and update old probe overrides to `/livez` for startup/liveness and `/readyz` for readiness. Preserve database credentials and other deployment settings. Keep autoscalers suspended. The migration overlay sets `Recreate` and zero replicas.
+
+The following command uses the updated chart from a repository checkout. For a published release, substitute its OCI chart and an explicit version that includes PostgreSQL 18 support:
 
 ```bash
 helm upgrade "$RELEASE" ./helm/kube-phoenix -n "$NS" \
-  -f "$PG_BACKUP/values-pg17.yaml" -f values-pg18.yaml --wait --timeout 10m
+  -f values-current.yaml -f values-pg18.yaml --wait --timeout 10m
 kubectl wait --for=condition=Ready pod/"$DB_POD" -n "$NS" --timeout=5m
 kubectl exec -i -n "$NS" "$DB_POD" -c postgresql -- sh -ec 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec pg_restore --host=127.0.0.1 --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --no-owner --exit-on-error --single-transaction' < "$PG_BACKUP/kube-phoenix.dump"
 kubectl exec -n "$NS" "$DB_POD" -c postgresql -- sh -ec 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec vacuumdb --host=127.0.0.1 --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --analyze-in-stages'
@@ -201,7 +213,7 @@ kubectl exec -n "$NS" "$DB_POD" -c postgresql -- sh -ec 'export PGPASSWORD="$POS
 diff -u "$PG_BACKUP/counts-pg17.csv" "$PG_BACKUP/counts-pg18.csv"
 ```
 
-Confirm that the server reports 18, the restore succeeded, and the saved counts match. Compare important policy and recovery records with a baseline saved before migration; adjust the count query if an older application version used different tables. Then change `replicaCount` in `values-pg18.yaml` to `1` and repeat the same Helm upgrade. Keep the fresh claim selection and credentials in the values used for all future upgrades. Verify health, login, policies, snapshots, and execution history before resuming reconciliation or ending maintenance.
+Confirm that the server reports 18, the restore succeeded, and the saved counts match. Compare important policy and recovery records with a baseline saved before migration; adjust the count query if an older application version used different tables. Then change `replicaCount` in `values-pg18.yaml` to `1` and repeat the same Helm upgrade. Keep the fresh claim selection and credentials in the values used for all future upgrades. Verify `/readyz`, login, policies, snapshots, and execution history before resuming reconciliation or ending maintenance. The new backend must acquire scheduler ownership; duplicate instances fail startup instead of sharing the scheduler. Subsequent `Recreate` upgrades stop the old pod before its replacement starts.
 
 ### Helm rollback
 

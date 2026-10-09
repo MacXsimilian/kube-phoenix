@@ -41,7 +41,7 @@ The feed shows a bounded selection of recent recorded calls, including instrumen
 
 HTTP paths are route templates rather than raw resource URLs. The displayed function/component mapping comes from a lookup table; it is not a captured call stack. The copy-as-cURL action gives a starting command for an HTTP route, not a complete authenticated replay with request body and concrete route parameters.
 
-Long-lived streams, health checks, metrics scrapes, and static routes are excluded from some instrumentation. The call feed and HTTP histograms have separate exclusion lists: execution-log WebSocket connections can appear in the feed while their connection lifetimes are excluded from HTTP latency histograms. Consult the [recorder source](../backend/internal/observability/call_recorder.go) when diagnosing whether an operation is represented.
+Long-lived streams, the legacy `/healthz` route, metrics scrapes, and static routes are excluded from some instrumentation. The newer `/livez` and `/readyz` routes are currently included in HTTP metrics and the call feed, so probe traffic can contribute to request rates and appear with function `unknown`. The call feed and HTTP histograms have separate exclusion lists: execution-log WebSocket connections can appear in the feed while their connection lifetimes are excluded from HTTP latency histograms. Consult the [recorder source](../backend/internal/observability/call_recorder.go) when diagnosing whether an operation is represented.
 
 ### Configurable thresholds
 
@@ -103,7 +103,15 @@ The Go backend exposes `/metrics` on its main service port without session authe
 | Connections | `kube_phoenix_ws_active_connections`, `kube_phoenix_db_pool_open_connections`, `kube_phoenix_db_pool_in_use`, `kube_phoenix_db_pool_idle` |
 | Authentication and audit | `kube_phoenix_auth_attempts_total`, `kube_phoenix_rate_limit_hits_total`, `kube_phoenix_audit_drops_total` |
 
+The database pool gauges include the dedicated scheduler ownership connection, so one in-use connection can remain while the application is idle. `/readyz` checks database connectivity, while `/livez` checks the HTTP process; dashboard health summaries do not replace either probe. Ownership loss is reported in backend logs as `scheduler ownership lost` and causes a process restart.
+
 Use the exposed metric help/type metadata and [`metrics.go`](../backend/internal/metrics/metrics.go) for the complete names, labels, and histogram buckets. Prometheus scraping is separate from opening the dashboard. Define deployment monitoring and alerting in the monitoring system using the metrics appropriate to the environment.
+
+### ServiceMonitor discovery
+
+Enable `metrics.serviceMonitor.enabled` when Prometheus Operator CRDs are present, and set `metrics.serviceMonitor.labels` to match your Prometheus `serviceMonitorSelector`. For example, `release: kube-prometheus-stack` is appropriate only if that is the selector your Prometheus uses. Disable `metrics.podAnnotations.enabled` when annotation discovery would scrape the same pod twice.
+
+The monitor selects the server Service using application name, release instance, and `app.kubernetes.io/component: server`, then scrapes its named `http` port at `/metrics`. Its `namespaceSelector.matchNames` always targets the application namespace, including when `metrics.serviceMonitor.namespace` places the monitor in a separate monitoring namespace. Prometheus must discover that monitor namespace and be able to scrape the application Service. See [deployment examples](deployment.md#observability) and [discovery troubleshooting](troubleshooting.md#servicemonitor-exists-but-prometheus-has-no-target).
 
 ## Troubleshooting
 
@@ -147,7 +155,7 @@ Run `make dev-mock` from the repository root for the frontend and sample API. Th
 <a id="call-recorder"></a>
 <a id="runtime-config"></a>
 
-The collector reads the local Prometheus registry on a two-second cadence, derives a snapshot, persists it, and publishes an in-memory payload for SSE clients. The history endpoint reads stored snapshots with SQL downsampling. Runtime configuration combines configured values with descriptive constants; it is not an additional measurement stream. Implementation details belong in [Backend Data Flow](development/backend-data-flow.md) and the [collector source](../backend/internal/observability/collector.go).
+The collector reads the local Prometheus registry on a two-second cadence, derives a snapshot, persists it, and publishes an in-memory payload for SSE clients. The history endpoint reads stored snapshots with SQL downsampling. Runtime configuration combines configured values with descriptive constants; it is not an additional measurement stream. Implementation details belong in [Backend Data Flow](development/backend-data-flow.md). The source separates [collection and persistence](../backend/internal/observability/collector.go), [registry values and histogram calculations](../backend/internal/observability/metric_values.go), [snapshot construction](../backend/internal/observability/snapshot.go), and [SSE/topology payload construction](../backend/internal/observability/payload.go).
 
 <a id="data-model"></a>
 <a id="metricsnapshot"></a>

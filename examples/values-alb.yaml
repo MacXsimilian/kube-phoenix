@@ -7,7 +7,8 @@
 # Prerequisites:
 #   - AWS Load Balancer Controller installed in the cluster
 #   - An ALB with an HTTPS listener (port 443) already provisioned
-#   - A target group: type=ip, protocol=HTTP, port=8080, health check path=/healthz
+#   - A target group: type=ip, protocol=HTTP, port=8080, health check path=/readyz
+#     (/healthz remains a compatible database-readiness alias)
 #   - A listener rule forwarding your path/host to the target group
 #   - A DNS record (CNAME or alias) pointing to the ALB
 #

@@ -56,7 +56,7 @@ secret:
   adminPassword: "replace-before-installing"
 ```
 
-Use one application replica. The current scheduler and live execution-log broker operate within the application process; increasing `replicaCount` is not a documented high-availability setup. See [architecture](../ARCHITECTURE.md#why-sse-and-websocket).
+The chart enforces one application replica (`replicaCount: 1`), or zero for maintenance, with `strategy.type: Recreate`. Upgrades stop the previous pod before starting its replacement, so plan for an availability gap. Autoscaling and rolling updates are unsupported. The backend also takes a PostgreSQL session advisory lock: a second process using the same database exits before scheduler recovery or execution begins. This is exclusive ownership, not an active/standby deployment. See [architecture](../ARCHITECTURE.md#why-sse-and-websocket).
 
 ### External Database
 
@@ -86,6 +86,8 @@ externalDatabase:
   port: 5432
   sslmode: require
 ```
+
+The chart quotes and escapes individual DSN fields, including passwords containing spaces, apostrophes, or backslashes. Supply the actual values in YAML; do not pre-escape them for PostgreSQL. A complete `externalDatabase.url` or Secret-provided `DATABASE_URL` is used as supplied and must already be a valid DSN.
 
 Persist the selected database settings in the values file used for installation and future upgrades. If you intentionally use the bundled database outside a disposable local environment, replace its default `postgresql.auth.password` and plan for persistent-volume backups.
 
@@ -142,7 +144,7 @@ The default Helm values include:
 - Seccomp profile set to `RuntimeDefault`
 - Secure, HTTP-only, SameSite=Strict session cookies
 - `app.kubernetes.io/part-of` and `app.kubernetes.io/version` labels on all resources
-- Automatic rolling restart when the chart-generated application Secret changes
+- Automatic Deployment rollout using `Recreate` when the chart-generated application Secret changes
 
 Updates to a separately managed `secret.existingSecret` do not change the chart's Secret checksum. Restart the Deployment after changing that Secret so the process receives the new environment values.
 
@@ -154,7 +156,7 @@ Updates to a separately managed `secret.existingSecret` do not change the chart'
 
 1. [AWS Load Balancer Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller) installed in the cluster
 2. An ALB with an HTTPS listener (port 443)
-3. A target group with: target type `ip`, protocol HTTP, port `8080`, health check path `/healthz`
+3. A target group with: target type `ip`, protocol HTTP, port `8080`, health check path `/readyz` (`/healthz` remains a compatibility alias)
 4. A listener rule forwarding traffic to the target group
 5. A DNS CNAME or alias pointing your domain to the ALB
 
@@ -279,15 +281,23 @@ kube-phoenix exposes Prometheus metrics at `/metrics` (unauthenticated, suitable
 
 ```yaml
 metrics:
+  podAnnotations:
+    enabled: false
   serviceMonitor:
     enabled: true
     labels:
       release: kube-prometheus-stack
 ```
 
+Use the actual label value required by your Prometheus `serviceMonitorSelector`; `release: kube-prometheus-stack` is an example, not a label added automatically. `metrics.serviceMonitor.namespace` can place the monitor in a separate monitoring namespace. Its `namespaceSelector` still targets the application namespace, and its selector matches the server Service by application name, release instance, and `app.kubernetes.io/component: server`. Prometheus must discover the monitor's namespace and be permitted to scrape the application namespace.
+
 > **Warning:** The ServiceMonitor CRD must exist in the cluster before enabling this. See [Troubleshooting](troubleshooting.md#servicemonitor-crd-not-found) if the install fails.
 
 ## Upgrading
+
+Before upgrading an older release, update saved values to `strategy.type: Recreate` and remove `strategy.rollingUpdate`. Keep `replicaCount` at `1` (or `0` during maintenance), and remove any external HPA or other controller that increases application replicas. Inspect the rendered Deployment when changing an existing release from `RollingUpdate`; it must contain no `rollingUpdate` settings.
+
+For the first upgrade to scheduler ownership, stop every older backend before starting this version, including standalone processes outside this Helm release. Older binaries do not participate in the advisory lock. Keep the same one-process constraint for Compose and local deployments.
 
 For an existing bundled PostgreSQL 17 database, complete the [database migration](postgresql-upgrade.md) before using the normal upgrade command below. The chart refuses legacy data directories to prevent an empty database from being initialized alongside them. GORM AutoMigrate updates application tables; it does not upgrade PostgreSQL's storage format.
 
@@ -299,7 +309,9 @@ helm upgrade kube-phoenix oci://ghcr.io/macxsimilian/helm/kube-phoenix \
 
 For the local HTTP installation, pass `values-local.yaml` instead. Keep the same database configuration and credentials when upgrading.
 
-The deployment strategy defaults to `RollingUpdate` with `maxUnavailable: 0`. Database migrations run on startup via GORM AutoMigrate unless disabled. Changes to the chart-generated application Secret trigger a rollout through `checksum/secret`; changes to a separately managed existing Secret require a Deployment restart. These deployment mechanics do not rotate existing application or database passwords.
+The `Recreate` rollout releases the old process's scheduler ownership before its replacement starts. Database migrations run on startup via GORM AutoMigrate by default. If `AUTO_MIGRATE=false`, apply [the snapshot-intent migration](../backend/migrations/20261008_snapshot_intents.sql) before starting this version; the rest of the schema must already match. This flag skips AutoMigrate, but does not suppress every startup SQL migration or bootstrap write. See [runtime configuration](configuration.md#backend-runtime).
+
+Changes to the chart-generated application Secret trigger a rollout through `checksum/secret`; changes to a separately managed existing Secret require a Deployment restart. These deployment mechanics do not rotate existing application or database passwords. Verify `/readyz`, login, policy state, and retained recovery snapshots after the upgrade.
 
 > **Tip:** Pin a full image version in production with `--set-string image.tag=<version>`. Using `--set-string` preserves numeric tags as strings, as required by the chart's values schema.
 
@@ -334,7 +346,7 @@ The sections below identify the main settings without duplicating every default.
 
 ### General
 
-`image.*` selects the application image; use `--set-string image.tag=...` for numeric-looking tags. Keep `replicaCount: 1` for normal operation; use `0` during database maintenance. `nameOverride`, `fullnameOverride`, and `namespaceOverride` change generated names. Set `createNamespace: false` when using Helm's `--create-namespace` or a namespace managed outside the chart.
+`image.*` selects the application image; use `--set-string image.tag=...` for numeric-looking tags. Only `replicaCount: 1` for normal operation and `0` for maintenance are accepted. `strategy.type` must be `Recreate`, with no `rollingUpdate` settings. `nameOverride`, `fullnameOverride`, and `namespaceOverride` change generated names. Set `createNamespace: false` when using Helm's `--create-namespace` or a namespace managed outside the chart.
 
 ### RBAC and Service Account
 
@@ -342,7 +354,9 @@ The sections below identify the main settings without duplicating every default.
 
 ### Database
 
-`postgresql.*` configures the bundled database, credentials, resources, and persistent storage. For an external database, disable `postgresql.enabled` and configure `externalDatabase.*` or supply `DATABASE_URL` through `secret.existingSecret`. `db.*` configures the application's connection pool. See [External Database](#external-database).
+`postgresql.*` configures the bundled database, credentials, resources, and persistent storage. For an external database, disable `postgresql.enabled` and configure `externalDatabase.*` or supply `DATABASE_URL` through `secret.existingSecret`. `db.*` configures the application's connection pool; reserve capacity for the dedicated scheduler ownership connection and use at least two connections when setting a finite limit. See [External Database](#external-database).
+
+The bundled PostgreSQL Service, Secret, and StatefulSet share a name ending in `-postgresql`, with the application-name prefix truncated to 52 characters to fit Kubernetes' 63-character Service limit. Inspect rendered names before upgrading a release that uses a long name override, and preserve any existing PVC when names change.
 
 With persistence enabled, `postgresql.persistence.existingClaim` mounts an existing operator-managed PVC and omits the StatefulSet's `volumeClaimTemplates`. Create and retain that PVC separately; `size` and `storageClass` apply only to automatically generated claims. Switching an existing StatefulSet to a different claim requires recreating the StatefulSet while retaining its old PVC. The [PostgreSQL migration guide](postgresql-upgrade.md) covers that sequence and rollback.
 
@@ -364,6 +378,10 @@ The NetworkPolicy allows the bundled PostgreSQL port or `externalDatabase.port`,
 
 `resources`, probe settings, and `terminationGracePeriodSeconds` control application resource use and lifecycle. `nodeSelector`, `tolerations`, `affinity`, and `topologySpreadConstraints` place application pods; they do not configure the policy scaler's node-protection guardrails. `extraEnv` and `extraEnvFrom` add runtime configuration.
 
+Startup and liveness probes use `/livez`, which reports that the HTTP process is serving. Readiness uses `/readyz`, which pings PostgreSQL with a two-second timeout and returns HTTP 503 if it is unavailable. `/healthz` remains an alias for readiness for existing consumers. These probes do not check Kubernetes API access or workload readiness.
+
+`podDisruptionBudget.enabled` creates a budget for the application pod. Explicit zero values are preserved: `minAvailable: 0` allows voluntary eviction, while `maxUnavailable: 0` blocks it for the healthy singleton. If both fields are present, `minAvailable` takes precedence; omit it to use `maxUnavailable`. A PDB does not make a `Recreate` upgrade highly available.
+
 ### Metrics
 
 `metrics.podAnnotations` configures scrape annotations. `metrics.serviceMonitor` creates a ServiceMonitor when the Prometheus Operator CRD is already installed. See [Observability](#observability).
@@ -373,6 +391,7 @@ The NetworkPolicy allows the bundled PostgreSQL port or `externalDatabase.port`,
 Released images are:
 
 - **Digest-pinned** — the Dockerfile pins all base images (`node`, `golang`, `distroless`) by manifest digest, not mutable tags.
+- **Smoke tested** — CI starts the final image against disposable PostgreSQL with a read-only filesystem and dropped capabilities, checking the image healthcheck, `/readyz`, embedded backend version, frontend HTML, and a Next.js JavaScript asset. Releases repeat this check against the image digest before signing and stable-alias promotion. See [the smoke-test script](../.github/scripts/smoke_image.py).
 - **Signed** — each release image is signed with [cosign](https://github.com/sigstore/cosign) using keyless OIDC. Verify with: `cosign verify ghcr.io/macxsimilian/kube-phoenix:<tag> --certificate-identity-regexp='.*' --certificate-oidc-issuer-regexp='.*'`
 - **SBOM attested** — Syft generates an SPDX SBOM, and Cosign signs an attestation attached to the image digest.
 - **Image tags** — a stable Git release tag `vX.Y.Z` produces the full image tag `X.Y.Z` without the leading `v`. Guarded promotion advances `X.Y`, `X`, and `latest` only when the release is newer within each alias's scope; replaying an older release cannot move them backwards. Prereleases do not update stable aliases. Pin the full version or digest for reproducible deployments.
