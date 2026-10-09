@@ -242,7 +242,7 @@ type exceptionInput struct {
 }
 
 func newExceptionFromInput(body exceptionInput, r *http.Request) (*store.ScheduledException, error) {
-	ex := &store.ScheduledException{
+	exception := &store.ScheduledException{
 		PolicyID:        body.PolicyID,
 		ExceptionType:   body.ExceptionType,
 		StartsAt:        body.StartsAt,
@@ -255,14 +255,14 @@ func newExceptionFromInput(body exceptionInput, r *http.Request) (*store.Schedul
 		Status:          store.ExceptionStatusPending,
 	}
 	if body.WorkloadTargets != nil {
-		if err := ex.SetWorkloadTargets(body.WorkloadTargets); err != nil {
+		if err := exception.SetWorkloadTargets(body.WorkloadTargets); err != nil {
 			return nil, fmt.Errorf("encode workload targets: %w", err)
 		}
 	}
-	if u := authmw.UserFromContext(r.Context()); u != nil {
-		ex.CreatedBy = u.Username
+	if user := authmw.UserFromContext(r.Context()); user != nil {
+		exception.CreatedBy = user.Username
 	}
-	return ex, nil
+	return exception, nil
 }
 
 type exceptionUpdateInput struct {
@@ -311,11 +311,11 @@ func buildExceptionUpdates(body exceptionUpdateInput) (map[string]interface{}, e
 		updates["label_selector"] = *body.LabelSelector
 	}
 	if body.WorkloadTargets != nil {
-		b, err := json.Marshal(body.WorkloadTargets)
+		targetsJSON, err := json.Marshal(body.WorkloadTargets)
 		if err != nil {
 			return nil, fmt.Errorf("encode workload targets: %w", err)
 		}
-		updates["workload_targets"] = string(b)
+		updates["workload_targets"] = string(targetsJSON)
 	}
 	if err := validateExceptionUpdates(updates); err != nil {
 		return nil, err
@@ -352,35 +352,35 @@ func validateExceptionUpdates(updates map[string]interface{}) error {
 	return nil
 }
 
-func validateExceptionInput(b exceptionInput) error {
-	if err := store.ValidateExceptionTargets(b.LabelSelector, b.WorkloadTargets); err != nil {
+func validateExceptionInput(body exceptionInput) error {
+	if err := store.ValidateExceptionTargets(body.LabelSelector, body.WorkloadTargets); err != nil {
 		return err
 	}
-	if b.PolicyID == nil {
+	if body.PolicyID == nil {
 		return errors.New("policyId is required (freestanding exceptions are not yet supported)")
 	}
-	if err := validateExceptionType(b.ExceptionType); err != nil {
+	if err := validateExceptionType(body.ExceptionType); err != nil {
 		return err
 	}
-	if b.StartsAt.IsZero() {
+	if body.StartsAt.IsZero() {
 		return errors.New("startsAt is required")
 	}
-	if b.EndsAt.IsZero() {
+	if body.EndsAt.IsZero() {
 		return errors.New("endsAt is required")
 	}
-	if !b.EndsAt.After(b.StartsAt) {
+	if !body.EndsAt.After(body.StartsAt) {
 		return errors.New("endsAt must be after startsAt")
 	}
-	if time.Until(b.StartsAt) < 0 {
+	if time.Until(body.StartsAt) < 0 {
 		return errors.New("startsAt must be in the future")
 	}
-	if err := validateFieldLen(b.Reason, maxReasonLen, "reason"); err != nil {
+	if err := validateFieldLen(body.Reason, maxReasonLen, "reason"); err != nil {
 		return err
 	}
-	if err := validateFieldLen(b.TicketRef, maxTicketRefLen, "ticketRef"); err != nil {
+	if err := validateFieldLen(body.TicketRef, maxTicketRefLen, "ticketRef"); err != nil {
 		return err
 	}
-	if msg := validateNamespaceFilter(b.NamespaceFilter); msg != "" {
+	if msg := validateNamespaceFilter(body.NamespaceFilter); msg != "" {
 		return errors.New(msg)
 	}
 	return nil

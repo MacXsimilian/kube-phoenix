@@ -9,9 +9,9 @@ import "gorm.io/gorm"
 // keys remain, it is a no-op and returns nil.
 func selectiveUpdate(db *gorm.DB, model interface{}, updates map[string]interface{}, allowed map[string]bool) error {
 	filtered := make(map[string]interface{}, len(updates))
-	for key, val := range updates {
+	for key, value := range updates {
 		if allowed[key] {
-			filtered[key] = val
+			filtered[key] = value
 		}
 	}
 	if len(filtered) == 0 {

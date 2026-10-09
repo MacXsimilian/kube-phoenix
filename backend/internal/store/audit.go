@@ -37,22 +37,22 @@ type AuditLogPage struct {
 	Total int64      `json:"total"`
 }
 
-func (s *Store) ListAuditLogs(f AuditLogFilter) (*AuditLogPage, error) {
+func (s *Store) ListAuditLogs(filter AuditLogFilter) (*AuditLogPage, error) {
 	query := s.db.Model(&AuditLog{})
-	if f.UserID != nil {
-		query = query.Where("user_id = ?", *f.UserID)
+	if filter.UserID != nil {
+		query = query.Where("user_id = ?", *filter.UserID)
 	}
-	if f.Username != "" {
-		query = query.Where("username ILIKE ?", "%"+ilikeSafeReplacer.Replace(f.Username)+"%")
+	if filter.Username != "" {
+		query = query.Where("username ILIKE ?", "%"+ilikeSafeReplacer.Replace(filter.Username)+"%")
 	}
-	if f.Action != "" {
-		query = query.Where("action = ?", f.Action)
+	if filter.Action != "" {
+		query = query.Where("action = ?", filter.Action)
 	}
-	if f.From != nil {
-		query = query.Where("timestamp >= ?", *f.From)
+	if filter.From != nil {
+		query = query.Where("timestamp >= ?", *filter.From)
 	}
-	if f.To != nil {
-		query = query.Where("timestamp <= ?", *f.To)
+	if filter.To != nil {
+		query = query.Where("timestamp <= ?", *filter.To)
 	}
 
 	var total int64
@@ -60,16 +60,16 @@ func (s *Store) ListAuditLogs(f AuditLogFilter) (*AuditLogPage, error) {
 		return nil, err
 	}
 
-	if f.PageSize <= 0 {
-		f.PageSize = defaultPageSize
+	if filter.PageSize <= 0 {
+		filter.PageSize = defaultPageSize
 	}
-	if f.PageSize > maxPageSize {
-		f.PageSize = maxPageSize
+	if filter.PageSize > maxPageSize {
+		filter.PageSize = maxPageSize
 	}
-	offset := f.Page * f.PageSize
+	offset := filter.Page * filter.PageSize
 
 	var items []AuditLog
-	if err := query.Order("timestamp desc").Limit(f.PageSize).Offset(offset).Find(&items).Error; err != nil {
+	if err := query.Order("timestamp desc").Limit(filter.PageSize).Offset(offset).Find(&items).Error; err != nil {
 		return nil, err
 	}
 	return &AuditLogPage{Items: items, Total: total}, nil

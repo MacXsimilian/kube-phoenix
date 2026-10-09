@@ -45,8 +45,8 @@ func spaHandler(fsys fs.FS) http.Handler {
 		}
 
 		// Path not found — serve root index.html for client-side routing
-		r2 := r.Clone(r.Context())
-		r2.URL.Path = "/"
-		fileServer.ServeHTTP(w, r2)
+		fallbackRequest := r.Clone(r.Context())
+		fallbackRequest.URL.Path = "/"
+		fileServer.ServeHTTP(w, fallbackRequest)
 	})
 }

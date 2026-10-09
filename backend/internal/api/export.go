@@ -96,21 +96,7 @@ func (h *Handler) exportGuardrails(w http.ResponseWriter, r *http.Request) {
 	out := guardrailsExport{
 		SchemaVersion: exportSchemaVersion,
 		Kind:          exportKindGuardrails,
-		Guardrails: guardrailsExportBody{
-			ProtectedNamespaces:          g.ProtectedNamespaces,
-			SkipNsNode:                   g.SkipNsNode,
-			SkipNodeLabels:               g.SkipNodeLabels,
-			SkipNodeTaints:               g.SkipNodeTaints,
-			ScalingPriorityNamespaces:    g.ScalingPriorityNamespaces,
-			SchedulerEvalInterval:        g.SchedulerEvalInterval,
-			SchedulerAutoWake:            g.SchedulerAutoWake,
-			SchedulerReconcileWhileAwake: g.SchedulerReconcileWhileAwake,
-			SchedulerEnforceSleep:        g.SchedulerEnforceSleep,
-			ScalingConcurrency:           g.ScalingConcurrency,
-			WakeWaveSize:                 g.WakeWaveSize,
-			WakeWavePauseSeconds:         g.WakeWavePauseSeconds,
-			ProtectCriticalPodNodes:      g.ProtectCriticalPodNodes,
-		},
+		Guardrails:    guardrailsModelToBody(g),
 	}
 	h.audit(r, "guardrail.export", "guardrail", nil, nil, nil)
 	jsonOK(w, out)
@@ -124,17 +110,7 @@ func (h *Handler) exportPolicy(w http.ResponseWriter, r *http.Request) {
 	out := policyExport{
 		SchemaVersion: exportSchemaVersion,
 		Kind:          exportKindPolicy,
-		Policy: policyExportBody{
-			Name:            p.Name,
-			Description:     p.Description,
-			NamespaceFilter: p.NamespaceFilter,
-			LabelSelector:   p.LabelSelector,
-			Timezone:        p.Timezone,
-			Mode:            p.Mode,
-			Enabled:         p.Enabled,
-			TimeoutMinutes:  p.TimeoutMinutes,
-			SleepWindows:    parseSleepWindows(*p),
-		},
+		Policy:        policyModelToBody(p),
 	}
 	h.audit(r, "policy.export", "policy", &p.ID, nil, map[string]any{"name": p.Name})
 	jsonOK(w, out)

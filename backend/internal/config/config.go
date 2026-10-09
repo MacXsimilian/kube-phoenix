@@ -93,27 +93,27 @@ func Load() (*AppConfig, error) {
 }
 
 func intEnvOr(key string, fallback int) int {
-	v := os.Getenv(key)
-	if v == "" {
+	value := os.Getenv(key)
+	if value == "" {
 		return fallback
 	}
-	n, err := strconv.Atoi(v)
+	parsed, err := strconv.Atoi(value)
 	if err != nil {
-		slog.Warn("invalid int env var, using default", "key", key, "value", v, "default", fallback)
+		slog.Warn("invalid int env var, using default", "key", key, "value", value, "default", fallback)
 		return fallback
 	}
-	return n
+	return parsed
 }
 
 func durationEnvOr(key string, fallback time.Duration) time.Duration {
-	v := os.Getenv(key)
-	if v == "" {
+	value := os.Getenv(key)
+	if value == "" {
 		return fallback
 	}
-	d, err := time.ParseDuration(v)
+	parsed, err := time.ParseDuration(value)
 	if err != nil {
-		slog.Warn("invalid duration env var, using default", "key", key, "value", v, "default", fallback)
+		slog.Warn("invalid duration env var, using default", "key", key, "value", value, "default", fallback)
 		return fallback
 	}
-	return d
+	return parsed
 }

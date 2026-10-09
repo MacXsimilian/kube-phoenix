@@ -224,7 +224,7 @@ type ScheduledException struct {
 }
 
 // HasTargetingFilters reports whether the exception narrows scope beyond
-// the parent policy via namespace filter or label selector.
+// the parent policy via namespaces, labels, or explicit workload targets.
 func (e *ScheduledException) HasTargetingFilters() bool {
 	return e.NamespaceFilter != "" || e.LabelSelector != "" || (e.WorkloadTargets != "" && e.WorkloadTargets != "[]" && e.WorkloadTargets != "null")
 }

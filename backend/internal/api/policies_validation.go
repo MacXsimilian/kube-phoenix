@@ -23,16 +23,16 @@ func validateNamespaceFilter(filter string) string {
 	if filter == "" {
 		return ""
 	}
-	for _, ns := range strings.Split(filter, ",") {
-		ns = strings.TrimSpace(ns)
-		if ns == "" {
+	for _, namespace := range strings.Split(filter, ",") {
+		namespace = strings.TrimSpace(namespace)
+		if namespace == "" {
 			continue
 		}
-		if len(ns) > 63 {
-			return fmt.Sprintf("namespace %q exceeds the 63-character limit", ns)
+		if len(namespace) > 63 {
+			return fmt.Sprintf("namespace %q exceeds the 63-character limit", namespace)
 		}
-		if !reNamespace.MatchString(ns) {
-			return fmt.Sprintf("%q is not a valid namespace name (lowercase alphanumeric and hyphens only, must start and end with alphanumeric)", ns)
+		if !reNamespace.MatchString(namespace) {
+			return fmt.Sprintf("%q is not a valid namespace name (lowercase alphanumeric and hyphens only, must start and end with alphanumeric)", namespace)
 		}
 	}
 	return ""
@@ -42,57 +42,57 @@ func validateNamespaceFilter(filter string) string {
 // applies defaults (timezone, mode, initial state). Returns the prepared policy
 // and an error message (empty on success).
 func validateAndPreparePolicy(input createPolicyInput) (store.Policy, string) {
-	p := input.Policy
-	if p.Name == "" {
-		return p, "name is required"
+	prepared := input.Policy
+	if prepared.Name == "" {
+		return prepared, "name is required"
 	}
 	if len(input.SleepWindows) == 0 {
-		return p, "sleepWindows is required"
+		return prepared, "sleepWindows is required"
 	}
 	if err := policy.ValidateWindows(input.SleepWindows); err != nil {
-		return p, err.Error()
+		return prepared, err.Error()
 	}
 	windowsJSON, err := json.Marshal(input.SleepWindows)
 	if err != nil {
-		return p, "failed to marshal sleep windows"
+		return prepared, "failed to marshal sleep windows"
 	}
-	p.SleepWindows = string(windowsJSON)
+	prepared.SleepWindows = string(windowsJSON)
 
-	if msg := validatePolicyFields(p); msg != "" {
-		return p, msg
+	if msg := validatePolicyFields(prepared); msg != "" {
+		return prepared, msg
 	}
-	if p.Timezone == "" {
-		p.Timezone = "UTC"
+	if prepared.Timezone == "" {
+		prepared.Timezone = "UTC"
 	}
-	if p.Mode == "" {
-		p.Mode = "plan"
+	if prepared.Mode == "" {
+		prepared.Mode = "plan"
 	}
 
 	now := time.Now()
 	initialState := scheduler.IntendedState(scheduler.StateInput{
-		Windows: input.SleepWindows, Timezone: p.Timezone, Now: now,
+		Windows: input.SleepWindows, Timezone: prepared.Timezone, Now: now,
 	})
-	p.CurrentState = string(initialState)
-	p.StateSince = &now
+	prepared.CurrentState = string(initialState)
+	prepared.StateSince = &now
 
-	return p, ""
+	return prepared, ""
 }
 
 // checkPolicyOverlap verifies that an apply-mode policy won't conflict with
 // existing policies. Returns an error message if overlap is detected, or "".
-func (h *Handler) checkPolicyOverlap(id uint, old *store.Policy, updates map[string]interface{}) (string, error) {
-	finalMode := old.Mode
+func (h *Handler) checkPolicyOverlap(id uint, existing *store.Policy, updates map[string]interface{}) (string, error) {
+	finalMode := existing.Mode
 	if v, ok := updates["mode"]; ok {
 		finalMode = fmt.Sprintf("%v", v)
 	}
 	if finalMode != store.PolicyModeApply {
 		return "", nil
 	}
-	finalNS := old.NamespaceFilter
+	finalNamespaceFilter := existing.NamespaceFilter
 	if v, ok := updates["namespace_filter"]; ok {
-		finalNS = fmt.Sprintf("%v", v)
+		finalNamespaceFilter = fmt.Sprintf("%v", v)
 	}
-	overlap, err := h.store.HasApplyPolicyOverlap(id, finalNS)
+	overlap, err := h.store.HasApplyPolicyOverlap(id, finalNamespaceFilter)
 	if err != nil {
 		return "", err
 	}

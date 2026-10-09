@@ -24,23 +24,11 @@ func (r *PolicyRunner) filterEntries(p store.Policy, entries []workloadEntry, di
 		}
 		// An explicit exception operation has already been selected by the
 		// scheduler. Ordinary operations preserve active opposite exceptions.
-		if p.ExceptionScope == nil || direction == "wake" || p.ExceptionScope.ExceptionType != store.ExceptionTypeForceSleep {
-			effective := ""
-			for _, ex := range exceptions {
-				matches, err := ex.Matches(entry.Kind, entry.Namespace, entry.Name, entry.Labels)
-				if err != nil {
-					return nil, err
-				}
-				if !matches {
-					continue
-				}
-				if ex.ExceptionType == store.ExceptionTypeForceSleep {
-					effective = ex.ExceptionType
-					break
-				}
-				if ex.ExceptionType == store.ExceptionTypeStayAwake {
-					effective = ex.ExceptionType
-				}
+		forceSleepSelected := p.ExceptionScope != nil && p.ExceptionScope.ExceptionType == store.ExceptionTypeForceSleep
+		if !forceSleepSelected || direction == "wake" {
+			effective, err := effectiveExceptionType(entry, exceptions)
+			if err != nil {
+				return nil, err
 			}
 			blocked := (direction == "sleep" && effective == store.ExceptionTypeStayAwake) || (direction == "wake" && effective == store.ExceptionTypeForceSleep)
 			if blocked {
@@ -50,6 +38,28 @@ func (r *PolicyRunner) filterEntries(p store.Policy, entries []workloadEntry, di
 		result = append(result, entry)
 	}
 	return result, nil
+}
+
+// effectiveExceptionType returns the highest-priority matching exception.
+// Force-sleep takes precedence over stay-awake, regardless of input order.
+func effectiveExceptionType(entry workloadEntry, exceptions []store.ScheduledException) (string, error) {
+	effective := ""
+	for _, exception := range exceptions {
+		matches, err := exception.Matches(entry.Kind, entry.Namespace, entry.Name, entry.Labels)
+		if err != nil {
+			return "", err
+		}
+		if !matches {
+			continue
+		}
+		if exception.ExceptionType == store.ExceptionTypeForceSleep {
+			return exception.ExceptionType, nil
+		}
+		if exception.ExceptionType == store.ExceptionTypeStayAwake {
+			effective = exception.ExceptionType
+		}
+	}
+	return effective, nil
 }
 
 func (r *PolicyRunner) filterWakeSnapshots(ctx context.Context, p store.Policy, snaps []store.WorkloadSnapshot) ([]store.WorkloadSnapshot, error) {

@@ -211,12 +211,12 @@ func (h *Handler) oidcValidateAndClearCookies(w http.ResponseWriter, r *http.Req
 
 // oidcExchangeAndVerify exchanges the authorization code for tokens and verifies the ID token.
 func (h *Handler) oidcExchangeAndVerify(ctx context.Context, code, verifier string) (*gooidc.IDToken, error) {
-	exchCtx := ctx
+	exchangeContext := ctx
 	if h.oidcProvider.HTTPClient != nil {
-		exchCtx = context.WithValue(ctx, oauth2.HTTPClient, h.oidcProvider.HTTPClient)
+		exchangeContext = context.WithValue(ctx, oauth2.HTTPClient, h.oidcProvider.HTTPClient)
 	}
 
-	token, err := h.oidcProvider.OAuth2.Exchange(exchCtx, code, oauth2.VerifierOption(verifier))
+	token, err := h.oidcProvider.OAuth2.Exchange(exchangeContext, code, oauth2.VerifierOption(verifier))
 	if err != nil {
 		return nil, fmt.Errorf("oidc: token exchange: %w", err)
 	}

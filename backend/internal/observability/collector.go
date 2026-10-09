@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package observability implements the metric collector that periodically
-// self-scrapes the Prometheus /metrics endpoint, parses counter/histogram
-// deltas, and stores MetricSnapshot rows for the observability dashboard.
+// reads the local Prometheus registry, computes counter rates and histogram
+// quantiles, and stores MetricSnapshot rows for the observability dashboard.
 package observability
 
 import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math"
-	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -28,13 +25,13 @@ const (
 
 // Collector scrapes the local Prometheus registry and writes MetricSnapshots.
 type Collector struct {
-	store         *store.Store
-	registry      *prometheus.Registry
-	prev          map[string]float64
-	prevTime      time.Time
-	mu            sync.RWMutex
-	latestPayload *store.ObservabilityStreamPayload
-	callRecorder  *CallRecorder
+	store          *store.Store
+	registry       *prometheus.Registry
+	previousValues map[string]float64
+	previousTime   time.Time
+	mu             sync.RWMutex
+	latestPayload  *store.ObservabilityStreamPayload
+	callRecorder   *CallRecorder
 }
 
 // NewCollector creates a collector that reads from the default Prometheus registry.
@@ -44,10 +41,10 @@ func NewCollector(st *store.Store) (*Collector, error) {
 		return nil, fmt.Errorf("default prometheus registerer is not a *prometheus.Registry")
 	}
 	return &Collector{
-		store:        st,
-		registry:     reg,
-		prev:         make(map[string]float64),
-		callRecorder: NewCallRecorder(),
+		store:          st,
+		registry:       reg,
+		previousValues: make(map[string]float64),
+		callRecorder:   NewCallRecorder(),
 	}, nil
 }
 
@@ -85,80 +82,31 @@ func (c *Collector) collect() error {
 	c.store.UpdatePoolMetrics()
 
 	now := time.Now()
-	mfs, err := c.registry.Gather()
+	metricFamilies, err := c.registry.Gather()
 	if err != nil {
 		return fmt.Errorf("gather metrics: %w", err)
 	}
 
 	current := make(map[string]float64)
 	families := make(map[string]*dto.MetricFamily)
-	for _, mf := range mfs {
-		families[mf.GetName()] = mf
-		flattenMetricFamily(mf, current)
+	for _, family := range metricFamilies {
+		families[family.GetName()] = family
+		flattenMetricFamily(family, current)
 	}
 
-	elapsed := now.Sub(c.prevTime).Seconds()
-	if elapsed <= 0 || len(c.prev) == 0 {
-		c.prev = current
-		c.prevTime = now
+	elapsed := now.Sub(c.previousTime).Seconds()
+	if elapsed <= 0 || len(c.previousValues) == 0 {
+		c.previousValues = current
+		c.previousTime = now
 		return nil
 	}
 
-	snap := &store.MetricSnapshot{
-		Timestamp: now,
-	}
+	snapshot := c.buildMetricSnapshot(now, current, families, elapsed)
 
-	snap.HTTPRequestRate = c.counterRate("kube_phoenix_http_requests_total", current, elapsed)
-	snap.HTTPErrorRate = c.counterRateFiltered("kube_phoenix_http_requests_total", current, elapsed, "status_code", "5")
-	snap.K8sGetRate = (c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "list") +
-		c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "get")) * 60
-	snap.K8sPatchRate = (c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "scale") +
-		c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "cordon")) * 60
-	snap.K8sDeleteRate = (c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "delete") +
-		c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "verb", "drain")) * 60
-	snap.SchedulerEvalRate = c.counterRate("kube_phoenix_scheduler_evaluations_total", current, elapsed) * 60
-	snap.TotalErrorRate = snap.HTTPErrorRate + c.counterRate("kube_phoenix_scheduler_panics_total", current, elapsed)
+	c.previousValues = current
+	c.previousTime = now
 
-	snap.HTTPLatencyP50Ms = histogramQuantile(families["kube_phoenix_http_request_duration_seconds"], 0.50) * 1000
-	snap.HTTPLatencyP95Ms = histogramQuantile(families["kube_phoenix_http_request_duration_seconds"], 0.95) * 1000
-	snap.HTTPLatencyP99Ms = histogramQuantile(families["kube_phoenix_http_request_duration_seconds"], 0.99) * 1000
-	snap.K8sLatencyP50Ms = histogramQuantile(families["kube_phoenix_k8s_request_duration_seconds"], 0.50) * 1000
-	snap.K8sLatencyP99Ms = histogramQuantile(families["kube_phoenix_k8s_request_duration_seconds"], 0.99) * 1000
-	snap.SchedulerEvalDurationMs = histogramQuantile(families["kube_phoenix_scheduler_evaluation_duration_seconds"], 0.50) * 1000
-
-	snap.WSActiveConnections = int(gaugeValue(families["kube_phoenix_ws_active_connections"]))
-
-	hits := counterValue(families["kube_phoenix_cache_hits_total"])
-	misses := counterValue(families["kube_phoenix_cache_misses_total"])
-	if hits+misses > 0 {
-		snap.CacheHitRate = (hits / (hits + misses)) * 100
-	} else {
-		snap.CacheHitRate = 100
-	}
-
-	snap.PolicySuccessCount = int(c.counterRateFiltered("kube_phoenix_executions_total", current, elapsed, "status", "success") * elapsed)
-	snap.PolicyFailedCount = int(c.counterRateFiltered("kube_phoenix_executions_total", current, elapsed, "status", "failed") * elapsed)
-	snap.PolicyInterruptedCount = int(c.counterRateFiltered("kube_phoenix_executions_total", current, elapsed, "status", "interrupted") * elapsed)
-
-	snap.WorkloadsScaledCount = int(c.counterRate("kube_phoenix_workloads_scaled_total", current, elapsed) * elapsed)
-	snap.ScaleOperationDurationMs = histogramQuantile(families["kube_phoenix_execution_duration_seconds"], 0.50) * 1000
-
-	snap.SchedulerPanics = int(c.counterRate("kube_phoenix_scheduler_panics_total", current, elapsed) * elapsed)
-	snap.AuditDrops = int(c.counterRate("kube_phoenix_audit_drops_total", current, elapsed) * elapsed)
-	snap.RateLimitHits = int(c.counterRate("kube_phoenix_rate_limit_hits_total", current, elapsed) * elapsed)
-
-	snap.DBPoolOpen = int(gaugeValue(families["kube_phoenix_db_pool_open_connections"]))
-	snap.DBPoolInUse = int(gaugeValue(families["kube_phoenix_db_pool_in_use"]))
-	snap.DBPoolIdle = int(gaugeValue(families["kube_phoenix_db_pool_idle"]))
-
-	snap.ActiveSessions = int(gaugeValue(families["kube_phoenix_active_sessions"]))
-	snap.ActivePolicies = int(gaugeValue(families["kube_phoenix_active_policies"]))
-	snap.K8sErrorRate = c.counterRateFiltered("kube_phoenix_k8s_requests_total", current, elapsed, "status", "error") * 60
-
-	c.prev = current
-	c.prevTime = now
-
-	if err := c.store.SaveMetricSnapshot(snap); err != nil {
+	if err := c.store.SaveMetricSnapshot(snapshot); err != nil {
 		return fmt.Errorf("save metric snapshot: %w", err)
 	}
 
@@ -167,7 +115,7 @@ func (c *Collector) collect() error {
 		slog.Warn("observability: failed to load thresholds", "err", err)
 	}
 	recentCalls := c.callRecorder.Recent(50)
-	payload := buildPayload(snap, thresholds, recentCalls)
+	payload := buildPayload(snapshot, thresholds, recentCalls)
 	c.mu.Lock()
 	c.latestPayload = &payload
 	c.mu.Unlock()
@@ -185,204 +133,4 @@ func (c *Collector) LatestPayload() *store.ObservabilityStreamPayload {
 // CallRecorder returns the recorder used to track API calls.
 func (c *Collector) CallRecorder() *CallRecorder {
 	return c.callRecorder
-}
-
-// counterRate computes per-second rate for all label combinations of a counter.
-func (c *Collector) counterRate(name string, current map[string]float64, elapsed float64) float64 {
-	var total float64
-	prefix := name + "{"
-	for k, v := range current {
-		if k == name || strings.HasPrefix(k, prefix) {
-			delta := v - c.prev[k]
-			if delta < 0 {
-				delta = v
-			}
-			total += delta
-		}
-	}
-	return total / elapsed
-}
-
-// counterRateFiltered computes per-second rate for counter values where a specific label matches a prefix.
-func (c *Collector) counterRateFiltered(name string, current map[string]float64, elapsed float64, labelKey, labelValuePrefix string) float64 {
-	var total float64
-	filter := fmt.Sprintf(`%s="%s`, labelKey, labelValuePrefix)
-	for k, v := range current {
-		if !strings.HasPrefix(k, name) {
-			continue
-		}
-		if !strings.Contains(k, filter) {
-			continue
-		}
-		delta := v - c.prev[k]
-		if delta < 0 {
-			delta = v
-		}
-		total += delta
-	}
-	return total / elapsed
-}
-
-// flattenMetricFamily extracts all metric values into a flat map keyed by name{labels}.
-func flattenMetricFamily(mf *dto.MetricFamily, out map[string]float64) {
-	name := mf.GetName()
-	for _, m := range mf.GetMetric() {
-		key := metricKey(name, m.GetLabel())
-		switch mf.GetType() {
-		case dto.MetricType_COUNTER:
-			out[key] = m.GetCounter().GetValue()
-		case dto.MetricType_GAUGE:
-			out[key] = m.GetGauge().GetValue()
-		case dto.MetricType_HISTOGRAM:
-			out[key+"_sum"] = m.GetHistogram().GetSampleSum()
-			out[key+"_count"] = float64(m.GetHistogram().GetSampleCount())
-		}
-	}
-}
-
-func metricKey(name string, labels []*dto.LabelPair) string {
-	if len(labels) == 0 {
-		return name
-	}
-	parts := make([]string, len(labels))
-	for i, lp := range labels {
-		parts[i] = fmt.Sprintf(`%s="%s"`, lp.GetName(), lp.GetValue())
-	}
-	return fmt.Sprintf("%s{%s}", name, strings.Join(parts, ","))
-}
-
-// histogramQuantile computes an approximate quantile from a histogram metric family.
-func histogramQuantile(mf *dto.MetricFamily, q float64) float64 {
-	if mf == nil {
-		return 0
-	}
-	// Aggregate all label combinations into one histogram.
-	var totalCount uint64
-	buckets := make(map[float64]uint64)
-	for _, m := range mf.GetMetric() {
-		h := m.GetHistogram()
-		totalCount += h.GetSampleCount()
-		for _, b := range h.GetBucket() {
-			buckets[b.GetUpperBound()] += b.GetCumulativeCount()
-		}
-	}
-	if totalCount == 0 {
-		return 0
-	}
-	target := float64(totalCount) * q
-	prevBound := 0.0
-	prevCount := uint64(0)
-	sorted := sortBuckets(buckets)
-	for _, b := range sorted {
-		if float64(b.count) >= target {
-			fraction := (target - float64(prevCount)) / float64(b.count-prevCount)
-			return prevBound + (b.bound-prevBound)*fraction
-		}
-		prevBound = b.bound
-		prevCount = b.count
-	}
-	return prevBound
-}
-
-type sortedBucket struct {
-	bound float64
-	count uint64
-}
-
-func sortBuckets(m map[float64]uint64) []sortedBucket {
-	result := make([]sortedBucket, 0, len(m))
-	for b, c := range m {
-		if !math.IsInf(b, 1) {
-			result = append(result, sortedBucket{b, c})
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].bound < result[j].bound })
-	return result
-}
-
-func gaugeValue(mf *dto.MetricFamily) float64 {
-	if mf == nil {
-		return 0
-	}
-	var total float64
-	for _, m := range mf.GetMetric() {
-		total += m.GetGauge().GetValue()
-	}
-	return total
-}
-
-func counterValue(mf *dto.MetricFamily) float64 {
-	if mf == nil {
-		return 0
-	}
-	var total float64
-	for _, m := range mf.GetMetric() {
-		total += m.GetCounter().GetValue()
-	}
-	return total
-}
-
-// buildPayload constructs the SSE event payload from current metrics.
-func buildPayload(snap *store.MetricSnapshot, thresholds []store.ObservabilityThreshold, recentCalls []store.ApiCall) store.ObservabilityStreamPayload {
-	thresholdMap := make(map[string]store.ObservabilityThreshold)
-	for _, t := range thresholds {
-		thresholdMap[t.PanelKey] = t
-	}
-
-	k8sRPS := (snap.K8sGetRate + snap.K8sPatchRate + snap.K8sDeleteRate) / 60
-
-	components := []store.RiverComponentMetrics{
-		{Component: "router", RPSIn: snap.HTTPRequestRate, RPSOut: snap.HTTPRequestRate, LatencyMs: snap.HTTPLatencyP50Ms, ErrorRate: snap.HTTPErrorRate, Status: thresholdStatus(snap.HTTPRequestRate, thresholdMap["http_rate"])},
-		{Component: "auth", RPSIn: snap.HTTPRequestRate, RPSOut: snap.HTTPRequestRate * 0.98, LatencyMs: 2, ErrorRate: float64(snap.RateLimitHits), Status: "ok"},
-		{Component: "handlers", RPSIn: snap.HTTPRequestRate * 0.95, RPSOut: snap.HTTPRequestRate * 0.90, LatencyMs: snap.HTTPLatencyP50Ms, ErrorRate: snap.HTTPErrorRate, Status: thresholdStatus(snap.HTTPLatencyP99Ms, thresholdMap["latency_p99"])},
-		{Component: "scheduler", RPSIn: snap.SchedulerEvalRate / 60, RPSOut: snap.SchedulerEvalRate / 60, LatencyMs: snap.SchedulerEvalDurationMs, ErrorRate: float64(snap.SchedulerPanics), Status: thresholdStatus(snap.SchedulerEvalDurationMs, thresholdMap["scheduler_health"])},
-		{Component: "scaler", RPSIn: float64(snap.WorkloadsScaledCount), RPSOut: snap.K8sGetRate/60 + snap.K8sPatchRate/60, LatencyMs: snap.ScaleOperationDurationMs, ErrorRate: 0, Status: "ok"},
-		{Component: "k8s-client", RPSIn: k8sRPS, RPSOut: k8sRPS, LatencyMs: snap.K8sLatencyP50Ms, ErrorRate: snap.K8sErrorRate / 60, Status: thresholdStatus(k8sRPS, thresholdMap["k8s_api"])},
-		{Component: "store", RPSIn: snap.HTTPRequestRate * 0.6, RPSOut: snap.HTTPRequestRate * 0.6, LatencyMs: 5, ErrorRate: float64(snap.AuditDrops), Status: "ok"},
-		{Component: "ws-broker", RPSIn: float64(snap.WSActiveConnections), RPSOut: float64(snap.WSActiveConnections), LatencyMs: 1, ErrorRate: 0, Status: thresholdStatus(float64(snap.WSActiveConnections), thresholdMap["ws_connections"])},
-	}
-
-	links := []store.RiverLinkMetrics{
-		{Source: "router", Target: "auth", RPS: snap.HTTPRequestRate, LatencyMs: 2, Category: "http"},
-		{Source: "auth", Target: "handlers", RPS: snap.HTTPRequestRate * 0.98, LatencyMs: 1, Category: "http"},
-		{Source: "handlers", Target: "scheduler", RPS: snap.SchedulerEvalRate / 60, LatencyMs: 1, Category: "internal"},
-		{Source: "handlers", Target: "store", RPS: snap.HTTPRequestRate * 0.6, LatencyMs: 5, Category: "store"},
-		{Source: "handlers", Target: "ws-broker", RPS: float64(snap.WSActiveConnections) * 0.1, LatencyMs: 1, Category: "ws"},
-		{Source: "scheduler", Target: "scaler", RPS: float64(snap.WorkloadsScaledCount) * 0.5, LatencyMs: snap.SchedulerEvalDurationMs, Category: "internal"},
-		{Source: "scaler", Target: "k8s-client", RPS: (snap.K8sPatchRate + snap.K8sDeleteRate) / 60, LatencyMs: 50, Category: "k8s"},
-		{Source: "k8s-client", Target: "store", RPS: snap.K8sGetRate / 60 * 0.3, LatencyMs: 5, Category: "store"},
-		{Source: "scheduler", Target: "ws-broker", RPS: snap.SchedulerEvalRate / 60 * 0.5, LatencyMs: 1, Category: "ws"},
-		{Source: "ws-broker", Target: "handlers", RPS: float64(snap.WSActiveConnections) * 0.05, LatencyMs: 1, Category: "ws"},
-	}
-
-	return store.ObservabilityStreamPayload{
-		Snapshot:    *snap,
-		Components:  components,
-		Links:       links,
-		Thresholds:  thresholds,
-		RecentCalls: recentCalls,
-	}
-}
-
-func thresholdStatus(value float64, t store.ObservabilityThreshold) string {
-	if t.PanelKey == "" {
-		return "ok"
-	}
-	// For cache_hit, lower is worse (inverted)
-	if t.PanelKey == "cache_hit" {
-		if value < t.CritVal {
-			return "crit"
-		}
-		if value < t.WarnVal {
-			return "warn"
-		}
-		return "ok"
-	}
-	if value >= t.CritVal {
-		return "crit"
-	}
-	if value >= t.WarnVal {
-		return "warn"
-	}
-	return "ok"
 }

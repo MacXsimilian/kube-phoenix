@@ -28,12 +28,12 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	saved := h.savedReplicasMap()
+	savedReplicas := h.savedReplicasMap()
 
 	// Cache-first: serve from in-memory snapshot when ready
 	if h.cache != nil {
-		if snap := h.cache.Snapshot(); snap.Ready() {
-			jsonOK(w, buildWorkloadResponse(snap.Deployments, snap.StatefulSets, saved))
+		if snapshot := h.cache.Snapshot(); snapshot.Ready() {
+			jsonOK(w, buildWorkloadResponse(snapshot.Deployments, snapshot.StatefulSets, savedReplicas))
 			return
 		}
 	}
@@ -41,26 +41,33 @@ func (h *Handler) getWorkloads(w http.ResponseWriter, r *http.Request) {
 	// Fallback: fetch deployments and statefulsets in parallel
 	ctx := r.Context()
 	var (
-		deployments  []appsv1.Deployment
-		statefulsets []appsv1.StatefulSet
-		dErr, ssErr  error
-		wg           sync.WaitGroup
+		deployments     []appsv1.Deployment
+		statefulSets    []appsv1.StatefulSet
+		deploymentsErr  error
+		statefulSetsErr error
+		wg              sync.WaitGroup
 	)
 	wg.Add(2)
-	go func() { defer wg.Done(); deployments, dErr = h.k8s.ListDeployments(ctx, "") }()
-	go func() { defer wg.Done(); statefulsets, ssErr = h.k8s.ListStatefulSets(ctx, "") }()
+	go func() {
+		defer wg.Done()
+		deployments, deploymentsErr = h.k8s.ListDeployments(ctx, "")
+	}()
+	go func() {
+		defer wg.Done()
+		statefulSets, statefulSetsErr = h.k8s.ListStatefulSets(ctx, "")
+	}()
 	wg.Wait()
 
-	if dErr != nil {
-		jsonInternalError(w, dErr, "list deployments failed")
+	if deploymentsErr != nil {
+		jsonInternalError(w, deploymentsErr, "list deployments failed")
 		return
 	}
-	if ssErr != nil {
-		jsonInternalError(w, ssErr, "list statefulsets failed")
+	if statefulSetsErr != nil {
+		jsonInternalError(w, statefulSetsErr, "list statefulsets failed")
 		return
 	}
 
-	jsonOK(w, buildWorkloadResponse(deployments, statefulsets, saved))
+	jsonOK(w, buildWorkloadResponse(deployments, statefulSets, savedReplicas))
 }
 
 // savedReplicasMap returns a map of workloadKey ("Kind/Namespace/Name") → saved
@@ -70,16 +77,16 @@ func (h *Handler) savedReplicasMap() map[string]int32 {
 	if h.store == nil {
 		return nil
 	}
-	snaps, err := h.store.GetAllOpenSnapshots()
+	snapshots, err := h.store.GetAllOpenSnapshots()
 	if err != nil {
 		slog.Warn("savedReplicasMap: failed to list open snapshots", "err", err)
 		return nil
 	}
-	out := make(map[string]int32, len(snaps))
-	for _, s := range snaps {
-		out[s.Kind+"/"+s.Namespace+"/"+s.Name] = s.ReplicasBefore
+	savedReplicas := make(map[string]int32, len(snapshots))
+	for _, snapshot := range snapshots {
+		savedReplicas[snapshot.Kind+"/"+snapshot.Namespace+"/"+snapshot.Name] = snapshot.ReplicasBefore
 	}
-	return out
+	return savedReplicas
 }
 
 // workloadMeta holds the kind-agnostic fields needed to build a WorkloadResponse.
@@ -92,20 +99,20 @@ type workloadMeta struct {
 }
 
 // toWorkloadResponse converts a workloadMeta into a WorkloadResponse.
-func toWorkloadResponse(m workloadMeta, saved map[string]int32) WorkloadResponse {
-	current := int32(0)
-	if m.Replicas != nil {
-		current = *m.Replicas
+func toWorkloadResponse(workload workloadMeta, saved map[string]int32) WorkloadResponse {
+	currentReplicas := int32(0)
+	if workload.Replicas != nil {
+		currentReplicas = *workload.Replicas
 	}
-	savedPtr := lookupSaved(saved, m.Kind, m.Namespace, m.Name)
+	savedReplicas := lookupSaved(saved, workload.Kind, workload.Namespace, workload.Name)
 	return WorkloadResponse{
-		Namespace:       m.Namespace,
-		Name:            m.Name,
-		Kind:            m.Kind,
-		CurrentReplicas: current,
-		SavedReplicas:   savedPtr,
-		ReadyReplicas:   m.ReadyReplicas,
-		Status:          workloadStatus(current, savedPtr),
+		Namespace:       workload.Namespace,
+		Name:            workload.Name,
+		Kind:            workload.Kind,
+		CurrentReplicas: currentReplicas,
+		SavedReplicas:   savedReplicas,
+		ReadyReplicas:   workload.ReadyReplicas,
+		Status:          workloadStatus(currentReplicas, savedReplicas),
 	}
 }
 
@@ -120,21 +127,25 @@ func lookupSaved(saved map[string]int32, kind, namespace, name string) *int32 {
 	return &v
 }
 
-func buildWorkloadResponse(deployments []appsv1.Deployment, statefulsets []appsv1.StatefulSet, saved map[string]int32) []WorkloadResponse {
-	result := make([]WorkloadResponse, 0, len(deployments)+len(statefulsets))
+func buildWorkloadResponse(deployments []appsv1.Deployment, statefulSets []appsv1.StatefulSet, saved map[string]int32) []WorkloadResponse {
+	result := make([]WorkloadResponse, 0, len(deployments)+len(statefulSets))
 
-	for _, d := range deployments {
+	for _, deployment := range deployments {
 		result = append(result, toWorkloadResponse(workloadMeta{
-			Namespace: d.Namespace, Name: d.Name, Kind: "Deployment",
-			Replicas:      d.Spec.Replicas,
-			ReadyReplicas: d.Status.ReadyReplicas,
+			Namespace:     deployment.Namespace,
+			Name:          deployment.Name,
+			Kind:          "Deployment",
+			Replicas:      deployment.Spec.Replicas,
+			ReadyReplicas: deployment.Status.ReadyReplicas,
 		}, saved))
 	}
-	for _, ss := range statefulsets {
+	for _, statefulSet := range statefulSets {
 		result = append(result, toWorkloadResponse(workloadMeta{
-			Namespace: ss.Namespace, Name: ss.Name, Kind: "StatefulSet",
-			Replicas:      ss.Spec.Replicas,
-			ReadyReplicas: ss.Status.ReadyReplicas,
+			Namespace:     statefulSet.Namespace,
+			Name:          statefulSet.Name,
+			Kind:          "StatefulSet",
+			Replicas:      statefulSet.Spec.Replicas,
+			ReadyReplicas: statefulSet.Status.ReadyReplicas,
 		}, saved))
 	}
 

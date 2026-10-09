@@ -135,8 +135,8 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, updated)
 }
 
-// sanitizeUserUpdate enforces role/self-modification rules and strips non-editable
-// fields from body. Returns an error message and HTTP status, or "" if valid.
+// sanitizeUserUpdate enforces role/self-modification rules and removes role
+// updates for OIDC users. Returns an error message and HTTP status, or "" if valid.
 func sanitizeUserUpdate(body map[string]interface{}, target *store.User, caller *store.User, id uint) (string, int) {
 	// OIDC users: role is managed by AD groups, not editable here.
 	if target.Source == "oidc" {

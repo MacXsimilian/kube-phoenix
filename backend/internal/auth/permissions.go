@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package auth provides permission-based RBAC, rate limiting, and (later) OIDC helpers.
+// Package auth provides permission-based RBAC, rate limiting, and OIDC helpers.
 package auth
 
 // Permission represents a granular action that can be allowed or denied per role.
@@ -21,45 +21,64 @@ const (
 // AllPermissions is an ordered list used by the /api/auth/me endpoint to return
 // the permission set for the authenticated user.
 var AllPermissions = []Permission{
-	PermViewAll, PermScheduleEdit, PermScheduleTrigger, PermGuardrailEdit,
-	PermUserManage, PermAdminResetDB, PermAdminEmergencyScale, PermAuditView, PermPasswordChange,
+	PermViewAll,
+	PermScheduleEdit,
+	PermScheduleTrigger,
+	PermGuardrailEdit,
+	PermUserManage,
+	PermAdminResetDB,
+	PermAdminEmergencyScale,
+	PermAuditView,
+	PermPasswordChange,
 }
 
 // RolePermissions maps each role to its allowed permissions.
 var RolePermissions = map[string]map[Permission]bool{
 	"admin": {
-		PermViewAll: true, PermScheduleEdit: true, PermScheduleTrigger: true,
-		PermGuardrailEdit: true, PermUserManage: true, PermAdminResetDB: true,
-		PermAdminEmergencyScale: true, PermAuditView: true, PermPasswordChange: true,
+		PermViewAll:             true,
+		PermScheduleEdit:        true,
+		PermScheduleTrigger:     true,
+		PermGuardrailEdit:       true,
+		PermUserManage:          true,
+		PermAdminResetDB:        true,
+		PermAdminEmergencyScale: true,
+		PermAuditView:           true,
+		PermPasswordChange:      true,
 	},
 	"operator": {
-		PermViewAll: true, PermScheduleEdit: true, PermScheduleTrigger: true,
-		PermGuardrailEdit: true, PermAuditView: true, PermPasswordChange: true,
+		PermViewAll:         true,
+		PermScheduleEdit:    true,
+		PermScheduleTrigger: true,
+		PermGuardrailEdit:   true,
+		PermAuditView:       true,
+		PermPasswordChange:  true,
 	},
 	"viewer": {
-		PermViewAll: true, PermAuditView: true, PermPasswordChange: true,
+		PermViewAll:        true,
+		PermAuditView:      true,
+		PermPasswordChange: true,
 	},
 }
 
 // HasPermission reports whether the given role has the specified permission.
 func HasPermission(role string, perm Permission) bool {
-	perms, ok := RolePermissions[role]
+	permissions, ok := RolePermissions[role]
 	if !ok {
 		return false
 	}
-	return perms[perm]
+	return permissions[perm]
 }
 
 // PermissionsForRole returns all permissions granted to the given role.
 func PermissionsForRole(role string) []Permission {
-	perms := RolePermissions[role]
-	var out []Permission
-	for _, p := range AllPermissions {
-		if perms[p] {
-			out = append(out, p)
+	permissions := RolePermissions[role]
+	var granted []Permission
+	for _, permission := range AllPermissions {
+		if permissions[permission] {
+			granted = append(granted, permission)
 		}
 	}
-	return out
+	return granted
 }
 
 // ValidRole reports whether role is one of the recognised roles.

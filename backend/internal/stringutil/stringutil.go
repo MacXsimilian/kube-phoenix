@@ -12,22 +12,22 @@ func SplitCSV(s string) []string {
 		return nil
 	}
 	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			values = append(values, part)
 		}
 	}
-	return out
+	return values
 }
 
 // SplitCSVSet splits a comma-separated string into a trimmed set (map),
 // discarding empty segments.
 func SplitCSVSet(s string) map[string]bool {
-	m := map[string]bool{}
-	for _, v := range SplitCSV(s) {
-		m[v] = true
+	values := map[string]bool{}
+	for _, value := range SplitCSV(s) {
+		values[value] = true
 	}
-	return m
+	return values
 }

@@ -110,22 +110,22 @@ func (h *Handler) getPolicySnapshots(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := r.URL.Query()
-	var snaps []store.WorkloadSnapshot
-	var snapsErr error
+	var snapshots []store.WorkloadSnapshot
+	var snapshotsErr error
 	if query.Get("open") == "true" {
-		snaps, snapsErr = h.store.GetOpenSnapshots(id)
+		snapshots, snapshotsErr = h.store.GetOpenSnapshots(id)
 	} else {
-		snaps, snapsErr = h.store.GetSnapshotsForPolicy(id)
+		snapshots, snapshotsErr = h.store.GetSnapshotsForPolicy(id)
 	}
-	if snapsErr != nil {
-		jsonInternalError(w, snapsErr, "get policy snapshots failed")
+	if snapshotsErr != nil {
+		jsonInternalError(w, snapshotsErr, "get policy snapshots failed")
 		return
 	}
-	jsonOK(w, snaps)
+	jsonOK(w, snapshots)
 }
 
-// wsPolicyExecutionLogs streams PolicyLogLine entries via WebSocket,
-// following the same pattern as wsExecutionLogs.
+// wsPolicyExecutionLogs sends persisted log history, replays buffered lines,
+// and streams new PolicyLogLine entries until the execution finishes.
 func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r, "id")
 	if err != nil {
@@ -133,7 +133,7 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	exec, err := h.store.GetPolicyExecution(id)
+	execution, err := h.store.GetPolicyExecution(id)
 	if err != nil {
 		http.Error(w, ErrNotFound, http.StatusNotFound)
 		return
@@ -141,12 +141,12 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 
 	// Atomically claim a connection slot to avoid TOCTOU race.
 	for {
-		cur := wsConnectionCount.Load()
-		if cur >= maxWSConnections {
+		connectionCount := wsConnectionCount.Load()
+		if connectionCount >= maxWSConnections {
 			http.Error(w, "too many WebSocket connections", http.StatusServiceUnavailable)
 			return
 		}
-		if wsConnectionCount.CompareAndSwap(cur, cur+1) {
+		if wsConnectionCount.CompareAndSwap(connectionCount, connectionCount+1) {
 			break
 		}
 	}
@@ -170,7 +170,7 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 		_ = conn.Close()
 	}()
 
-	if exec.Status != store.ExecStatusRunning {
+	if execution.Status != store.ExecStatusRunning {
 		// Execution already finished — send persisted lines and close.
 		existing, err := h.store.GetPolicyLogLines(id)
 		if err != nil {
@@ -185,13 +185,13 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 	// the DB query runs. The replay buffer covers lines not yet flushed to
 	// the database, closing the gap between persisted history and the live
 	// stream. See docs/observability.md "Log Streaming Architecture".
-	sub, replayLines := h.policyScheduler.Broker.Subscribe(id)
-	if sub == nil {
+	subscription, replayLines := h.policyScheduler.Broker.Subscribe(id)
+	if subscription == nil {
 		slog.Warn("ws policy: subscriber limit reached", "execID", id)
 		wsCloseNormal(conn, done, "subscriber limit reached")
 		return
 	}
-	defer h.policyScheduler.Broker.Unsubscribe(id, sub)
+	defer h.policyScheduler.Broker.Unsubscribe(id, subscription)
 
 	// Fetch persisted lines from DB.
 	existing, err := h.store.GetPolicyLogLines(id)
@@ -208,11 +208,11 @@ func (h *Handler) wsPolicyExecutionLogs(w http.ResponseWriter, r *http.Request) 
 
 	// Re-check: may have finished between initial check and Subscribe.
 	if fresh, err := h.store.GetPolicyExecution(id); err == nil && fresh.Status != store.ExecStatusRunning {
-		wsDrainChannel(conn, sub)
+		wsDrainChannel(conn, subscription)
 		wsCloseNormal(conn, done, "execution finished")
 		return
 	}
 
 	_ = conn.SetReadDeadline(time.Now().Add(wsPongTimeout))
-	wsStreamLoop(conn, done, sub, r)
+	wsStreamLoop(conn, done, subscription, r)
 }

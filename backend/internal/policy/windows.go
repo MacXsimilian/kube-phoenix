@@ -110,46 +110,46 @@ func CronsToWindows(sleepCron, wakeCron string) ([]SleepWindow, error) {
 		return nil, nil
 	}
 
-	sMin, sHour, sDays, ok := parseSingleCron(sleepCron)
+	sleepMinute, sleepHour, sleepDays, ok := parseSingleCron(sleepCron)
 	if !ok {
 		return nil, nil
 	}
-	wMin, wHour, wDays, ok := parseSingleCron(wakeCron)
+	wakeMinute, wakeHour, wakeDays, ok := parseSingleCron(wakeCron)
 	if !ok {
 		return nil, nil
 	}
 
-	startTime := fmt.Sprintf("%02d:%02d", sHour, sMin)
-	endTime := fmt.Sprintf("%02d:%02d", wHour, wMin)
+	startTime := fmt.Sprintf("%02d:%02d", sleepHour, sleepMinute)
+	endTime := fmt.Sprintf("%02d:%02d", wakeHour, wakeMinute)
 
 	overnight := isOvernightTimes(startTime, endTime)
 
 	var windowDays []int
 	if overnight {
-		wakeSet := map[int]bool{}
-		for _, d := range wDays {
-			wakeSet[d] = true
+		wakeDaySet := map[int]bool{}
+		for _, d := range wakeDays {
+			wakeDaySet[d] = true
 		}
-		for _, d := range sDays {
-			if !wakeSet[(d+1)%7] {
+		for _, d := range sleepDays {
+			if !wakeDaySet[(d+1)%7] {
 				return nil, nil
 			}
 		}
-		windowDays = sDays
+		windowDays = sleepDays
 	} else {
-		if len(sDays) != len(wDays) {
+		if len(sleepDays) != len(wakeDays) {
 			return nil, nil
 		}
-		sSet := map[int]bool{}
-		for _, d := range sDays {
-			sSet[d] = true
+		sleepDaySet := map[int]bool{}
+		for _, d := range sleepDays {
+			sleepDaySet[d] = true
 		}
-		for _, d := range wDays {
-			if !sSet[d] {
+		for _, d := range wakeDays {
+			if !sleepDaySet[d] {
 				return nil, nil
 			}
 		}
-		windowDays = sDays
+		windowDays = sleepDays
 	}
 
 	sort.Ints(windowDays)

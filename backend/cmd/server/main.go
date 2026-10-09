@@ -55,7 +55,7 @@ func main() {
 	}
 
 	// ── Store (PostgreSQL) ────────────────────────────────────────────────
-	st, err := store.New(cfg.DatabaseURL, store.PoolConfig{
+	dataStore, err := store.New(cfg.DatabaseURL, store.PoolConfig{
 		MaxOpenConns:           cfg.DBMaxOpenConns,
 		MaxIdleConns:           cfg.DBMaxIdleConns,
 		ConnMaxLifetimeMinutes: cfg.DBConnMaxLifetimeMinutes,
@@ -65,39 +65,22 @@ func main() {
 		slog.Error("store init failed", "err", err)
 		os.Exit(1)
 	}
-	defer st.Close()
+	defer dataStore.Close()
 	ownerCtx, ownerCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	owner, err := st.AcquireSchedulerOwnership(ownerCtx)
+	owner, err := dataStore.AcquireSchedulerOwnership(ownerCtx)
 	ownerCancel()
 	if err != nil {
 		slog.Error("scheduler ownership unavailable", "err", err)
 		os.Exit(1)
 	}
 	defer owner.Close()
-	// A lost database session releases its lock. Exit rather than continuing
-	// work under an ownership claim that PostgreSQL no longer recognizes.
 	watchStop, watchDone := make(chan struct{}), make(chan struct{})
-	defer func() { close(watchStop); <-watchDone }()
-	go func() {
-		defer close(watchDone)
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-watchStop:
-				return
-			case <-ticker.C:
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			err := owner.Check(ctx)
-			cancel()
-			if err != nil {
-				slog.Error("scheduler ownership lost", "err", err)
-				os.Exit(1)
-			}
-		}
+	defer func() {
+		close(watchStop)
+		<-watchDone
 	}()
-	if err := st.SeedDefaults(cfg.AdminUser, cfg.AdminPassword); err != nil {
+	go watchSchedulerOwnership(owner, watchStop, watchDone)
+	if err := dataStore.SeedDefaults(cfg.AdminUser, cfg.AdminPassword); err != nil {
 		slog.Error("seed failed", "err", err)
 		os.Exit(1)
 	}
@@ -130,8 +113,8 @@ func main() {
 
 	// Two contexts so HTTP shutdown can finish (handlers may still produce
 	// audit entries) before we cancel the AuditWriter and let it drain.
-	bgCtx, bgCancel := context.WithCancel(context.Background())
-	defer bgCancel()
+	workerCtx, cancelWorkers := context.WithCancel(context.Background())
+	defer cancelWorkers()
 	auditCtx, auditCancel := context.WithCancel(context.Background())
 	defer auditCancel()
 
@@ -144,52 +127,52 @@ func main() {
 	var cache *k8sclient.ClusterCache
 	if k8s != nil {
 		cache = k8sclient.NewClusterCache(k8s.Clientset())
-		cache.Start(bgCtx)
+		cache.Start(workerCtx)
 		defer cache.Stop()
 	}
 
 	// ── Observability collector ───────────────────────────────────────────
 	// Must be initialised before the policy scheduler so SetCallRecorder
 	// happens-before the scheduler's tickLoop goroutines read callRecorder.
-	obsCollector, err := observability.NewCollector(st)
+	collector, err := observability.NewCollector(dataStore)
 	if err != nil {
 		slog.Error("observability collector init failed", "err", err)
 		os.Exit(1)
 	}
 	if k8s != nil {
-		k8s.SetCallRecorder(obsCollector.CallRecorder())
+		k8s.SetCallRecorder(collector.CallRecorder())
 	}
-	runTracked(&wg, "observability-collector", func() { obsCollector.Start(bgCtx) })
+	runTracked(&wg, "observability-collector", func() { collector.Start(workerCtx) })
 
 	// ── Policy scheduler ──────────────────────────────────────────────────
-	g, err := st.GetGuardrails()
+	guardrails, err := dataStore.GetGuardrails()
 	if err != nil {
 		slog.Error("failed to load guardrails", "err", err)
 		os.Exit(1)
 	}
-	policySched := scheduler.NewPolicyScheduler(st, k8s, scheduler.SchedulerConfig{
-		TickInterval:        g.ParseSchedulerEvalInterval(),
-		AutoWake:            g.SchedulerAutoWake,
-		ReconcileWhileAwake: g.SchedulerReconcileWhileAwake,
-		EnforceSleep:        g.SchedulerEnforceSleep,
+	policyScheduler := scheduler.NewPolicyScheduler(dataStore, k8s, scheduler.SchedulerConfig{
+		TickInterval:        guardrails.ParseSchedulerEvalInterval(),
+		AutoWake:            guardrails.SchedulerAutoWake,
+		ReconcileWhileAwake: guardrails.SchedulerReconcileWhileAwake,
+		EnforceSleep:        guardrails.SchedulerEnforceSleep,
 	})
 	if k8s != nil {
-		if err := policySched.Start(bgCtx); err != nil {
+		if err := policyScheduler.Start(workerCtx); err != nil {
 			slog.Error("policy scheduler failed to start", "err", err)
 			os.Exit(1)
 		}
-		defer policySched.Stop()
+		defer policyScheduler.Stop()
 	}
 
 	// ── Audit writer (separate ctx — must drain after HTTP shutdown) ──────
-	auditWriter := api.NewAuditWriter(st, 4096)
+	auditWriter := api.NewAuditWriter(dataStore, 4096)
 	runTracked(&wg, "audit-writer", func() { auditWriter.Start(auditCtx) })
 
-	startMaintenanceTickers(bgCtx, st, cfg.AuditRetentionDays, &wg)
+	startMaintenanceTickers(workerCtx, dataStore, cfg.AuditRetentionDays, &wg)
 
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(bgCtx, cfg, st, k8s, policySched, cache, obsCollector, auditWriter)
-	srv := &http.Server{
+	router := api.NewRouter(workerCtx, cfg, dataStore, k8s, policyScheduler, cache, collector, auditWriter)
+	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", *port),
 		Handler:           router,
 		ReadTimeout:       httpReadTimeout,
@@ -200,7 +183,7 @@ func main() {
 
 	go func() {
 		slog.Info("kube-phoenix listening", "port", *port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server error", "err", err)
 			os.Exit(1)
 		}
@@ -213,7 +196,7 @@ func main() {
 	//   2. Cancel background workers (collector, scheduler, tickers).
 	//   3. Cancel the audit writer last so its drain loop sees every entry
 	//      produced during step 1.
-	//   4. wg.Wait, then defer st.Close() — only safe to drop the DB now.
+	//   4. wg.Wait, then defer dataStore.Close() — only safe to drop the DB now.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
@@ -221,18 +204,40 @@ func main() {
 	slog.Info("shutdown: stopping HTTP server")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown: HTTP server error", "err", err)
 	}
 
 	slog.Info("shutdown: stopping background workers")
-	bgCancel()
+	cancelWorkers()
 
 	slog.Info("shutdown: draining audit writer")
 	auditCancel()
 
 	wg.Wait()
 	slog.Info("bye")
+}
+
+// watchSchedulerOwnership exits the process if the database session loses its
+// advisory lock. Stop and join this watcher before releasing ownership.
+func watchSchedulerOwnership(owner *store.SchedulerOwnership, watchStop <-chan struct{}, watchDone chan<- struct{}) {
+	defer close(watchDone)
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-watchStop:
+			return
+		case <-ticker.C:
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		err := owner.Check(ctx)
+		cancel()
+		if err != nil {
+			slog.Error("scheduler ownership lost", "err", err)
+			os.Exit(1)
+		}
+	}
 }
 
 // runTracked launches fn in a goroutine bound to wg, recovering from panics so
@@ -250,13 +255,13 @@ func runTracked(wg *sync.WaitGroup, name string, fn func()) {
 	}()
 }
 
-func startMaintenanceTickers(ctx context.Context, st *store.Store, retentionDays int, wg *sync.WaitGroup) {
+func startMaintenanceTickers(ctx context.Context, dataStore *store.Store, retentionDays int, wg *sync.WaitGroup) {
 	// Session cleanup — every 15 minutes.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		runTicker(ctx, sessionCleanupInterval, "session-cleanup", func() {
-			deleted, err := st.CleanExpiredSessions()
+			deleted, err := dataStore.CleanExpiredSessions()
 			if err != nil {
 				slog.Error("session-cleanup failed", "err", err)
 				return
@@ -264,7 +269,7 @@ func startMaintenanceTickers(ctx context.Context, st *store.Store, retentionDays
 			if deleted > 0 {
 				slog.Info("session-cleanup: expired sessions removed", "count", deleted)
 			}
-			if count, err := st.CountActiveSessions(); err == nil {
+			if count, err := dataStore.CountActiveSessions(); err == nil {
 				metrics.ActiveSessions.Set(float64(count))
 			}
 		})
@@ -277,12 +282,12 @@ func startMaintenanceTickers(ctx context.Context, st *store.Store, retentionDays
 			defer wg.Done()
 			retention := time.Duration(retentionDays) * 24 * time.Hour
 			runTicker(ctx, auditRetentionInterval, "data-retention", func() {
-				if n, err := st.CleanOldAuditLogs(retention); err != nil {
+				if n, err := dataStore.CleanOldAuditLogs(retention); err != nil {
 					slog.Error("retention: audit logs failed", "err", err)
 				} else if n > 0 {
 					slog.Info("retention: old audit logs removed", "count", n)
 				}
-				if n, err := st.CleanOldExecutions(retention); err != nil {
+				if n, err := dataStore.CleanOldExecutions(retention); err != nil {
 					slog.Error("retention: old executions failed", "err", err)
 				} else if n > 0 {
 					slog.Info("retention: old executions removed (cascades to log lines + snapshots)", "count", n)

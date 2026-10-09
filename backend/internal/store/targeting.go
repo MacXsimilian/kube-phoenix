@@ -26,7 +26,7 @@ func ValidateExceptionTargets(selector string, targets []WorkloadTarget) error {
 
 // Matches uses intersection across namespaces, labels and explicit targets;
 // entries within each namespace/target list are alternatives.
-func (e ScheduledException) Matches(kind, ns, name string, workloadLabels map[string]string) (bool, error) {
+func (e ScheduledException) Matches(kind, namespace, name string, workloadLabels map[string]string) (bool, error) {
 	targets, err := e.GetWorkloadTargets()
 	if err != nil {
 		return false, err
@@ -34,7 +34,7 @@ func (e ScheduledException) Matches(kind, ns, name string, workloadLabels map[st
 	if err := ValidateExceptionTargets(e.LabelSelector, targets); err != nil {
 		return false, err
 	}
-	if e.NamespaceFilter != "" && !stringutil.SplitCSVSet(e.NamespaceFilter)[ns] {
+	if e.NamespaceFilter != "" && !stringutil.SplitCSVSet(e.NamespaceFilter)[namespace] {
 		return false, nil
 	}
 	selector, err := labels.Parse(e.LabelSelector)
@@ -48,21 +48,21 @@ func (e ScheduledException) Matches(kind, ns, name string, workloadLabels map[st
 		return true, nil
 	}
 	for _, target := range targets {
-		if target.Kind == kind && target.Namespace == ns && target.Name == name {
+		if target.Kind == kind && target.Namespace == namespace && target.Name == name {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-func (p Policy) AllowsExceptionTarget(kind, ns, name string, workloadLabels map[string]string) (bool, error) {
+func (p Policy) AllowsExceptionTarget(kind, namespace, name string, workloadLabels map[string]string) (bool, error) {
 	if p.ExceptionScope == nil {
 		return true, nil
 	}
 	parent := ScheduledException{NamespaceFilter: p.NamespaceFilter, LabelSelector: p.LabelSelector}
-	allowed, err := parent.Matches(kind, ns, name, workloadLabels)
+	allowed, err := parent.Matches(kind, namespace, name, workloadLabels)
 	if err != nil || !allowed {
 		return false, err
 	}
-	return p.ExceptionScope.Matches(kind, ns, name, workloadLabels)
+	return p.ExceptionScope.Matches(kind, namespace, name, workloadLabels)
 }

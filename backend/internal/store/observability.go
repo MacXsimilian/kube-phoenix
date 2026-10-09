@@ -87,11 +87,11 @@ func (s *Store) SaveMetricSnapshot(snap *MetricSnapshot) error {
 // The caller is responsible for downsampling if the range is large.
 func (s *Store) QueryMetricSnapshots(from, to time.Time, limit int) ([]MetricSnapshot, error) {
 	var rows []MetricSnapshot
-	q := s.db.Where("timestamp BETWEEN ? AND ?", from, to).Order("timestamp ASC")
+	query := s.db.Where("timestamp BETWEEN ? AND ?", from, to).Order("timestamp ASC")
 	if limit > 0 {
-		q = q.Limit(limit)
+		query = query.Limit(limit)
 	}
-	if err := q.Find(&rows).Error; err != nil {
+	if err := query.Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	return rows, nil
@@ -118,8 +118,8 @@ func (s *Store) QueryMetricSnapshotsDownsampled(from, to time.Time, maxPoints in
 
 // PruneMetricSnapshots deletes snapshots older than the given cutoff.
 func (s *Store) PruneMetricSnapshots(before time.Time) (int64, error) {
-	tx := s.db.Where("timestamp < ?", before).Delete(&MetricSnapshot{})
-	return tx.RowsAffected, tx.Error
+	result := s.db.Where("timestamp < ?", before).Delete(&MetricSnapshot{})
+	return result.RowsAffected, result.Error
 }
 
 // ListObservabilityThresholds returns all configured thresholds.
@@ -132,10 +132,10 @@ func (s *Store) ListObservabilityThresholds() ([]ObservabilityThreshold, error) 
 }
 
 // UpsertObservabilityThreshold creates or updates a threshold for the given panel.
-func (s *Store) UpsertObservabilityThreshold(t *ObservabilityThreshold) error {
-	return s.db.Where("panel_key = ?", t.PanelKey).
-		Assign(ObservabilityThreshold{WarnVal: t.WarnVal, CritVal: t.CritVal}).
-		FirstOrCreate(t).Error
+func (s *Store) UpsertObservabilityThreshold(threshold *ObservabilityThreshold) error {
+	return s.db.Where("panel_key = ?", threshold.PanelKey).
+		Assign(ObservabilityThreshold{WarnVal: threshold.WarnVal, CritVal: threshold.CritVal}).
+		FirstOrCreate(threshold).Error
 }
 
 // SeedDefaultThresholds inserts default thresholds if none exist.
@@ -167,7 +167,7 @@ func (s *Store) SeedDefaultThresholds() error {
 	})
 }
 
-// downsampleSnapshots reduces a slice of snapshots by averaging every n rows.
+// DownsampleSnapshots reduces a slice of snapshots by averaging every n rows.
 // Used when the frontend requests longer time ranges.
 func DownsampleSnapshots(rows []MetricSnapshot, targetCount int) []MetricSnapshot {
 	if len(rows) <= targetCount || targetCount <= 0 {
@@ -191,61 +191,62 @@ func DownsampleSnapshots(rows []MetricSnapshot, targetCount int) []MetricSnapsho
 }
 
 func averageBucket(bucket []MetricSnapshot) MetricSnapshot {
-	n := float64(len(bucket))
+	sampleCount := float64(len(bucket))
 	result := MetricSnapshot{
 		Timestamp: bucket[len(bucket)/2].Timestamp,
 	}
-	for _, s := range bucket {
-		result.HTTPRequestRate += s.HTTPRequestRate
-		result.HTTPLatencyP50Ms += s.HTTPLatencyP50Ms
-		result.HTTPLatencyP95Ms += s.HTTPLatencyP95Ms
-		result.HTTPLatencyP99Ms += s.HTTPLatencyP99Ms
-		result.HTTPErrorRate += s.HTTPErrorRate
-		result.K8sGetRate += s.K8sGetRate
-		result.K8sPatchRate += s.K8sPatchRate
-		result.K8sDeleteRate += s.K8sDeleteRate
-		result.CacheHitRate += s.CacheHitRate
-		result.SchedulerEvalRate += s.SchedulerEvalRate
-		result.SchedulerEvalDurationMs += s.SchedulerEvalDurationMs
-		result.ScaleOperationDurationMs += s.ScaleOperationDurationMs
-		result.TotalErrorRate += s.TotalErrorRate
-		result.PolicySuccessCount += s.PolicySuccessCount
-		result.PolicyFailedCount += s.PolicyFailedCount
-		result.PolicyInterruptedCount += s.PolicyInterruptedCount
-		result.WorkloadsScaledCount += s.WorkloadsScaledCount
-		result.WSActiveConnections += s.WSActiveConnections
-		result.SchedulerPanics += s.SchedulerPanics
-		result.AuditDrops += s.AuditDrops
-		result.RateLimitHits += s.RateLimitHits
-		result.ActiveSessions += s.ActiveSessions
-		result.ActivePolicies += s.ActivePolicies
-		result.K8sErrorRate += s.K8sErrorRate
+	for _, snapshot := range bucket {
+		result.HTTPRequestRate += snapshot.HTTPRequestRate
+		result.HTTPLatencyP50Ms += snapshot.HTTPLatencyP50Ms
+		result.HTTPLatencyP95Ms += snapshot.HTTPLatencyP95Ms
+		result.HTTPLatencyP99Ms += snapshot.HTTPLatencyP99Ms
+		result.HTTPErrorRate += snapshot.HTTPErrorRate
+		result.K8sGetRate += snapshot.K8sGetRate
+		result.K8sPatchRate += snapshot.K8sPatchRate
+		result.K8sDeleteRate += snapshot.K8sDeleteRate
+		result.CacheHitRate += snapshot.CacheHitRate
+		result.SchedulerEvalRate += snapshot.SchedulerEvalRate
+		result.SchedulerEvalDurationMs += snapshot.SchedulerEvalDurationMs
+		result.ScaleOperationDurationMs += snapshot.ScaleOperationDurationMs
+		result.TotalErrorRate += snapshot.TotalErrorRate
+		result.PolicySuccessCount += snapshot.PolicySuccessCount
+		result.PolicyFailedCount += snapshot.PolicyFailedCount
+		result.PolicyInterruptedCount += snapshot.PolicyInterruptedCount
+		result.WorkloadsScaledCount += snapshot.WorkloadsScaledCount
+		result.WSActiveConnections += snapshot.WSActiveConnections
+		result.SchedulerPanics += snapshot.SchedulerPanics
+		result.AuditDrops += snapshot.AuditDrops
+		result.RateLimitHits += snapshot.RateLimitHits
+		result.ActiveSessions += snapshot.ActiveSessions
+		result.ActivePolicies += snapshot.ActivePolicies
+		result.K8sErrorRate += snapshot.K8sErrorRate
 	}
-	averageRateFields(&result, n)
+	averageRateFields(&result, sampleCount)
 	return result
 }
 
-func averageRateFields(s *MetricSnapshot, n float64) {
-	s.HTTPRequestRate /= n
-	s.HTTPLatencyP50Ms /= n
-	s.HTTPLatencyP95Ms /= n
-	s.HTTPLatencyP99Ms /= n
-	s.HTTPErrorRate /= n
-	s.K8sGetRate /= n
-	s.K8sPatchRate /= n
-	s.K8sDeleteRate /= n
-	s.CacheHitRate /= n
-	s.SchedulerEvalRate /= n
-	s.SchedulerEvalDurationMs /= n
-	s.ScaleOperationDurationMs /= n
-	s.TotalErrorRate /= n
-	s.WSActiveConnections = int(float64(s.WSActiveConnections) / n)
-	s.ActiveSessions = int(float64(s.ActiveSessions) / n)
-	s.ActivePolicies = int(float64(s.ActivePolicies) / n)
-	s.K8sErrorRate /= n
+// averageRateFields averages rates and gauges; event counts remain summed.
+func averageRateFields(snapshot *MetricSnapshot, sampleCount float64) {
+	snapshot.HTTPRequestRate /= sampleCount
+	snapshot.HTTPLatencyP50Ms /= sampleCount
+	snapshot.HTTPLatencyP95Ms /= sampleCount
+	snapshot.HTTPLatencyP99Ms /= sampleCount
+	snapshot.HTTPErrorRate /= sampleCount
+	snapshot.K8sGetRate /= sampleCount
+	snapshot.K8sPatchRate /= sampleCount
+	snapshot.K8sDeleteRate /= sampleCount
+	snapshot.CacheHitRate /= sampleCount
+	snapshot.SchedulerEvalRate /= sampleCount
+	snapshot.SchedulerEvalDurationMs /= sampleCount
+	snapshot.ScaleOperationDurationMs /= sampleCount
+	snapshot.TotalErrorRate /= sampleCount
+	snapshot.WSActiveConnections = int(float64(snapshot.WSActiveConnections) / sampleCount)
+	snapshot.ActiveSessions = int(float64(snapshot.ActiveSessions) / sampleCount)
+	snapshot.ActivePolicies = int(float64(snapshot.ActivePolicies) / sampleCount)
+	snapshot.K8sErrorRate /= sampleCount
 }
 
-// maxPointsForRange returns the target number of data points for a time range.
+// MaxPointsForRange returns the target number of data points for a time range.
 func MaxPointsForRange(d time.Duration) int {
 	switch {
 	case d <= time.Minute:

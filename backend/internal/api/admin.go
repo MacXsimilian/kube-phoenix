@@ -176,7 +176,7 @@ func (h *Handler) emergencyScale(w http.ResponseWriter, r *http.Request) {
 		result = emergencyScaleSnapshots(opCtx, h.store, h.k8s, snapshots, emit)
 	}
 
-	// Step 7: Restart the scheduler (all policies are now disabled, so it idles).
+	// Restart the scheduler after recovery; disabled policies leave it idle.
 	emit("step", "Restarting policy scheduler...")
 	if err := h.policyScheduler.Restart(); err != nil {
 		slog.Error("admin: policy scheduler restart failed", "err", err)
@@ -217,74 +217,74 @@ type emergencyPolicyExecution struct {
 // finalises each execution. Progress is reported via emit.
 func emergencyScaleSnapshots(
 	ctx context.Context,
-	st emergencyScaleStore,
+	recoveryStore emergencyScaleStore,
 	k8sClient k8sScaler,
 	snapshots []store.WorkloadSnapshot,
 	emit func(typ, msg string),
 ) emergencyScaleCounts {
-	policyExecs := createEmergencyExecutions(st, snapshots, emit)
+	executionsByPolicy := createEmergencyExecutions(recoveryStore, snapshots, emit)
 
-	for _, snap := range snapshots {
-		exec := policyExecs[snap.PolicyID]
-		if exec.id == 0 {
-			exec.counts.failed++
+	for _, snapshot := range snapshots {
+		execution := executionsByPolicy[snapshot.PolicyID]
+		if execution.id == 0 {
+			execution.counts.failed++
 			continue
 		}
-		if err := scaleWorkloadTo(ctx, k8sClient, snap, 1); err != nil {
+		if err := scaleWorkloadTo(ctx, k8sClient, snapshot, 1); err != nil {
 			if apierrors.IsNotFound(err) {
-				if err := st.MarkSnapshotDeletedAtWake(snap.ID, exec.id); err != nil {
-					slog.Error("admin: mark missing snapshot failed", "snapID", snap.ID, "err", err)
-					emit("step", fmt.Sprintf("Failed to record missing %s %s/%s; snapshot retained for retry", snap.Kind, snap.Namespace, snap.Name))
-					exec.counts.failed++
+				if err := recoveryStore.MarkSnapshotDeletedAtWake(snapshot.ID, execution.id); err != nil {
+					slog.Error("admin: mark missing snapshot failed", "snapID", snapshot.ID, "err", err)
+					emit("step", fmt.Sprintf("Failed to record missing %s %s/%s; snapshot retained for retry", snapshot.Kind, snapshot.Namespace, snapshot.Name))
+					execution.counts.failed++
 				} else {
-					emit("step", fmt.Sprintf("Skipped missing %s %s/%s", snap.Kind, snap.Namespace, snap.Name))
-					exec.counts.skipped++
+					emit("step", fmt.Sprintf("Skipped missing %s %s/%s", snapshot.Kind, snapshot.Namespace, snapshot.Name))
+					execution.counts.skipped++
 				}
 				continue
 			}
 			slog.Error("admin: emergency scale workload failed",
-				"kind", snap.Kind, "namespace", snap.Namespace, "name", snap.Name, "err", err)
-			emit("step", fmt.Sprintf("Failed to scale %s %s/%s: %v", snap.Kind, snap.Namespace, snap.Name, err))
-			exec.counts.failed++
+				"kind", snapshot.Kind, "namespace", snapshot.Namespace, "name", snapshot.Name, "err", err)
+			emit("step", fmt.Sprintf("Failed to scale %s %s/%s: %v", snapshot.Kind, snapshot.Namespace, snapshot.Name, err))
+			execution.counts.failed++
 			continue
 		}
-		exec.counts.scaled++
-		if err := st.CloseSnapshot(snap.ID, exec.id, 1); err != nil {
-			slog.Error("admin: close snapshot failed", "snapID", snap.ID, "err", err)
-			emit("step", fmt.Sprintf("Scaled %s %s/%s to 1 replica, but failed to close its snapshot; retained for retry", snap.Kind, snap.Namespace, snap.Name))
-			exec.counts.failed++
+		execution.counts.scaled++
+		if err := recoveryStore.CloseSnapshot(snapshot.ID, execution.id, 1); err != nil {
+			slog.Error("admin: close snapshot failed", "snapID", snapshot.ID, "err", err)
+			emit("step", fmt.Sprintf("Scaled %s %s/%s to 1 replica, but failed to close its snapshot; retained for retry", snapshot.Kind, snapshot.Namespace, snapshot.Name))
+			execution.counts.failed++
 			continue
 		}
-		emit("step", fmt.Sprintf("Scaled %s %s/%s to 1 replica", snap.Kind, snap.Namespace, snap.Name))
+		emit("step", fmt.Sprintf("Scaled %s %s/%s to 1 replica", snapshot.Kind, snapshot.Namespace, snapshot.Name))
 	}
 
 	var result emergencyScaleCounts
-	for policyID, exec := range policyExecs {
+	for policyID, execution := range executionsByPolicy {
 		state := store.PolicyStateAwake
-		if exec.counts.failed > 0 {
+		if execution.counts.failed > 0 {
 			state = store.PolicyStateUnknown
 		}
-		if err := st.UpdatePolicyState(policyID, state, nil); err != nil {
+		if err := recoveryStore.UpdatePolicyState(policyID, state, nil); err != nil {
 			slog.Error("admin: update emergency policy state failed", "policyID", policyID, "err", err)
 			emit("step", fmt.Sprintf("Failed to record recovery state for policy %d", policyID))
-			exec.counts.failed++
+			execution.counts.failed++
 		}
-		if exec.id != 0 {
+		if execution.id != 0 {
 			status := store.ExecStatusSuccess
-			if exec.counts.failed > 0 {
+			if execution.counts.failed > 0 {
 				status = store.ExecStatusFailed
 			}
-			if err := st.FinishPolicyExecution(exec.id, status, map[string]int{
-				"scaled": exec.counts.scaled, "skipped": exec.counts.skipped, "errors": exec.counts.failed,
+			if err := recoveryStore.FinishPolicyExecution(execution.id, status, map[string]int{
+				"scaled": execution.counts.scaled, "skipped": execution.counts.skipped, "errors": execution.counts.failed,
 			}); err != nil {
-				slog.Error("admin: finish emergency execution failed", "execID", exec.id, "err", err)
+				slog.Error("admin: finish emergency execution failed", "execID", execution.id, "err", err)
 				emit("step", fmt.Sprintf("Failed to finalize recovery execution for policy %d", policyID))
-				exec.counts.failed++
+				execution.counts.failed++
 			}
 		}
-		result.scaled += exec.counts.scaled
-		result.skipped += exec.counts.skipped
-		result.failed += exec.counts.failed
+		result.scaled += execution.counts.scaled
+		result.skipped += execution.counts.skipped
+		result.failed += execution.counts.failed
 	}
 
 	emit("step", fmt.Sprintf("Scaling complete: %d scaled, %d skipped, %d errors", result.scaled, result.skipped, result.failed))
@@ -295,43 +295,43 @@ func emergencyScaleSnapshots(
 // one synthetic wake execution per distinct policy referenced by the snapshots.
 // Failed creations retain an entry with a zero ID so scaling is skipped safely.
 func createEmergencyExecutions(
-	st emergencyScaleStore,
+	recoveryStore emergencyScaleStore,
 	snapshots []store.WorkloadSnapshot,
 	emit func(typ, msg string),
 ) map[uint]*emergencyPolicyExecution {
-	policyExecs := map[uint]*emergencyPolicyExecution{}
-	for _, snap := range snapshots {
-		if _, ok := policyExecs[snap.PolicyID]; ok {
+	executionsByPolicy := map[uint]*emergencyPolicyExecution{}
+	for _, snapshot := range snapshots {
+		if _, ok := executionsByPolicy[snapshot.PolicyID]; ok {
 			continue
 		}
-		policyExecs[snap.PolicyID] = &emergencyPolicyExecution{}
-		exec := &store.PolicyExecution{
-			PolicyID:  snap.PolicyID,
+		executionsByPolicy[snapshot.PolicyID] = &emergencyPolicyExecution{}
+		execution := &store.PolicyExecution{
+			PolicyID:  snapshot.PolicyID,
 			Direction: "wake",
 			Trigger:   "emergency_scale",
 			StartedAt: time.Now(),
 			Status:    store.ExecStatusRunning,
 			Mode:      store.PolicyModeApply,
 		}
-		if err := st.CreatePolicyExecution(exec); err != nil {
-			slog.Error("admin: create emergency execution failed", "policyID", snap.PolicyID, "err", err)
-			emit("step", fmt.Sprintf("Warning: could not create execution record for policy %d", snap.PolicyID))
+		if err := recoveryStore.CreatePolicyExecution(execution); err != nil {
+			slog.Error("admin: create emergency execution failed", "policyID", snapshot.PolicyID, "err", err)
+			emit("step", fmt.Sprintf("Warning: could not create execution record for policy %d", snapshot.PolicyID))
 			continue
 		}
-		policyExecs[snap.PolicyID].id = exec.ID
+		executionsByPolicy[snapshot.PolicyID].id = execution.ID
 	}
-	return policyExecs
+	return executionsByPolicy
 }
 
 // scaleWorkloadTo scales a Deployment or StatefulSet to the given replica count.
-func scaleWorkloadTo(ctx context.Context, k8sClient k8sScaler, snap store.WorkloadSnapshot, replicas int32) error {
-	switch snap.Kind {
+func scaleWorkloadTo(ctx context.Context, k8sClient k8sScaler, snapshot store.WorkloadSnapshot, replicas int32) error {
+	switch snapshot.Kind {
 	case "Deployment":
-		return k8sClient.ScaleDeployment(ctx, snap.Namespace, snap.Name, replicas)
+		return k8sClient.ScaleDeployment(ctx, snapshot.Namespace, snapshot.Name, replicas)
 	case "StatefulSet":
-		return k8sClient.ScaleStatefulSet(ctx, snap.Namespace, snap.Name, replicas)
+		return k8sClient.ScaleStatefulSet(ctx, snapshot.Namespace, snapshot.Name, replicas)
 	default:
-		return fmt.Errorf("unsupported workload kind: %s", snap.Kind)
+		return fmt.Errorf("unsupported workload kind: %s", snapshot.Kind)
 	}
 }
 

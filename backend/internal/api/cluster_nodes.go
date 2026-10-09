@@ -53,7 +53,7 @@ func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	g, err := h.store.GetGuardrails()
+	guardrails, err := h.store.GetGuardrails()
 	if err != nil {
 		jsonInternalError(w, err, "get guardrails failed")
 		return
@@ -64,62 +64,68 @@ func (h *Handler) getNodes(w http.ResponseWriter, r *http.Request) {
 
 	// Cache-first: serve from in-memory snapshot when ready
 	if h.cache != nil {
-		if snap := h.cache.Snapshot(); snap.Ready() {
-			nodes = snap.Nodes
-			allPods = snap.Pods
+		if snapshot := h.cache.Snapshot(); snapshot.Ready() {
+			nodes = snapshot.Nodes
+			allPods = snapshot.Pods
 		}
 	}
 
 	if nodes == nil {
 		// Fallback: fetch nodes and pods in parallel
 		ctx := r.Context()
-		var nErr, pErr error
+		var nodesErr, podsErr error
 		var wg sync.WaitGroup
 		wg.Add(2)
-		go func() { defer wg.Done(); nodes, nErr = h.k8s.ListNodes(ctx) }()
-		go func() { defer wg.Done(); allPods, pErr = h.k8s.ListAllPods(ctx) }()
+		go func() {
+			defer wg.Done()
+			nodes, nodesErr = h.k8s.ListNodes(ctx)
+		}()
+		go func() {
+			defer wg.Done()
+			allPods, podsErr = h.k8s.ListAllPods(ctx)
+		}()
 		wg.Wait()
 
-		if nErr != nil {
-			jsonInternalError(w, nErr, "list nodes failed")
+		if nodesErr != nil {
+			jsonInternalError(w, nodesErr, "list nodes failed")
 			return
 		}
-		if pErr != nil {
-			slog.Error("get nodes: failed to list pods — pod counts will be zero", "err", pErr)
+		if podsErr != nil {
+			slog.Error("get nodes: failed to list pods — pod counts will be zero", "err", podsErr)
 			allPods = []corev1.Pod{}
 		}
 	}
 
-	jsonOK(w, buildNodeResponse(nodes, allPods, g))
+	jsonOK(w, buildNodeResponse(nodes, allPods, guardrails))
 }
 
-func buildNodeResponse(nodes []corev1.Node, allPods []corev1.Pod, g *store.Guardrails) []NodeResponse {
+func buildNodeResponse(nodes []corev1.Node, allPods []corev1.Pod, guardrails *store.Guardrails) []NodeResponse {
 	// Pod counts per node (excluding daemonsets)
 	podCounts := map[string]int{}
 	criticalNodes := map[string]bool{}
 	cpuRequested := map[string]int64{}
 	memRequested := map[string]int64{}
-	skipNsNode := stringutil.SplitCSVSet(g.SkipNsNode)
+	nodeProtectionNamespaces := stringutil.SplitCSVSet(guardrails.SkipNsNode)
 
 	for _, pod := range allPods {
 		if isDaemonOwned(pod.OwnerReferences) {
 			continue
 		}
 		podCounts[pod.Spec.NodeName]++
-		cpu, mem := podResources(pod.Spec.Containers)
-		cpuRequested[pod.Spec.NodeName] += cpu
-		memRequested[pod.Spec.NodeName] += mem
-		if skipNsNode[pod.Namespace] {
+		cpuRequest, memoryRequest := podResources(pod.Spec.Containers)
+		cpuRequested[pod.Spec.NodeName] += cpuRequest
+		memRequested[pod.Spec.NodeName] += memoryRequest
+		if nodeProtectionNamespaces[pod.Namespace] {
 			criticalNodes[pod.Spec.NodeName] = true
 			continue
 		}
-		if g.ProtectCriticalPodNodes && nodeutil.IsCriticalPod(pod.Spec.PriorityClassName) {
+		if guardrails.ProtectCriticalPodNodes && nodeutil.IsCriticalPod(pod.Spec.PriorityClassName) {
 			criticalNodes[pod.Spec.NodeName] = true
 		}
 	}
 
-	labelMatchers := nodeutil.ParseLabels(g.SkipNodeLabels)
-	taintMatchers := nodeutil.ParseTaints(g.SkipNodeTaints)
+	labelMatchers := nodeutil.ParseLabels(guardrails.SkipNodeLabels)
+	taintMatchers := nodeutil.ParseTaints(guardrails.SkipNodeTaints)
 
 	var result []NodeResponse
 	for _, node := range nodes {
@@ -165,11 +171,11 @@ func nodeLabel(node corev1.Node, keys ...string) string {
 // convertTaints maps Kubernetes taints to their API response representation.
 func convertTaints(taints []corev1.Taint) []NodeTaintResponse {
 	out := make([]NodeTaintResponse, 0, len(taints))
-	for _, t := range taints {
+	for _, taint := range taints {
 		out = append(out, NodeTaintResponse{
-			Key:    t.Key,
-			Value:  t.Value,
-			Effect: string(t.Effect),
+			Key:    taint.Key,
+			Value:  taint.Value,
+			Effect: string(taint.Effect),
 		})
 	}
 	return out

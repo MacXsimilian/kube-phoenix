@@ -76,9 +76,9 @@ func (o *SchedulerOwnership) Check(ctx context.Context) error {
 	}
 	// Caller cancellation is not evidence of ownership loss. Use a separately
 	// bounded probe so a cancelled execution cannot terminate the whole process.
-	probe, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 	defer cancel()
-	if err := o.conn.PingContext(probe); err != nil {
+	if err := o.conn.PingContext(probeCtx); err != nil {
 		o.lost = true
 		return fmt.Errorf("scheduler ownership lost: %w", err)
 	}

@@ -295,7 +295,7 @@ func (h *Handler) applyExceptionImport(w http.ResponseWriter, r *http.Request) {
 }
 
 func newExceptionFromImport(body exceptionExportBody, policyID *uint, r *http.Request) (*store.ScheduledException, error) {
-	ex := &store.ScheduledException{
+	exception := &store.ScheduledException{
 		PolicyID:        policyID,
 		ExceptionType:   body.ExceptionType,
 		StartsAt:        body.StartsAt,
@@ -308,14 +308,14 @@ func newExceptionFromImport(body exceptionExportBody, policyID *uint, r *http.Re
 		Status:          store.ExceptionStatusPending,
 	}
 	if len(body.WorkloadTargets) > 0 {
-		if err := ex.SetWorkloadTargets(body.WorkloadTargets); err != nil {
+		if err := exception.SetWorkloadTargets(body.WorkloadTargets); err != nil {
 			return nil, err
 		}
 	}
-	if u := authmw.UserFromContext(r.Context()); u != nil {
-		ex.CreatedBy = u.Username
+	if user := authmw.UserFromContext(r.Context()); user != nil {
+		exception.CreatedBy = user.Username
 	}
-	return ex, nil
+	return exception, nil
 }
 
 // ─── Preview builders ────────────────────────────────────────────────────────
@@ -421,15 +421,15 @@ func (h *Handler) resolveExceptionParent(name *string) (*uint, string, int) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-func (h *Handler) applySchedulerSettings(g *store.Guardrails) {
+func (h *Handler) applySchedulerSettings(guardrails *store.Guardrails) {
 	if h.policyScheduler == nil {
 		return
 	}
 	if err := h.policyScheduler.UpdateSettings(scheduler.SchedulerConfig{
-		TickInterval:        g.ParseSchedulerEvalInterval(),
-		AutoWake:            g.SchedulerAutoWake,
-		ReconcileWhileAwake: g.SchedulerReconcileWhileAwake,
-		EnforceSleep:        g.SchedulerEnforceSleep,
+		TickInterval:        guardrails.ParseSchedulerEvalInterval(),
+		AutoWake:            guardrails.SchedulerAutoWake,
+		ReconcileWhileAwake: guardrails.SchedulerReconcileWhileAwake,
+		EnforceSleep:        guardrails.SchedulerEnforceSleep,
 	}); err != nil {
 		slog.Error("scheduler settings update failed", "err", err)
 	}
@@ -437,53 +437,53 @@ func (h *Handler) applySchedulerSettings(g *store.Guardrails) {
 
 // guardrailsBodyToUpdates converts an import body into the snake_case update
 // map expected by store.UpdateGuardrails.
-func guardrailsBodyToUpdates(b guardrailsExportBody) map[string]interface{} {
+func guardrailsBodyToUpdates(body guardrailsExportBody) map[string]interface{} {
 	return map[string]interface{}{
-		"protected_namespaces":            b.ProtectedNamespaces,
-		"skip_ns_node":                    b.SkipNsNode,
-		"skip_node_labels":                b.SkipNodeLabels,
-		"skip_node_taints":                b.SkipNodeTaints,
-		"scaling_priority_namespaces":     b.ScalingPriorityNamespaces,
-		"scheduler_eval_interval":         b.SchedulerEvalInterval,
-		"scheduler_auto_wake":             b.SchedulerAutoWake,
-		"scheduler_reconcile_while_awake": b.SchedulerReconcileWhileAwake,
-		"scheduler_enforce_sleep":         b.SchedulerEnforceSleep,
-		"scaling_concurrency":             b.ScalingConcurrency,
-		"wake_wave_size":                  b.WakeWaveSize,
-		"wake_wave_pause_seconds":         b.WakeWavePauseSeconds,
-		"protect_critical_pod_nodes":      b.ProtectCriticalPodNodes,
+		"protected_namespaces":            body.ProtectedNamespaces,
+		"skip_ns_node":                    body.SkipNsNode,
+		"skip_node_labels":                body.SkipNodeLabels,
+		"skip_node_taints":                body.SkipNodeTaints,
+		"scaling_priority_namespaces":     body.ScalingPriorityNamespaces,
+		"scheduler_eval_interval":         body.SchedulerEvalInterval,
+		"scheduler_auto_wake":             body.SchedulerAutoWake,
+		"scheduler_reconcile_while_awake": body.SchedulerReconcileWhileAwake,
+		"scheduler_enforce_sleep":         body.SchedulerEnforceSleep,
+		"scaling_concurrency":             body.ScalingConcurrency,
+		"wake_wave_size":                  body.WakeWaveSize,
+		"wake_wave_pause_seconds":         body.WakeWavePauseSeconds,
+		"protect_critical_pod_nodes":      body.ProtectCriticalPodNodes,
 	}
 }
 
-func guardrailsModelToBody(g *store.Guardrails) guardrailsExportBody {
+func guardrailsModelToBody(guardrails *store.Guardrails) guardrailsExportBody {
 	return guardrailsExportBody{
-		ProtectedNamespaces:          g.ProtectedNamespaces,
-		SkipNsNode:                   g.SkipNsNode,
-		SkipNodeLabels:               g.SkipNodeLabels,
-		SkipNodeTaints:               g.SkipNodeTaints,
-		ScalingPriorityNamespaces:    g.ScalingPriorityNamespaces,
-		SchedulerEvalInterval:        g.SchedulerEvalInterval,
-		SchedulerAutoWake:            g.SchedulerAutoWake,
-		SchedulerReconcileWhileAwake: g.SchedulerReconcileWhileAwake,
-		SchedulerEnforceSleep:        g.SchedulerEnforceSleep,
-		ScalingConcurrency:           g.ScalingConcurrency,
-		WakeWaveSize:                 g.WakeWaveSize,
-		WakeWavePauseSeconds:         g.WakeWavePauseSeconds,
-		ProtectCriticalPodNodes:      g.ProtectCriticalPodNodes,
+		ProtectedNamespaces:          guardrails.ProtectedNamespaces,
+		SkipNsNode:                   guardrails.SkipNsNode,
+		SkipNodeLabels:               guardrails.SkipNodeLabels,
+		SkipNodeTaints:               guardrails.SkipNodeTaints,
+		ScalingPriorityNamespaces:    guardrails.ScalingPriorityNamespaces,
+		SchedulerEvalInterval:        guardrails.SchedulerEvalInterval,
+		SchedulerAutoWake:            guardrails.SchedulerAutoWake,
+		SchedulerReconcileWhileAwake: guardrails.SchedulerReconcileWhileAwake,
+		SchedulerEnforceSleep:        guardrails.SchedulerEnforceSleep,
+		ScalingConcurrency:           guardrails.ScalingConcurrency,
+		WakeWaveSize:                 guardrails.WakeWaveSize,
+		WakeWavePauseSeconds:         guardrails.WakeWavePauseSeconds,
+		ProtectCriticalPodNodes:      guardrails.ProtectCriticalPodNodes,
 	}
 }
 
-func policyModelToBody(p *store.Policy) policyExportBody {
+func policyModelToBody(policy *store.Policy) policyExportBody {
 	return policyExportBody{
-		Name:            p.Name,
-		Description:     p.Description,
-		NamespaceFilter: p.NamespaceFilter,
-		LabelSelector:   p.LabelSelector,
-		Timezone:        p.Timezone,
-		Mode:            p.Mode,
-		Enabled:         p.Enabled,
-		TimeoutMinutes:  p.TimeoutMinutes,
-		SleepWindows:    parseSleepWindows(*p),
+		Name:            policy.Name,
+		Description:     policy.Description,
+		NamespaceFilter: policy.NamespaceFilter,
+		LabelSelector:   policy.LabelSelector,
+		Timezone:        policy.Timezone,
+		Mode:            policy.Mode,
+		Enabled:         policy.Enabled,
+		TimeoutMinutes:  policy.TimeoutMinutes,
+		SleepWindows:    parseSleepWindows(*policy),
 	}
 }
 

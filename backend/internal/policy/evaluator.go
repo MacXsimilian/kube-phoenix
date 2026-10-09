@@ -42,11 +42,11 @@ func EvaluateInLocation(windows []SleepWindow, loc *time.Location, now time.Time
 		return StateAwake
 	}
 	local := now.In(loc)
-	dow := int(local.Weekday()) // 0=Sun..6=Sat — matches our convention
+	dayOfWeek := int(local.Weekday()) // 0=Sun..6=Sat — matches our convention
 	minuteOfDay := local.Hour()*60 + local.Minute()
 
-	for _, w := range windows {
-		if windowContains(w, dow, minuteOfDay) {
+	for _, window := range windows {
+		if windowContains(window, dayOfWeek, minuteOfDay) {
 			return StateSleeping
 		}
 	}
@@ -55,29 +55,29 @@ func EvaluateInLocation(windows []SleepWindow, loc *time.Location, now time.Time
 
 // windowContains checks if the current day-of-week and minute-of-day fall
 // inside the given window.
-func windowContains(w SleepWindow, currentDOW, currentMinutes int) bool {
-	if w.AllDay {
-		return dayInSet(currentDOW, w.DaysOfWeek)
+func windowContains(window SleepWindow, currentDay, minuteOfDay int) bool {
+	if window.AllDay {
+		return dayInSet(currentDay, window.DaysOfWeek)
 	}
 
-	startMin := timeToMinutes(w.StartTime)
-	endMin := timeToMinutes(w.EndTime)
+	startMinute := timeToMinutes(window.StartTime)
+	endMinute := timeToMinutes(window.EndTime)
 
-	if startMin < endMin {
+	if startMinute < endMinute {
 		// Same-day window (e.g. 09:00-17:00).
 		// Sleeping if: today is a scheduled day AND time in [start, end).
-		return dayInSet(currentDOW, w.DaysOfWeek) &&
-			currentMinutes >= startMin && currentMinutes < endMin
+		return dayInSet(currentDay, window.DaysOfWeek) &&
+			minuteOfDay >= startMinute && minuteOfDay < endMinute
 	}
 
-	// Overnight window (e.g. 19:00-07:00, endMin <= startMin).
-	// Case A: evening portion (>= startMin on a scheduled day).
-	if dayInSet(currentDOW, w.DaysOfWeek) && currentMinutes >= startMin {
+	// Overnight window (e.g. 19:00-07:00, endMinute <= startMinute).
+	// Case A: evening portion (>= startMinute on a scheduled day).
+	if dayInSet(currentDay, window.DaysOfWeek) && minuteOfDay >= startMinute {
 		return true
 	}
-	// Case B: morning portion (< endMin, and yesterday was a scheduled day).
-	yesterday := (currentDOW + 6) % 7
-	if dayInSet(yesterday, w.DaysOfWeek) && currentMinutes < endMin {
+	// Case B: morning portion (< endMinute, and yesterday was a scheduled day).
+	yesterday := (currentDay + 6) % 7
+	if dayInSet(yesterday, window.DaysOfWeek) && minuteOfDay < endMinute {
 		return true
 	}
 	return false
@@ -109,13 +109,13 @@ func NextTransitionInLocation(windows []SleepWindow, loc *time.Location, now tim
 	const maxLookaheadDays = 8
 	boundaries := collectBoundaries(windows, local, maxLookaheadDays)
 
-	for _, b := range boundaries {
-		if !b.After(local) {
+	for _, boundary := range boundaries {
+		if !boundary.After(local) {
 			continue
 		}
-		stateAtB := EvaluateInLocation(windows, loc, b.In(time.UTC))
-		if stateAtB != currentState {
-			utc := b.In(time.UTC)
+		stateAtBoundary := EvaluateInLocation(windows, loc, boundary.In(time.UTC))
+		if stateAtBoundary != currentState {
+			utc := boundary.In(time.UTC)
 			return &utc
 		}
 	}
@@ -136,46 +136,47 @@ func collectBoundaries(windows []SleepWindow, local time.Time, numDays int) []ti
 	var boundaries []time.Time
 	for offset := 0; offset < numDays; offset++ {
 		date := today.AddDate(0, 0, offset)
-		dow := int(date.Weekday())
-		y, m, d := date.Date()
+		dayOfWeek := int(date.Weekday())
+		year, month, day := date.Date()
 
-		for _, w := range windows {
-			if w.AllDay {
+		for _, window := range windows {
+			if window.AllDay {
 				// Start boundary: midnight of this day (if it's a scheduled day).
-				if dayInSet(dow, w.DaysOfWeek) {
+				if dayInSet(dayOfWeek, window.DaysOfWeek) {
 					boundaries = append(boundaries, date)
 				}
 				// End boundary: midnight of next day if next day is NOT scheduled.
-				nextDOW := int(date.AddDate(0, 0, 1).Weekday())
-				if dayInSet(dow, w.DaysOfWeek) && !dayInSet(nextDOW, w.DaysOfWeek) {
+				nextDayOfWeek := int(date.AddDate(0, 0, 1).Weekday())
+				if dayInSet(dayOfWeek, window.DaysOfWeek) && !dayInSet(nextDayOfWeek, window.DaysOfWeek) {
 					boundaries = append(boundaries, date.AddDate(0, 0, 1))
 				}
 				// Also add the start if the previous day was NOT scheduled
 				// (transition from awake to sleep at midnight).
-				prevDOW := (dow + 6) % 7
-				if dayInSet(dow, w.DaysOfWeek) && !dayInSet(prevDOW, w.DaysOfWeek) {
+				previousDayOfWeek := (dayOfWeek + 6) % 7
+				if dayInSet(dayOfWeek, window.DaysOfWeek) && !dayInSet(previousDayOfWeek, window.DaysOfWeek) {
 					boundaries = append(boundaries, date)
 				}
-			} else {
-				startMin := timeToMinutes(w.StartTime)
-				endMin := timeToMinutes(w.EndTime)
+				continue
+			}
 
-				// Sleep start boundary.
-				if dayInSet(dow, w.DaysOfWeek) {
-					boundaries = append(boundaries, time.Date(y, m, d, startMin/60, startMin%60, 0, 0, loc))
+			startMinute := timeToMinutes(window.StartTime)
+			endMinute := timeToMinutes(window.EndTime)
+
+			// Sleep start boundary.
+			if dayInSet(dayOfWeek, window.DaysOfWeek) {
+				boundaries = append(boundaries, time.Date(year, month, day, startMinute/60, startMinute%60, 0, 0, loc))
+			}
+			// Wake boundary.
+			if startMinute < endMinute {
+				// Same-day: wake on same day.
+				if dayInSet(dayOfWeek, window.DaysOfWeek) {
+					boundaries = append(boundaries, time.Date(year, month, day, endMinute/60, endMinute%60, 0, 0, loc))
 				}
-				// Wake boundary.
-				if startMin < endMin {
-					// Same-day: wake on same day.
-					if dayInSet(dow, w.DaysOfWeek) {
-						boundaries = append(boundaries, time.Date(y, m, d, endMin/60, endMin%60, 0, 0, loc))
-					}
-				} else {
-					// Overnight: wake fires on next day.
-					yesterday := (dow + 6) % 7
-					if dayInSet(yesterday, w.DaysOfWeek) {
-						boundaries = append(boundaries, time.Date(y, m, d, endMin/60, endMin%60, 0, 0, loc))
-					}
+			} else {
+				// Overnight: wake fires on next day.
+				yesterday := (dayOfWeek + 6) % 7
+				if dayInSet(yesterday, window.DaysOfWeek) {
+					boundaries = append(boundaries, time.Date(year, month, day, endMinute/60, endMinute%60, 0, 0, loc))
 				}
 			}
 		}
