@@ -282,6 +282,29 @@ jobs:
           dockerfile: Dockerfile
           ignore: DL3018  # apk add --no-cache not needed in our alpine stages
 
+      # Register cache restore before cache-dance so post steps extract before saving.
+      - name: Restore BuildKit cache mounts
+        id: mount-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/buildkit-mounts
+          key: buildkit-mounts-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Dockerfile', 'frontend/package-lock.json', 'backend/go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            buildkit-mounts-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Dockerfile', 'frontend/package-lock.json', 'backend/go.sum') }}-
+
+      - name: Inject BuildKit cache mounts
+        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
+        with:
+          scratch-dir: ${{ runner.temp }}/buildkit-cache-dance
+          skip-extraction: ${{ steps.mount-cache.outputs.cache-hit == 'true' }}
+          cache-map: |
+            {
+              "${{ runner.temp }}/buildkit-mounts/npm": "/root/.npm",
+              "${{ runner.temp }}/buildkit-mounts/next": "/app/frontend/.next/cache",
+              "${{ runner.temp }}/buildkit-mounts/go-mod": "/go/pkg/mod",
+              "${{ runner.temp }}/buildkit-mounts/go-build": "/root/.cache/go-build"
+            }
+
       - name: Build image (no push)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
@@ -289,9 +312,12 @@ jobs:
           platforms: linux/amd64
           provenance: false
           push: false
+          load: true
+          tags: kube-phoenix:ci-check
           build-args: |
             NEXT_PUBLIC_APP_VERSION=ci-check
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-
+      - name: Smoke test final image
+        run: python3 .github/scripts/smoke_image.py kube-phoenix:ci-check ci-check

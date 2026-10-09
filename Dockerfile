@@ -3,17 +3,16 @@
 # Digest pins the exact image; update with: docker pull node:26.10.0-alpine && docker inspect --format='{{index .RepoDigests 0}}' node:26.10.0-alpine
 FROM --platform=$BUILDPLATFORM node:26.10.0-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS frontend-builder
 
-ARG NEXT_PUBLIC_APP_VERSION=dev
-
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 COPY frontend/patches ./patches
 
-# Cache node_modules across builds; invalidated only when package-lock.json changes.
+# Cache installation separately from application source and version changes.
 RUN --mount=type=cache,target=/root/.npm \
     npm ci
 
 # Set version after dependency install so version bumps don't bust the npm cache.
+ARG NEXT_PUBLIC_APP_VERSION=dev
 ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
 
 COPY frontend/ ./
@@ -23,13 +22,10 @@ RUN --mount=type=cache,target=/app/frontend/.next/cache \
 # ── Stage 2: Build backend ────────────────────────────────────────────────────
 # Always compile on the host platform using Go cross-compilation (no QEMU).
 FROM --platform=$BUILDPLATFORM golang:1.27.1-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS backend-builder
-ARG TARGETARCH
-ARG NEXT_PUBLIC_APP_VERSION=dev
-
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 
-# Cache downloaded modules; invalidated only when go.sum changes.
+# Cache downloaded modules separately from source, version, and architecture.
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
@@ -40,6 +36,11 @@ COPY --from=frontend-builder /app/frontend/out ./web/static/
 
 # Copy the OpenAPI spec into the embed directory
 COPY openapi.yaml ./internal/docs/openapi.yaml
+
+# CI explicitly restores/saves cache mounts; layer-cache exports alone omit them.
+# Declare build arguments here so they do not invalidate dependency downloads.
+ARG TARGETARCH
+ARG NEXT_PUBLIC_APP_VERSION=dev
 
 # Reuse module cache and incremental build cache across invocations.
 # -trimpath strips host paths from the binary for reproducibility.
@@ -67,6 +68,7 @@ EXPOSE 8080
 # Distroless has no shell or curl, so the binary itself exposes a -healthcheck
 # flag that probes /healthz on the loopback port and exits 0/1. start-period
 # is generous because schema migrations on first boot can take a few seconds.
+# A custom -port requires an exec-form healthcheck override; see docs/configuration.md.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD ["/usr/local/bin/kube-phoenix", "-healthcheck"]
 

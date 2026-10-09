@@ -16,8 +16,8 @@ backend/.cache
 # Dev files
 docker-compose.yml
 docker-compose.override.yml
-.env
-.env.*
+**/.env
+**/.env.*
 .claude
 CLAUDE.md
 helm

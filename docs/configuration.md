@@ -54,6 +54,26 @@ This page owns runtime defaults, authentication settings, policy fields, and gua
 | `-port` | `8080` | Server listen port |
 | `-healthcheck` | `false` | Probe `/healthz` on the loopback listen port and exit with status 0 or 1; used by the container health check |
 
+The image's default healthcheck targets port `8080`. If you change the server's
+`-port`, also override the healthcheck with the same port. Docker starts the probe
+as a separate process; it does not inherit the server's CLI arguments. For Compose:
+
+```yaml
+services:
+  backend:
+    image: ghcr.io/macxsimilian/kube-phoenix:YOUR_VERSION
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
+    command: ["-port", "9090"]
+    ports: ["127.0.0.1:9090:9090"]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/kube-phoenix", "-healthcheck", "-port", "9090"]
+```
+
+Use the exec-form `CMD` array: the distroless image has no shell for `CMD-SHELL`.
+With Helm, keep the default port unless you also update the container/service
+ports and all three Kubernetes probes.
+
 ### Frontend Build-Time Variables
 
 These are Next.js build-time variables baked into the static export, not backend runtime variables.
