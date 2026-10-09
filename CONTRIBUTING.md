@@ -171,6 +171,43 @@ Keep the subject line under 72 characters. Add a body when the change needs cont
 
 ## Pull Request Process
 
+### Pull Request Title and Description
+
+Use a Conventional Commit title that describes the final change, for example
+`fix(scheduler): preserve exception scope during recovery`. Keep it under 72
+characters and use `!` for breaking changes, including operational or configuration
+changes. Update the title and description when the scope changes.
+
+Use the [pull request template](.github/pull_request_template.md) with these seven
+sections, in this order. Keep the headings unnumbered. Do not add separate
+**Motivation**, **Files Changed**, or **Type of change** sections.
+
+| Section | What to include |
+| :------ | :-------------- |
+| Summary | One or two short paragraphs explaining the problem and resulting behavior. Include the reason for the change here. |
+| Changes | Concrete changes as bullets, grouped by area when useful. Describe the final implementation; omit abandoned approaches and conversational history. |
+| Breaking Changes | Changes to existing behavior, APIs, configuration, permissions, deployment, or tool requirements. Write `None.` when there are none. |
+| Migration Notes | Required operator or developer steps, ordering, downtime, and rollback considerations where applicable. Write `No migration required.` when none are needed. |
+| Dependency Changes | A table of changed dependencies with previous and updated versions compared with the PR base. Include relevant build images and CI actions. Identify selected highlights if transitive updates are omitted, and link to the manifests or lockfiles. Write `None.` when there are none. |
+| Related Issues | Link relevant issues or prior PRs. Use `Fixes #123` only when the PR resolves that issue; otherwise use `Related to #123`. Write `Not tied to a tracked issue.` when applicable. |
+| Checklist | Relevant validation and completion items with accurate status. Record commands, results, and material limitations here. |
+
+Scale the detail to the change: a small fix needs only a few sentences and bullets;
+changes spanning several areas need enough detail to review each area. Use paths
+only when they help explain a change. The description must reflect the PR diff;
+commit any intended local changes before claiming they are included.
+
+Check an item only when it has been verified. Remove inapplicable checklist items
+or mark them explicitly as not applicable. Leave pending checks unchecked and
+explain failures, skipped tests, and unavailable environments. Distinguish earlier
+validation from results for the final revision, and distinguish unit/fake-client
+coverage from real database or Kubernetes validation.
+
+Chart version and appVersion updates are managed by release-please in its release
+PR. Preserve breaking-change details and independent release entries in the squash
+commit as described in [Complete Release Notes](#complete-release-notes).
+Automated dependency and release PRs may retain their generated format.
+
 ### Before Requesting Review
 
 - [ ] `make test` passes
