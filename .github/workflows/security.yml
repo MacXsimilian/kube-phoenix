@@ -35,15 +35,20 @@ jobs:
         id: govulncheck
         uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
         with:
-          go-version-input: "1.27"
+          # Clear the action's default "stable" so go.mod selects the toolchain.
+          go-version-input: ""
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
           work-dir: backend
           output-format: sarif
           output-file: govulncheck.sarif
           repo-checkout: false
 
       - name: Upload SARIF to GitHub Security
+        id: govulncheck_upload
         uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
-        if: always()
+        # A failed scan can leave an empty report after shell redirection.
+        if: ${{ !cancelled() && steps.govulncheck.outcome == 'success' }}
         with:
           sarif_file: govulncheck.sarif
 
@@ -52,9 +57,18 @@ jobs:
         run: |
           RESULT="${{ steps.govulncheck.outcome }}"
           if [ "$RESULT" = "success" ]; then
-            STATUS="✅ Scan completed (results uploaded to Security tab)"
+            STATUS="✅ Scan completed"
           else
             STATUS="🔴 Scan failed"
+          fi
+
+          UPLOAD_RESULT="${{ steps.govulncheck_upload.outcome }}"
+          if [ "$UPLOAD_RESULT" = "success" ]; then
+            SARIF_STATUS="✅ Uploaded to GitHub Security tab"
+          elif [ "$UPLOAD_RESULT" = "failure" ]; then
+            SARIF_STATUS="🔴 Upload failed"
+          else
+            SARIF_STATUS="🟡 Upload skipped"
           fi
 
           {
@@ -64,7 +78,7 @@ jobs:
             echo "|:-----|:------|"
             echo "| Scanner | govulncheck (call-graph analysis) |"
             echo "| Result | ${STATUS} |"
-            echo "| SARIF | Uploaded to GitHub Security tab |"
+            echo "| SARIF | ${SARIF_STATUS} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── npm audit ───────────────────────────────────────────────────────────────
@@ -331,7 +345,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27"
+          go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
       - name: Copy OpenAPI spec into embed path
