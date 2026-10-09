@@ -10,6 +10,9 @@ metadata:
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
+  namespaceSelector:
+    matchNames:
+      - {{ include "kube-phoenix.namespace" . | quote }}
   selector:
     matchLabels:
       {{- include "kube-phoenix.serverSelectorLabels" . | nindent 6 }}

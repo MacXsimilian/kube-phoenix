@@ -56,10 +56,19 @@ Secret name to use (existing or chart-managed).
 {{- end }}
 
 {{/*
-PostgreSQL service hostname (internal).
+PostgreSQL resource name and internal service hostname.
+Reserve room for the suffix within the Service's 63-character limit.
 */}}
 {{- define "kube-phoenix.postgresqlHost" -}}
-{{- printf "%s-postgresql" (include "kube-phoenix.fullname" .) }}
+{{- printf "%s-postgresql" (include "kube-phoenix.fullname" . | trunc 52 | trimSuffix "-") }}
+{{- end }}
+
+{{/*
+Quote one PostgreSQL keyword/value DSN value, escaping backslashes first.
+This is separate from YAML quoting of the complete connection string.
+*/}}
+{{- define "kube-phoenix.dsnValue" -}}
+{{- printf "'%s'" (. | replace "\\" "\\\\" | replace "'" "\\'") -}}
 {{- end }}
 
 {{/*
@@ -72,20 +81,20 @@ Priority:
 {{- define "kube-phoenix.databaseUrl" -}}
 {{- if .Values.postgresql.enabled -}}
 {{- printf "host=%s user=%s password=%s dbname=%s port=5432 sslmode=disable"
-    (include "kube-phoenix.postgresqlHost" .)
-    .Values.postgresql.auth.username
-    .Values.postgresql.auth.password
-    .Values.postgresql.auth.database -}}
+    (include "kube-phoenix.postgresqlHost" . | include "kube-phoenix.dsnValue")
+    (include "kube-phoenix.dsnValue" .Values.postgresql.auth.username)
+    (include "kube-phoenix.dsnValue" .Values.postgresql.auth.password)
+    (include "kube-phoenix.dsnValue" .Values.postgresql.auth.database) -}}
 {{- else if .Values.externalDatabase.url -}}
 {{- .Values.externalDatabase.url -}}
 {{- else -}}
 {{- printf "host=%s user=%s password=%s dbname=%s port=%d sslmode=%s"
-    .Values.externalDatabase.host
-    .Values.externalDatabase.username
-    .Values.externalDatabase.password
-    .Values.externalDatabase.database
+    (include "kube-phoenix.dsnValue" .Values.externalDatabase.host)
+    (include "kube-phoenix.dsnValue" .Values.externalDatabase.username)
+    (include "kube-phoenix.dsnValue" .Values.externalDatabase.password)
+    (include "kube-phoenix.dsnValue" .Values.externalDatabase.database)
     (.Values.externalDatabase.port | int)
-    .Values.externalDatabase.sslmode -}}
+    (include "kube-phoenix.dsnValue" .Values.externalDatabase.sslmode) -}}
 {{- end -}}
 {{- end }}
 
