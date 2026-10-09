@@ -9,6 +9,8 @@ import (
 	"testing"
 )
 
+// Partial updates distinguish omitted fields from explicit empty or false
+// values. Clearing a field must survive conversion to database update keys.
 func TestBuildExceptionUpdates_FieldPresence(t *testing.T) {
 	tests := []struct {
 		name string
@@ -43,6 +45,8 @@ func TestBuildExceptionUpdates_FieldPresence(t *testing.T) {
 	}
 }
 
+// Invalid editable fields must fail validation before an update map is
+// returned, preventing edits from bypassing length and targeting restrictions.
 func TestBuildExceptionUpdates_RejectsInvalidFields(t *testing.T) {
 	ticket := strings.Repeat("x", maxTicketRefLen+1)
 	reason := strings.Repeat("x", maxReasonLen+1)

@@ -16,41 +16,70 @@ import (
 )
 
 func namedWorkload(kind string) runtime.Object {
-	n := int32(5)
-	meta := metav1.ObjectMeta{Name: "a", Namespace: "test", UID: "replacement", ResourceVersion: "2"}
-	if kind == "Deployment" {
-		return &appsv1.Deployment{ObjectMeta: meta, Spec: appsv1.DeploymentSpec{Replicas: &n}}
+	replicas := int32(5)
+	metadata := metav1.ObjectMeta{
+		Name:            "a",
+		Namespace:       "test",
+		UID:             "replacement",
+		ResourceVersion: "2",
 	}
-	return &appsv1.StatefulSet{ObjectMeta: meta, Spec: appsv1.StatefulSetSpec{Replicas: &n}}
+	if kind == "Deployment" {
+		return &appsv1.Deployment{ObjectMeta: metadata, Spec: appsv1.DeploymentSpec{Replicas: &replicas}}
+	}
+	return &appsv1.StatefulSet{ObjectMeta: metadata, Spec: appsv1.StatefulSetSpec{Replicas: &replicas}}
 }
 
+// Both workload kinds use name-based recovery for sleep, wake, and reconciliation.
+// The live replacement starts at five replicas, distinct from the saved three.
 func TestSnapshotRecoveryUsesNames(t *testing.T) {
+	identities := []struct {
+		name string
+		uid  string
+	}{
+		{name: "legacy snapshot without UID", uid: ""},
+		{name: "replacement workload", uid: "original"},
+	}
 	for _, kind := range []string{"Deployment", "StatefulSet"} {
-		for _, uid := range []string{"", "original"} {
+		for _, identity := range identities {
 			for _, action := range []string{"sleep", "wake", "reconcile"} {
-				t.Run(kind+"/"+uid+"/"+action, func(t *testing.T) {
-					cs := recoveryClient(namedWorkload(kind))
-					st := &memorySnapshots{snaps: []store.WorkloadSnapshot{{ID: 1, Kind: kind, Namespace: "test", Name: "a", WorkloadUID: uid, ReplicasBefore: 3, Phase: "prepared"}}}
-					r := &PolicyRunner{base: New(k8s.NewForClientset(cs), nil), store: st}
-					p := store.Policy{ID: 1, Mode: "apply"}
-					ctx := context.Background()
+				t.Run(kind+"/"+identity.name+"/"+action, func(t *testing.T) {
+					clientset := recoveryClient(namedWorkload(kind))
+					snapshot := store.WorkloadSnapshot{
+						ID:             1,
+						PolicyID:       1,
+						Kind:           kind,
+						Namespace:      "test",
+						Name:           "a",
+						WorkloadUID:    identity.uid,
+						ReplicasBefore: 3,
+						Phase:          "prepared",
+					}
+					snapshots := &memorySnapshots{snaps: []store.WorkloadSnapshot{snapshot}}
+					runner := newRecoveryRunner(clientset, snapshots)
+					policy := store.Policy{ID: 1, Mode: store.PolicyModeApply}
 					var err error
-					target := int32(0)
+					wantReplicas := int32(0)
 					switch action {
 					case "sleep":
-						_, err = r.RunPolicySleep(ctx, p, 2, nil)
+						_, err = runner.RunPolicySleep(t.Context(), policy, 2, nil)
 					case "wake":
-						_, err = r.RunPolicyWake(ctx, p, 2, nil)
-						target = 3
+						_, err = runner.RunPolicyWake(t.Context(), policy, 2, nil)
+						wantReplicas = 3
 					case "reconcile":
-						_, err = r.RunPolicySleepReconcile(ctx, p, 2, nil)
+						_, err = runner.RunPolicySleepReconcile(t.Context(), policy, 2, nil)
 					}
 					if err != nil {
-						t.Fatal(err)
+						t.Fatalf("%s workload: %v", action, err)
 					}
-					live, err := r.lookupEntry(ctx, kind, "test", "a")
-					if err != nil || live == nil || live.Replicas != target {
-						t.Fatalf("live=%+v err=%v target=%d", live, err, target)
+					live, err := runner.lookupEntry(t.Context(), kind, "test", "a")
+					if err != nil {
+						t.Fatalf("look up recovered workload: %v", err)
+					}
+					if live == nil {
+						t.Fatal("recovered workload is missing")
+					}
+					if live.Replicas != wantReplicas {
+						t.Errorf("replicas = %d, want %d", live.Replicas, wantReplicas)
 					}
 				})
 			}
@@ -58,6 +87,8 @@ func TestSnapshotRecoveryUsesNames(t *testing.T) {
 	}
 }
 
+// A workload selected from an old listing may have a newer scale version.
+// A conflict must trigger another read before retrying the update.
 func TestNameScalingRetriesConcurrentUpdates(t *testing.T) {
 	for _, kind := range []string{"Deployment", "StatefulSet"} {
 		t.Run(kind, func(t *testing.T) {
@@ -93,6 +124,7 @@ func TestNameScalingRetriesConcurrentUpdates(t *testing.T) {
 					t.Errorf("did not re-read current scale: %+v", scale)
 				}
 				if attempts == 1 {
+					// Reject the first update so the next attempt must fetch scale again.
 					return true, nil, apierrors.NewConflict(schema.GroupResource{Group: "apps", Resource: a.GetResource().Resource}, "a", nil)
 				}
 				return false, nil, nil

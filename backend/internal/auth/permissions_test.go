@@ -4,6 +4,8 @@ package auth
 
 import "testing"
 
+// Check the role boundary for representative read, write, and admin actions.
+// Unknown roles must receive no permissions rather than inheriting a default role.
 func TestHasPermission(t *testing.T) {
 	tests := []struct {
 		role string
@@ -44,6 +46,8 @@ func TestHasPermission(t *testing.T) {
 	}
 }
 
+// The permission lists exposed to callers must reflect each role's breadth:
+// all registered permissions for admins, a small viewer set, and none for unknown roles.
 func TestPermissionsForRole(t *testing.T) {
 	adminPerms := PermissionsForRole("admin")
 	if len(adminPerms) != len(AllPermissions) {
@@ -61,6 +65,8 @@ func TestPermissionsForRole(t *testing.T) {
 	}
 }
 
+// Only the supported role names should be accepted when assigning access;
+// empty or invented names must not enter the authorization model.
 func TestValidRole(t *testing.T) {
 	if !ValidRole("admin") {
 		t.Error("admin should be valid")

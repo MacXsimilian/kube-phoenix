@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -94,18 +95,26 @@ func (m *mockStore) GetOpenSnapshotsForSleepReconcile(_ uint) ([]store.WorkloadS
 
 type mockRunner struct {
 	hasDriftedFromSleep bool
+
+	// Executions run in goroutines, so call counts must support concurrent updates.
+	sleepCalls          atomic.Int64
+	wakeCalls           atomic.Int64
+	sleepReconcileCalls atomic.Int64
 }
 
 func (m *mockRunner) RunPolicySleep(_ context.Context, _ store.Policy, _ uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error) {
+	m.sleepCalls.Add(1)
 	return &scaler.Counts{}, nil
 }
 func (m *mockRunner) RunPolicyWake(_ context.Context, _ store.Policy, _ uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error) {
+	m.wakeCalls.Add(1)
 	return &scaler.Counts{Scaled: 1}, nil
 }
 func (m *mockRunner) HasDriftedFromSleep(_ context.Context, _ uint) (bool, error) {
 	return m.hasDriftedFromSleep, nil
 }
 func (m *mockRunner) RunPolicySleepReconcile(_ context.Context, _ store.Policy, _ uint, logCh chan<- scaler.LogLine) (*scaler.Counts, error) {
+	m.sleepReconcileCalls.Add(1)
 	return &scaler.Counts{}, nil
 }
 
@@ -128,19 +137,7 @@ func newTestSchedulerWithRunner(st schedulerStore, r policyRunner) *PolicySchedu
 }
 
 func newTestScheduler(st schedulerStore) *PolicyScheduler {
-	return &PolicyScheduler{
-		store:                st,
-		runner:               &mockRunner{},
-		Broker:               NewBroker(),
-		policies:             map[uint]cachedPolicy{},
-		lastReconcileAttempt: map[uint]time.Time{},
-		lastFailedTransition: map[uint]time.Time{},
-		inflightPolicies:     map[uint]struct{}{},
-		inflightCancels:      map[uint]context.CancelFunc{},
-		cfg: SchedulerConfig{
-			TickInterval: 30 * time.Second,
-		},
-	}
+	return newTestSchedulerWithRunner(st, &mockRunner{})
 }
 
 func awakePolicy(id uint) cachedPolicy {
@@ -176,6 +173,8 @@ func waitForExecution(t *testing.T, ms *mockStore) {
 
 // ─── Backoff tests ────────────────────────────────────────────────────────────
 
+// Repeated corrective attempts must wait five minutes per policy.
+// A policy without a previous attempt is immediately eligible.
 func TestReconcileBackoffElapsed(t *testing.T) {
 	ps := &PolicyScheduler{
 		lastReconcileAttempt: map[uint]time.Time{},
@@ -206,6 +205,8 @@ func TestReconcileBackoffElapsed(t *testing.T) {
 
 // ─── Routing tests ────────────────────────────────────────────────────────────
 
+// An awake policy outside its sleep window should remain idle when
+// corrective wake reconciliation is disabled.
 func TestEvaluatePolicy_ReconcileOff_AwakeStaysAwake_NoExecution(t *testing.T) {
 	ms := &mockStore{}
 	ps := newTestScheduler(ms)
@@ -225,6 +226,8 @@ func TestEvaluatePolicy_ReconcileOff_AwakeStaysAwake_NoExecution(t *testing.T) {
 	}
 }
 
+// Enabling reconciliation should not create redundant wake executions
+// when no open recovery snapshots indicate unfinished restoration.
 func TestEvaluatePolicy_ReconcileOn_NoDrift_NoExecution(t *testing.T) {
 	ms := &mockStore{openSnapshotCount: 0}
 	ps := newTestScheduler(ms)
@@ -244,6 +247,8 @@ func TestEvaluatePolicy_ReconcileOn_NoDrift_NoExecution(t *testing.T) {
 	}
 }
 
+// Open snapshots indicate workloads still need restoration even though the
+// policy says awake. Route that correction as a wake with a reconcile trigger.
 func TestEvaluatePolicy_ReconcileOn_DriftDetected_CorrectiveWake(t *testing.T) {
 	ms := &mockStore{openSnapshotCount: 3}
 	ps := newTestScheduler(ms)
@@ -272,6 +277,8 @@ func TestEvaluatePolicy_ReconcileOn_DriftDetected_CorrectiveWake(t *testing.T) {
 	}
 }
 
+// Persistent drift must not launch corrective wake on every tick.
+// A recent attempt suppresses another execution until backoff expires.
 func TestEvaluatePolicy_ReconcileOn_BackoffNotElapsed_NoExecution(t *testing.T) {
 	ms := &mockStore{openSnapshotCount: 3}
 	ps := newTestScheduler(ms)
@@ -296,6 +303,8 @@ func TestEvaluatePolicy_ReconcileOn_BackoffNotElapsed_NoExecution(t *testing.T) 
 	}
 }
 
+// Corrective wake repairs an already-awake policy, so disabling automatic
+// scheduled wake must not block this separate reconciliation path.
 func TestEvaluatePolicy_ReconcileOn_BypassesAutoWakeGate(t *testing.T) {
 	ms := &mockStore{openSnapshotCount: 2}
 	ps := newTestScheduler(ms)
@@ -317,6 +326,8 @@ func TestEvaluatePolicy_ReconcileOn_BypassesAutoWakeGate(t *testing.T) {
 	}
 }
 
+// A normal sleeping-to-awake schedule transition must honor autoWake=false.
+// This differs from repairing drift in an already-awake policy.
 func TestEvaluatePolicy_ScheduledTransition_RespectsAutoWake(t *testing.T) {
 	ms := &mockStore{}
 	ps := newTestScheduler(ms)
@@ -352,6 +363,8 @@ func TestEvaluatePolicy_ScheduledTransition_RespectsAutoWake(t *testing.T) {
 
 // ─── Transition claim tests ──────────────────────────────────────────────────
 
+// A rejected database claim means another transition owns the policy.
+// Expose that conflict without creating a competing execution.
 func TestClaimTransition_AlreadyClaimed_ReturnsErrPolicyTransitioning(t *testing.T) {
 	ms := &mockStore{
 		transitionErr: store.ErrTransitionAlreadyClaimed,
@@ -374,6 +387,8 @@ func TestClaimTransition_AlreadyClaimed_ReturnsErrPolicyTransitioning(t *testing
 	}
 }
 
+// A successful database claim must also mark the cached policy transitioning
+// so later evaluations observe that work is already in progress.
 func TestClaimTransition_Success_UpdatesCache(t *testing.T) {
 	ms := &mockStore{}
 	ps := newTestScheduler(ms)
@@ -417,6 +432,9 @@ func sleepingPolicy(id uint) cachedPolicy {
 	}
 }
 
+// When workloads drift awake during a sleep window, enforceSleep should
+// use reconciliation rather than ordinary sleep, which can select new workloads
+// and run node operations. The execution must also carry its own trigger.
 func TestEvaluatePolicy_EnforceSleep_DriftDetected_CorrectiveSleep(t *testing.T) {
 	ms := &mockStore{}
 	mr := &mockRunner{hasDriftedFromSleep: true}
@@ -430,7 +448,19 @@ func TestEvaluatePolicy_EnforceSleep_DriftDetected_CorrectiveSleep(t *testing.T)
 	}
 
 	ps.evaluatePolicy(cp, ctx)
-	waitForExecution(t, ms)
+	// Creating the execution record precedes runner dispatch. Wait for the runner
+	// to finish before checking which operation actually handled the correction.
+	ps.inflight.Wait()
+
+	if got := mr.sleepReconcileCalls.Load(); got != 1 {
+		t.Errorf("sleep reconciliation calls = %d, want 1", got)
+	}
+	if got := mr.sleepCalls.Load(); got != 0 {
+		t.Errorf("ordinary sleep calls = %d, want 0", got)
+	}
+	if got := mr.wakeCalls.Load(); got != 0 {
+		t.Errorf("wake calls = %d, want 0", got)
+	}
 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -446,6 +476,8 @@ func TestEvaluatePolicy_EnforceSleep_DriftDetected_CorrectiveSleep(t *testing.T)
 	}
 }
 
+// Sleep enforcement must stay idle when the runner reports no replica drift,
+// avoiding unnecessary executions for workloads already asleep.
 func TestEvaluatePolicy_EnforceSleep_NoDrift_NoExecution(t *testing.T) {
 	ms := &mockStore{}
 	mr := &mockRunner{hasDriftedFromSleep: false}
@@ -467,6 +499,8 @@ func TestEvaluatePolicy_EnforceSleep_NoDrift_NoExecution(t *testing.T) {
 	}
 }
 
+// Detected drift alone must not enable sleep enforcement; the guardrail
+// controls whether a corrective sleep execution may be created.
 func TestEvaluatePolicy_EnforceSleepDisabled_NoExecution(t *testing.T) {
 	ms := &mockStore{}
 	mr := &mockRunner{hasDriftedFromSleep: true}

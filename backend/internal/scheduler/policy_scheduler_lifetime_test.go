@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+// Admin stop/restart operations must keep the scheduler attached to the
+// application context so application shutdown still cancels new executions.
 func TestRestartPreservesApplicationLifetime(t *testing.T) {
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
@@ -34,6 +36,8 @@ func TestRestartPreservesApplicationLifetime(t *testing.T) {
 	}
 }
 
+// Restarting after application cancellation must not create a fresh lifetime
+// that allows scheduler work to escape shutdown.
 func TestRestartDoesNotResurrectCanceledApplication(t *testing.T) {
 	appCtx, appCancel := context.WithCancel(context.Background())
 	ps := newTestScheduler(&mockStore{})
@@ -51,6 +55,8 @@ func TestRestartDoesNotResurrectCanceledApplication(t *testing.T) {
 	}
 }
 
+// Restart can initialize a scheduler before Start has ever run. That initial
+// execution context must still be live and cancellable through Stop.
 func TestRestartBeforeStartHasStoppableLifetime(t *testing.T) {
 	ps := newTestScheduler(&mockStore{})
 	if err := ps.Restart(); err != nil {

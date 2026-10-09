@@ -110,6 +110,21 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+    # Ownership and migration tests need a real, disposable PostgreSQL database.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kube_phoenix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d kube_phoenix_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         shell: bash
@@ -140,10 +155,14 @@ jobs:
 
       - name: Test
         id: be_test
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/kube_phoenix_test?sslmode=disable
         run: |
+          # Missing integration configuration must fail CI instead of skipping tests.
+          : "${TEST_DATABASE_URL:?TEST_DATABASE_URL is required for CI database tests}"
           START=$(date +%s)
           TEST_EXIT=0
-          go test -race -coverprofile=coverage.out ./... 2>&1 | tee /tmp/test.out || TEST_EXIT=$?
+          go test -race -count=1 -coverprofile=coverage.out ./... 2>&1 | tee /tmp/test.out || TEST_EXIT=$?
           echo "duration=$(( $(date +%s) - START ))" >> "$GITHUB_OUTPUT"
           PASSED=$(grep -c '^ok' /tmp/test.out || true)
           FAILED=$(grep -c '^FAIL' /tmp/test.out || true)

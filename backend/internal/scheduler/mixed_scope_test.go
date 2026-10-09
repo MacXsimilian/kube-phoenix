@@ -11,6 +11,8 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
+// mixedRunner models wake effects in namespaces A and B without Kubernetes.
+// Recorded policies expose whether the scheduler forwarded the exception scope.
 type mixedRunner struct {
 	mockRunner
 	awake map[string]bool
@@ -26,69 +28,130 @@ func (s *activeExceptionStore) ListActiveExceptionsForPolicy(uint, time.Time) ([
 	return s.active, nil
 }
 
+// Restarting during an all-day sleep window must wake only the namespace covered
+// by the active stay-awake exception, leaving the other namespace asleep.
 func TestStartupRecoveryKeepsExceptionScoped(t *testing.T) {
-	windows := []policy.SleepWindow{{DaysOfWeek: []int{0, 1, 2, 3, 4, 5, 6}, AllDay: true}}
-	encoded, _ := json.Marshal(windows)
-	p := store.Policy{ID: 1, Enabled: true, Mode: "apply", Timezone: "UTC", NamespaceFilter: "a,b", SleepWindows: string(encoded), CurrentState: store.PolicyStateSleeping}
-	ex := store.ScheduledException{ID: 1, PolicyID: &p.ID, ExceptionType: store.ExceptionTypeStayAwake, NamespaceFilter: "a", Status: store.ExceptionStatusActive}
-	st := &activeExceptionStore{mockStore: mockStore{policies: []store.Policy{p}}, active: []store.ScheduledException{ex}}
-	r := &mixedRunner{awake: map[string]bool{}}
-	ps := newTestSchedulerWithRunner(st, r)
-	ps.policies[1] = cachedPolicy{policy: p, windows: windows, loc: time.UTC}
-	if err := ps.RecoverPolicies(context.Background()); err != nil {
-		t.Fatal(err)
+	windows := []policy.SleepWindow{{
+		DaysOfWeek: []int{0, 1, 2, 3, 4, 5, 6},
+		AllDay:     true,
+	}}
+	encoded, err := json.Marshal(windows)
+	if err != nil {
+		t.Fatalf("encode sleep windows: %v", err)
 	}
-	ps.inflight.Wait()
-	if !r.awake["a"] || r.awake["b"] {
-		t.Fatalf("startup broadened exception: awake=%v", r.awake)
+	policyRecord := store.Policy{
+		ID:              1,
+		Enabled:         true,
+		Mode:            store.PolicyModeApply,
+		Timezone:        "UTC",
+		NamespaceFilter: "a,b",
+		SleepWindows:    string(encoded),
+		CurrentState:    store.PolicyStateSleeping,
+	}
+	exception := store.ScheduledException{
+		ID:              1,
+		PolicyID:        &policyRecord.ID,
+		ExceptionType:   store.ExceptionTypeStayAwake,
+		NamespaceFilter: "a",
+		Status:          store.ExceptionStatusActive,
+	}
+	policyStore := &activeExceptionStore{
+		mockStore: mockStore{policies: []store.Policy{policyRecord}},
+		active:    []store.ScheduledException{exception},
+	}
+	runner := &mixedRunner{awake: map[string]bool{}}
+	scheduler := newTestSchedulerWithRunner(policyStore, runner)
+	scheduler.policies[1] = cachedPolicy{policy: policyRecord, windows: windows, loc: time.UTC}
+
+	if err := scheduler.RecoverPolicies(t.Context()); err != nil {
+		t.Fatalf("recover policies at startup: %v", err)
+	}
+	scheduler.inflight.Wait()
+	if !runner.awake["a"] || runner.awake["b"] {
+		t.Fatalf("startup broadened exception: awake=%v", runner.awake)
 	}
 }
 
-func (r *mixedRunner) RunPolicyWake(_ context.Context, p store.Policy, _ uint, _ chan<- scaler.LogLine) (*scaler.Counts, error) {
-	r.wakes = append(r.wakes, p)
-	for _, ns := range []string{"a", "b"} {
+func (runner *mixedRunner) RunPolicyWake(_ context.Context, policyRecord store.Policy, _ uint, _ chan<- scaler.LogLine) (*scaler.Counts, error) {
+	runner.wakes = append(runner.wakes, policyRecord)
+	for _, namespace := range []string{"a", "b"} {
 		// Support the historical namespace override so this test also exposes
 		// the original scheduler failure without depending on the new runner.
-		if p.NamespaceFilter != "" && p.NamespaceFilter != "a,b" && p.NamespaceFilter != ns {
+		if policyRecord.NamespaceFilter != "" && policyRecord.NamespaceFilter != "a,b" && policyRecord.NamespaceFilter != namespace {
 			continue
 		}
-		allowed, err := p.AllowsExceptionTarget("Deployment", ns, "app", nil)
+		allowed, err := policyRecord.AllowsExceptionTarget("Deployment", namespace, "app", nil)
 		if err != nil {
 			return nil, err
 		}
 		if allowed {
-			r.awake[ns] = true
+			runner.awake[namespace] = true
 		}
 	}
 	return &scaler.Counts{Scaled: 1}, nil
 }
 
+// A's 06:00 exception overlaps the normal 07:00 wake for both namespaces. The
+// exception must neither wake B early nor prevent B's scheduled wake at 07:00.
 func TestScopedExceptionDoesNotSuppressScheduledWake(t *testing.T) {
 	now := time.Date(2026, 10, 8, 6, 0, 0, 0, time.UTC)
-	windows := []policy.SleepWindow{{DaysOfWeek: []int{0, 1, 2, 3, 4, 5, 6}, StartTime: "22:00", EndTime: "07:00"}}
-	encoded, _ := json.Marshal(windows)
-	p := store.Policy{ID: 1, Enabled: true, Mode: "apply", Timezone: "UTC", NamespaceFilter: "a,b", SleepWindows: string(encoded), CurrentState: store.PolicyStateSleeping}
-	st := &mockStore{policies: []store.Policy{p}, openSnapshotCount: 2}
-	r := &mixedRunner{awake: map[string]bool{}}
-	ps := newTestSchedulerWithRunner(st, r)
-	ps.policies[1] = cachedPolicy{policy: p, windows: windows, loc: time.UTC}
-	ex := store.ScheduledException{PolicyID: &p.ID, ExceptionType: store.ExceptionTypeStayAwake, NamespaceFilter: "a", StartsAt: now, EndsAt: now.Add(2 * time.Hour), Status: store.ExceptionStatusActive}
-	if _, err := ps.runExceptionScoped(1, ex, directionWake, "exception_start"); err != nil {
+	windows := []policy.SleepWindow{{
+		DaysOfWeek: []int{0, 1, 2, 3, 4, 5, 6},
+		StartTime:  "22:00",
+		EndTime:    "07:00",
+	}}
+	encoded, err := json.Marshal(windows)
+	if err != nil {
+		t.Fatalf("encode sleep windows: %v", err)
+	}
+	policyRecord := store.Policy{
+		ID:              1,
+		Enabled:         true,
+		Mode:            store.PolicyModeApply,
+		Timezone:        "UTC",
+		NamespaceFilter: "a,b",
+		SleepWindows:    string(encoded),
+		CurrentState:    store.PolicyStateSleeping,
+	}
+	policyStore := &mockStore{policies: []store.Policy{policyRecord}, openSnapshotCount: 2}
+	runner := &mixedRunner{awake: map[string]bool{}}
+	scheduler := newTestSchedulerWithRunner(policyStore, runner)
+	scheduler.policies[1] = cachedPolicy{policy: policyRecord, windows: windows, loc: time.UTC}
+	exception := store.ScheduledException{
+		PolicyID:        &policyRecord.ID,
+		ExceptionType:   store.ExceptionTypeStayAwake,
+		NamespaceFilter: "a",
+		StartsAt:        now,
+		EndsAt:          now.Add(2 * time.Hour),
+		Status:          store.ExceptionStatusActive,
+	}
+
+	if _, err := scheduler.runExceptionScoped(1, exception, directionWake, "exception_start"); err != nil {
 		t.Fatal(err)
 	}
-	ps.inflight.Wait()
-	if !r.awake["a"] || r.awake["b"] {
-		t.Fatalf("06:00 awake=%v", r.awake)
+	scheduler.inflight.Wait()
+	if !runner.awake["a"] || runner.awake["b"] {
+		t.Fatalf("06:00 awake=%v", runner.awake)
 	}
-	// Exercise real reconciliation before and after the schedule boundary.
-	for _, tick := range []time.Time{now.Add(10 * time.Minute), now.Add(time.Hour)} {
-		ps.evaluatePolicy(ps.policies[1], evalContext{now: tick, autoWake: true, reconcileWhileAwake: true, exceptionsByPolicy: map[uint][]store.ScheduledException{1: {ex}}})
-		ps.inflight.Wait()
-		if tick.Before(now.Add(time.Hour)) && r.awake["b"] {
-			t.Fatal("corrective exception wake restored B before its schedule")
+	// Reconciliation at 06:10 keeps B asleep; the normal 07:00 wake restores B.
+	ticks := []struct {
+		name       string
+		at         time.Time
+		wantBAwake bool
+	}{
+		{name: "before scheduled wake", at: now.Add(10 * time.Minute), wantBAwake: false},
+		{name: "at scheduled wake", at: now.Add(time.Hour), wantBAwake: true},
+	}
+	for _, tick := range ticks {
+		scheduler.evaluatePolicy(scheduler.policies[1], evalContext{
+			now:                 tick.at,
+			autoWake:            true,
+			reconcileWhileAwake: true,
+			exceptionsByPolicy:  map[uint][]store.ScheduledException{1: {exception}},
+		})
+		scheduler.inflight.Wait()
+		if got := runner.awake["b"]; got != tick.wantBAwake {
+			t.Fatalf("%s: B awake = %v, want %v; wakes=%+v", tick.name, got, tick.wantBAwake, runner.wakes)
 		}
-	}
-	if !r.awake["b"] {
-		t.Fatalf("07:00 B remained asleep; wakes=%+v", r.wakes)
 	}
 }

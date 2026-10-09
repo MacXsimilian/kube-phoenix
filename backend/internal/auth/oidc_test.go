@@ -4,6 +4,8 @@ package auth
 
 import "testing"
 
+// Identity-provider group membership determines the application role.
+// Case differences must not lose a match, and admin membership takes precedence.
 func TestMapGroupsToRole(t *testing.T) {
 	admin := []string{"kube-phoenix-admins"}
 	operator := []string{"kube-phoenix-operators"}

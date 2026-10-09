@@ -23,6 +23,8 @@ const testTZ = "UTC"
 // Evaluate tests
 // ---------------------------------------------------------------------------
 
+// Fixed dates cover window membership and boundary rules without depending
+// on today's weekday. Overnight windows belong to the day they start.
 func TestEvaluate(t *testing.T) {
 	// Weekday shorthand.
 	mon, tue, wed, thu, fri := 1, 2, 3, 4, 5
@@ -258,6 +260,8 @@ func TestEvaluate(t *testing.T) {
 // NextTransition tests
 // ---------------------------------------------------------------------------
 
+// The next boundary must change the combined window state and resolve in
+// the policy's local timezone, including daylight-saving clock changes.
 func TestNextTransition(t *testing.T) {
 	sat, sun := 6, 0
 
@@ -389,6 +393,8 @@ func timePtr(t time.Time) *time.Time {
 // ValidateWindows tests (allDay-specific)
 // ---------------------------------------------------------------------------
 
+// All-day windows do not need clock times, but still need selected days.
+// They can coexist with timed windows in the same schedule.
 func TestValidateWindows_AllDay(t *testing.T) {
 	tests := []struct {
 		name    string

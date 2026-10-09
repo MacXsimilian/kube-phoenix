@@ -16,6 +16,8 @@ import (
 	ktesting "k8s.io/client-go/testing"
 )
 
+// Sleep draining intentionally falls back to direct deletion after an eviction
+// error. The delete must use zero grace and the observed pod UID.
 func TestEvictionFailureFallsBackToZeroGraceDeletion(t *testing.T) {
 	for name, evictionErr := range map[string]error{
 		"budget":    apierrors.NewTooManyRequests("PDB denied eviction", 0),
@@ -55,6 +57,8 @@ func TestEvictionFailureFallsBackToZeroGraceDeletion(t *testing.T) {
 	}
 }
 
+// When both pod removal paths fail, undo only the cordon added by this drain.
+// A node already cordoned by another actor must remain cordoned.
 func TestFailedEvictionAndDeletionRecoversOnlyOwnedCordon(t *testing.T) {
 	for _, precordoned := range []bool{false, true} {
 		for _, budget := range []bool{false, true} {
@@ -93,6 +97,8 @@ func TestFailedEvictionAndDeletionRecoversOnlyOwnedCordon(t *testing.T) {
 	}
 }
 
+// Cancellation after an eviction error must stop the operation before the
+// destructive deletion fallback, even when eviction was rejected by a budget.
 func TestEvictionCancellationPreventsDeletionFallback(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -112,6 +118,8 @@ func TestEvictionCancellationPreventsDeletionFallback(t *testing.T) {
 	}
 }
 
+// An accepted eviction needs no deletion fallback. DaemonSet pods are
+// excluded because their controller would recreate them on the node.
 func TestSuccessfulEvictionSkipsDirectDeletionAndDaemonSets(t *testing.T) {
 	cs := fake.NewClientset()
 	evictions := 0
@@ -136,6 +144,8 @@ func TestSuccessfulEvictionSkipsDirectDeletionAndDaemonSets(t *testing.T) {
 	}
 }
 
+// A pod can disappear between listing and fallback deletion. NotFound means
+// there is nothing left to remove and must not fail the drain.
 func TestDeletionNotFoundIsAlreadyDrained(t *testing.T) {
 	cs := fake.NewClientset()
 	cs.PrependReactor("create", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
@@ -148,6 +158,8 @@ func TestDeletionNotFoundIsAlreadyDrained(t *testing.T) {
 	}
 }
 
+// The scheduler may lose database ownership after trying eviction. Check
+// ownership again before deletion so a stale process cannot keep mutating pods.
 func TestOwnershipLossPreventsDeletionFallback(t *testing.T) {
 	cs := fake.NewClientset()
 	cs.PrependReactor("create", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
@@ -174,6 +186,8 @@ func TestOwnershipLossPreventsDeletionFallback(t *testing.T) {
 	}
 }
 
+// An already-absent pod is harmless, while a cancelled context must stop
+// eviction work and return the caller's cancellation error.
 func TestEvictionNotFoundAndCancellation(t *testing.T) {
 	cs := fake.NewClientset()
 	cs.PrependReactor("create", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
@@ -191,6 +205,8 @@ func TestEvictionNotFoundAndCancellation(t *testing.T) {
 	}
 }
 
+// After an interrupted run, only nodes carrying our ownership marker should
+// be uncordoned. Unmarked external cordons must survive startup recovery.
 func TestStartupRecoversOnlyMarkedCordons(t *testing.T) {
 	cs := fake.NewClientset(
 		&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "owned", Annotations: map[string]string{cordonOwnerAnnotation: "interrupted-run"}}, Spec: corev1.NodeSpec{Unschedulable: true}},

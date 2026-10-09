@@ -38,6 +38,8 @@ func (m *executionCleanupStore) FinishPolicyExecution(_ uint, status string, _ m
 	return nil
 }
 
+// A runner panic must still finalize the execution as failed, persist queued
+// logs, deliver them to subscribers, and release the execution's broker resources.
 func TestRunnerPanicDrainsLogsAndClosesSubscribers(t *testing.T) {
 	st := &executionCleanupStore{}
 	ps := newTestSchedulerWithRunner(st, &panicLogRunner{})

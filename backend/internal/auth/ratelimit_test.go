@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+// Limits are tracked independently per key so one client exhausting its
+// budget does not block another client.
 func TestRateLimiter_Allow(t *testing.T) {
 	rl := NewRateLimiter(3, 1*time.Second)
 
@@ -29,6 +31,8 @@ func TestRateLimiter_Allow(t *testing.T) {
 	}
 }
 
+// A full request window must become usable again after its entries expire.
+// The short real-time window keeps the expiry path practical to exercise.
 func TestRateLimiter_WindowExpiry(t *testing.T) {
 	rl := NewRateLimiter(2, 50*time.Millisecond)
 
@@ -46,6 +50,8 @@ func TestRateLimiter_WindowExpiry(t *testing.T) {
 	}
 }
 
+// Returning clients must not accumulate timestamps from expired windows.
+// Re-access every key to exercise the limiter's inline pruning.
 func TestRateLimiter_KeyEviction(t *testing.T) {
 	rl := NewRateLimiter(1, 50*time.Millisecond)
 
@@ -143,6 +149,8 @@ func TestRateLimiter_StaleKeyCleanup(t *testing.T) {
 	}
 }
 
+// Resetting a key must remove its accumulated attempts immediately,
+// allowing a fresh request without waiting for the window to expire.
 func TestRateLimiter_Reset(t *testing.T) {
 	rl := NewRateLimiter(2, 1*time.Second)
 
