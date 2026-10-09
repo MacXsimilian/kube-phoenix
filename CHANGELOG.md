@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.9.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.8.0...v0.9.0) (2026-10-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* harden scheduler recovery, deployment reliability and build verification ([#439](https://github.com/MacXsimilian/kube-phoenix/issues/439))
+
+### Bug Fixes
+
+* harden scheduler recovery, deployment reliability and build verification ([#439](https://github.com/MacXsimilian/kube-phoenix/issues/439)) ([fc91b89](https://github.com/MacXsimilian/kube-phoenix/commit/fc91b89bab02deb62a1e359821d6e54d0915e0d3))
+
 ## [0.8.0](https://github.com/MacXsimilian/kube-phoenix/compare/v0.7.7...v0.8.0) (2026-10-04)
 
 This release fixes policy editing, execution history, scheduler cleanup, emergency recovery, and authentication. It also upgrades bundled PostgreSQL to 18, moves frontend builds to Node 26, updates dependencies, and makes release replays preserve existing images and newer floating tags.
