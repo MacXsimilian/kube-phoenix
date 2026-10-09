@@ -21,6 +21,8 @@ go run ./cmd/server/...
 
 Seed credentials create an admin only when the users table is empty. For frontend development on another port, see the separate WebSocket origin constraint in [data flow](development/backend-data-flow.md#execution-logs). For a production-shaped same-origin test, use [the local cluster setup](local-development.md).
 
+Run one backend process per database. Startup reserves a dedicated PostgreSQL connection for scheduler ownership before recovering interrupted executions; a second process exits rather than serving alongside the owner. Configure at least two database connections and use a direct connection or session-preserving pool. If Kubernetes initialization succeeds but owned-cordon recovery fails, startup also exits. See [startup and shutdown](development/backend-data-flow.md#startup-and-shutdown).
+
 ## Common Changes
 
 | Change | Start here | Also check |
@@ -36,7 +38,7 @@ Seed credentials create an admin only when the users table is empty. For fronten
 
 ## Verification
 
-Run focused tests for the behavior you changed, then the required repository checks. The current unit suite does not establish PostgreSQL integration coverage. Changes to models, migrations, or persistence need a check against a real database as well.
+Run focused tests for the behavior you changed, then the required repository checks. The suite includes fake-client scaling/drain tests and PostgreSQL ownership/migration integration tests. The latter skip when `TEST_DATABASE_URL` is unset; an ordinary unit-test pass does not establish database integration coverage.
 
 ```bash
 cd backend
@@ -45,6 +47,15 @@ go test ./...
 go test -race ./internal/scheduler
 golangci-lint run
 ```
+
+For store, ownership, or migration changes, run the integration tests against a disposable PostgreSQL database:
+
+```bash
+# Run from backend/ after setting TEST_DATABASE_URL to your disposable database.
+go test ./internal/store -run 'TestOwnership|TestSnapshotMigration' -count=1 -v
+```
+
+The tests create and drop isolated schemas and terminate their own lock-holding database session to test takeover. The configured database account must support these operations. See [reliability_integration_test.go](../backend/internal/store/reliability_integration_test.go).
 
 From the repository root, `make test` and `make lint` wrap backend checks. `make build` also builds the frontend and embeds it with the OpenAPI specification.
 
@@ -71,6 +82,8 @@ The backend serves API, SSE, WebSocket, metrics, and embedded static pages from 
 | `internal/docs`, `web` | Embedded API reference and frontend |
 
 Browse the [backend source](../backend) for file and function inventories. The references explain behavior and ownership rather than mirroring every declaration.
+
+Within the larger packages, scheduling and startup reconciliation live in `scheduler/policy_scheduler.go`, execution/log finalization in `scheduler/execution.go`, and exception lifecycle in `scheduler/exceptions.go`. The scaler separates orchestration, individual workload operations, target matching, and wake waves into `policy_scaler.go`, `workloads.go`, `targeting.go`, and `waves.go`. Kubernetes access is split by resource, and store queries are split into policies, executions, exceptions, snapshots, ownership, and migrations. Follow those boundaries when adding behavior.
 
 ### 3. Data Model Deep Dive
 

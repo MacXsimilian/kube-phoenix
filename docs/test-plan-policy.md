@@ -41,6 +41,7 @@ This is a catalogue of test scenarios and expected outcomes, not a record of com
 29. [Frontend — Execution History & Log Viewer](#29-frontend--execution-history--log-viewer)
 30. [API Validation & Error Responses](#30-api-validation--error-responses)
 31. [Load & Scale](#31-load--scale)
+32. [Health, Helm, and Workload Filters](#32-health-helm-and-workload-filters)
 
 ---
 
@@ -316,11 +317,11 @@ Verify the environment is ready before running any policy tests. The counts belo
 | # | Step | Expected Result |
 |---|------|-----------------|
 | 9.1.1 | Create policy targeting `team-backend`, apply mode, with a window that covers now | Policy sleeping, team-backend at 0 |
-| 9.1.2 | Create exception: type=`stay_awake`, starts=now, ends=+2h | Exception created in `pending` state |
-| 9.1.3 | Wait for scheduler tick (≤30s) | Exception transitions to `active`. Wake execution fires for team-backend |
+| 9.1.2 | Create exception: type=`stay_awake`, starts=now+1min, ends=+2h | Exception created in `pending` state; start must still be in the future when submitted |
+| 9.1.3 | Wait until `startsAt`, then the next scheduler tick (default interval 30s) | Exception transitions to `active`. Wake execution fires for team-backend |
 | 9.1.4 | Verify team-backend pods restored | 9 pods running |
 | 9.1.5 | Policy `currentState` during exception | `awake` (exception overrides window) |
-| 9.1.6 | Wait for exception to end (or shorten `endsAt`) | Exception → `completed`. If `sleepOnEnd=true`, sleep re-triggered |
+| 9.1.6 | Wait for the configured end (active exceptions cannot be edited) | Exception → `completed`. If `sleepOnEnd=true`, sleep re-triggered |
 | 9.1.7 | Verify team-backend scales back to 0 | Policy reverts to schedule-driven state |
 
 ### 9.2 Force-Sleep Exception
@@ -328,7 +329,7 @@ Verify the environment is ready before running any policy tests. The counts belo
 | # | Step | Expected Result |
 |---|------|-----------------|
 | 9.2.1 | Create policy targeting `team-qa`, apply mode, currently in awake window | Policy awake, team-qa has 5 pods |
-| 9.2.2 | Create exception: type=`force_sleep`, starts=now, ends=+1h | Pending → active |
+| 9.2.2 | Create exception: type=`force_sleep`, starts=now+1min, ends=+1h | Pending → active after the start time |
 | 9.2.3 | Wait for activation | Sleep execution fires. team-qa scales to 0 |
 | 9.2.4 | Policy `currentState` during exception | `sleeping` (force_sleep overrides awake window) |
 | 9.2.5 | Exception ends | If `sleepOnEnd=true` and schedule says awake: wake fires, pods restored |
@@ -369,7 +370,27 @@ Verify the environment is ready before running any policy tests. The counts belo
 | # | Step | Expected Result |
 |---|------|-----------------|
 | 10.3.1 | Policy targets `team-backend`. Create exception with namespaceFilter=`team-backend,team-web` | Exception scope broader than policy |
-| 10.3.2 | Exception activates | Only affects team-backend (intersection of policy + exception scope). team-web not touched because it has no snapshots from this policy |
+| 10.3.2 | Exception activates; repeat for both stay-awake and force-sleep | Only affects team-backend (intersection of parent + exception scope). team-web remains outside the action even for sleep, which creates snapshots |
+
+### 10.4 Explicit Targets and Intersections
+
+| # | Step | Expected Result |
+|---|------|-----------------|
+| 10.4.1 | Create an exception with only `workloadTargets` selecting `Deployment/team-backend/api` | Action is scoped even without namespace or label filters; other workloads retain their baseline schedule |
+| 10.4.2 | Combine namespace, label, and explicit target filters; include a target outside the parent's namespace/label boundary | Only workloads matching every filter and the parent boundary are affected |
+| 10.4.3 | Update a pending exception with `workloadTargets: []` | Explicit targets clear; remaining filters still apply |
+| 10.4.4 | Update another field while omitting `workloadTargets` | Existing targets are preserved |
+| 10.4.5 | Create, update, or import malformed selectors, kind `Pod`, or targets without valid namespace/name | Rejected with 400; import preview and apply both validate |
+
+### 10.5 Scoped Exceptions Across Boundaries and Restart
+
+| # | Step | Expected Result |
+|---|------|-----------------|
+| 10.5.1 | Sleep a policy covering workloads A and B; activate scoped stay-awake for A | A restores; B remains asleep; successful scoped work preserves the parent baseline state |
+| 10.5.2 | Restart before the ordinary wake boundary | Recovery preserves A's exception and leaves B asleep |
+| 10.5.3 | Cross the ordinary wake boundary while A's exception is still active | B wakes on schedule; A's scoped exception does not suppress the ordinary wake |
+| 10.5.4 | During an awake interval, activate scoped force-sleep for A and restart | A remains asleep; B remains awake; ordinary/corrective wake preserves A's active force-sleep protection |
+| 10.5.5 | Fail one scoped action, then restore the failing dependency | The action remains retryable with its scope intact; unrelated workloads are not included in the retry |
 
 ---
 
@@ -601,6 +622,18 @@ Verify the environment is ready before running any policy tests. The counts belo
 
 ---
 
+### 17.4 Process Ownership and Shutdown
+
+| # | Step | Expected Result |
+|---|------|-----------------|
+| 17.4.1 | In an isolated test environment, start a second current-version process against the same database | It fails to acquire scheduler ownership and does not begin recovery or execution |
+| 17.4.2 | Stop the owning process during an execution, then start its replacement | Cancellation drains the active execution before lock release; the next owner performs recovery |
+| 17.4.3 | Terminate the dedicated ownership database session in that isolated environment | The process cancels work and exits; replacement startup must acquire ownership before mutations |
+
+Use the [disposable PostgreSQL integration tests](backend-dev-guide.md#9-testing-guide) for automated ownership coverage. These scenarios do not authorize using a shared or production database.
+
+---
+
 ## 18. Edge Cases — Workload State
 
 ### 18.1 Already-Zero Workload
@@ -626,14 +659,14 @@ Verify the environment is ready before running any policy tests. The counts belo
 | 18.3.1 | Sleep team-mobile (apply mode) | All at 0 |
 | 18.3.2 | `kubectl -n team-mobile scale deployment push-service --replicas=2` | Externally scaled to 2 |
 | 18.3.3 | If enforcement enabled, enforce-sleep re-scales to 0 | Snapshot: `wasExternallyScaled=true` |
-| 18.3.4 | Eventually wake | push-service restored to original (4), not to the external value (2) |
+| 18.3.4 | Eventually wake | push-service restored to its captured original count (1 in the default fixtures), not to the external value (2) |
 
 ### 18.4 Double Sleep (Idempotency)
 
 | # | Step | Expected Result |
 |---|------|-----------------|
 | 18.4.1 | Sleep a policy (apply mode) | Snapshots created |
-| 18.4.2 | Somehow trigger sleep again (e.g., via exception action) | Already-snapshotted workloads skipped. No duplicate snapshots |
+| 18.4.2 | Trigger another sleep for the same target selection | Open snapshots are reused without recapturing baselines or creating duplicates; selected nonzero targets with a nonzero captured baseline are scaled back to zero, including same-name replacements. Originally-zero targets remain skipped |
 
 ### 18.5 New Deployment Added During Sleep
 
@@ -644,11 +677,19 @@ Verify the environment is ready before running any policy tests. The counts belo
 | 18.5.3 | If enforce-sleep runs, it has no snapshot for `new-svc` | New deployment not enforced (no snapshot = not managed) |
 | 18.5.4 | Wake fires | Only original 6 deployments restored. `new-svc` untouched at 3 |
 
+### 18.6 Recreated Workloads and Legacy Snapshots
+
+| # | Step | Expected Result |
+|---|------|-----------------|
+| 18.6.1 | Sleep a workload, recreate it with the same kind/namespace/name and a different UID, then wake | Saved replicas restore onto the replacement; snapshot UID is informational |
+| 18.6.2 | Upgrade a disposable database containing an open legacy snapshot with empty UID/phase, then wake | Snapshot restores by name without UID backfill |
+| 18.6.3 | Introduce a scale-subresource conflict during sleep/wake | Scaling re-reads the current scale and retries conflicts at bounded intervals; exhausted retries retain the recovery record |
+
 ---
 
 ## 19. Node Drain
 
-Run these scenarios only on a disposable multi-node cluster after completing workload-only tests. Sleep always includes a node drain/delete phase; there is no per-policy switch that limits it to the workload namespace. Wake restores replicas and does not uncordon or recreate nodes.
+Run these scenarios only on a disposable multi-node cluster after completing workload-only tests. Ordinary sleep considers a cluster-wide node drain/delete phase; there is no per-policy switch that limits it to the workload namespace. Scoped exception actions, excluded exception-protected workloads, incomplete workload sleep, or unresolved prepared intents outside selection defer node operations. Wake restores replicas and does not uncordon or recreate nodes; failure/startup cleanup can separately undo owned cordons.
 
 Keep the control plane and nodes hosting kube-phoenix, its database, and any required cluster services protected. Select an expendable worker for this separate exercise, review every matching guardrail, and remove the tutorial protection label only from that selected worker when ready. Keep the guardrail entry and protection on all other nodes. If those prerequisites cannot be met, record these scenarios as **Not run**.
 
@@ -677,6 +718,16 @@ Node-object deletion and node replacement depend on the cluster's kubelet/contro
 |---|------|-----------------|
 | 19.3.1 | Compare execution counts with candidate and completion logs | Counts reflect planned operations in Plan mode or completed operations in Apply mode; do not assume a fixed worker count |
 | 19.3.2 | Verify control-plane protection | Protection comes from the configured guardrails; do not assume a node's control-plane role alone excludes it |
+
+### 19.4 Eviction Failure and Cordon Recovery
+
+| # | Step | Expected Result |
+|---|------|-----------------|
+| 19.4.1 | On the expendable worker, reject an eviction (for example with a PDB) and grant the test service account core `pods` delete permission | Drain attempts zero-grace pod deletion after the eviction error, bypassing the PDB and graceful termination; pod UID preconditions remain in force |
+| 19.4.2 | Repeat using default chart pod permissions | Fallback deletion is forbidden; the error is recorded, node deletion is skipped, and cleanup attempts to undo the owned cordon |
+| 19.4.3 | Make node deletion fail after successful drain | Cleanup attempts to restore schedulability if kube-phoenix still owns the cordon |
+| 19.4.4 | Interrupt a drain after its ownership annotation is persisted, then restart | Startup recovers marked cordons after acquiring scheduler ownership |
+| 19.4.5 | Repeat with an independently cordoned node that has no kube-phoenix ownership marker | Cleanup preserves the external cordon |
 
 ---
 
@@ -717,7 +768,7 @@ Node-object deletion and node replacement depend on the cluster's kubelet/contro
 |---|------|-----------------|
 | 21.1.1 | Sleep `team-backend` (apply mode, 7 deployments) | 7 snapshots created |
 | 21.1.2 | `GET /api/policies/{id}/snapshots?open=true` | Returns 7 open snapshots |
-| 21.1.3 | Each snapshot has: `kind`, `namespace`, `name`, `replicasBefore`, `sleepExecutionId` | Fields populated correctly |
+| 21.1.3 | Each snapshot has: `kind`, `namespace`, `name`, `replicasBefore`, `sleepExecutionId`, `workloadUid`, `phase` | Fields populated correctly; new nonzero targets have phase `applied` after successful sleep |
 | 21.1.4 | `wakeExecutionId` is null | Not yet woken |
 
 ### 21.2 Snapshot Closure
@@ -742,6 +793,19 @@ Node-object deletion and node replacement depend on the cluster's kubelet/contro
 |---|------|-----------------|
 | 21.4.1 | `GET /api/policy-executions/{sleepExecId}/snapshots` | Returns snapshots created by that specific execution |
 | 21.4.2 | Verify `sleepExecutionId` matches the queried execution | Correct association |
+
+### 21.5 Durable Intents and Partial Failure
+
+Use fault injection in an isolated environment or the scaler regression tests; record the test level with the results.
+
+| # | Step | Expected Result |
+|---|------|-----------------|
+| 21.5.1 | Fail snapshot creation before scale-down | That workload is not mutated; execution fails and nodes are not drained |
+| 21.5.2 | Terminate after saving `prepared` but before scaling | Original replica baseline persists for retry or wake |
+| 21.5.3 | Terminate after scaling to zero but before recording `applied` | Prepared intent remains recoverable; retry does not replace the baseline with zero |
+| 21.5.4 | Fail one workload operation while another succeeds | Counts/logs retain both outcomes; execution fails, policy becomes `unknown`, and nodes are deferred |
+| 21.5.5 | Retry after resolving the failure | Original baselines are reused; successful restoration closes snapshots as `restored` |
+| 21.5.6 | Restore replicas but fail snapshot closure | Snapshot remains open and execution fails; retry can close it when replicas already match the saved target |
 
 ---
 
@@ -798,8 +862,10 @@ Node-object deletion and node replacement depend on the cluster's kubelet/contro
 | 24.3 | Disabled policy shows a prominent Disabled badge, scheduling-off explanation, neutral accent, and muted schedule/statistics | Scheduling state is clear; permitted manual actions remain readable and usable |
 | 24.4 | Enabled cards show correct state colors: green (awake), purple/blue (sleeping), yellow (transitioning) | Color coding correct; disabled accents and LEDs stay neutral |
 | 24.5 | Page auto-refetches every 30s | State changes appear without manual refresh |
-| 24.6 | Click a policy card → navigates to detail page | Routing works |
-| 24.7 | Trigger button shows Sleep Now when awake and Wake Now when sleeping; for unknown/transitioning it opens a Sleep/Wake pick-menu | Contextual trigger reflects current state |
+| 24.6 | Click the card's View details action | Navigates to the policy detail page |
+| 24.7 | Trigger button shows Sleep Now when awake and Wake Now when sleeping; unknown/transitioning states open a Sleep/Wake pick-menu | Contextual trigger reflects current state; pending trigger requests disable the action |
+| 24.8 | Hover, focus, or click the weekly savings ring, then dismiss with Escape or click-away | Explanation reports the configured recurring-week sleep percentage and excludes actual executions/exceptions; ring does not navigate to the detail page |
+| 24.9 | Resize to a narrow viewport or card container | Card actions and schedule details remain usable without overlapping |
 
 ---
 
@@ -976,6 +1042,24 @@ Node-object deletion and node replacement depend on the cluster's kubelet/contro
 |---|------|-----------------|
 | 31.4.1 | Create 10 scheduled exceptions on a single policy (non-overlapping, same type) | All created |
 | 31.4.2 | Each activates and completes in sequence | State transitions correct throughout |
+
+---
+
+## 32. Health, Helm, and Workload Filters
+
+| # | Step | Expected Result |
+|---|------|-----------------|
+| 32.1 | Query `/livez`, `/readyz`, `/healthz` without authentication | All return 200 while the server and database are available; readiness does not require Kubernetes access |
+| 32.2 | Simulate database ping failure in the health-handler test | `/livez` remains 200; `/readyz` and `/healthz` return 503 within their deadline. A live process may separately exit if its ownership session is lost |
+| 32.3 | Render the chart with defaults and with `replicaCount=0`; try count 2 or RollingUpdate | Defaults use one replica/Recreate; maintenance renders zero; unsupported count/strategy fail validation |
+| 32.4 | Enable `podDisruptionBudget.enabled`, render `maxUnavailable=0`, then `minAvailable=0` | Explicit zero is retained; each render contains only its selected availability field |
+| 32.5 | Enable ServiceMonitor with a namespace override | Selector matches only the application Service's instance/name/component labels in that namespace |
+| 32.6 | Render a long release name and passwords containing spaces, apostrophes, or backslashes | PostgreSQL resource names match the DSN host; connection values are quoted consistently |
+| 32.7 | Render bundled or field-configured external PostgreSQL with a blank password | Helm rejects it; a full external DSN or existing Secret follows its own configuration path |
+| 32.8 | Open Workloads with `?status=sleeping`; add search/namespace/protection filters, then use Clear filters | All filters reset, the status query parameter is removed, page returns to the first page, and focus returns to search |
+| 32.9 | Filter Workloads to no matches, then use the toolbar's Clear filters | The unfiltered inventory returns |
+
+Automated chart checks live in [hack/tests](../hack/tests); see [local verification commands](local-development.md) for chart, frontend, and final-image checks. These expected outcomes are not evidence of a run.
 
 ---
 

@@ -19,13 +19,16 @@ Namespace scope does not limit node operations. Do not proceed to Apply if the p
 | Check | Expected result | Result / evidence |
 | :---- | :-------------- | :---------------- |
 | Open the application and sign in | Login succeeds; policy and cluster pages load | Not run |
+| Check unauthenticated probes | `/livez`, `/readyz`, and compatibility `/healthz` return 200 with `status: ok` while PostgreSQL is reachable | Not run |
 | Capture baseline | Saved deployment replica counts and node list match the intended test cluster | Not run |
 | Save the tutorial policy | Namespace `team-backend`, mode Plan, Enabled off, valid day/time window | Not run |
 | Preview Sleep Now with Plan | Seven workload targets; every node protected; no proposed node drain/deletion | Not run |
 | Compare after Plan | Desired replicas and node list unchanged | Not run |
 | Save Apply mode, keep Enabled off | Settings persist; namespace scope unchanged | Not run |
 | Sleep Now with Apply | Execution succeeds; seven desired replica counts become zero; drain/delete counts remain zero | Not run |
+| Inspect open snapshots | Seven original replica baselines are retained; nonzero targets have `phase: applied` and informational `workloadUid` values | Not run |
 | Wake Now with Apply | Execution succeeds; desired replicas match the saved baseline | Not run |
+| Inspect snapshot closure | No open snapshots remain; restored records identify the wake execution and replica count | Not run |
 | Wait for recovery | All nine expected replicas ready; original nodes remain ready and schedulability unchanged | Not run |
 | Clean up | Policy disabled or removed after restoration; node-protection disposition recorded | Not run |
 
