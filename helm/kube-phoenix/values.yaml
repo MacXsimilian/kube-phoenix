@@ -14,12 +14,9 @@ imagePullSecrets: []   # e.g. [{name: my-registry-secret}]
 replicaCount: 1
 revisionHistoryLimit: 2
 
-# Rolling update strategy. maxUnavailable: 0 ensures zero-downtime rollouts.
+# Singleton scheduler: upgrades stop the previous pod before starting a new one.
 strategy:
-  type: RollingUpdate
-  rollingUpdate:
-    maxSurge: 1
-    maxUnavailable: 0
+  type: Recreate
 
 # Namespace to deploy into. If createNamespace is true, the chart creates it.
 namespaceOverride: ""   # defaults to .Release.Namespace
@@ -179,7 +176,7 @@ ingress:
 #        - target type : ip   (routes directly to pod IPs via VPC CNI)
 #        - protocol    : HTTP
 #        - port        : 8080 (must match the container port)
-#        - health check: HTTP  /healthz  (200 OK)
+#        - health check: HTTP  /readyz  (200 OK; /healthz is a compatibility alias)
 #   4. A listener rule on the ALB pointing to the target group
 #      (e.g. host-header = kube-phoenix.example.com → forward to TG)
 #
@@ -223,14 +220,14 @@ containerSecurityContext:
 
 livenessProbe:
   httpGet:
-    path: /healthz
+    path: /livez
     port: 8080
   initialDelaySeconds: 15
   periodSeconds: 20
 
 readinessProbe:
   httpGet:
-    path: /healthz
+    path: /readyz
     port: 8080
   initialDelaySeconds: 5
   periodSeconds: 10
@@ -239,7 +236,7 @@ readinessProbe:
 # failureThreshold * periodSeconds = max startup time (30 * 5 = 150s).
 startupProbe:
   httpGet:
-    path: /healthz
+    path: /livez
     port: 8080
   failureThreshold: 30
   periodSeconds: 5
@@ -252,7 +249,7 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 topologySpreadConstraints: []
-  # Uncomment to spread replicas across nodes when replicaCount > 1:
+  # Optional placement constraints; application replicaCount must remain 0 or 1:
   # - maxSkew: 1
   #   topologyKey: kubernetes.io/hostname
   #   whenUnsatisfiable: DoNotSchedule

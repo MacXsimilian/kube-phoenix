@@ -22,6 +22,8 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import FileUploadOutlinedIcon from '@mui/icons-material/FileUploadOutlined'
 import PowerSettingsNewIcon from '@mui/icons-material/PowerSettingsNew'
+import PauseOutlinedIcon from '@mui/icons-material/PauseOutlined'
+import { useTheme } from '@mui/material/styles'
 import { useIsDark } from '@/lib/useIsDark'
 import { deletePolicy, exportPolicy } from '@/lib/api'
 import ExportMenu from '@/components/import/ExportMenu'
@@ -108,6 +110,7 @@ export default function PolicyCard({
   const queryClient = useQueryClient()
   const router = useRouter()
   const isDark = useIsDark()
+  const theme = useTheme()
   const [deleteDialog, setDeleteDialog] = useState(false)
   const [triggerDialog, setTriggerDialog] = useState<TriggerDirection | null>(null)
   const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null)
@@ -132,6 +135,9 @@ export default function PolicyCard({
   })
 
   const isDisabled = !policy.enabled
+  const surfaceColor = isDisabled
+    ? `color-mix(in srgb, ${theme.palette.background.paper} 70%, ${theme.palette.background.default})`
+    : theme.palette.background.paper
   const windows = policy.sleepWindows ?? []
 
   const sleepIconColor = isDark ? '#a5b4fc' : '#4F46E5'
@@ -176,14 +182,14 @@ export default function PolicyCard({
           borderColor: 'divider',
           borderRadius: '12px',
           overflow: 'hidden',
-          opacity: isDisabled ? DISABLED_OPACITY : 1,
+          bgcolor: surfaceColor,
           '&:hover': {
             borderColor: 'rgba(124,58,237,0.3)',
             boxShadow: isDark
               ? '0 0 0 1px rgba(124,58,237,0.08), 0 4px 24px rgba(0,0,0,0.3)'
               : '0 0 0 1px rgba(124,58,237,0.08), 0 4px 24px rgba(0,0,0,0.08)',
           },
-          transition: 'border-color 0.2s, box-shadow 0.2s, opacity 0.2s',
+          transition: 'border-color 0.2s, box-shadow 0.2s, background-color 0.2s',
           p: 0,
         }}
       >
@@ -191,14 +197,26 @@ export default function PolicyCard({
         <Box
           sx={{
             height: 3,
-            background: CARD_HEADER_GRADIENTS[policy.currentState] ?? CARD_HEADER_GRADIENTS.unknown,
+            background: isDisabled
+              ? 'linear-gradient(90deg, #777787, rgba(119,119,135,0.15))'
+              : CARD_HEADER_GRADIENTS[policy.currentState] ?? CARD_HEADER_GRADIENTS.unknown,
             flexShrink: 0,
           }}
         />
 
         <Box sx={{ display: 'flex', alignItems: 'stretch' }}>
           {/* Main content — left 70% + right 30% stats */}
-          <Box sx={{ flex: 1, minWidth: 0, p: '14px 20px', display: 'flex', gap: 2 }}>
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              p: '14px 20px',
+              display: 'flex',
+              gap: 2,
+              '@media (max-width: 650px)': { p: '16px 14px', gap: 1.5 },
+              '@media (max-width: 420px)': { p: 1.5, gap: 1, flexWrap: 'wrap' },
+            }}
+          >
             {/* Left column: name, chips, schedule, timeline */}
             <Box
               sx={{
@@ -207,74 +225,135 @@ export default function PolicyCard({
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'center',
+                '@media (max-width: 420px)': { flexBasis: '100%' },
               }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  mb: 0.75,
+                  minWidth: 0,
+                  '@media (max-width: 1050px)': { flexWrap: 'wrap', rowGap: 0.75 },
+                }}
+              >
                 <Box
-                  title={policy.currentState}
-                  aria-label={policy.currentState}
+                  title={isDisabled ? 'Disabled — automatic scheduling is off' : policy.currentState}
+                  aria-label={isDisabled ? 'Disabled — automatic scheduling is off' : policy.currentState}
                   sx={{
                     width: 10,
                     height: 10,
                     borderRadius: '50%',
                     flexShrink: 0,
-                    bgcolor: led.bg,
-                    boxShadow: led.glow !== 'none' ? `0 0 8px ${led.glow}` : undefined,
-                    ...(policy.currentState === 'transitioning' && {
+                    bgcolor: isDisabled ? '#9292a3' : led.bg,
+                    opacity: isDisabled ? DISABLED_OPACITY : 1,
+                    boxShadow:
+                      !isDisabled && led.glow !== 'none' ? `0 0 8px ${led.glow}` : undefined,
+                    ...(!isDisabled && policy.currentState === 'transitioning' && {
                       animation: 'led-pulse 1.5s ease-in-out infinite',
                       '@keyframes led-pulse': LED_PULSE_KEYFRAMES,
+                      '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
                     }),
                   }}
                 />
                 <Typography
                   variant="body1"
                   noWrap
+                  title={policy.name}
                   sx={{
                     fontWeight: 600,
                     fontSize: 15,
                     color: 'text.primary',
+                    minWidth: 0,
+                    opacity: isDisabled ? 0.8 : 1,
+                    '@media (max-width: 1050px)': { flex: 1 },
+                    '@media (max-width: 650px)': { fontSize: 14 },
                   }}
                 >
                   {policy.name}
                 </Typography>
-                <Chip
-                  label={stateStyle.label}
-                  size="small"
-                  sx={{ ...SMALL_CHIP_SX, bgcolor: stateStyle.bg, color: stateStyle.color }}
-                />
-                <Chip
-                  label={policy.mode.toUpperCase()}
-                  size="small"
-                  sx={{
-                    ...SMALL_CHIP_SX,
-                    bgcolor: getModeStyle(isDark, policy.mode).bg,
-                    color: getModeStyle(isDark, policy.mode).color,
-                  }}
-                />
                 {isDisabled && (
                   <Chip
+                    icon={<PauseOutlinedIcon />}
                     label="Disabled"
                     size="small"
-                    sx={{ ...SMALL_CHIP_SX, bgcolor: 'action.selected' }}
+                    sx={{
+                      height: 24,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      flexShrink: 0,
+                      borderRadius: '6px',
+                      border: '1px solid',
+                      borderColor: isDark ? '#707080' : '#aaaaba',
+                      bgcolor: isDark ? '#34343f' : '#e8e8ee',
+                      color: isDark ? '#e2e2ec' : '#3c3c4b',
+                      '& .MuiChip-icon': { fontSize: 13, color: 'inherit' },
+                    }}
                   />
                 )}
-                {policy.namespaceFilter && (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    flexShrink: 0,
+                    opacity: isDisabled ? DISABLED_OPACITY : 1,
+                    '@media (max-width: 1050px)': { ml: '18px', flexBasis: '100%' },
+                    '@media (max-width: 650px)': { flexWrap: 'wrap', gap: 0.5 },
+                  }}
+                >
                   <Chip
-                    label={`${policy.namespaceFilter.split(',').length} ns`}
+                    label={stateStyle.label}
                     size="small"
-                    sx={{ ...SMALL_CHIP_SX, color: colors.muted, bgcolor: 'divider' }}
+                    sx={{ ...SMALL_CHIP_SX, bgcolor: stateStyle.bg, color: stateStyle.color }}
                   />
-                )}
+                  <Chip
+                    label={policy.mode.toUpperCase()}
+                    size="small"
+                    sx={{
+                      ...SMALL_CHIP_SX,
+                      bgcolor: getModeStyle(isDark, policy.mode).bg,
+                      color: getModeStyle(isDark, policy.mode).color,
+                    }}
+                  />
+                  {policy.namespaceFilter && (
+                    <Chip
+                      label={`${policy.namespaceFilter.split(',').length} ns`}
+                      size="small"
+                      sx={{ ...SMALL_CHIP_SX, color: colors.muted, bgcolor: 'divider' }}
+                    />
+                  )}
+                </Box>
               </Box>
 
+              {isDisabled && (
+                <Typography
+                  sx={{ fontSize: 12, fontWeight: 500, color: colors.muted, ml: '18px', mb: 0.75 }}
+                >
+                  Automatic scheduling is off
+                </Typography>
+              )}
+
               {hasSleepWindows(windows) && (
-                <Typography variant="body2" sx={{ fontSize: 12, color: colors.muted, mb: 1 }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontSize: 12,
+                    color: colors.muted,
+                    mb: 1,
+                    opacity: isDisabled ? 0.8 : 1,
+                    '@media (max-width: 650px)': { fontSize: 11 },
+                  }}
+                >
                   {windowsToText(windows)}
                 </Typography>
               )}
 
               {hasSleepWindows(windows) && (
-                <MiniTimeline windows={windows} height={72} timezone={policy.timezone} />
+                <Box sx={{ opacity: isDisabled ? DISABLED_OPACITY : 1 }}>
+                  <MiniTimeline windows={windows} height={72} timezone={policy.timezone} />
+                </Box>
               )}
             </Box>
 
@@ -290,19 +369,44 @@ export default function PolicyCard({
                 pl: 2,
                 borderLeft: '1px solid',
                 borderLeftColor: 'divider',
+                '@media (max-width: 650px)': { minWidth: 76, pl: 1.5 },
+                '@media (max-width: 420px)': {
+                  width: '100%',
+                  flexBasis: '100%',
+                  pl: 0,
+                  pt: 1.5,
+                  borderLeft: 0,
+                  borderTop: '1px solid',
+                  borderTopColor: 'divider',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 3,
+                },
               }}
             >
               {hasSleepWindows(windows) && (
                 <Box
                   sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 0.5 }}
                 >
-                  <WeeklySavingsRing windows={windows} size={56} />
-                  <Typography sx={{ fontSize: 10, color: 'text.secondary', mt: 0.5 }}>
+                  <WeeklySavingsRing
+                    windows={windows}
+                    size={56}
+                    muted={isDisabled}
+                    surfaceColor={surfaceColor}
+                  />
+                  <Typography
+                    sx={{
+                      fontSize: 10,
+                      color: 'text.secondary',
+                      mt: 0.5,
+                      opacity: isDisabled ? DISABLED_OPACITY : 1,
+                    }}
+                  >
                     saved/wk
                   </Typography>
                 </Box>
               )}
-              <Box sx={{ textAlign: 'center' }}>
+              <Box sx={{ textAlign: 'center', opacity: isDisabled ? DISABLED_OPACITY : 1 }}>
                 <Typography sx={{ fontSize: 11, color: 'text.secondary', lineHeight: 1.3 }}>
                   Next
                 </Typography>
@@ -324,6 +428,7 @@ export default function PolicyCard({
               borderLeft: '1px solid',
               borderColor: 'divider',
               flexShrink: 0,
+              '@media (max-width: 650px)': { p: '12px 8px' },
             }}
           >
             <Tooltip title="View details" placement="left">

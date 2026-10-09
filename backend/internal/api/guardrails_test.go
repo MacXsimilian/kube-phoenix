@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+// Direct updates and imports must accept and reject the same protection
+// settings so importing a file cannot bypass normal guardrail validation.
 func TestGuardrailProtectionValidation_UpdateAndImport(t *testing.T) {
 	base := guardrailsExportBody{
 		ProtectedNamespaces:   "kube-system,monitoring",
@@ -90,6 +92,8 @@ func TestGuardrailProtectionValidation_UpdateAndImport(t *testing.T) {
 	}
 }
 
+// Node namespace exclusions use a CSV string contract. Reject other JSON
+// shapes instead of silently discarding the requested protection.
 func TestGuardrailProtectionValidation_SkipNsNodeMustBeString(t *testing.T) {
 	if msg := validateGuardrailFields(map[string]interface{}{"skipNsNode": []string{"monitoring"}}); msg != "skipNsNode must be a string" {
 		t.Errorf("validation = %q, want skipNsNode type error", msg)

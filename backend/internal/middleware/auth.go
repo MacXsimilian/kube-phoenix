@@ -23,8 +23,8 @@ type ctxSessionIDKey struct{}
 
 // UserFromContext returns the authenticated user, or nil if unauthenticated.
 func UserFromContext(ctx context.Context) *store.User {
-	u, _ := ctx.Value(ctxUserKey{}).(*store.User)
-	return u
+	user, _ := ctx.Value(ctxUserKey{}).(*store.User)
+	return user
 }
 
 // SessionIDFromContext returns the session ID for the current request.
@@ -35,9 +35,8 @@ func SessionIDFromContext(ctx context.Context) uint {
 
 // ─── Session Auth (cookie-based) ─────────────────────────────────────────────
 
-// sessionExtendGrace is the slack window before idle expiry within which a
-// request will refresh the sliding window. Outside this window the existing
-// expiry is still well in the future and the DB UPDATE is skipped.
+// sessionExtendGrace is the minimum time between sliding-expiry updates for
+// sessions whose idle timeout exceeds this interval.
 const sessionExtendGrace = 60 * time.Second
 
 // SessionAuth reads the __kp_session HTTP-only cookie, looks up the session in
@@ -52,35 +51,33 @@ func SessionAuth(st *store.Store, idleTimeout time.Duration) func(http.Handler) 
 				return
 			}
 
-			sess, err := st.GetSessionByToken(cookie.Value)
+			session, err := st.GetSessionByToken(cookie.Value)
 			if err != nil {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return
 			}
 
-			if !sess.User.Enabled {
-				slog.Warn("session-auth: disabled user attempted access", "userID", sess.User.ID, "username", sess.User.Username)
+			if !session.User.Enabled {
+				slog.Warn("session-auth: disabled user attempted access", "userID", session.User.ID, "username", session.User.Username)
 				http.Error(w, `{"error":"account disabled"}`, http.StatusForbidden)
 				return
 			}
 
-			if shouldExtendSession(sess.ExpiresAt, idleTimeout) {
+			if shouldExtendSession(session.ExpiresAt, idleTimeout) {
 				if err := st.ExtendSession(cookie.Value, idleTimeout); err != nil {
 					slog.Warn("session-auth: extend session failed", "err", err)
 				}
 			}
 
-			ctx := context.WithValue(r.Context(), ctxUserKey{}, &sess.User)
-			ctx = context.WithValue(ctx, ctxSessionIDKey{}, sess.ID)
+			ctx := context.WithValue(r.Context(), ctxUserKey{}, &session.User)
+			ctx = context.WithValue(ctx, ctxSessionIDKey{}, session.ID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
-// shouldExtendSession reports whether the sliding-window expiry is close enough
-// to "now" that we should refresh it. Sessions are extended only when the
-// remaining lifetime drops below the grace window, which collapses the per-
-// request UPDATE storm into roughly one UPDATE per grace interval per session.
+// shouldExtendSession reports whether at least one grace interval has elapsed
+// since the idle expiry was last refreshed. Short idle timeouts always refresh.
 func shouldExtendSession(expiresAt time.Time, idleTimeout time.Duration) bool {
 	threshold := idleTimeout - sessionExtendGrace
 	if threshold <= 0 {

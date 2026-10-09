@@ -123,9 +123,17 @@ func (r *Runner) drainConcurrent(ctx context.Context, mode string, targets []dra
 	var mu sync.Mutex
 
 	for _, t := range targets {
+		if ctx.Err() != nil {
+			break
+		}
 		t := t
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			wg.Wait()
+			return
+		}
 		wg.Add(1)
-		sem <- struct{}{}
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
@@ -164,6 +172,11 @@ func (r *Runner) drainAndDeleteNode(ctx context.Context, mode string, t drainTar
 
 	if err := r.k8s.DeleteNode(ctx, t.name); err != nil {
 		emit(logCh, "error", fmt.Sprintf("Failed to delete node %s: %s", t.name, err))
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := r.k8s.RecoverNodeCordon(cleanup, t.name); err != nil {
+			emit(logCh, "error", fmt.Sprintf("Failed to recover cordon for %s: %s", t.name, err))
+		}
 		return true, false, true
 	}
 	emit(logCh, "ok", fmt.Sprintf("Deleted node object %s", t.name))

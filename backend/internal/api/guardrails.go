@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/macxsimilian/kube-phoenix/backend/internal/nodeutil"
-	"github.com/macxsimilian/kube-phoenix/backend/internal/scheduler"
 	"github.com/macxsimilian/kube-phoenix/backend/internal/stringutil"
 )
 
@@ -72,16 +71,7 @@ func (h *Handler) updateGuardrails(w http.ResponseWriter, r *http.Request) {
 	slog.Info("guardrails updated")
 	h.audit(r, "guardrail.update", "guardrail", nil, old, guardrails)
 
-	if h.policyScheduler != nil {
-		if err := h.policyScheduler.UpdateSettings(scheduler.SchedulerConfig{
-			TickInterval:        guardrails.ParseSchedulerEvalInterval(),
-			AutoWake:            guardrails.SchedulerAutoWake,
-			ReconcileWhileAwake: guardrails.SchedulerReconcileWhileAwake,
-			EnforceSleep:        guardrails.SchedulerEnforceSleep,
-		}); err != nil {
-			slog.Error("scheduler settings update failed", "err", err)
-		}
-	}
+	h.applySchedulerSettings(guardrails)
 
 	jsonOK(w, guardrails)
 }

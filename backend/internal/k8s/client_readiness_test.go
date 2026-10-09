@@ -19,6 +19,8 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+// Ready pods from other workloads must not satisfy this workload's readiness.
+// Include label expressions to catch clients that serialize only MatchLabels.
 func TestCountReadyPodsUsesCompleteWorkloadSelector(t *testing.T) {
 	selector := &metav1.LabelSelector{
 		MatchLabels: map[string]string{"tier": "backend"},
@@ -75,6 +77,8 @@ func TestCountReadyPodsUsesCompleteWorkloadSelector(t *testing.T) {
 	}
 }
 
+// A missing or invalid selector could accidentally count every namespace pod.
+// Reject it before issuing a pod list request.
 func TestCountReadyPodsRejectsInvalidWorkloadSelector(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

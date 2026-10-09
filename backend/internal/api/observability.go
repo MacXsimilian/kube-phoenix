@@ -35,8 +35,8 @@ type RuntimeConfig struct {
 
 func (h *Handler) getObservabilityConfig(w http.ResponseWriter, r *http.Request) {
 	schedulerInterval := "30s"
-	if g, err := h.store.GetGuardrails(); err == nil {
-		schedulerInterval = g.SchedulerEvalInterval
+	if guardrails, err := h.store.GetGuardrails(); err == nil {
+		schedulerInterval = guardrails.SchedulerEvalInterval
 		if schedulerInterval == "" {
 			schedulerInterval = "30s"
 		}
@@ -81,7 +81,7 @@ func (h *Handler) streamObservability(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
-	rc := http.NewResponseController(w)
+	responseController := http.NewResponseController(w)
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	keepalive := time.NewTicker(sseKeepaliveInterval)
@@ -93,14 +93,14 @@ func (h *Handler) streamObservability(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := rc.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			if err := responseController.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
 				return
 			}
 			if !h.writeSSEObservability(w, flusher) {
 				return
 			}
 		case <-keepalive.C:
-			if err := rc.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			if err := responseController.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
 				return
 			}
 			if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
@@ -134,12 +134,12 @@ func (h *Handler) getObservabilityHistory(w http.ResponseWriter, r *http.Request
 	var from, to time.Time
 
 	if rangeStr := r.URL.Query().Get("range"); rangeStr != "" {
-		d, err := parseDurationExtended(rangeStr)
+		duration, err := parseDurationExtended(rangeStr)
 		if err != nil {
 			jsonError(w, "invalid range: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		from = now.Add(-d)
+		from = now.Add(-duration)
 		to = now
 	} else {
 		fromStr := r.URL.Query().Get("from")
@@ -178,24 +178,24 @@ func (h *Handler) getObservabilityThresholds(w http.ResponseWriter, r *http.Requ
 
 // updateObservabilityThreshold creates or updates a threshold.
 func (h *Handler) updateObservabilityThreshold(w http.ResponseWriter, r *http.Request) {
-	var t store.ObservabilityThreshold
-	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+	var threshold store.ObservabilityThreshold
+	if err := json.NewDecoder(r.Body).Decode(&threshold); err != nil {
 		jsonError(w, "invalid body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if t.PanelKey == "" {
+	if threshold.PanelKey == "" {
 		jsonError(w, "panelKey is required", http.StatusBadRequest)
 		return
 	}
-	if t.WarnVal < 0 || t.CritVal < 0 {
+	if threshold.WarnVal < 0 || threshold.CritVal < 0 {
 		jsonError(w, "threshold values must not be negative", http.StatusBadRequest)
 		return
 	}
-	if err := h.store.UpsertObservabilityThreshold(&t); err != nil {
+	if err := h.store.UpsertObservabilityThreshold(&threshold); err != nil {
 		jsonError(w, "save failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonOK(w, t)
+	jsonOK(w, threshold)
 }
 
 // parseDurationExtended extends time.ParseDuration with "d" (day) support.

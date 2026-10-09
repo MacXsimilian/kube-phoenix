@@ -35,12 +35,19 @@ export default function ExceptionsPage() {
   const [editing, setEditing] = useState<ScheduledException | undefined>()
   const [pendingDelete, setPendingDelete] = useState<ScheduledException | null>(null)
   const [importOpen, setImportOpen] = useState(false)
-  const [exportTarget, setExportTarget] = useState<{ anchor: HTMLElement; ex: ScheduledException } | null>(null)
+  const [exportTarget, setExportTarget] = useState<{
+    anchor: HTMLElement
+    ex: ScheduledException
+  } | null>(null)
   const { notify, SnackbarAlert } = useSnackbar()
 
   const canEdit = canEditSchedules(user?.permissions)
 
-  const { data: exceptions, isLoading, isError } = useQuery({
+  const {
+    data: exceptions,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: queryKeys.exceptions(),
     queryFn: () => getExceptions(),
     refetchInterval: EXCEPTIONS_REFETCH_MS,
@@ -80,7 +87,10 @@ export default function ExceptionsPage() {
                 <Button
                   variant="contained"
                   startIcon={<AddIcon />}
-                  onClick={() => { setEditing(undefined); setDialogOpen(true) }}
+                  onClick={() => {
+                    setEditing(undefined)
+                    setDialogOpen(true)
+                  }}
                   disabled={!canEdit}
                 >
                   New Exception
@@ -90,24 +100,32 @@ export default function ExceptionsPage() {
           </Box>
         }
       />
-      {isError && <Alert severity="error" sx={{ mb: 2 }}>Failed to load exceptions</Alert>}
-      {isLoading && <CenteredSpinner />}
-      {exceptions && exceptions.length === 0 && (
-        <EmptyState title="No exceptions found." />
+      {isError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Failed to load exceptions
+        </Alert>
       )}
+      {isLoading && <CenteredSpinner />}
+      {exceptions && exceptions.length === 0 && <EmptyState title="No exceptions found." />}
       {exceptions && exceptions.length > 0 && (
         <ExceptionsCalendarStrip
           exceptions={exceptions}
           isDark={isDark}
           canEdit={canEdit}
-          onEdit={(ex) => { setEditing(ex); setDialogOpen(true) }}
+          onEdit={(ex) => {
+            setEditing(ex)
+            setDialogOpen(true)
+          }}
           onCancel={(ex) => setPendingDelete(ex)}
           onExport={(ex, anchor) => setExportTarget({ anchor, ex })}
         />
       )}
       <ExceptionDialog
         open={dialogOpen}
-        onClose={() => { setDialogOpen(false); setEditing(undefined) }}
+        onClose={() => {
+          setDialogOpen(false)
+          setEditing(undefined)
+        }}
         existing={editing}
         onNotify={notify}
       />
@@ -128,14 +146,19 @@ export default function ExceptionsPage() {
       <ConfirmDialog
         open={!!pendingDelete}
         title="Cancel exception?"
-        message={pendingDelete?.ticketRef
-          ? `This will cancel exception ${pendingDelete.ticketRef}. This action cannot be undone.`
-          : 'This will cancel the exception. This action cannot be undone.'}
+        message={
+          pendingDelete?.ticketRef
+            ? `This will cancel exception ${pendingDelete.ticketRef}. This action cannot be undone.`
+            : 'This will cancel the exception. This action cannot be undone.'
+        }
         confirmLabel="Cancel exception"
-        onConfirm={() => { if (pendingDelete) deleteMut.mutate(pendingDelete.id); setPendingDelete(null) }}
+        onConfirm={() => {
+          if (pendingDelete) deleteMut.mutate(pendingDelete.id)
+          setPendingDelete(null)
+        }}
         onClose={() => setPendingDelete(null)}
       />
       {SnackbarAlert}
     </Box>
-  );
+  )
 }

@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
           node-version: "26"
           cache: npm
@@ -41,6 +41,12 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Frontend regression checks
+        run: |
+          npm run test:windows
+          node --test tests/observability-history.test.mjs
+          node --test mock-api/tests/exceptions.test.mjs
 
       - name: Build
         id: fe_build
@@ -104,6 +110,21 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+    # Ownership and migration tests need a real, disposable PostgreSQL database.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: kube_phoenix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d kube_phoenix_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         shell: bash
@@ -113,7 +134,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27"
+          go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
       - name: Copy OpenAPI spec into embed path
@@ -134,10 +155,14 @@ jobs:
 
       - name: Test
         id: be_test
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/kube_phoenix_test?sslmode=disable
         run: |
+          # Missing integration configuration must fail CI instead of skipping tests.
+          : "${TEST_DATABASE_URL:?TEST_DATABASE_URL is required for CI database tests}"
           START=$(date +%s)
           TEST_EXIT=0
-          go test -race -coverprofile=coverage.out ./... 2>&1 | tee /tmp/test.out || TEST_EXIT=$?
+          go test -race -count=1 -coverprofile=coverage.out ./... 2>&1 | tee /tmp/test.out || TEST_EXIT=$?
           echo "duration=$(( $(date +%s) - START ))" >> "$GITHUB_OUTPUT"
           PASSED=$(grep -c '^ok' /tmp/test.out || true)
           FAILED=$(grep -c '^FAIL' /tmp/test.out || true)
@@ -206,7 +231,7 @@ jobs:
       - run: helm lint helm/kube-phoenix
 
       - name: Test PostgreSQL storage and upgrade guards
-        run: python3 -B -m unittest discover -s hack/tests -p 'test_postgresql_*.py' -v
+        run: python3 -B -m unittest discover -s hack/tests -p 'test_*.py' -v
 
       - name: Lint with example values
         run: |
@@ -257,6 +282,29 @@ jobs:
           dockerfile: Dockerfile
           ignore: DL3018  # apk add --no-cache not needed in our alpine stages
 
+      # Register cache restore before cache-dance so post steps extract before saving.
+      - name: Restore BuildKit cache mounts
+        id: mount-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/buildkit-mounts
+          key: buildkit-mounts-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Dockerfile', 'frontend/package-lock.json', 'backend/go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            buildkit-mounts-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Dockerfile', 'frontend/package-lock.json', 'backend/go.sum') }}-
+
+      - name: Inject BuildKit cache mounts
+        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
+        with:
+          scratch-dir: ${{ runner.temp }}/buildkit-cache-dance
+          skip-extraction: ${{ steps.mount-cache.outputs.cache-hit == 'true' }}
+          cache-map: |
+            {
+              "${{ runner.temp }}/buildkit-mounts/npm": "/root/.npm",
+              "${{ runner.temp }}/buildkit-mounts/next": "/app/frontend/.next/cache",
+              "${{ runner.temp }}/buildkit-mounts/go-mod": "/go/pkg/mod",
+              "${{ runner.temp }}/buildkit-mounts/go-build": "/root/.cache/go-build"
+            }
+
       - name: Build image (no push)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
@@ -264,9 +312,12 @@ jobs:
           platforms: linux/amd64
           provenance: false
           push: false
+          load: true
+          tags: kube-phoenix:ci-check
           build-args: |
             NEXT_PUBLIC_APP_VERSION=ci-check
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-
+      - name: Smoke test final image
+        run: python3 .github/scripts/smoke_image.py kube-phoenix:ci-check ci-check

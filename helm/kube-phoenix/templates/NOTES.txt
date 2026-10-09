@@ -109,8 +109,15 @@ kube-phoenix {{ .Chart.AppVersion }} has been deployed.
   IMPORTANT
 ================================================================================
 
-  All policies are created DISABLED in PLAN MODE. Nothing will scale until
-  you explicitly enable a policy and switch its mode to "apply".
+  New policies default to PLAN MODE; check the Enabled setting to control
+  scheduled execution. Imported policies start disabled in plan mode.
+  Manual triggers work while disabled and can explicitly select "apply".
+
+  Run one application replica with the Recreate strategy. Scheduler
+  ownership is exclusive; upgrades include brief application downtime.
+  Before upgrading from an older binary, stop all old application pods.
+
+  Startup/liveness: /livez. Database readiness: /readyz (/healthz alias).
 
 ================================================================================
   NEXT STEPS

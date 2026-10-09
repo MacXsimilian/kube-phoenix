@@ -9,13 +9,14 @@ import type { PolicyExecution } from '@/lib/types'
 
 function HistoryContent() {
   const searchParams = useSearchParams()
-  const initialExecId = searchParams.get('exec') ? Number(searchParams.get('exec')) : undefined
-  const [selected, setSelected] = useState<PolicyExecution | null>(null)
+  const executionIdParam = searchParams.get('exec')
+  const initialExecutionId = executionIdParam ? Number(executionIdParam) : undefined
+  const [selectedExecution, setSelectedExecution] = useState<PolicyExecution | null>(null)
 
   return (
     <>
-      <PolicyExecutionTable onSelect={setSelected} initialExecId={initialExecId} />
-      <LogViewer execution={selected} onClose={() => setSelected(null)} />
+      <PolicyExecutionTable onSelect={setSelectedExecution} initialExecId={initialExecutionId} />
+      <LogViewer execution={selectedExecution} onClose={() => setSelectedExecution(null)} />
     </>
   )
 }
@@ -28,5 +29,5 @@ export default function HistoryPage() {
         <HistoryContent />
       </Suspense>
     </>
-  );
+  )
 }

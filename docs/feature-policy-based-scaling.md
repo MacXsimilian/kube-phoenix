@@ -9,14 +9,15 @@ For current operation, use [Your first policy](first-policy.md), [window schedul
 | Area | Current implementation | Scope or qualification |
 | :--- | :--------------------- | :--------------------- |
 | Window scheduling (R1, R5) | Implemented: recurring local-time windows, union evaluation, configurable tick, recovery and reconciliation | `nextTransitionAt` predicts window changes; exceptions and execution delays are not included in that prediction |
-| Workload sleep/wake (R2.1–R2.5, R2.7) | Implemented for Deployments and StatefulSets with database snapshots and execution timeouts | Wake depends on saved database state; API/scaling failures can leave partial work to inspect and recover |
+| Workload sleep/wake (R2.1–R2.5, R2.7) | Implemented for Deployments and StatefulSets with prepared/applied database snapshots, execution timeouts, and conflict retries | Intent is persisted before scale-down; partial failures fail execution, retain recovery data, and defer nodes. Wake follows kind/namespace/name, including legacy snapshots and replacements |
 | Annotation recovery (R2.6) | **Superseded** for policy executions | Policy wake reads database snapshots; it does not reconstruct lost snapshots from workload annotations |
-| Exceptions (R3) | Implemented: parent policy, lifecycle, type-based start action, optional scoped actions | End action follows the current schedule rather than blindly reversing the start action |
+| Exceptions (R3) | Implemented: parent policy, lifecycle, type-based start action, namespace/label/explicit-target intersections | Scoped work preserves baseline schedule state and does not drain nodes. End action follows the current schedule rather than blindly reversing the start action |
 | Guardrails and overlap checks (R4) | Implemented: namespace protection during sleep, node label/taint protection, priority order, conservative namespace overlap checks | Node processing is cluster-wide; a workload namespace filter does not restrict node candidates. Label-selector intersections are not used to permit same-namespace apply policies |
 | Execution records (R6) | Implemented: database history, streamed logs, counters and metrics | Plan executions also record state/history; displayed policy state alone does not prove cluster replicas changed |
+| Startup/execution ownership (R5.3, R5.5) | One dedicated PostgreSQL advisory-lock session covers startup recovery and process lifetime | One application replica, Recreate upgrades, at least two DB connections, and session-preserving DB access are required; this is not an HA scheduler |
 | Acceptance scenarios below | Defined verification targets | No pass/fail results or deployment-wide completion claim are recorded here |
 
-Implementation entry points: [window evaluator](../backend/internal/policy/evaluator.go), [scheduler](../backend/internal/scheduler/policy_scheduler.go), [policy scaler](../backend/internal/scaler/policy_scaler.go), [node processing](../backend/internal/scaler/nodes.go), and [overlap/snapshot store](../backend/internal/store/policies.go).
+Implementation entry points: [window evaluator](../backend/internal/policy/evaluator.go), [scheduler](../backend/internal/scheduler/policy_scheduler.go), [execution lifecycle](../backend/internal/scheduler/execution.go), [policy scaler](../backend/internal/scaler/policy_scaler.go), [workload operations](../backend/internal/scaler/workloads.go), [node processing](../backend/internal/scaler/nodes.go), [policy overlap checks](../backend/internal/store/policies.go), and [snapshot store](../backend/internal/store/snapshots.go).
 
 ## Problem Statement
 
@@ -75,8 +76,8 @@ Requirement IDs are retained for traceability. Superseded wording is called out 
 
 | #    | Requirement                                                                                                                          |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| R2.1 | **Sleep**: read each matching Deployment/StatefulSet's replica count, scale to 0, and persist a restoration snapshot; inspect errors if either operation fails                                   |
-| R2.2 | **Wake**: restore each workload to its pre-sleep replica count                                                                       |
+| R2.1 | **Sleep**: persist prepared intent with each matching Deployment/StatefulSet's replica count before scaling to 0, then record application. Retain intent on failure; any operation error fails the execution and defers node actions |
+| R2.2 | **Wake**: restore each workload by kind/namespace/name to its saved pre-sleep replica count, including same-name replacements and legacy snapshots without UID metadata |
 | R2.3 | Workloads already at 0 replicas at sleep time must be recorded but not re-scaled on wake                                             |
 | R2.4 | If a workload is deleted while sleeping, wake must handle this gracefully (log, skip, mark)                                          |
 | R2.5 | Replica snapshots must be persisted to survive system restarts                                                                       |
@@ -92,6 +93,7 @@ Requirement IDs are retained for traceability. Superseded wording is called out 
 | R3.3 | Exception type (`stay_awake` or `force_sleep`) must determine the action taken on start — wake for stay_awake, sleep for force_sleep |
 | R3.4 | **Revised:** `sleepOnEnd=true` requests the current schedule's sleep/wake action at end, using the exception scope; it is not necessarily the inverse action                             |
 | R3.5 | Only pending exceptions can be edited                                                                                                |
+| R3.6 | Exception namespaces, labels, and explicit workload targets intersect each other and the parent policy boundary; scoped actions preserve baseline scheduling for other workloads and skip node drain/deletion |
 
 ### R4 — Guardrails & Protection
 
@@ -108,10 +110,11 @@ Requirement IDs are retained for traceability. Superseded wording is called out 
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | R5.1 | A background scheduler evaluates all enabled policies on a configurable tick interval (default 30s)                                  |
 | R5.2 | Each tick computes the **intended state** (sleeping/awake) and compares to **current state**                                         |
-| R5.3 | State transitions are **atomically claimed** to prevent concurrent executions of the same policy                                     |
+| R5.3 | State transitions are **atomically claimed** to prevent concurrent executions of the same policy; a dedicated database advisory-lock session excludes another live process from recovery and execution |
 | R5.4 | Stuck transitions (no completion within policy timeout + grace period) are automatically reset                                        |
 | R5.5 | On startup, the scheduler must run **recovery** — detect mismatches and self-correct                                                |
 | R5.6 | While a policy is awake, optional **reconciliation** detects open snapshots and attempts corrective wakes with a fixed five-minute minimum delay between attempts           |
+| R5.7 | Active scoped exceptions reconcile on a separate five-minute retry clock without suppressing baseline transitions for other workloads |
 
 ### R6 — Observability
 
@@ -134,7 +137,7 @@ These are acceptance scenarios to execute and record separately. Timing criteria
 | SC-2  | Workloads are restored to their exact pre-sleep replica counts when the sleep window ends                       | Compare post-wake replicas against stored snapshots                                             |
 | SC-3  | Workloads in the configured protected namespaces are excluded from sleep/scaling-down; this does not block restoration of existing snapshots                  | Confirm `kube-system` remains protected, then verify a targeted plan excludes its workloads                          |
 | SC-4  | `plan` previews intended targets and changes neither workload replicas nor nodes; log levels/text differ from apply                           | Inspect plan targets and node protection, then compare captured Kubernetes state; record apply separately                     |
-| SC-5  | Exceptions take precedence in the correct order (`force_sleep` > `stay_awake` > schedule)                      | Check engine tests for precedence; API-created opposite-type overlaps should be rejected                             |
+| SC-5  | Unscoped exceptions take precedence (`force_sleep` > `stay_awake` > schedule); scoped exceptions affect only intersecting targets and preserve other workloads' schedule | Check engine/targeting tests and a mixed-scope wake boundary; API-created opposite-type overlaps should be rejected |
 | SC-6  | After restart, recovery detects eligible mismatches and attempts correction; the former two-tick target is not a guaranteed bound      | In a separate recovery test, record interruption handling, retries, elapsed time, and restored replicas                 |
 | SC-7  | Potentially overlapping `apply` namespace scopes are rejected on creation and update                                              | Attempt to create overlapping policies, verify rejection                                        |
 | SC-8  | Snapshots survive process restarts and are correctly used for wake restoration                                  | Sleep workloads, restart the system, trigger wake, verify correct restoration                   |
@@ -158,7 +161,9 @@ These are acceptance scenarios to execute and record separately. Timing criteria
 
 | Former question | Current behavior |
 | :-------------- | :--------------- |
-| Are node operations limited by the workload namespace filter? | No. Sleep considers cluster-wide node candidates and applies node-protection guardrails. Wake does not recreate or uncordon nodes |
+| Are node operations limited by the workload namespace filter? | No. Ordinary sleep considers cluster-wide node candidates and applies node-protection guardrails. Scoped exception runs and incomplete workload prerequisites defer nodes. Wake does not recreate nodes; failure/startup cleanup restores only owned cordons |
+| Does a PDB block the sleep drain indefinitely? | Eviction is attempted first; errors other than pod-not-found trigger a zero-grace pod-delete attempt. This bypasses PDBs and graceful termination when pod-delete authorization is present; the default chart does not grant that verb |
+| Does an existing snapshot prevent all repeat scaling? | It preserves the original baseline. Ordinary sleep can reapply zero to a nonzero workload with an open snapshot; Enforce Sleep separately controls periodic drift checks |
 | Do failed scheduled transitions retry immediately? | No. They use a fixed five-minute minimum retry delay, as do corrective attempts |
 | Does changing an apply policy to plan automatically restore sleeping workloads? | No. Saving the mode change does not itself perform a live wake; use an explicit Apply wake when restoration is intended |
 | Can exceptions exist without a policy? | No. API validation requires a parent policy |

@@ -97,16 +97,16 @@ func NewOIDCProvider(ctx context.Context, cfg OIDCConfig) (*OIDCProvider, error)
 // Priority: admin > operator > viewer (default).
 // Comparison is case-insensitive.
 func MapGroupsToRole(groups []string, adminGroups, operatorGroups []string) string {
-	for _, g := range groups {
-		for _, ag := range adminGroups {
-			if strings.EqualFold(g, ag) {
+	for _, group := range groups {
+		for _, adminGroup := range adminGroups {
+			if strings.EqualFold(group, adminGroup) {
 				return "admin"
 			}
 		}
 	}
-	for _, g := range groups {
-		for _, og := range operatorGroups {
-			if strings.EqualFold(g, og) {
+	for _, group := range groups {
+		for _, operatorGroup := range operatorGroups {
+			if strings.EqualFold(group, operatorGroup) {
 				return "operator"
 			}
 		}

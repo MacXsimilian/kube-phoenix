@@ -9,6 +9,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+// Accepted label protection configuration must produce the expected
+// matchers; malformed entries must not create usable protection rules.
 func TestLabelValidationAndParsingAgree(t *testing.T) {
 	for _, tt := range []struct {
 		config string
@@ -35,6 +37,8 @@ func TestLabelValidationAndParsingAgree(t *testing.T) {
 	}
 }
 
+// Validation and parsing must agree on taint key, value, and effect syntax
+// so saved protection settings have the meaning the API accepted.
 func TestTaintValidationAndParsingAgree(t *testing.T) {
 	for _, tt := range []struct {
 		config string
@@ -62,6 +66,8 @@ func TestTaintValidationAndParsingAgree(t *testing.T) {
 	}
 }
 
+// CSV label protection should match an exact key/value pair while tolerating
+// spacing and malformed entries when reading existing configuration.
 func TestMatchLabel(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -128,6 +134,8 @@ func TestMatchLabel(t *testing.T) {
 	}
 }
 
+// Taint protection matches key, value, and effect together. Sharing a key
+// alone must not protect a node with a different taint.
 func TestMatchTaint(t *testing.T) {
 	tests := []struct {
 		name      string

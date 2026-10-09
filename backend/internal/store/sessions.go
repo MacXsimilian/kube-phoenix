@@ -12,25 +12,25 @@ import (
 
 // GenerateToken returns a cryptographically random 64-char hex token.
 func GenerateToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(b), nil
+	return hex.EncodeToString(tokenBytes), nil
 }
 
-func (s *Store) CreateSession(sess *Session) error {
-	return s.db.Create(sess).Error
+func (s *Store) CreateSession(session *Session) error {
+	return s.db.Create(session).Error
 }
 
 // GetSessionByToken retrieves a session by token, preloading the User.
 // Returns gorm.ErrRecordNotFound if the token is invalid or expired.
 func (s *Store) GetSessionByToken(token string) (*Session, error) {
-	var sess Session
+	var session Session
 	err := s.db.Preload("User").
 		Where("token = ? AND expires_at > ? AND max_expires_at > ?", token, time.Now(), time.Now()).
-		First(&sess).Error
-	return &sess, err
+		First(&session).Error
+	return &session, err
 }
 
 // ExtendSession performs a sliding-window extension, capped at max_expires_at.

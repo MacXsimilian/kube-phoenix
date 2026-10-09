@@ -62,7 +62,8 @@ function PolicyDetailContent() {
     queryKey: queryKeys.policy(policyId),
     queryFn: () => getPolicy(policyId),
     enabled: !isNaN(policyId),
-    refetchInterval: query => query.state.data?.currentState === 'transitioning' ? 2_000 : POLICIES_REFETCH_MS,
+    refetchInterval: (query) =>
+      query.state.data?.currentState === 'transitioning' ? 2_000 : POLICIES_REFETCH_MS,
     refetchOnWindowFocus: true,
   })
 
@@ -84,12 +85,14 @@ function PolicyDetailContent() {
 
   const executionParam = searchParams.get('exec')
   const linkedExecutionId = executionParam == null ? undefined : Number(executionParam)
-  const validExecutionId = linkedExecutionId != null && Number.isSafeInteger(linkedExecutionId) && linkedExecutionId > 0
+  const validExecutionId =
+    linkedExecutionId != null && Number.isSafeInteger(linkedExecutionId) && linkedExecutionId > 0
   const { data: linkedExecution, isError: executionError } = useQuery({
     queryKey: queryKeys.policyExecution(validExecutionId ? linkedExecutionId : undefined),
     queryFn: ({ signal }) => getPolicyExecution(linkedExecutionId!, signal),
     enabled: !isNaN(policyId) && validExecutionId,
-    initialData: () => executions?.items.find(ex => ex.id === linkedExecutionId && ex.policyId === policyId),
+    initialData: () =>
+      executions?.items.find((ex) => ex.id === linkedExecutionId && ex.policyId === policyId),
   })
   const selectedExec = linkedExecution?.policyId === policyId ? linkedExecution : null
 
@@ -108,7 +111,11 @@ function PolicyDetailContent() {
     return <Alert severity="error">No policy ID provided.</Alert>
   }
   if (loadingPolicy) {
-    return <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+        <CircularProgress />
+      </Box>
+    )
   }
   if (!policy) {
     return <Alert severity="error">Policy not found</Alert>
@@ -120,7 +127,9 @@ function PolicyDetailContent() {
   return (
     <ErrorBoundary>
       <Box>
-        {executionParam != null && !validExecutionId && <Alert severity="error">Invalid execution ID.</Alert>}
+        {executionParam != null && !validExecutionId && (
+          <Alert severity="error">Invalid execution ID.</Alert>
+        )}
         {executionError && <Alert severity="error">Could not load the requested execution.</Alert>}
         {linkedExecution && linkedExecution.policyId !== policyId && (
           <Alert severity="error">The requested execution belongs to another policy.</Alert>
@@ -137,7 +146,11 @@ function PolicyDetailContent() {
             onWake: () => setTriggerDialog('wake'),
           }}
           onBack={() => router.push('/policies')}
-          onEdit={() => { setExceptionOpen(false); setEditingPolicy(policy); setEditOpen(true) }}
+          onEdit={() => {
+            setExceptionOpen(false)
+            setEditingPolicy(policy)
+            setEditOpen(true)
+          }}
           onExport={(anchor) => setExportAnchor(anchor)}
         />
 
@@ -145,21 +158,32 @@ function PolicyDetailContent() {
         {hasSleepWindows(sleepWindows) && (
           <Box
             sx={{
-              mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3,
-              borderBottom: '1px solid', borderColor: SUBTLE_BORDER,
+              mx: BLEED_MARGIN_X,
+              px: BLEED_PADDING_X,
+              py: 3,
+              borderBottom: '1px solid',
+              borderColor: SUBTLE_BORDER,
             }}
           >
-            <Box sx={{ display: 'flex', gap: { xs: 2, md: 5 }, alignItems: 'flex-start', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
+            <Box
+              sx={{
+                display: 'flex',
+                gap: { xs: 2, md: 5 },
+                alignItems: 'flex-start',
+                flexWrap: { xs: 'wrap', md: 'nowrap' },
+              }}
+            >
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography
                   variant="caption"
                   sx={{
-                    color: "text.disabled",
+                    color: 'text.disabled',
                     mb: 1,
                     display: 'block',
                     fontSize: 11,
-                    letterSpacing: 0.5
-                  }}>
+                    letterSpacing: 0.5,
+                  }}
+                >
                   Weekly Schedule &middot; {policy.timezone || 'UTC'}
                 </Typography>
                 <LedGlowTimeline
@@ -170,10 +194,11 @@ function PolicyDetailContent() {
                 <Typography
                   variant="body2"
                   sx={{
-                    color: "text.secondary",
+                    color: 'text.secondary',
                     mt: 1,
-                    fontSize: 12
-                  }}>
+                    fontSize: 12,
+                  }}
+                >
                   {windowsToText(sleepWindows)}
                 </Typography>
               </Box>
@@ -185,31 +210,43 @@ function PolicyDetailContent() {
                       <Typography
                         variant="caption"
                         sx={{
-                          color: "text.disabled",
+                          color: 'text.disabled',
                           fontSize: 11,
-                          letterSpacing: 0.5
-                        }}>Sleep/Week</Typography>
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        Sleep/Week
+                      </Typography>
                       <Typography
                         variant="h5"
                         sx={{
                           fontWeight: 700,
-                          color: STATE_COLORS.sleeping.color
-                        }}>{weeklyStats.sleepHours}h</Typography>
+                          color: STATE_COLORS.sleeping.color,
+                        }}
+                      >
+                        {weeklyStats.sleepHours}h
+                      </Typography>
                     </Box>
                     <Box sx={{ textAlign: 'center' }}>
                       <Typography
                         variant="caption"
                         sx={{
-                          color: "text.disabled",
+                          color: 'text.disabled',
                           fontSize: 11,
-                          letterSpacing: 0.5
-                        }}>Awake/Week</Typography>
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        Awake/Week
+                      </Typography>
                       <Typography
                         variant="h5"
                         sx={{
                           fontWeight: 700,
-                          color: STATE_COLORS.awake.color
-                        }}>{weeklyStats.awakeHours}h</Typography>
+                          color: STATE_COLORS.awake.color,
+                        }}
+                      >
+                        {weeklyStats.awakeHours}h
+                      </Typography>
                     </Box>
                   </>
                 )}
@@ -218,23 +255,33 @@ function PolicyDetailContent() {
                     <Typography
                       variant="caption"
                       sx={{
-                        color: "text.disabled",
+                        color: 'text.disabled',
                         fontSize: 11,
-                        letterSpacing: 0.5
-                      }}>
+                        letterSpacing: 0.5,
+                      }}
+                    >
                       {policy.currentState === 'sleeping' ? 'Next Wake' : 'Next Sleep'}
                     </Typography>
                     <Typography
                       variant="h6"
                       sx={{
                         fontWeight: 700,
-                        color: policy.currentState === 'sleeping' ? STATE_COLORS.awake.color : STATE_COLORS.sleeping.color
-                      }}>
+                        color:
+                          policy.currentState === 'sleeping'
+                            ? STATE_COLORS.awake.color
+                            : STATE_COLORS.sleeping.color,
+                      }}
+                    >
                       {fmtDt(policy.nextTransitionAt)}
                     </Typography>
-                    <Typography variant="caption" sx={{
-                      color: "text.disabled"
-                    }}>{timeUntil(policy.nextTransitionAt)}</Typography>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: 'text.disabled',
+                      }}
+                    >
+                      {timeUntil(policy.nextTransitionAt)}
+                    </Typography>
                   </Box>
                 )}
               </Box>
@@ -248,16 +295,27 @@ function PolicyDetailContent() {
         {/* Exceptions band */}
         <Box
           sx={{
-            mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3,
+            mx: BLEED_MARGIN_X,
+            px: BLEED_PADDING_X,
+            py: 3,
             bgcolor: isDark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.015)',
-            borderBottom: '1px solid', borderColor: SUBTLE_BORDER,
+            borderBottom: '1px solid',
+            borderColor: SUBTLE_BORDER,
           }}
         >
           <ExceptionsSection
             exceptions={exceptions}
             canEdit={canEdit}
-            onAddException={() => { setEditOpen(false); setEditingException(undefined); setExceptionOpen(true) }}
-            onEditException={(ex) => { setEditOpen(false); setEditingException(ex); setExceptionOpen(true) }}
+            onAddException={() => {
+              setEditOpen(false)
+              setEditingException(undefined)
+              setExceptionOpen(true)
+            }}
+            onEditException={(ex) => {
+              setEditOpen(false)
+              setEditingException(ex)
+              setExceptionOpen(true)
+            }}
             onNotify={notify}
           />
         </Box>
@@ -266,7 +324,7 @@ function PolicyDetailContent() {
         <Box sx={{ mx: BLEED_MARGIN_X, px: BLEED_PADDING_X, py: 3 }}>
           <ExecutionHistoryTable
             executions={executions}
-            onRowClick={ex => selectExecution(ex.id)}
+            onRowClick={(ex) => selectExecution(ex.id)}
           />
         </Box>
 
@@ -281,7 +339,10 @@ function PolicyDetailContent() {
         />
         <ExceptionDialog
           open={exceptionOpen}
-          onClose={() => { setExceptionOpen(false); setEditingException(undefined) }}
+          onClose={() => {
+            setExceptionOpen(false)
+            setEditingException(undefined)
+          }}
           existing={editingException}
           defaultPolicyId={policyId}
           onNotify={notify}
@@ -310,7 +371,7 @@ function PolicyDetailContent() {
         {SnackbarAlert}
       </Box>
     </ErrorBoundary>
-  );
+  )
 }
 
 export default function PolicyDetailPage() {

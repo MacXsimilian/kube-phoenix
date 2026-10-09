@@ -56,11 +56,11 @@ type ClusterCache struct {
 	deploymentLister  appsv1listers.DeploymentLister
 	statefulSetLister appsv1listers.StatefulSetLister
 
-	mu   sync.RWMutex
-	snap CachedSnapshot
+	mu       sync.RWMutex
+	snapshot CachedSnapshot
 
-	subMu sync.Mutex
-	subs  []chan struct{}
+	subscribersMu sync.Mutex
+	subscribers   []chan struct{}
 
 	rebuildMu sync.Mutex
 	debounce  debouncer
@@ -70,20 +70,20 @@ type ClusterCache struct {
 func NewClusterCache(clientset kubernetes.Interface) *ClusterCache {
 	factory := informers.NewSharedInformerFactory(clientset, resyncPeriod)
 
-	cc := &ClusterCache{
+	clusterCache := &ClusterCache{
 		factory:           factory,
 		nodeLister:        factory.Core().V1().Nodes().Lister(),
 		podLister:         factory.Core().V1().Pods().Lister(),
 		deploymentLister:  factory.Apps().V1().Deployments().Lister(),
 		statefulSetLister: factory.Apps().V1().StatefulSets().Lister(),
 	}
-	cc.debounce = newDebouncer(debounceInterval, cc.rebuildSnapshot)
+	clusterCache.debounce = newDebouncer(debounceInterval, clusterCache.rebuildSnapshot)
 
 	// Any resource change triggers a debounced snapshot rebuild.
 	handler := cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(_ interface{}) { cc.debounce.Trigger() },
-		UpdateFunc: func(_, _ interface{}) { cc.debounce.Trigger() },
-		DeleteFunc: func(_ interface{}) { cc.debounce.Trigger() },
+		AddFunc:    func(_ interface{}) { clusterCache.debounce.Trigger() },
+		UpdateFunc: func(_, _ interface{}) { clusterCache.debounce.Trigger() },
+		DeleteFunc: func(_ interface{}) { clusterCache.debounce.Trigger() },
 	}
 	if _, err := factory.Core().V1().Nodes().Informer().AddEventHandler(handler); err != nil {
 		slog.Error("failed to add node event handler", "err", err)
@@ -98,7 +98,7 @@ func NewClusterCache(clientset kubernetes.Interface) *ClusterCache {
 		slog.Error("failed to add statefulset event handler", "err", err)
 	}
 
-	return cc
+	return clusterCache
 }
 
 // Start begins the informer watches in the background. It blocks until all
@@ -110,8 +110,8 @@ func (c *ClusterCache) Start(ctx context.Context) {
 	slog.Info("cluster cache: waiting for informer sync")
 	c.waitForSync(ctx)
 	c.rebuildSnapshot()
-	slog.Info("cluster cache: ready", "nodes", len(c.snap.Nodes), "pods", len(c.snap.Pods),
-		"deployments", len(c.snap.Deployments), "statefulsets", len(c.snap.StatefulSets))
+	slog.Info("cluster cache: ready", "nodes", len(c.snapshot.Nodes), "pods", len(c.snapshot.Pods),
+		"deployments", len(c.snapshot.Deployments), "statefulsets", len(c.snapshot.StatefulSets))
 }
 
 // Stop cancels any pending debounce timer and clears all subscribers.
@@ -119,43 +119,43 @@ func (c *ClusterCache) Start(ctx context.Context) {
 func (c *ClusterCache) Stop() {
 	c.debounce.Stop()
 
-	c.subMu.Lock()
-	defer c.subMu.Unlock()
-	c.subs = nil
+	c.subscribersMu.Lock()
+	defer c.subscribersMu.Unlock()
+	c.subscribers = nil
 }
 
 // Snapshot returns a copy of the current cached cluster state.
 func (c *ClusterCache) Snapshot() CachedSnapshot {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if c.snap.Ready() {
+	if c.snapshot.Ready() {
 		metrics.CacheHitsTotal.Inc()
 	} else {
 		metrics.CacheMissesTotal.Inc()
 	}
-	return c.snap
+	return c.snapshot
 }
 
 // Subscribe returns a buffered channel that receives a signal on each cache
 // rebuild. Returns nil if the subscriber limit has been reached.
 func (c *ClusterCache) Subscribe() chan struct{} {
-	c.subMu.Lock()
-	defer c.subMu.Unlock()
-	if len(c.subs) >= maxSSESubscribers {
+	c.subscribersMu.Lock()
+	defer c.subscribersMu.Unlock()
+	if len(c.subscribers) >= maxSSESubscribers {
 		return nil
 	}
 	ch := make(chan struct{}, 1)
-	c.subs = append(c.subs, ch)
+	c.subscribers = append(c.subscribers, ch)
 	return ch
 }
 
 // Unsubscribe removes a previously subscribed channel.
 func (c *ClusterCache) Unsubscribe(ch chan struct{}) {
-	c.subMu.Lock()
-	defer c.subMu.Unlock()
-	for i, s := range c.subs {
-		if s == ch {
-			c.subs = append(c.subs[:i], c.subs[i+1:]...)
+	c.subscribersMu.Lock()
+	defer c.subscribersMu.Unlock()
+	for i, subscriber := range c.subscribers {
+		if subscriber == ch {
+			c.subscribers = append(c.subscribers[:i], c.subscribers[i+1:]...)
 			return
 		}
 	}
@@ -180,10 +180,10 @@ func (c *ClusterCache) rebuildSnapshot() {
 	defer c.rebuildMu.Unlock()
 
 	start := time.Now()
-	built := c.buildSnapshotFromListers()
+	snapshot := c.buildSnapshotFromListers()
 
 	c.mu.Lock()
-	c.snap = built
+	c.snapshot = snapshot
 	c.mu.Unlock()
 
 	c.notify()
@@ -195,32 +195,32 @@ func (c *ClusterCache) rebuildSnapshot() {
 // On lister error the previous value for that resource is preserved.
 func (c *ClusterCache) buildSnapshotFromListers() CachedSnapshot {
 	c.mu.RLock()
-	prev := c.snap
+	previous := c.snapshot
 	c.mu.RUnlock()
 
-	nodesOK, nodes := fetchOrKeep(c.nodeLister.List, prev.Nodes, "nodes", (*corev1.Node).DeepCopy)
-	podsOK, pods := fetchOrKeep(c.podLister.List, prev.Pods, "pods", (*corev1.Pod).DeepCopy)
-	deploysOK, deploys := fetchOrKeep(c.deploymentLister.List, prev.Deployments, "deployments", (*appsv1.Deployment).DeepCopy)
-	ssetsOK, ssets := fetchOrKeep(c.statefulSetLister.List, prev.StatefulSets, "statefulsets", (*appsv1.StatefulSet).DeepCopy)
+	nodesOK, nodes := fetchOrKeep(c.nodeLister.List, previous.Nodes, "nodes", (*corev1.Node).DeepCopy)
+	podsOK, pods := fetchOrKeep(c.podLister.List, previous.Pods, "pods", (*corev1.Pod).DeepCopy)
+	deploymentsOK, deployments := fetchOrKeep(c.deploymentLister.List, previous.Deployments, "deployments", (*appsv1.Deployment).DeepCopy)
+	statefulSetsOK, statefulSets := fetchOrKeep(c.statefulSetLister.List, previous.StatefulSets, "statefulsets", (*appsv1.StatefulSet).DeepCopy)
 
-	built := CachedSnapshot{
+	snapshot := CachedSnapshot{
 		Nodes:        nodes,
 		Pods:         pods,
-		Deployments:  deploys,
-		StatefulSets: ssets,
+		Deployments:  deployments,
+		StatefulSets: statefulSets,
 	}
-	if nodesOK || podsOK || deploysOK || ssetsOK {
-		built.FetchedAt = time.Now()
+	if nodesOK || podsOK || deploymentsOK || statefulSetsOK {
+		snapshot.FetchedAt = time.Now()
 	} else {
-		built.FetchedAt = prev.FetchedAt
+		snapshot.FetchedAt = previous.FetchedAt
 	}
-	return built
+	return snapshot
 }
 
 func (c *ClusterCache) notify() {
-	c.subMu.Lock()
-	defer c.subMu.Unlock()
-	for _, ch := range c.subs {
+	c.subscribersMu.Lock()
+	defer c.subscribersMu.Unlock()
+	for _, ch := range c.subscribers {
 		select {
 		case ch <- struct{}{}:
 		default:
@@ -229,27 +229,27 @@ func (c *ClusterCache) notify() {
 }
 
 // fetchOrKeep calls a lister and returns a deep copy of the result.
-// On error it logs and returns prev unchanged.
+// On error it logs and returns previous unchanged.
 func fetchOrKeep[T any](
 	list func(labels.Selector) ([]*T, error),
-	prev []T,
+	previous []T,
 	resource string,
 	copyFn func(*T) *T,
 ) (bool, []T) {
 	items, err := list(labels.Everything())
 	if err != nil {
 		slog.Error("cache rebuild: lister read failed", "resource", resource, "err", err)
-		return false, prev
+		return false, previous
 	}
 	return true, deepCopySlice(items, copyFn)
 }
 
 // deepCopySlice produces an independent copy of each object, preventing
 // consumers from mutating the informer store.
-func deepCopySlice[T any](ptrs []*T, copyFn func(*T) *T) []T {
-	out := make([]T, len(ptrs))
-	for i, p := range ptrs {
-		out[i] = *copyFn(p)
+func deepCopySlice[T any](items []*T, copyFn func(*T) *T) []T {
+	out := make([]T, len(items))
+	for i, item := range items {
+		out[i] = *copyFn(item)
 	}
 	return out
 }

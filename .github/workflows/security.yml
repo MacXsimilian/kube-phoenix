@@ -35,15 +35,20 @@ jobs:
         id: govulncheck
         uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
         with:
-          go-version-input: "1.27"
+          # Clear the action's default "stable" so go.mod selects the toolchain.
+          go-version-input: ""
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
           work-dir: backend
           output-format: sarif
           output-file: govulncheck.sarif
           repo-checkout: false
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
-        if: always()
+        id: govulncheck_upload
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        # A failed scan can leave an empty report after shell redirection.
+        if: ${{ !cancelled() && steps.govulncheck.outcome == 'success' }}
         with:
           sarif_file: govulncheck.sarif
 
@@ -52,9 +57,18 @@ jobs:
         run: |
           RESULT="${{ steps.govulncheck.outcome }}"
           if [ "$RESULT" = "success" ]; then
-            STATUS="✅ Scan completed (results uploaded to Security tab)"
+            STATUS="✅ Scan completed"
           else
             STATUS="🔴 Scan failed"
+          fi
+
+          UPLOAD_RESULT="${{ steps.govulncheck_upload.outcome }}"
+          if [ "$UPLOAD_RESULT" = "success" ]; then
+            SARIF_STATUS="✅ Uploaded to GitHub Security tab"
+          elif [ "$UPLOAD_RESULT" = "failure" ]; then
+            SARIF_STATUS="🔴 Upload failed"
+          else
+            SARIF_STATUS="🟡 Upload skipped"
           fi
 
           {
@@ -64,7 +78,7 @@ jobs:
             echo "|:-----|:------|"
             echo "| Scanner | govulncheck (call-graph analysis) |"
             echo "| Result | ${STATUS} |"
-            echo "| SARIF | Uploaded to GitHub Security tab |"
+            echo "| SARIF | ${SARIF_STATUS} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── npm audit ───────────────────────────────────────────────────────────────
@@ -80,7 +94,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
           cache: npm
@@ -148,6 +162,29 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      # Register cache restore before cache-dance so post steps extract before saving.
+      - name: Restore BuildKit cache mounts
+        id: mount-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/buildkit-mounts
+          key: buildkit-mounts-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Dockerfile', 'frontend/package-lock.json', 'backend/go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            buildkit-mounts-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Dockerfile', 'frontend/package-lock.json', 'backend/go.sum') }}-
+
+      - name: Inject BuildKit cache mounts
+        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
+        with:
+          scratch-dir: ${{ runner.temp }}/buildkit-cache-dance
+          skip-extraction: ${{ steps.mount-cache.outputs.cache-hit == 'true' }}
+          cache-map: |
+            {
+              "${{ runner.temp }}/buildkit-mounts/npm": "/root/.npm",
+              "${{ runner.temp }}/buildkit-mounts/next": "/app/frontend/.next/cache",
+              "${{ runner.temp }}/buildkit-mounts/go-mod": "/go/pkg/mod",
+              "${{ runner.temp }}/buildkit-mounts/go-build": "/root/.cache/go-build"
+            }
+
       - name: Build image for scanning
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -184,14 +221,14 @@ jobs:
           trivyignores: .trivyignore
 
       - name: Upload vuln SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         if: always()
         with:
           sarif_file: trivy-image-vuln.sarif
           category: trivy-image-vuln
 
       - name: Upload misconfig SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         if: always()
         with:
           sarif_file: trivy-image-misconfig.sarif
@@ -258,14 +295,14 @@ jobs:
           trivyignores: .trivyignore
 
       - name: Upload vuln SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         if: always()
         with:
           sarif_file: trivy-fs-vuln.sarif
           category: trivy-fs-vuln
 
       - name: Upload misconfig SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         if: always()
         with:
           sarif_file: trivy-fs-misconfig.sarif
@@ -308,7 +345,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27"
+          go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
       - name: Copy OpenAPI spec into embed path
@@ -344,7 +381,7 @@ jobs:
           PY
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         if: always()
         with:
           sarif_file: backend/gosec.sarif
@@ -385,7 +422,7 @@ jobs:
 
       - name: TruffleHog scan
         id: trufflehog
-        uses: trufflesecurity/trufflehog@4dd8831c5f12599465d4d45c3c447b4018a34c85 # v3.97.9
+        uses: trufflesecurity/trufflehog@e76dff8a7e57d6df0c60ad8cbf5d5cba505a8fc9 # v3.99.2
         with:
           path: ./
           base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || format('{0}~1', github.sha) }}

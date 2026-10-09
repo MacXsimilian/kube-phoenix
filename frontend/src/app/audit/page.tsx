@@ -33,12 +33,15 @@ import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import { TABLE_HEAD_CELL_SX } from '@/lib/tableStyles'
 
 const ACTION_GROUPS = [
-  { label: 'Auth',       actions: ['auth.login', 'auth.logout', 'auth.password_change'] },
-  { label: 'Policy',     actions: ['policy.create', 'policy.update', 'policy.delete', 'policy.sleep', 'policy.wake'] },
-  { label: 'Exception',  actions: ['exception.create', 'exception.update', 'exception.delete'] },
-  { label: 'Guardrail',  actions: ['guardrail.update'] },
-  { label: 'User',       actions: ['user.create', 'user.update', 'user.delete'] },
-  { label: 'Admin',      actions: ['admin.reset_db'] },
+  { label: 'Auth', actions: ['auth.login', 'auth.logout', 'auth.password_change'] },
+  {
+    label: 'Policy',
+    actions: ['policy.create', 'policy.update', 'policy.delete', 'policy.sleep', 'policy.wake'],
+  },
+  { label: 'Exception', actions: ['exception.create', 'exception.update', 'exception.delete'] },
+  { label: 'Guardrail', actions: ['guardrail.update'] },
+  { label: 'User', actions: ['user.create', 'user.update', 'user.delete'] },
+  { label: 'Admin', actions: ['admin.reset_db'] },
 ]
 
 const TABLE_COLS = 6
@@ -67,15 +70,23 @@ export default function AuditLogPage() {
   const localTo = toFilter ? new Date(`${toFilter}T23:59:59`).toISOString() : undefined
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: queryKeys.auditLogs(page, pageSize, debouncedUserFilter, actionFilter, fromFilter, toFilter),
-    queryFn: () => getAuditLogs({
-      user: debouncedUserFilter || undefined,
-      action: actionFilter || undefined,
-      from: localFrom,
-      to: localTo,
+    queryKey: queryKeys.auditLogs(
       page,
       pageSize,
-    }),
+      debouncedUserFilter,
+      actionFilter,
+      fromFilter,
+      toFilter,
+    ),
+    queryFn: () =>
+      getAuditLogs({
+        user: debouncedUserFilter || undefined,
+        action: actionFilter || undefined,
+        from: localFrom,
+        to: localTo,
+        page,
+        pageSize,
+      }),
     enabled: hasPermission,
   })
 
@@ -106,7 +117,9 @@ export default function AuditLogPage() {
         cursor += 1
       }
       if (total > EXPORT_MAX_ROWS) {
-        setExportError(`Export capped at ${EXPORT_MAX_ROWS.toLocaleString()} rows (${total.toLocaleString()} match filters). Narrow the filters to capture older entries.`)
+        setExportError(
+          `Export capped at ${EXPORT_MAX_ROWS.toLocaleString()} rows (${total.toLocaleString()} match filters). Narrow the filters to capture older entries.`,
+        )
       }
       downloadCSV(collected)
     } catch (e) {
@@ -140,7 +153,10 @@ export default function AuditLogPage() {
           label="User"
           size="small"
           value={userFilter}
-          onChange={e => { setUserFilter(e.target.value); setPage(0) }}
+          onChange={(e) => {
+            setUserFilter(e.target.value)
+            setPage(0)
+          }}
           sx={{ minWidth: 150 }}
           placeholder="Search by username"
         />
@@ -149,16 +165,21 @@ export default function AuditLogPage() {
           select
           size="small"
           value={actionFilter}
-          onChange={e => { setActionFilter(e.target.value); setPage(0) }}
+          onChange={(e) => {
+            setActionFilter(e.target.value)
+            setPage(0)
+          }}
           sx={{ minWidth: 200 }}
         >
           <MenuItem value="">All actions</MenuItem>
-          {ACTION_GROUPS.flatMap(group => [
+          {ACTION_GROUPS.flatMap((group) => [
             <ListSubheader key={`h-${group.label}`} sx={{ lineHeight: '32px', fontSize: 11 }}>
               {group.label}
             </ListSubheader>,
-            ...group.actions.map(a => (
-              <MenuItem key={a} value={a}>{formatActionLabel(a)}</MenuItem>
+            ...group.actions.map((a) => (
+              <MenuItem key={a} value={a}>
+                {formatActionLabel(a)}
+              </MenuItem>
             )),
           ])}
         </TextField>
@@ -167,7 +188,10 @@ export default function AuditLogPage() {
           type="date"
           size="small"
           value={fromFilter}
-          onChange={e => { setFromFilter(e.target.value); setPage(0) }}
+          onChange={(e) => {
+            setFromFilter(e.target.value)
+            setPage(0)
+          }}
           sx={{ minWidth: 160 }}
           slotProps={{ inputLabel: { shrink: true } }}
         />
@@ -176,7 +200,10 @@ export default function AuditLogPage() {
           type="date"
           size="small"
           value={toFilter}
-          onChange={e => { setToFilter(e.target.value); setPage(0) }}
+          onChange={(e) => {
+            setToFilter(e.target.value)
+            setPage(0)
+          }}
           sx={{ minWidth: 160 }}
           slotProps={{ inputLabel: { shrink: true } }}
         />
@@ -197,7 +224,16 @@ export default function AuditLogPage() {
             <TableHead>
               <TableRow>
                 <TableCell width={40} />
-                <TableCell sx={TABLE_HEAD_CELL_SX}>Time <Typography component="span" variant="caption" sx={{ color: 'text.disabled', fontWeight: 400, fontSize: 10 }}>— local time, hover for UTC</Typography></TableCell>
+                <TableCell sx={TABLE_HEAD_CELL_SX}>
+                  Time{' '}
+                  <Typography
+                    component="span"
+                    variant="caption"
+                    sx={{ color: 'text.disabled', fontWeight: 400, fontSize: 10 }}
+                  >
+                    — local time, hover for UTC
+                  </Typography>
+                </TableCell>
                 <TableCell sx={TABLE_HEAD_CELL_SX}>User</TableCell>
                 <TableCell sx={TABLE_HEAD_CELL_SX}>Action</TableCell>
                 <TableCell sx={TABLE_HEAD_CELL_SX}>Resource</TableCell>
@@ -205,26 +241,40 @@ export default function AuditLogPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {isLoading && Array.from({ length: Math.min(pageSize, 8) }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell sx={{ width: 40 }} />
-                  <TableCell><Skeleton width={140} /></TableCell>
-                  <TableCell><Skeleton width={80} /></TableCell>
-                  <TableCell><Skeleton width={100} /></TableCell>
-                  <TableCell><Skeleton width={60} /></TableCell>
-                  <TableCell><Skeleton width={100} /></TableCell>
-                </TableRow>
-              ))}
-              {!isLoading && data?.items?.map(entry => <AuditRow key={entry.id} entry={entry} />)}
+              {isLoading &&
+                Array.from({ length: Math.min(pageSize, 8) }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell sx={{ width: 40 }} />
+                    <TableCell>
+                      <Skeleton width={140} />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton width={80} />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton width={100} />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton width={60} />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton width={100} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              {!isLoading && data?.items?.map((entry) => <AuditRow key={entry.id} entry={entry} />)}
               {!isLoading && !isError && data?.items?.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={TABLE_COLS} align="center">
                     <Typography
                       variant="body2"
                       sx={{
-                        color: "text.secondary",
-                        py: 4
-                      }}>No audit log entries found.</Typography>
+                        color: 'text.secondary',
+                        py: 4,
+                      }}
+                    >
+                      No audit log entries found.
+                    </Typography>
                   </TableCell>
                 </TableRow>
               )}
@@ -237,10 +287,13 @@ export default function AuditLogPage() {
           page={page}
           onPageChange={(_, p) => setPage(p)}
           rowsPerPage={pageSize}
-          onRowsPerPageChange={e => { setPageSize(parseInt(e.target.value, 10)); setPage(0) }}
+          onRowsPerPageChange={(e) => {
+            setPageSize(parseInt(e.target.value, 10))
+            setPage(0)
+          }}
           rowsPerPageOptions={[10, 25, 50, 100]}
         />
       </Card>
     </Box>
-  );
+  )
 }

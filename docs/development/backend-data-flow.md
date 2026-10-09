@@ -6,6 +6,8 @@ Use this reference when changing handlers, authentication, cluster views, stream
 
 The [router](../../backend/internal/api/router.go) separates public login/OIDC, health, metrics, and version routes from session-protected API routes. Protected routes apply session authentication, CSRF checks for mutations, and permission checks where required. Swagger UI and the served OpenAPI specification require a session too.
 
+The public [health routes](../../backend/internal/api/health.go) distinguish serving from readiness: `/livez` returns process liveness without a database query, while `/readyz` checks PostgreSQL with a two-second deadline and returns 503 on failure. `/healthz` retains the readiness behavior for compatibility and the binary's `-healthcheck` option. Readiness does not verify Kubernetes access or workload recovery.
+
 Session middleware loads the account, rejects disabled users, and extends idle expiry when needed. The absolute session lifetime still caps the session. Permissions come from [the role map](../../backend/internal/auth/permissions.go); both router gates and role assignments matter. A viewer can export configuration and view audit logs, but cannot preview an import.
 
 Handlers validate input, call store/client/scheduler operations, and serialize responses. Keep internal errors in structured server logs and return useful client errors. Reuse shared ID and pagination helpers. Partial updates must preserve explicit false and zero values instead of relying on GORM's zero-value omission behavior.
@@ -18,7 +20,9 @@ Process-wide environment settings are parsed in [config.go](../../backend/intern
 
 The store wraps GORM and its underlying PostgreSQL connection pool. Model definitions and query methods are the field-level reference. Key relationships are policy → executions, logs, snapshots, and exceptions; users → sessions and audit identity. Guardrails are a singleton configuration record. Observability snapshots and thresholds are separate from policy recovery state.
 
-Startup migration code includes legacy repairs as well as optional AutoMigrate. `AUTO_MIGRATE=false` skips AutoMigrate; it is not a general promise that no startup migration SQL runs. Review [store.go](../../backend/internal/store/store.go) before shipping a schema change, and verify upgrades against existing data. `Store.Close()` closes the underlying SQL pool.
+Startup migration code includes legacy repairs as well as optional AutoMigrate. `AUTO_MIGRATE=false` skips AutoMigrate; it is not a general promise that no startup migration SQL runs. Review [migrations.go](../../backend/internal/store/migrations.go) before shipping a schema change, and verify upgrades against existing data. Apply [the additive snapshot migration](../../backend/migrations/20261008_snapshot_intents.sql) before starting an upgraded database with AutoMigrate disabled. [Snapshot queries](../../backend/internal/store/snapshots.go) preserve open replica baselines through prepared/applied phases. `Store.Close()` closes the underlying SQL pool.
+
+One dedicated connection holds the [scheduler advisory lock](../../backend/internal/store/ownership.go) for recovery and the process lifetime. It is separate from ordinary pooled queries, so allow at least two connections and use session-preserving PostgreSQL access. A second owner is rejected. Losing the ownership connection fails mutation checks and makes the watchdog exit; a readiness failure on another connection does not by itself imply ownership loss.
 
 ## Cluster cache and live reads
 
@@ -48,7 +52,7 @@ The browser merges pushed overview data into its query cache and uses its config
 
 ## Execution logs
 
-The scheduler drains runner log messages, assigns per-execution sequence numbers, batches persistence, and publishes through the in-process [broker](../../backend/internal/scheduler/broker.go). The broker has a bounded replay ring and bounded subscriber channels. It is a live delivery aid, not a durable queue; the database is the persisted history source.
+The scheduler's [execution worker](../../backend/internal/scheduler/execution.go) drains runner log messages, assigns per-execution sequence numbers, batches persistence, and publishes through the in-process [broker](../../backend/internal/scheduler/broker.go). The broker has a bounded replay ring and bounded subscriber channels. It is a live delivery aid, not a durable queue; the database is the persisted history source.
 
 The [WebSocket handler](../../backend/internal/api/policy_executions.go) closes the replay/subscription race in this order:
 
@@ -65,13 +69,13 @@ Browser origin host and request host must match. A separate dev frontend origin 
 
 Authentication, user-management, and admin audit actions are written synchronously. Other actions use a bounded background writer and can be dropped under prolonged backpressure; the drop metric and logs expose that failure. The audit table is useful evidence, not a guarantee that every attempted operation was durably recorded.
 
-Prometheus definitions live in [metrics.go](../../backend/internal/metrics/metrics.go). The `/metrics` endpoint is public for scraping. The observability collector combines measurements with estimates; its dashboard is alpha and API Rivers is cosmetic/mock. See [observability](../observability.md) for interpretation and retention.
+Prometheus definitions live in [metrics.go](../../backend/internal/metrics/metrics.go). The `/metrics` endpoint is public for scraping. The observability collector combines measurements with estimates; collection lifecycle lives in [collector.go](../../backend/internal/observability/collector.go), persisted capture in [snapshot.go](../../backend/internal/observability/snapshot.go), and API payload construction in [payload.go](../../backend/internal/observability/payload.go). Its dashboard is alpha and API Rivers is cosmetic/mock. See [observability](../observability.md) for interpretation and retention.
 
 ## Startup and shutdown
 
-[main.go](../../backend/cmd/server/main.go) loads configuration, opens and seeds the store, repairs interrupted state, initializes clients and background workers, and starts the HTTP server. Collector/client recorder wiring happens before scheduler workers use it. Kubernetes initialization can fail while the application still starts; database initialization is required.
+[main.go](../../backend/cmd/server/main.go) loads configuration, opens/migrates the store, acquires ownership, seeds defaults, and repairs interrupted execution/policy state on the locked database session. It then initializes Kubernetes, recovers marked cordons, starts the cache/collector/scheduler, and serves HTTP. Collector/client recorder wiring happens before scheduler workers use it. Kubernetes client initialization can fail while the application still starts with cluster features unavailable. Once a client exists, failure to recover owned cordons within the startup deadline is fatal; ownership and database initialization failures are also fatal.
 
-Shutdown order matters: stop accepting HTTP requests and allow handlers to finish, cancel background workers, cancel the audit writer so it can drain, join tracked workers, then close the database pool. Preserve the separate audit lifetime when changing worker ownership. WebSocket connections are not ordinary short HTTP requests, so their request context and connection cleanup also matter.
+Shutdown order matters: stop accepting HTTP requests and allow handlers to finish, cancel background workers, cancel the audit writer so it can drain, and join tracked workers. Deferred scheduler shutdown waits for executions before ownership is released and the database pool closes. Preserve the separate audit lifetime and the lock through execution completion when changing worker ownership. WebSocket connections are not ordinary short HTTP requests, so their request context and connection cleanup also matter.
 
 ## Debugging a data path
 

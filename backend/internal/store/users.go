@@ -23,20 +23,20 @@ type OIDCUserInfo struct {
 
 // ─── User CRUD ───────────────────────────────────────────────────────────────
 
-func (s *Store) CreateUser(u *User) error {
-	return s.db.Create(u).Error
+func (s *Store) CreateUser(user *User) error {
+	return s.db.Create(user).Error
 }
 
 func (s *Store) GetUserByID(id uint) (*User, error) {
-	var u User
-	return &u, s.db.First(&u, id).Error
+	var user User
+	return &user, s.db.First(&user, id).Error
 }
 
 // GetUserByUsername looks up a local user by username. OIDC users are matched
 // by subject claim in GetOrCreateOIDCUser, not by this function.
 func (s *Store) GetUserByUsername(username string) (*User, error) {
-	var u User
-	return &u, s.db.Where("username = ? AND source = ?", username, "local").First(&u).Error
+	var user User
+	return &user, s.db.Where("username = ? AND source = ?", username, "local").First(&user).Error
 }
 
 func (s *Store) ListUsers() ([]User, error) {

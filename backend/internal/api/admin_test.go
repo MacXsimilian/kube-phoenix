@@ -124,6 +124,8 @@ func emergencySnapshot(id, policyID uint, kind, name string) store.WorkloadSnaps
 	return store.WorkloadSnapshot{ID: id, PolicyID: policyID, Kind: kind, Namespace: "team", Name: name, ReplicasBefore: 7}
 }
 
+// A failed emergency restore must retain the open snapshot for another
+// attempt and record failed/unknown rather than treating it as deleted.
 func TestEmergencyScaleSnapshotsRetainsRetryableErrors(t *testing.T) {
 	resource := schema.GroupResource{Group: "apps", Resource: "deployments"}
 	for name, scaleErr := range map[string]error{
@@ -158,6 +160,8 @@ func TestEmergencyScaleSnapshotsRetainsRetryableErrors(t *testing.T) {
 	}
 }
 
+// Emergency recovery can mix successes, deleted workloads, and failures
+// across policies. Record each policy's outcome and consume only handled snapshots.
 func TestEmergencyScaleSnapshotsTracksEachPolicySeparately(t *testing.T) {
 	snapshots := []store.WorkloadSnapshot{
 		emergencySnapshot(1, 10, "Deployment", "healthy"),
@@ -201,6 +205,8 @@ func TestEmergencyScaleSnapshotsTracksEachPolicySeparately(t *testing.T) {
 	}
 }
 
+// Successful scaling alone is insufficient if recovery bookkeeping fails.
+// Report database failures and retain snapshots when their closure did not succeed.
 func TestEmergencyScaleSnapshotsRecordsPersistenceFailures(t *testing.T) {
 	for _, name := range []string{"create", "close", "delete", "state", "finish"} {
 		t.Run(name, func(t *testing.T) {
@@ -244,6 +250,8 @@ func TestEmergencyScaleSnapshotsRecordsPersistenceFailures(t *testing.T) {
 	}
 }
 
+// Several snapshots from one policy share one emergency execution.
+// If creating it fails, do not retry creation per workload or perform scaling.
 func TestEmergencyScaleSnapshotsCreatesOneExecutionPerPolicy(t *testing.T) {
 	snapshots := []store.WorkloadSnapshot{
 		emergencySnapshot(1, 10, "Deployment", "one"),
@@ -258,6 +266,8 @@ func TestEmergencyScaleSnapshotsCreatesOneExecutionPerPolicy(t *testing.T) {
 	}
 }
 
+// A later attempt must be able to consume a snapshot retained after failure.
+// Emergency recovery intentionally targets one replica, preserving the saved baseline.
 func TestEmergencyScaleSnapshotsCanRetryFailedRestore(t *testing.T) {
 	snapshots := []store.WorkloadSnapshot{emergencySnapshot(1, 10, "Deployment", "app")}
 	st := newEmergencyStoreStub(snapshots)

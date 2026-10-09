@@ -60,6 +60,8 @@ Workload or node table
 
 Tables use shared sorting and presentation helpers in [`useTriStateSort`](../../frontend/src/lib/useTriStateSort.ts), [`SortHeader`](../../frontend/src/lib/SortHeader.tsx), and [`tableStyles`](../../frontend/src/lib/tableStyles.ts). Preserve the distinction between client-side sorting of a loaded collection and server-side filtering/pagination of execution or audit records.
 
+The workloads table filters by name, namespace, status, and namespace protection. Its **Clear filters** button appears when any filter is active, resets all four filters and the current page, and returns focus to Search. It also removes a deep-linked `status` query parameter while preserving other parameters and the URL fragment, so URL synchronization cannot restore a cleared status. Keep sorting and the selected page size when clearing filters.
+
 ## Schedules and timelines
 
 The schedule editor, list card, detail timeline, and exception picker show related concepts at different scales. Keep their time calculations shared:
@@ -79,6 +81,10 @@ Preserve these distinctions:
 | Weekly savings display | Proportion of a recurring week scheduled asleep, not a measured cloud bill reduction |
 
 Overlapping windows count once when calculating sleep hours and percentages. Those statistics describe a nominal recurring week; do not turn them into elapsed-hour or monetary estimates for a particular daylight-saving transition week.
+
+[`WeeklySavingsRing`](../../frontend/src/components/policies/WeeklySavingsRing.tsx) exposes this meaning in an explanation available on hover, keyboard focus, click, or tap. Its percentage comes from configured recurring windows; actual executions and exceptions are excluded. Preserve the labeled button, visible keyboard focus, Escape dismissal, and click-away behavior. A disabled policy keeps this schedule preview with muted styling; the percentage does not claim that savings are currently being achieved.
+
+[`PolicyCard`](../../frontend/src/components/policies/PolicyCard.tsx) distinguishes a disabled schedule from the policy's reported workload state. Disabled cards show a pause badge and **Automatic scheduling is off**, with a neutral status indicator and muted schedule statistics. The state and mode chips remain visible, and actions follow their existing permission/execution gates. Keep readable text and action controls when muting the card. On narrow screens, chips wrap and the statistics move below the schedule; test long names as well as both enabled and disabled states. The transitioning indicator respects reduced-motion preferences.
 
 Timezone conversion must preserve calendar fields independently of the browser's timezone. The utilities encode converted civil dates and read them through UTC getters so the browser does not normalize them using its own daylight-saving rules. Reuse these functions instead of round-tripping localized date strings through `new Date(...)`.
 

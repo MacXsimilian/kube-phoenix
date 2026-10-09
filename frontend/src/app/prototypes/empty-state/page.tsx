@@ -38,8 +38,8 @@ export default function EmptyStatePrototype() {
         EmptyState — mockup
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-        Dashed-border placeholder card for pages with no data yet. Replaces the
-        ad-hoc Box + Typography pattern used today in Policies and Exceptions.
+        Dashed-border placeholder card for pages with no data yet. Replaces the ad-hoc Box +
+        Typography pattern used today in Policies and Exceptions.
       </Typography>
 
       <VariantFrame label="01 · Title only (replaces current Exceptions)">

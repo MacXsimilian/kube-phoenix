@@ -101,11 +101,13 @@ type WorkloadTarget struct {
 // It replaces the separate scale_down + scale_up schedule pair with a single
 // entity that declares the awake window and tracks current state.
 type Policy struct {
-	ID              uint   `gorm:"primaryKey" json:"id"`
-	Name            string `gorm:"size:255" json:"name"`
-	Description     string `gorm:"size:1024" json:"description"`
-	NamespaceFilter string `gorm:"size:4096" json:"namespaceFilter"` // comma-separated; empty = all
-	LabelSelector   string `gorm:"size:4096" json:"labelSelector"`   // full k8s label selector syntax
+	// Execution-only narrowing; never replaces the persisted parent boundary.
+	ExceptionScope  *ScheduledException `gorm:"-" json:"-"`
+	ID              uint                `gorm:"primaryKey" json:"id"`
+	Name            string              `gorm:"size:255" json:"name"`
+	Description     string              `gorm:"size:1024" json:"description"`
+	NamespaceFilter string              `gorm:"size:4096" json:"namespaceFilter"` // comma-separated; empty = all
+	LabelSelector   string              `gorm:"size:4096" json:"labelSelector"`   // full k8s label selector syntax
 
 	// Schedule — SleepWindows is the sole schedule source of truth.
 	SleepWindows string `gorm:"type:text" json:"-"` // JSON array of policy.SleepWindow
@@ -158,8 +160,7 @@ type PolicyLogLine struct {
 }
 
 // WorkloadSnapshot records the replica count of a workload at sleep time.
-// The wake execution reads from these rows instead of K8s annotations (which
-// are also written as a belt-and-suspenders fallback).
+// The wake execution reads from these rows; there is no annotation fallback.
 type WorkloadSnapshot struct {
 	ID               uint            `gorm:"primaryKey" json:"id"`
 	PolicyID         uint            `gorm:"index;index:idx_ws_policy_wake,priority:1" json:"policyId"`
@@ -167,11 +168,14 @@ type WorkloadSnapshot struct {
 	SleepExecutionID uint            `gorm:"index" json:"sleepExecutionId"`
 	SleepExecution   PolicyExecution `gorm:"foreignKey:SleepExecutionID;constraint:OnDelete:CASCADE" json:"-"`
 	// WakeExecutionID is null while the workload is still sleeping.
-	WakeExecutionID  *uint      `gorm:"index;index:idx_ws_policy_wake,priority:2" json:"wakeExecutionId"`
-	Kind             string     `gorm:"size:50" json:"kind"`
-	Namespace        string     `gorm:"size:63;index" json:"namespace"`
-	Name             string     `gorm:"size:253" json:"name"`
-	ReplicasBefore   int32      `json:"replicasBefore"`
+	WakeExecutionID *uint  `gorm:"index;index:idx_ws_policy_wake,priority:2" json:"wakeExecutionId"`
+	Kind            string `gorm:"size:50" json:"kind"`
+	Namespace       string `gorm:"size:63;index" json:"namespace"`
+	Name            string `gorm:"size:253" json:"name"`
+	ReplicasBefore  int32  `json:"replicasBefore"`
+	WorkloadUID     string `gorm:"size:128;default:''" json:"workloadUid"`
+	// Empty phase denotes a legacy snapshot. New intents are durable before scaling.
+	Phase            string     `gorm:"size:20;default:''" json:"phase"`
 	ReplicasRestored *int32     `json:"replicasRestored"` // nil until woken
 	RestoredAt       *time.Time `json:"restoredAt"`
 
@@ -220,9 +224,9 @@ type ScheduledException struct {
 }
 
 // HasTargetingFilters reports whether the exception narrows scope beyond
-// the parent policy via namespace filter or label selector.
+// the parent policy via namespaces, labels, or explicit workload targets.
 func (e *ScheduledException) HasTargetingFilters() bool {
-	return e.NamespaceFilter != "" || e.LabelSelector != ""
+	return e.NamespaceFilter != "" || e.LabelSelector != "" || (e.WorkloadTargets != "" && e.WorkloadTargets != "[]" && e.WorkloadTargets != "null")
 }
 
 // GetWorkloadTargets deserialises the JSON-stored workload targets.

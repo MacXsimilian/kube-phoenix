@@ -36,7 +36,8 @@
     },
     "replicaCount": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "maximum": 1
     },
     "revisionHistoryLimit": {
       "type": "integer",
@@ -45,7 +46,7 @@
     "strategy": {
       "type": "object",
       "properties": {
-        "type": { "type": "string", "enum": ["RollingUpdate", "Recreate"] },
+        "type": { "type": "string", "enum": ["Recreate"] },
         "rollingUpdate": {
           "type": "object",
           "properties": {

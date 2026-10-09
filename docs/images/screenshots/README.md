@@ -4,6 +4,8 @@ These images show the actual application rendered with the bundled [mock API fix
 
 Captures use the dark theme at 1600 × 1000 pixels. Fonts and populated content were checked before capture. The development overlay was hidden; the images were not retouched. [manifest.json](manifest.json) records source commit, routes, capture times, dimensions, and SHA-256 hashes.
 
+These captures predate the policy-card and workload-filter updates on the reliability branch. Current cards have a clearer disabled state, responsive sizing, and an interactive savings explanation; the workload table also has **Clear filters**. Follow the written guides for current behavior. The existing images and manifest retain their original capture provenance.
+
 | View | Image | Illustrates |
 | :--- | :---- | :------ |
 | Overview | [overview.png](overview.png) | Cluster status and recent activity |

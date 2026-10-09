@@ -123,19 +123,7 @@ func NewRouter(ctx context.Context, cfg *config.AppConfig, st *store.Store, k8sC
 	// Prometheus metrics — no auth, intended for in-cluster scraping
 	r.Method(http.MethodGet, "/metrics", promhttp.Handler())
 
-	// Health endpoint — no auth, used by K8s liveness/readiness probes
-	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		if err := st.Ping(); err != nil {
-			slog.Error("healthz: database ping failed", "err", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"status":"error","error":"database unavailable"}`))
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
+	registerHealthRoutes(r, st.PingContext)
 
 	// Version endpoint — no auth, lightweight build/uptime info
 	r.Get("/api/version", h.getVersion)
@@ -320,9 +308,9 @@ func corsHandler(cfg *config.AppConfig) func(http.Handler) http.Handler {
 func prometheusMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		ww := chiMiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		response := chiMiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
 
-		next.ServeHTTP(ww, r)
+		next.ServeHTTP(response, r)
 
 		routePattern := chi.RouteContext(r.Context()).RoutePattern()
 		if routePattern == "" {
@@ -333,7 +321,7 @@ func prometheusMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		status := strconv.Itoa(ww.Status())
+		status := strconv.Itoa(response.Status())
 		duration := time.Since(start).Seconds()
 
 		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, routePattern, status).Inc()
@@ -345,16 +333,16 @@ func callRecorderMiddleware(recorder *observability.CallRecorder) func(http.Hand
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			ww := chiMiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
+			response := chiMiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
 
-			next.ServeHTTP(ww, r)
+			next.ServeHTTP(response, r)
 
 			routePattern := chi.RouteContext(r.Context()).RoutePattern()
 			if routePattern == "" || observability.IsSkippedRecorderRoute(routePattern) {
 				return
 			}
 			durationMs := float64(time.Since(start).Nanoseconds()) / 1e6
-			recorder.Record(r.Method, routePattern, ww.Status(), durationMs)
+			recorder.Record(r.Method, routePattern, response.Status(), durationMs)
 		})
 	}
 }

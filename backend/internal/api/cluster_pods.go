@@ -34,51 +34,50 @@ func isDaemonOwned(refs []metav1.OwnerReference) bool {
 
 // resolveOwner returns the effective owner kind and name for a pod.
 // If the owner is a ReplicaSet, it resolves to the top-level owner (e.g. Deployment).
-func resolveOwner(refs []metav1.OwnerReference, namespace string, rsOwner map[string]ownerRef) (string, string) {
-	kind, name := "", ""
-	for _, ref := range refs {
-		kind = ref.Kind
-		name = ref.Name
-		break
+func resolveOwner(refs []metav1.OwnerReference, namespace string, replicaSetOwners map[string]ownerRef) (string, string) {
+	if len(refs) == 0 {
+		return "", ""
 	}
+	kind, name := refs[0].Kind, refs[0].Name
 	if kind == "ReplicaSet" {
-		if top, ok := rsOwner[namespace+"/"+name]; ok {
-			return top.Kind, top.Name
+		if owner, ok := replicaSetOwners[namespace+"/"+name]; ok {
+			return owner.Kind, owner.Name
 		}
 	}
 	return kind, name
 }
 
 // buildRSOwnerMap builds a map from "namespace/rsName" -> top-level owner for ReplicaSets.
-func buildRSOwnerMap(rss []appsv1.ReplicaSet) map[string]ownerRef {
-	m := map[string]ownerRef{}
-	for _, rs := range rss {
-		for _, ref := range rs.OwnerReferences {
-			m[rs.Namespace+"/"+rs.Name] = ownerRef{ref.Kind, ref.Name}
-			break
+func buildRSOwnerMap(replicaSets []appsv1.ReplicaSet) map[string]ownerRef {
+	owners := map[string]ownerRef{}
+	for _, replicaSet := range replicaSets {
+		if len(replicaSet.OwnerReferences) == 0 {
+			continue
 		}
+		owner := replicaSet.OwnerReferences[0]
+		owners[replicaSet.Namespace+"/"+replicaSet.Name] = ownerRef{Kind: owner.Kind, Name: owner.Name}
 	}
-	return m
+	return owners
 }
 
 // podResources sums CPU and memory requests across all containers in a pod.
-func podResources(containers []corev1.Container) (cpuReq, memReq int64) {
-	for _, c := range containers {
-		cpuReq += c.Resources.Requests.Cpu().MilliValue()
-		memReq += c.Resources.Requests.Memory().Value()
+func podResources(containers []corev1.Container) (cpuRequest, memoryRequest int64) {
+	for _, container := range containers {
+		cpuRequest += container.Resources.Requests.Cpu().MilliValue()
+		memoryRequest += container.Resources.Requests.Memory().Value()
 	}
 	return
 }
 
 // readyCount returns the number of ready containers.
 func readyCount(statuses []corev1.ContainerStatus) int {
-	n := 0
-	for _, cs := range statuses {
-		if cs.Ready {
-			n++
+	ready := 0
+	for _, status := range statuses {
+		if status.Ready {
+			ready++
 		}
 	}
-	return n
+	return ready
 }
 
 // podPhase returns the pod phase string, defaulting to "Unknown".
@@ -251,33 +250,33 @@ func (h *Handler) getPodDetail(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func buildContainerDetails(specs []corev1.Container, statuses []corev1.ContainerStatus, metricsMap map[string]k8s.ContainerMetrics) []ContainerDetailResponse {
-	csMap := map[string]corev1.ContainerStatus{}
-	for _, cs := range statuses {
-		csMap[cs.Name] = cs
+func buildContainerDetails(specs []corev1.Container, statuses []corev1.ContainerStatus, metricsByName map[string]k8s.ContainerMetrics) []ContainerDetailResponse {
+	statusByName := map[string]corev1.ContainerStatus{}
+	for _, status := range statuses {
+		statusByName[status.Name] = status
 	}
 
 	var containers []ContainerDetailResponse
-	for _, c := range specs {
-		cs := csMap[c.Name]
+	for _, container := range specs {
+		status := statusByName[container.Name]
 		lastState := ""
-		if cs.LastTerminationState.Terminated != nil {
-			lastState = cs.LastTerminationState.Terminated.Reason
+		if status.LastTerminationState.Terminated != nil {
+			lastState = status.LastTerminationState.Terminated.Reason
 		}
 		var cpuUsage, memUsage int64
-		if m, ok := metricsMap[c.Name]; ok {
-			cpuUsage = m.CPUMillis
-			memUsage = m.MemBytes
+		if metrics, ok := metricsByName[container.Name]; ok {
+			cpuUsage = metrics.CPUMillis
+			memUsage = metrics.MemBytes
 		}
 		containers = append(containers, ContainerDetailResponse{
-			Name:         c.Name,
-			Image:        c.Image,
-			Ready:        cs.Ready,
-			RestartCount: cs.RestartCount,
-			CPURequest:   c.Resources.Requests.Cpu().MilliValue(),
-			MemRequest:   c.Resources.Requests.Memory().Value(),
-			CPULimit:     c.Resources.Limits.Cpu().MilliValue(),
-			MemLimit:     c.Resources.Limits.Memory().Value(),
+			Name:         container.Name,
+			Image:        container.Image,
+			Ready:        status.Ready,
+			RestartCount: status.RestartCount,
+			CPURequest:   container.Resources.Requests.Cpu().MilliValue(),
+			MemRequest:   container.Resources.Requests.Memory().Value(),
+			CPULimit:     container.Resources.Limits.Cpu().MilliValue(),
+			MemLimit:     container.Resources.Limits.Memory().Value(),
 			CPUUsage:     cpuUsage,
 			MemUsage:     memUsage,
 			LastState:    lastState,
@@ -304,13 +303,13 @@ func (h *Handler) fetchPodEvents(ctx context.Context, namespace, name string) []
 		return []PodEventResponse{}
 	}
 	result := make([]PodEventResponse, len(events))
-	for i, e := range events {
+	for i, event := range events {
 		result[i] = PodEventResponse{
-			Type:     e.Type,
-			Reason:   e.Reason,
-			Message:  e.Message,
-			Count:    e.Count,
-			LastSeen: e.LastTimestamp.UTC().Format(time.RFC3339),
+			Type:     event.Type,
+			Reason:   event.Reason,
+			Message:  event.Message,
+			Count:    event.Count,
+			LastSeen: event.LastTimestamp.UTC().Format(time.RFC3339),
 		}
 	}
 	return result
@@ -370,7 +369,7 @@ func streamPodLogs(w http.ResponseWriter, stream io.Reader) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
-	rc := http.NewResponseController(w)
+	responseController := http.NewResponseController(w)
 
 	buf := make([]byte, 4096)
 	for {
@@ -379,7 +378,7 @@ func streamPodLogs(w http.ResponseWriter, stream io.Reader) {
 			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
 				return
 			}
-			if flushErr := rc.Flush(); flushErr != nil {
+			if flushErr := responseController.Flush(); flushErr != nil {
 				slog.Warn("getPodLogs: flush error", "err", flushErr)
 				return
 			}
@@ -453,31 +452,29 @@ func (h *Handler) getWorkloadPods(w http.ResponseWriter, r *http.Request) {
 
 // fetchRSOwnerMap fetches ReplicaSets and builds the owner resolution map.
 func (h *Handler) fetchRSOwnerMap(ctx context.Context, caller string) map[string]ownerRef {
-	rss, err := h.k8s.ListAllReplicaSets(ctx)
+	replicaSets, err := h.k8s.ListAllReplicaSets(ctx)
 	if err != nil {
 		slog.Warn(caller+": failed to list replicasets — owners will show as ReplicaSet", "err", err)
 	}
-	return buildRSOwnerMap(rss)
+	return buildRSOwnerMap(replicaSets)
 }
 
 // filterAndBuildPodResponses converts pods to NodePodResponse, filtering daemonset pods
 // and optionally filtering by owner.
-func filterAndBuildPodResponses(pods []corev1.Pod, podMetrics map[string]k8s.ContainerMetrics, rsOwner map[string]ownerRef, filter *podFilter) []NodePodResponse {
+func filterAndBuildPodResponses(pods []corev1.Pod, podMetrics map[string]k8s.ContainerMetrics, replicaSetOwners map[string]ownerRef, filter *podFilter) []NodePodResponse {
 	var result []NodePodResponse
 	for _, pod := range pods {
 		if isDaemonOwned(pod.OwnerReferences) {
 			continue
 		}
-		ownerKind, ownerName := resolveOwner(pod.OwnerReferences, pod.Namespace, rsOwner)
+		ownerKind, ownerName := resolveOwner(pod.OwnerReferences, pod.Namespace, replicaSetOwners)
 
-		if filter != nil {
-			if !strings.EqualFold(ownerKind, filter.Kind) || ownerName != filter.Name {
-				continue
-			}
+		if filter != nil && (!strings.EqualFold(ownerKind, filter.Kind) || ownerName != filter.Name) {
+			continue
 		}
 
-		m := podMetrics[pod.Namespace+"/"+pod.Name]
-		result = append(result, buildNodePodResponse(pod, ownerKind, ownerName, m))
+		metrics := podMetrics[pod.Namespace+"/"+pod.Name]
+		result = append(result, buildNodePodResponse(pod, ownerKind, ownerName, metrics))
 	}
 
 	if result == nil {

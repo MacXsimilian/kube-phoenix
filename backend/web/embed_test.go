@@ -10,6 +10,8 @@ import (
 	"testing/fstest"
 )
 
+// Use a tiny exported-site filesystem to check nested pages, redirects,
+// assets, and fallback behavior without building the real frontend.
 func TestSPAHandlerExportedRoutes(t *testing.T) {
 	files := fstest.MapFS{
 		"index.html":                      {Data: []byte("root page")},
@@ -71,6 +73,8 @@ func TestSPAHandlerExportedRoutes(t *testing.T) {
 	}
 }
 
+// Malformed URL paths must use the root fallback without opening invalid
+// filesystem paths or serving the private fixture file.
 func TestSPAHandlerInvalidPathsFallBackWithoutFilesystemTraversal(t *testing.T) {
 	for _, target := range []string{
 		"/../private.txt",

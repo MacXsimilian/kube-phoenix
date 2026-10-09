@@ -75,8 +75,8 @@ func (h *Handler) loginRateLimited(w http.ResponseWriter, r *http.Request, usern
 	return false
 }
 
-// verifyCredentials looks up the user and checks the password. On failure it
-// writes the HTTP error response and returns a non-nil error sentinel.
+// verifyCredentials looks up the user and checks the password. Failures are
+// audited and returned to login, which selects the HTTP error response.
 func (h *Handler) verifyCredentials(r *http.Request, username, password string) (*store.User, error) {
 	user, err := h.store.GetUserByUsername(username)
 	if err != nil {
@@ -178,15 +178,15 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	perms := auth.PermissionsForRole(user.Role)
-	permStrings := make([]string, len(perms))
-	for i, p := range perms {
-		permStrings[i] = string(p)
+	permissions := auth.PermissionsForRole(user.Role)
+	permissionNames := make([]string, len(permissions))
+	for i, permission := range permissions {
+		permissionNames[i] = string(permission)
 	}
 
-	resp := userResponse(user)
-	resp["permissions"] = permStrings
-	jsonOK(w, resp)
+	response := userResponse(user)
+	response["permissions"] = permissionNames
+	jsonOK(w, response)
 }
 
 // ─── Change password ─────────────────────────────────────────────────────────
@@ -251,14 +251,14 @@ func (h *Handler) updateUserSettings(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "invalid timezone", http.StatusBadRequest)
 			return
 		}
-		oldTz := user.DefaultTimezone
+		previousTimezone := user.DefaultTimezone
 		if err := h.store.UpdateUserTimezone(user.ID, body.DefaultTimezone); err != nil {
 			jsonInternalError(w, err, "update user settings failed")
 			return
 		}
 		user.DefaultTimezone = body.DefaultTimezone
 		h.audit(r, "user.settings", "user", &user.ID,
-			map[string]string{"defaultTimezone": oldTz},
+			map[string]string{"defaultTimezone": previousTimezone},
 			map[string]string{"defaultTimezone": body.DefaultTimezone})
 	}
 
@@ -290,19 +290,19 @@ func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
 
 	currentSessionID := authmw.SessionIDFromContext(r.Context())
 
-	resp := make([]sessionResponse, len(sessions))
-	for i, s := range sessions {
-		resp[i] = sessionResponse{
-			ID:        s.ID,
-			IPAddress: s.IPAddress,
-			UserAgent: s.UserAgent,
-			CreatedAt: s.CreatedAt.Format(time.RFC3339),
-			ExpiresAt: s.ExpiresAt.Format(time.RFC3339),
-			IsCurrent: s.ID == currentSessionID,
+	response := make([]sessionResponse, len(sessions))
+	for i, session := range sessions {
+		response[i] = sessionResponse{
+			ID:        session.ID,
+			IPAddress: session.IPAddress,
+			UserAgent: session.UserAgent,
+			CreatedAt: session.CreatedAt.Format(time.RFC3339),
+			ExpiresAt: session.ExpiresAt.Format(time.RFC3339),
+			IsCurrent: session.ID == currentSessionID,
 		}
 	}
 
-	jsonOK(w, resp)
+	jsonOK(w, response)
 }
 
 // ─── Session helpers ─────────────────────────────────────────────────────────
@@ -314,7 +314,7 @@ func (h *Handler) createSessionCookies(w http.ResponseWriter, r *http.Request, u
 	}
 
 	now := time.Now()
-	sess := &store.Session{
+	session := &store.Session{
 		Token:        token,
 		UserID:       user.ID,
 		IPAddress:    r.RemoteAddr,
@@ -323,7 +323,7 @@ func (h *Handler) createSessionCookies(w http.ResponseWriter, r *http.Request, u
 		MaxExpiresAt: now.Add(h.maxLifetime),
 		CreatedAt:    now,
 	}
-	if err := h.store.CreateSession(sess); err != nil {
+	if err := h.store.CreateSession(session); err != nil {
 		return err
 	}
 	metrics.ActiveSessions.Inc()
@@ -366,18 +366,18 @@ func (h *Handler) clearSessionCookies(w http.ResponseWriter) {
 	})
 }
 
-func userResponse(u *store.User) map[string]interface{} {
+func userResponse(user *store.User) map[string]interface{} {
 	return map[string]interface{}{
-		"id":              u.ID,
-		"username":        u.Username,
-		"givenName":       u.GivenName,
-		"familyName":      u.FamilyName,
-		"email":           u.Email,
-		"role":            u.Role,
-		"source":          u.Source,
-		"enabled":         u.Enabled,
-		"defaultTimezone": u.DefaultTimezone,
-		"createdAt":       u.CreatedAt,
-		"lastLoginAt":     u.LastLoginAt,
+		"id":              user.ID,
+		"username":        user.Username,
+		"givenName":       user.GivenName,
+		"familyName":      user.FamilyName,
+		"email":           user.Email,
+		"role":            user.Role,
+		"source":          user.Source,
+		"enabled":         user.Enabled,
+		"defaultTimezone": user.DefaultTimezone,
+		"createdAt":       user.CreatedAt,
+		"lastLoginAt":     user.LastLoginAt,
 	}
 }

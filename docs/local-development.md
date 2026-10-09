@@ -24,7 +24,7 @@ Run the examples from the repository root. All modes use Git and Make; install o
 
 | Tool | Version | macOS install example |
 | :--- | :------ | :-------------------- |
-| Go | 1.27.1+; minimum from `backend/go.mod` | `brew install go` |
+| Go | 1.27.2+; minimum from `backend/go.mod` | `brew install go` |
 | Node.js | 26 (Current); use Node 26 on `PATH` to match Docker and CI | `brew install node` |
 | Docker | Docker Engine/Desktop with Buildx and Compose | [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/) |
 | minikube | No repository pin | `brew install minikube` |
@@ -221,6 +221,8 @@ make dev-frontend     # Terminal 3 -- frontend on :3000
 
 Without in-cluster credentials or a valid kubeconfig, the backend starts with a nil Kubernetes client. Cluster endpoints return HTTP 503 (`kubernetes client unavailable`) and scaling operations are skipped. The backend uses `client-go` directly; installing kubectl alone does not provide cluster access. Everything else -- policies, guardrails, audit log, authentication -- works as expected.
 
+`GET /livez` reports process liveness without querying PostgreSQL. `GET /readyz` and its compatibility alias `/healthz` check database connectivity and return HTTP 503 if the database is unavailable. Neither readiness endpoint requires Kubernetes access, so Mode 2 can become ready without a cluster. The image's built-in `-healthcheck` uses `/healthz` and therefore also requires PostgreSQL. Loss of the dedicated scheduler-ownership session still causes the process to exit.
+
 ### Authentication
 
 Authentication is always enforced. Set `ADMIN_USER` and `ADMIN_PASSWORD` to seed an admin account on first startup. Without them, a fresh database has no local account to log in with. Set `COOKIE_SECURE=false` for this HTTP-only development setup; HTTPS deployments retain the default `true`.
@@ -273,6 +275,47 @@ Use [Your first policy](first-policy.md) for the complete plan → apply → sle
 
 The [smoke checklist](testing/policy-smoke-test.md) is the short companion for recording results. The [scenario catalogue](test-plan-policy.md) covers scheduled exceptions and advanced cases. Mock mode can illustrate the UI but cannot verify real workload or node operations.
 
+## Regression checks
+
+From the repository root, refresh the embedded API spec before backend checks:
+
+```bash
+make copy-spec
+make test
+make lint
+```
+
+Store ownership, snapshot-intent migration, and recovery persistence tests require `TEST_DATABASE_URL` pointing to a disposable PostgreSQL database. They create and remove isolated schemas and need permission to do so. Without that variable, these tests skip locally; CI supplies PostgreSQL and requires the variable. With a disposable database already running, use the same race-enabled command as CI:
+
+```bash
+cd backend
+TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/kube_phoenix_test?sslmode=disable' \
+  go test -race -count=1 -coverprofile=coverage.out ./...
+```
+
+Use the [frontend validation commands](frontend-dev-guide.md#validate-a-change) for lint, typecheck, window/history/mock-exception regressions, and static export. Chart checks run from the repository root with Python 3 and Helm installed:
+
+```bash
+helm lint helm/kube-phoenix
+python3 -B -m unittest discover -s hack/tests -p 'test_*.py' -v
+```
+
+The chart suite covers storage upgrades, probe/RBAC regressions, service discovery, disruption budgets, and database configuration. CI also lints the example values and validates rendered manifests with kubeconform.
+
+## Final-image smoke check
+
+Build and exercise the same final container used by CI:
+
+```bash
+make docker-build TAG=local-smoke
+python3 .github/scripts/smoke_image.py \
+  ghcr.io/macxsimilian/kube-phoenix:local-smoke local-smoke
+```
+
+The second argument must match the version baked into the image. The script creates a temporary Docker network, a PostgreSQL 18 container with temporary storage, and an application container with a read-only filesystem, dropped capabilities, and a temporary `/tmp`. It exercises the image's non-root user and exec-form healthcheck, then verifies `/readyz`, `/api/version`, the root HTML, and a referenced Next.js JavaScript asset. It prints container logs on failure and removes its containers and network when it exits. Docker must be running and able to fetch the PostgreSQL image; no Kubernetes cluster is needed. This smoke check does not exercise authenticated UI workflows or scaling.
+
+The Dockerfile caches npm installation and Go module downloads before copying application source or declaring version/build architecture arguments. BuildKit cache mounts retain npm downloads, Next.js compilation data, Go modules, and Go compilation data. CI, release, and security workflows explicitly restore/save these mounts as well as the layer cache. Host `node_modules`, `.next`, `out`, embedded static assets, environment files, and TypeScript incremental output are excluded from the image build context; the build creates a fresh static export inside the builder.
+
 ---
 
 ## Cluster Feature Matrix
@@ -320,7 +363,7 @@ See [`.env.example`](../.env.example) for a template and the [configuration refe
 | `make dev-backend` | Start Go backend with `go run` |
 | `make dev-frontend` | Start Next.js dev server on `:3000` |
 | `make dev-mock` | Start mock API (`:4444`) + Next.js (`:3000`) |
-| `make test` | Run backend unit tests |
+| `make test` | Run backend tests; database integration tests require `TEST_DATABASE_URL` |
 | `make lint` | Run golangci-lint (includes gosec) |
 | `make build` | Full production build (frontend + backend binary) |
 | `make docker-build` | Build Docker image |

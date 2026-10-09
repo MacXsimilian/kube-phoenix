@@ -22,7 +22,7 @@ and navigate the review process.
 
 | Tool | Version | Purpose |
 | :--- | :------ | :------ |
-| Go | 1.27.1+ | Backend compilation and tests; minimum from `backend/go.mod` |
+| Go | 1.27.2+ | Backend compilation and tests; minimum from `backend/go.mod` |
 | Node.js | 26 (Current) | Frontend build (Next.js); matches Docker and CI |
 | Docker | any | Local PostgreSQL via `docker compose` |
 | golangci-lint | v2.14.0 | Matches CI (`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0`) |
@@ -66,8 +66,10 @@ make dev-mock    # starts frontend with a built-in mock API server
 
 Open `http://localhost:3000` and log in with `admin` / `adminadmin`.
 
-The backend auto-migrates the database schema and seeds default data on startup. No
-manual migration step is needed.
+With the default `AUTO_MIGRATE=true`, the backend migrates application tables and
+seeds default data on startup. If you disable AutoMigrate, provision the matching
+schema and apply the [snapshot-intent migration](backend/migrations/20261008_snapshot_intents.sql)
+before starting this version. See [configuration](docs/configuration.md#backend-runtime).
 
 > **Note:** Authentication is always enforced. `ADMIN_USER` and `ADMIN_PASSWORD` must be
 > set to seed an admin account -- without them a fresh database has no local account to log in with.
@@ -79,9 +81,16 @@ manual migration step is needed.
 ### Running Tests and Linters
 
 ```bash
-make test          # backend unit tests
+make copy-spec     # refresh the embedded OpenAPI spec
+make test          # backend tests; database integration tests need TEST_DATABASE_URL
 make lint          # golangci-lint (includes gosec)
 ```
+
+See [local regression checks](docs/local-development.md#regression-checks) for
+disposable PostgreSQL integration tests, frontend and chart checks, and the
+[final-image smoke check](docs/local-development.md#final-image-smoke-check).
+CI runs backend tests with `-race -count=1` and requires `TEST_DATABASE_URL`; a
+local run without it skips the database-backed reliability tests.
 
 ---
 
@@ -171,11 +180,51 @@ Keep the subject line under 72 characters. Add a body when the change needs cont
 
 ## Pull Request Process
 
+### Pull Request Title and Description
+
+Use a Conventional Commit title that describes the final change, for example
+`fix(scheduler): preserve exception scope during recovery`. Keep it under 72
+characters and use `!` for breaking changes, including operational or configuration
+changes. Update the title and description when the scope changes.
+
+Use the [pull request template](.github/pull_request_template.md) with these seven
+sections, in this order. Keep the headings unnumbered. Do not add separate
+**Motivation**, **Files Changed**, or **Type of change** sections.
+
+| Section | What to include |
+| :------ | :-------------- |
+| Summary | One or two short paragraphs explaining the problem and resulting behavior. Include the reason for the change here. |
+| Changes | Concrete changes as bullets, grouped by area when useful. Describe the final implementation; omit abandoned approaches and conversational history. |
+| Breaking Changes | Changes to existing behavior, APIs, configuration, permissions, deployment, or tool requirements. Write `None.` when there are none. |
+| Migration Notes | Required operator or developer steps, ordering, downtime, and rollback considerations where applicable. Write `No migration required.` when none are needed. |
+| Dependency Changes | A table of changed dependencies with previous and updated versions compared with the PR base. Include relevant build images and CI actions. Identify selected highlights if transitive updates are omitted, and link to the manifests or lockfiles. Write `None.` when there are none. |
+| Related Issues | Link relevant issues or prior PRs. Use `Fixes #123` only when the PR resolves that issue; otherwise use `Related to #123`. Write `Not tied to a tracked issue.` when applicable. |
+| Checklist | Relevant validation and completion items with accurate status. Record commands, results, and material limitations here. |
+
+Scale the detail to the change: a small fix needs only a few sentences and bullets;
+changes spanning several areas need enough detail to review each area. Use paths
+only when they help explain a change. The description must reflect the PR diff;
+commit any intended local changes before claiming they are included.
+
+Check an item only when it has been verified. Remove inapplicable checklist items
+or mark them explicitly as not applicable. Leave pending checks unchecked and
+explain failures, skipped tests, and unavailable environments. Distinguish earlier
+validation from results for the final revision, and distinguish unit/fake-client
+coverage from real database or Kubernetes validation.
+
+Chart version and appVersion updates are managed by release-please in its release
+PR. Preserve breaking-change details and independent release entries in the squash
+commit as described in [Complete Release Notes](#complete-release-notes).
+Automated dependency and release PRs may retain their generated format.
+
 ### Before Requesting Review
 
 - [ ] `make test` passes
 - [ ] `make lint` introduces no new warnings
-- [ ] `npm run build` passes in `frontend/`
+- [ ] Frontend lint, typecheck, regression checks, and build pass for UI changes
+- [ ] Database reliability tests pass with `TEST_DATABASE_URL` for store/scheduler changes
+- [ ] Rendered chart regression checks pass for Helm changes
+- [ ] Final-image smoke check passes for Docker or embedded asset changes
 - [ ] New behaviour is covered by tests where practical
 - [ ] `openapi.yaml` updated if any API route or schema changed
 - [ ] README or ARCHITECTURE.md updated if documented behaviour changed
@@ -202,25 +251,26 @@ before merging.
 
 ### CI (`ci.yml`)
 
-Triggered on PRs to `master` when relevant paths change (frontend, backend, Dockerfile, helm, workflows).
+Triggered on all PRs to `master`, pushes to `master`, and manual dispatch. There are no path filters.
 
 | Job | What it checks |
 | :-- | :------------- |
-| Frontend build | `npm ci`, `npm audit` (high/critical gate), and `npm run build` |
-| Backend build | `go vet`, `go test` with coverage, `go build`, golangci-lint, OpenAPI spec sync |
-| Helm lint | `helm lint helm/kube-phoenix` + lint with all `examples/values-*.yaml` overlays |
-| Docker build check | Dockerfile lint (hadolint) and build verification |
+| Frontend build | `npm ci`, ESLint, TypeScript checking, window/history/mock-exception regressions, and static export build; bundle size is reported |
+| Backend build, vet, test & lint | `go vet`, golangci-lint, OpenAPI spec sync, and `go test -race -count=1 -coverprofile=coverage.out ./...` with a disposable PostgreSQL service |
+| Helm lint | Chart/default/example lint, Python chart regression tests, and strict kubeconform validation of rendered default/example manifests (missing CRD schemas are ignored) |
+| Docker build check | Dockerfile lint (hadolint), final `linux/amd64` image build/load, and image smoke test against disposable PostgreSQL |
 
 ### Security (`security.yml`)
 
-Triggered on PRs to `master` (same path filters as CI) and weekly (Monday 06:00 UTC).
+Triggered on all PRs and pushes to `master`, manual dispatch, and weekly (Monday 06:00 UTC).
 
 | Job | What it checks |
 | :-- | :------------- |
 | govulncheck | Go dependency vulnerability scan |
-| npm audit | npm dependency audit (high-severity gate) |
-| Trivy image scan | Container image vulnerabilities |
-| Trivy filesystem scan | IaC and dependency scan |
+| npm audit | Production dependencies only; high/critical findings fail the job |
+| Trivy image scan | Container image vulnerabilities gate on fixable high/critical findings; misconfiguration reports are informational |
+| Trivy filesystem scan | Dependency vulnerabilities gate on fixable high/critical findings; IaC misconfiguration reports are informational |
+| gosec | Go static security analysis uploaded as SARIF; findings do not fail this reporting job |
 | TruffleHog | Verified leaked secrets |
 
 All GitHub Actions versions are pinned to full commit SHAs for supply-chain integrity.
@@ -236,10 +286,14 @@ Releases are fully automated via [release-please](https://github.com/googleapis/
 3. Merging the Release PR triggers the release pipeline. `release-please.yml` chains
    the release build via `workflow_call` because `GITHUB_TOKEN`-generated events do not
    trigger other workflows (so a `release: published` trigger would be silently skipped).
-   - Docker image pushed to `ghcr.io/macxsimilian/kube-phoenix` (full, minor, and major semver tags without the Git tag's leading `v`, plus `latest` for stable releases).
-   - Image signed with [cosign](https://github.com/sigstore/cosign) (keyless / OIDC).
-   - SBOM generated with [Syft](https://github.com/anchore/syft) and attached to the image.
-   - Helm chart pushed to `oci://ghcr.io/macxsimilian/helm/kube-phoenix`.
+   - The `linux/amd64` Docker image is built and pushed to `ghcr.io/macxsimilian/kube-phoenix` with the full semver tag (without the Git tag's leading `v`). Reruns reuse a published image only after validating its release identity.
+   - The exact image digest is pulled and smoke-tested against disposable PostgreSQL. The check exercises the image's non-root runtime and built-in healthcheck, database readiness, the embedded backend version, HTML, and a referenced Next.js script.
+   - After smoke succeeds, the digest is signed with [cosign](https://github.com/sigstore/cosign) (keyless / OIDC), and an SBOM generated with [Syft](https://github.com/anchore/syft) is attested to it. Stable minor/major aliases and `latest` are then promoted according to the release ordering rules.
+   - The Helm chart is pushed to `oci://ghcr.io/macxsimilian/helm/kube-phoenix` only after the Docker job succeeds. A failed smoke test can leave the full version tag published, but prevents signing, alias promotion, and chart publication for that run.
+
+CI, release, and security image builds retain npm, Next.js, Go module, and Go build
+cache mounts separately from the BuildKit layer cache. See the
+[local build notes](docs/local-development.md#final-image-smoke-check).
 
 Never create Git tags manually -- release-please owns all tags and releases.
 

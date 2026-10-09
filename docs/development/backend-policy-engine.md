@@ -8,23 +8,24 @@ Read this reference when changing scheduling, exception handling, replica restor
 | :---- | :------------- | :----- |
 | Window evaluator | Pure timezone-aware sleep/awake calculation and next transition | [policy](../../backend/internal/policy) |
 | Policy engine | Exception precedence and intended-state calculation | [policy_engine.go](../../backend/internal/scheduler/policy_engine.go) |
-| Scheduler | Evaluation, recovery, claims, cancellation, execution lifecycle, log persistence | [policy_scheduler.go](../../backend/internal/scheduler/policy_scheduler.go) |
-| Policy runner | Workload selection, snapshots, scaling, node phase, wake waves | [policy_scaler.go](../../backend/internal/scaler/policy_scaler.go) |
-| Store | Persisted policies, executions, logs, exceptions, snapshots | [store](../../backend/internal/store) |
+| Scheduler | Evaluation and startup recovery; execution claims, cancellation, logs and finalization; exception lifecycle | [policy_scheduler.go](../../backend/internal/scheduler/policy_scheduler.go), [execution.go](../../backend/internal/scheduler/execution.go), [exceptions.go](../../backend/internal/scheduler/exceptions.go) |
+| Policy runner | Sleep/wake orchestration, per-workload snapshots/scaling, target filtering, wake waves | [policy_scaler.go](../../backend/internal/scaler/policy_scaler.go), [workloads.go](../../backend/internal/scaler/workloads.go), [targeting.go](../../backend/internal/scaler/targeting.go), [waves.go](../../backend/internal/scaler/waves.go) |
+| Store | Policies, execution/log history, exception scopes, snapshots, process ownership | [policies.go](../../backend/internal/store/policies.go), [executions.go](../../backend/internal/store/executions.go), [exceptions.go](../../backend/internal/store/exceptions.go), [snapshots.go](../../backend/internal/store/snapshots.go), [ownership.go](../../backend/internal/store/ownership.go) |
 
 Keep time calculation independent of Kubernetes and database access. The scheduler chooses an operation; the runner performs it. Handler validation and import validation must enforce the same policy rules.
 
 ## Intended state and evaluation
 
-The engine gives active `force_sleep` exceptions precedence over `stay_awake`, then uses the union of the policy's sleep windows. Stored policies without windows produce `unknown` at this layer. Current create/import endpoints require 1–10 valid windows; the lower-level window evaluator's empty-input behavior is not the scheduler's policy contract.
+The engine gives active `force_sleep` exceptions precedence over `stay_awake`, then uses the union of the policy's sleep windows. The scheduler supplies only unscoped exceptions when calculating baseline policy intent; scoped exceptions are reconciled separately for their targets. Stored policies without windows produce `unknown` at this layer when no applicable exception supplies intent. Current create/import endpoints require 1–10 valid windows; the lower-level window evaluator's empty-input behavior is not the scheduler's policy contract.
 
 The scheduler caches parsed windows and locations, evaluates enabled policies on the configured interval, and compares intended state with recorded state. Guardrail changes reload settings and restart the evaluation ticker when needed. Manual triggers can execute disabled policies.
 
 Additional evaluator behavior:
 
-- **Auto Wake** gates ordinary scheduled wakes. It does not gate corrective wake reconciliation in the same way.
+- **Auto Wake** gates ordinary scheduled wakes. Startup recovery, corrective wake reconciliation, and exception actions use separate paths and can still wake workloads when it is off.
 - **Reconcile While Awake** retries restoration when an awake policy still has snapshots needing restore, with a five-minute per-policy backoff.
 - **Enforce Sleep** checks open snapshots for workloads scaled up during a sleep period and requests a corrective sleep, also with backoff. Namespace protection and active stay-awake exceptions remain relevant.
+- **Scoped exceptions** have a separate five-minute corrective retry clock per exception. They are processed before optional baseline drift correction once baseline state matches intent, independently of Auto Wake, Reconcile While Awake, and Enforce Sleep.
 - A `transitioning` policy is skipped by normal evaluation. A stale transition is reset after the policy timeout plus five minutes, with a minimum threshold of fifteen minutes.
 
 Read the scheduler's branch order before modifying a gate: recovery, exceptions, ordinary transitions, and drift correction are separate paths.
@@ -37,7 +38,7 @@ The runner executes with a cancellable timeout context. A policy timeout of zero
 
 `success`, `failed`, and `interrupted` describe the execution result; `awake`, `sleeping`, `transitioning`, and `unknown` describe policy state. Plan runs can update recorded state without touching Kubernetes. A state badge alone does not prove replicas or pod readiness.
 
-On startup, unfinished execution records are marked interrupted and stale transition state is reset. Recovery then compares enabled policies with their current window/exception intent. This is reconciliation, not a replay of every missed schedule boundary. It depends on the database, Kubernetes access, and the configured execution mode.
+Before recovery, the process acquires a dedicated PostgreSQL session advisory lock. Recovery updates run on that locked session; a second live owner is rejected. Reserve at least two database connections and use a direct connection or session-preserving pool. The lock remains held until HTTP shutdown, execution cancellation and completion. Mutation checks and a watchdog fail closed if the session is lost. On startup, unfinished execution records are marked interrupted and stale transition state is reset. Recovery then compares enabled policies with baseline window/unscoped-exception intent and preserves target boundaries for scoped recovery. This is reconciliation, not a replay of every missed schedule boundary. It depends on the database, Kubernetes access, and the configured execution mode.
 
 ## Sleep and snapshots
 
@@ -46,17 +47,17 @@ Sleep lists Deployments and StatefulSets using the workload selector, filters na
 | Workload condition | Apply behavior |
 | :----------------- | :------------- |
 | Already at zero | Record `wasAlreadyZero`; do not claim ownership of a later wake |
-| Existing open snapshot | Skip ordinary double-sleep; retain the original baseline |
-| Positive replicas | Scale to zero, then persist the captured replica count |
-| Scale failure | Log the failure and count an error |
+| Existing open snapshot | Reconcile live state; retain the original UID and replica baseline |
+| Positive replicas | Persist prepared intent, scale by name to zero, record applied phase |
+| Persistence or scale failure | Retain any durable intent, count an error, fail the execution and defer nodes |
 
-The Kubernetes scale and database insert are separate operations. A snapshot write can fail after replicas reach zero; the runner logs a warning that automatic restoration is unavailable for that workload. Do not describe this as an atomic transaction or guaranteed recovery after database loss. Operators need execution logs and a verified replica baseline for that case.
+Kubernetes and PostgreSQL remain separate systems. A prepared intent precedes scaling and is retained after ambiguous failures. On retry, zero replicas can confirm application; nonzero replicas are scaled by kind/namespace/name with the original conflict retries. This also applies to existing applied/legacy open snapshots during an ordinary sleep execution; Enforce Sleep separately controls periodic drift checks. Snapshot closure failures also count as incomplete work. Saved UIDs are informational and do not gate scaling or restoration. Legacy snapshots and same-name replacement workloads follow the original name-based recovery contract. [Scale updates](../../backend/internal/k8s/operations.go) re-read the scale after conflicts, allowing four total attempts with 500 ms, 1.5 s, and 3 s delays.
 
 Snapshots in PostgreSQL are the current restoration source. There is no annotation fallback. Plan mode logs proposed actions without creating workload snapshots or mutating Kubernetes resources.
 
 ## Wake and snapshot closure
 
-Wake reads open snapshots for the policy, applies a namespace filter when present, and restores the recorded counts. It does not rediscover an arbitrary desired replica count from live labels. Priority namespace ordering and optional wake waves control processing; wave readiness waits are bounded.
+Wake reads open snapshots for the policy, applies a namespace filter when present, and restores the recorded counts. Scoped exceptions additionally intersect explicit targets, labels, namespaces, and the parent policy boundary. Ordinary wake ignores current label selection so owned snapshots remain restorable after labels change. It does not rediscover an arbitrary desired replica count from live labels. Priority namespace ordering and optional wake waves control processing; wave readiness waits are bounded.
 
 | Snapshot/workload condition | Apply behavior |
 | :-------------------------- | :------------- |
@@ -72,17 +73,17 @@ Snapshot closure writes can also fail after a successful scale. Keep retries tol
 
 After workload sleep, the runner considers nodes across the cluster. A policy's namespace filter does not scope node deletion. Node protection checks labels, taints, configured critical namespaces, and optionally critical-priority non-DaemonSet pods. Critical-priority protection is off by default.
 
-Unprotected nodes can be cordoned, drained, and deleted. The drain uses evictions and can fall back to force deletion on eviction failure; do not imply it guarantees PodDisruptionBudget preservation. Inspect [nodes.go](../../backend/internal/scaler/nodes.go) and [client.go](../../backend/internal/k8s/client.go) before changing this behavior.
+Unprotected nodes can be cordoned, drained, and deleted. The drain first tries eviction and, on eviction failure, attempts direct pod deletion with zero grace. This preserves the original shutdown behavior: eviction blockers, including PodDisruptionBudgets, should not keep otherwise unprotected nodes running indefinitely. The fallback deliberately bypasses PDBs and graceful termination and needs `delete` on core `pods`; the default chart retains its existing permissions and does not grant that verb. Cancellation, scheduler ownership and pod UID preconditions still apply. If eviction and deletion both fail, the drain reports the failures and node deletion is not attempted. Cordon ownership is recorded in a node annotation in the same update as the cordon. Failure and startup cleanup restore only marked cordons. Inspect [scaler node orchestration](../../backend/internal/scaler/nodes.go), [Kubernetes drain operations](../../backend/internal/k8s/nodes.go), and [owned cordons](../../backend/internal/k8s/cordon.go) before changing this behavior.
 
-Wake restores workloads only; it does not uncordon surviving nodes or recreate deleted ones. An external autoscaler, such as Karpenter, must replace missing capacity. Use [explicit all-node protection](../first-policy.md#2-protect-every-node) for local scaling exercises.
+Wake restores workloads only; failure/startup recovery handles owned cordons separately and never recreates deleted nodes. An external autoscaler, such as Karpenter, must replace missing capacity. Use [explicit all-node protection](../first-policy.md#2-protect-every-node) for local scaling exercises.
 
 ## Scheduled exceptions
 
-Each exception references a parent policy. Activation and completion run on the configured evaluator interval. `stay_awake` requests a wake and `force_sleep` requests a sleep; a disabled parent skips execution. Scoped exception operations use an in-memory copy of the policy with supplied filters rather than changing its saved targeting.
+Each exception references a parent policy. Activation and completion run on the configured evaluator interval. `stay_awake` requests a wake and `force_sleep` requests a sleep; a disabled parent skips execution. Scoped exception operations carry an in-memory scope alongside the unchanged parent policy. Namespace filters, label selectors and explicit workload targets intersect; they cannot broaden the parent. Scoped runs do not drain cluster nodes.
 
-Scoped exceptions still affect the policy-level intended state so the ordinary evaluator does not immediately contradict them. API validation rejects overlapping opposite-type exceptions on the same parent; the engine retains force-sleep precedence for stored inputs.
+Unscoped exceptions retain policy-level precedence. For scoped exceptions, the scheduler evaluates baseline intent for other workloads and excludes active opposite targets in the runner. Scoped execution preserves the baseline policy state and has its own corrective retry clock. Thus a stay-awake exception from 06:00 to 08:00 for namespace A does not suppress B’s normal 07:00 wake. API validation rejects overlapping opposite-type exceptions on the same parent; force-sleep retains precedence where stored inputs overlap.
 
-When `sleepOnEnd` is true, completion or active cancellation computes the normal schedule's current intended state and requests sleep or wake accordingly. The name is historical: it does not mean the end action always sleeps. Unknown intent or a disabled parent skips the return execution.
+When `sleepOnEnd` is true, completion or active cancellation computes the normal schedule's current intended state and requests sleep or wake accordingly within the ending exception's scope. The name is historical: it does not mean the end action always sleeps. Unknown intent or a disabled parent skips the return execution. Expiry stores completed status before dispatching this action; API cancellation attempts the action before recording cancelled status. Dispatch failure is logged without retrying that lifecycle action. Later baseline reconciliation still applies its normal gates.
 
 ## Changing this area
 

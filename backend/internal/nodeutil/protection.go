@@ -34,19 +34,19 @@ func ParseLabels(csvConfig string) []LabelMatcher {
 		return nil
 	}
 	parts := strings.Split(csvConfig, ",")
-	out := make([]LabelMatcher, 0, len(parts))
-	for _, kv := range parts {
-		kv = strings.TrimSpace(kv)
-		if kv == "" {
+	matchers := make([]LabelMatcher, 0, len(parts))
+	for _, entry := range parts {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
 			continue
 		}
-		key, value, err := parseLabelEntry(kv)
+		key, value, err := parseLabelEntry(entry)
 		if err != nil {
 			continue
 		}
-		out = append(out, LabelMatcher{Key: key, Value: value, Raw: kv})
+		matchers = append(matchers, LabelMatcher{Key: key, Value: value, Raw: entry})
 	}
-	return out
+	return matchers
 }
 
 // ParseTaints splits a CSV config of key=value:effect entries into matchers.
@@ -56,19 +56,19 @@ func ParseTaints(csvConfig string) []TaintMatcher {
 		return nil
 	}
 	parts := strings.Split(csvConfig, ",")
-	out := make([]TaintMatcher, 0, len(parts))
-	for _, kv := range parts {
-		kv = strings.TrimSpace(kv)
-		if kv == "" {
+	matchers := make([]TaintMatcher, 0, len(parts))
+	for _, entry := range parts {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
 			continue
 		}
-		key, value, effect, err := parseTaintEntry(kv)
+		key, value, effect, err := parseTaintEntry(entry)
 		if err != nil {
 			continue
 		}
-		out = append(out, TaintMatcher{Key: key, Value: value, Effect: corev1.TaintEffect(effect), Raw: kv})
+		matchers = append(matchers, TaintMatcher{Key: key, Value: value, Effect: corev1.TaintEffect(effect), Raw: entry})
 	}
-	return out
+	return matchers
 }
 
 // ValidateLabels applies the same entry validation used by ParseLabels.
@@ -141,9 +141,9 @@ func MatchLabel(nodeLabels map[string]string, csvConfig string) string {
 // MatchLabelParsed checks node labels against preparsed matchers. Used by hot
 // paths that loop over many nodes with the same guardrail config.
 func MatchLabelParsed(nodeLabels map[string]string, matchers []LabelMatcher) string {
-	for _, m := range matchers {
-		if v, ok := nodeLabels[m.Key]; ok && v == m.Value {
-			return m.Raw
+	for _, matcher := range matchers {
+		if v, ok := nodeLabels[matcher.Key]; ok && v == matcher.Value {
+			return matcher.Raw
 		}
 	}
 	return ""
@@ -164,10 +164,10 @@ func MatchTaint(nodeTaints []corev1.Taint, csvConfig string) string {
 
 // MatchTaintParsed checks node taints against preparsed matchers.
 func MatchTaintParsed(nodeTaints []corev1.Taint, matchers []TaintMatcher) string {
-	for _, m := range matchers {
+	for _, matcher := range matchers {
 		for _, taint := range nodeTaints {
-			if taint.Key == m.Key && taint.Value == m.Value && taint.Effect == m.Effect {
-				return m.Raw
+			if taint.Key == matcher.Key && taint.Value == matcher.Value && taint.Effect == matcher.Effect {
+				return matcher.Raw
 			}
 		}
 	}

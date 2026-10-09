@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -55,7 +56,8 @@ func validPolicyBody() policyExportBody {
 	}
 }
 
-// TestValidatePolicyImport_RejectsMissingName.
+// An imported policy needs a usable name before it can be created or matched to
+// an existing policy during overwrite.
 func TestValidatePolicyImport_RejectsMissingName(t *testing.T) {
 	body := validPolicyBody()
 	body.Name = ""
@@ -64,7 +66,8 @@ func TestValidatePolicyImport_RejectsMissingName(t *testing.T) {
 	}
 }
 
-// TestValidatePolicyImport_RejectsEmptyWindows.
+// Import must enforce the same nonempty schedule requirement as policy creation;
+// a structurally valid envelope alone does not make its contents usable.
 func TestValidatePolicyImport_RejectsEmptyWindows(t *testing.T) {
 	body := validPolicyBody()
 	body.SleepWindows = nil
@@ -112,7 +115,8 @@ func TestPreparePolicyForImport_ApplyOverrideName(t *testing.T) {
 	}
 }
 
-// TestPolicyBodyToUpdates_ForcesEnabledOffAndPlanMode covers the overwrite path.
+// Overwriting an existing policy uses the same disabled, plan-only defaults as
+// creating an imported policy, even when the source requests immediate execution.
 func TestPolicyBodyToUpdates_ForcesEnabledOffAndPlanMode(t *testing.T) {
 	body := validPolicyBody()
 	body.Enabled = true
@@ -148,6 +152,8 @@ func TestValidateExceptionImport_RejectsPastWindow(t *testing.T) {
 	}
 }
 
+// A future exception can be imported using its parent's portable name;
+// validation must not require a database ID from the source environment.
 func TestValidateExceptionImport_AcceptsNamedParent(t *testing.T) {
 	name := "nightly"
 	body := exceptionExportBody{
@@ -162,7 +168,8 @@ func TestValidateExceptionImport_AcceptsNamedParent(t *testing.T) {
 	}
 }
 
-// TestValidateExceptionImport_RejectsBadType.
+// Unknown exception types have no defined scheduling behavior. Reject them with
+// a bad-request status instead of persisting an exception the scheduler cannot use.
 func TestValidateExceptionImport_RejectsBadType(t *testing.T) {
 	name := "nightly"
 	body := exceptionExportBody{
@@ -180,7 +187,8 @@ func TestValidateExceptionImport_RejectsBadType(t *testing.T) {
 	}
 }
 
-// TestValidateExceptionImport_RejectsReversedWindow.
+// An exception must end after it starts. Reversed times cannot describe an active
+// interval and should fail validation before import reaches the database.
 func TestValidateExceptionImport_RejectsReversedWindow(t *testing.T) {
 	name := "nightly"
 	body := exceptionExportBody{
@@ -195,6 +203,8 @@ func TestValidateExceptionImport_RejectsReversedWindow(t *testing.T) {
 	}
 }
 
+// Both preview and apply must reject missing or blank parent policy names
+// before attempting database lookup. The handler intentionally has no store.
 func TestExceptionImportHandlers_RequireParentPolicy(t *testing.T) {
 	h := &Handler{}
 	for _, parent := range []struct {
@@ -256,26 +266,60 @@ func TestGuardrailsBodyToUpdates_ContainsAllFields(t *testing.T) {
 	}
 }
 
-// TestGuardrailsModelToBody_RoundTrip verifies that converting a model to an
-// export body and back via guardrailsBodyToUpdates preserves user-visible
-// fields.
+// Exporting guardrails and converting them into import updates must preserve
+// every configurable value, including settings explicitly switched off.
 func TestGuardrailsModelToBody_RoundTrip(t *testing.T) {
-	g := &store.Guardrails{
-		ProtectedNamespaces:          "kube-system",
-		SchedulerEvalInterval:        "45s",
-		SchedulerAutoWake:            true,
-		SchedulerReconcileWhileAwake: false,
-		SchedulerEnforceSleep:        true,
-		ScalingConcurrency:           5,
+	// Enable one boolean at a time so swapping settings between fields cannot pass.
+	tests := []struct {
+		name                    string
+		autoWake                bool
+		reconcileWhileAwake     bool
+		enforceSleep            bool
+		protectCriticalPodNodes bool
+	}{
+		{name: "all boolean settings disabled"},
+		{name: "automatic wake enabled", autoWake: true},
+		{name: "awake reconciliation enabled", reconcileWhileAwake: true},
+		{name: "sleep enforcement enabled", enforceSleep: true},
+		{name: "critical pod node protection enabled", protectCriticalPodNodes: true},
 	}
-	body := guardrailsModelToBody(g)
-	if body.ProtectedNamespaces != "kube-system" {
-		t.Errorf("ProtectedNamespaces = %q, want %q", body.ProtectedNamespaces, "kube-system")
-	}
-	if body.SchedulerEvalInterval != "45s" {
-		t.Errorf("SchedulerEvalInterval = %q, want %q", body.SchedulerEvalInterval, "45s")
-	}
-	if body.ScalingConcurrency != 5 {
-		t.Errorf("ScalingConcurrency = %d, want %d", body.ScalingConcurrency, 5)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := &store.Guardrails{
+				ProtectedNamespaces:          "kube-system,monitoring",
+				SkipNsNode:                   "monitoring",
+				SkipNodeLabels:               "example.com/protected=true",
+				SkipNodeTaints:               "dedicated=infra:NoSchedule",
+				ScalingPriorityNamespaces:    "prod,staging",
+				SchedulerEvalInterval:        "45s",
+				SchedulerAutoWake:            tt.autoWake,
+				SchedulerReconcileWhileAwake: tt.reconcileWhileAwake,
+				SchedulerEnforceSleep:        tt.enforceSleep,
+				ScalingConcurrency:           5,
+				WakeWaveSize:                 3,
+				WakeWavePauseSeconds:         12,
+				ProtectCriticalPodNodes:      tt.protectCriticalPodNodes,
+			}
+			body := guardrailsModelToBody(g)
+			updates := guardrailsBodyToUpdates(body)
+			want := map[string]interface{}{
+				"protected_namespaces":            "kube-system,monitoring",
+				"skip_ns_node":                    "monitoring",
+				"skip_node_labels":                "example.com/protected=true",
+				"skip_node_taints":                "dedicated=infra:NoSchedule",
+				"scaling_priority_namespaces":     "prod,staging",
+				"scheduler_eval_interval":         "45s",
+				"scheduler_auto_wake":             tt.autoWake,
+				"scheduler_reconcile_while_awake": tt.reconcileWhileAwake,
+				"scheduler_enforce_sleep":         tt.enforceSleep,
+				"scaling_concurrency":             5,
+				"wake_wave_size":                  3,
+				"wake_wave_pause_seconds":         12,
+				"protect_critical_pod_nodes":      tt.protectCriticalPodNodes,
+			}
+			if !reflect.DeepEqual(updates, want) {
+				t.Errorf("guardrails round-trip updates = %#v, want %#v", updates, want)
+			}
+		})
 	}
 }

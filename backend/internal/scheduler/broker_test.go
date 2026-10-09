@@ -9,6 +9,8 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
+// Repeated reconnects must preserve execution replay while releasing each
+// disconnected subscriber; closing the execution then releases replay too.
 func TestBrokerReleasesDisconnectedSubscribers(t *testing.T) {
 	b := NewBroker()
 	b.Publish(1, store.PolicyLogLine{Seq: 1, Message: "before reconnect"})
@@ -32,6 +34,8 @@ func TestBrokerReleasesDisconnectedSubscribers(t *testing.T) {
 	}
 }
 
+// Disconnect and execution completion can both clean up the same channel.
+// Repeated cleanup must be safe and leave other subscribers functional.
 func TestBrokerCloseAndUnsubscribeAreIdempotent(t *testing.T) {
 	b := NewBroker()
 	a, _ := b.Subscribe(1)
@@ -52,6 +56,8 @@ func TestBrokerCloseAndUnsubscribeAreIdempotent(t *testing.T) {
 	}
 }
 
+// Publishing, reconnecting, and closing can overlap across clients. Exercise
+// those interleavings and verify all broker resources are released afterward.
 func TestBrokerConcurrentSubscriberChurn(t *testing.T) {
 	b := NewBroker()
 	var wg sync.WaitGroup

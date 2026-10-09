@@ -10,6 +10,8 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/store"
 )
 
+// Outside its sleep window, a policy should report awake as its intended
+// state regardless of any previously recorded execution state.
 func TestIntendedState(t *testing.T) {
 	now := time.Date(2024, 3, 13, 14, 0, 0, 0, time.UTC) // Wednesday 14:00 UTC
 
@@ -28,6 +30,8 @@ func TestIntendedState(t *testing.T) {
 	}
 }
 
+// Without schedule windows the scheduler lacks a baseline to act on.
+// Return unknown instead of manufacturing an automatic transition.
 func TestIntendedState_NoWindows(t *testing.T) {
 	now := time.Date(2024, 3, 13, 14, 0, 0, 0, time.UTC)
 	got := IntendedState(StateInput{Timezone: "UTC", Now: now})
@@ -36,6 +40,8 @@ func TestIntendedState_NoWindows(t *testing.T) {
 	}
 }
 
+// Active exceptions override the baseline schedule, with force-sleep taking
+// precedence when exception types conflict. Scoped exceptions also affect this view.
 func TestIntendedState_Exceptions(t *testing.T) {
 	now := time.Date(2024, 3, 13, 22, 30, 0, 0, time.UTC) // Wednesday 22:30 UTC
 
@@ -92,6 +98,8 @@ func TestIntendedState_Exceptions(t *testing.T) {
 	}
 }
 
+// A force-sleep exception must work outside normal sleep hours; otherwise
+// it would have no effect when the schedule says awake.
 func TestIntendedState_ForceSleepExceptionDuringAwakeWindow(t *testing.T) {
 	// 14:00 is outside the 20:00–06:00 sleep window → windows say awake.
 	now := time.Date(2024, 3, 13, 14, 0, 0, 0, time.UTC)

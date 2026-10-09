@@ -44,146 +44,137 @@ func (f *fakeSink) snapshot() []*store.AuditLog {
 	return out
 }
 
-func newWriterWithSink(t *testing.T, sink auditLogSink, buf int) *AuditWriter {
+func newWriterWithSink(t *testing.T, sink auditLogSink, bufferSize int) *AuditWriter {
 	t.Helper()
 	return &AuditWriter{
-		ch:   make(chan *store.AuditLog, buf),
+		ch:   make(chan *store.AuditLog, bufferSize),
 		sink: sink,
 	}
 }
 
-// TestAuditWriter_DrainsAllEntriesOnShutdown verifies that when ctx is cancelled
-// after entries have been enqueued, every entry is persisted before Start returns.
-// This guards the audit's #2 high-severity finding: graceful shutdown must not
-// drop in-flight audit entries.
-func TestAuditWriter_DrainsAllEntriesOnShutdown(t *testing.T) {
-	sink := &fakeSink{}
-	aw := newWriterWithSink(t, sink, 16)
-
-	ctx, cancel := context.WithCancel(context.Background())
+// Start blocks, so the completion channel lets tests wait until shutdown and all
+// writes have finished before inspecting the sink.
+func startTestAuditWriter(ctx context.Context, writer *AuditWriter) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
-		aw.Start(ctx)
+		writer.Start(ctx)
 		close(done)
 	}()
+	return done
+}
 
-	const n = 8
-	for i := 0; i < n; i++ {
-		aw.ch <- &store.AuditLog{Action: "test.enqueued", Username: "alice"}
-	}
-
-	cancel()
+func waitForAuditWriter(t *testing.T, done <-chan struct{}, timeout time.Duration) {
+	t.Helper()
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("Start did not return within 2s of cancel")
-	}
-
-	if got := sink.calls.Load(); got != n {
-		t.Fatalf("CreateAuditLog called %d times, want %d", got, n)
-	}
-	if got := len(sink.snapshot()); got != n {
-		t.Fatalf("persisted %d entries, want %d", got, n)
+	case <-time.After(timeout):
+		t.Fatalf("audit writer did not stop within %s", timeout)
 	}
 }
 
-// TestAuditWriter_DrainBoundedByDeadline verifies the drain loop does not block
-// shutdown forever when the sink is wedged. With a sink that sleeps longer than
-// drainTimeout, only the first entry should land before drain bails out.
+// Cancelling the writer must still persist every entry accepted before shutdown.
+// Waiting for Start to return ensures the sink includes any final drain writes.
+func TestAuditWriter_DrainsAllEntriesOnShutdown(t *testing.T) {
+	sink := &fakeSink{}
+	writer := newWriterWithSink(t, sink, 16)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	done := startTestAuditWriter(ctx, writer)
+
+	const entryCount = 8
+	for i := 0; i < entryCount; i++ {
+		writer.ch <- &store.AuditLog{Action: "test.enqueued", Username: "alice"}
+	}
+
+	cancel()
+	waitForAuditWriter(t, done, 2*time.Second)
+
+	if got := sink.calls.Load(); got != entryCount {
+		t.Fatalf("CreateAuditLog called %d times, want %d", got, entryCount)
+	}
+	if got := len(sink.snapshot()); got != entryCount {
+		t.Fatalf("persisted %d entries, want %d", got, entryCount)
+	}
+}
+
+// Slow writes must stop consuming the backlog once the shutdown budget elapses.
+// This tests finite delayed writes; an individual sink call can outlast the budget.
 func TestAuditWriter_DrainBoundedByDeadline(t *testing.T) {
 	if testing.Short() {
-		t.Skip("uses real time.After(drainTimeout)")
+		t.Skip("waits for the real shutdown drain deadline")
 	}
 	// Sleep per call greater than half the drain budget so two calls would
 	// exceed it, forcing the deadline branch.
 	sink := &fakeSink{createDelay: drainTimeout/2 + 100*time.Millisecond}
-	aw := newWriterWithSink(t, sink, 16)
+	writer := newWriterWithSink(t, sink, 16)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		aw.Start(ctx)
-		close(done)
-	}()
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
 	for i := 0; i < 5; i++ {
-		aw.ch <- &store.AuditLog{Action: "test.queued", Username: "bob"}
+		writer.ch <- &store.AuditLog{Action: "test.queued", Username: "bob"}
 	}
 
+	// Start with a cancelled context so only the shutdown drain consumes entries.
 	cancel()
+	done := startTestAuditWriter(ctx, writer)
 	deadline := drainTimeout + 2*time.Second
-	select {
-	case <-done:
-	case <-time.After(deadline):
-		t.Fatalf("Start did not return within %s of cancel — drain not bounded", deadline)
-	}
+	waitForAuditWriter(t, done, deadline)
 
 	if got := sink.calls.Load(); got >= 5 {
 		t.Fatalf("expected drain to bail before all 5 entries, got %d calls", got)
 	}
 }
 
-// TestAuditWriter_StartReturnsImmediatelyWhenIdle verifies cancel of a fully
-// idle writer returns within milliseconds — no false latency on shutdown.
+// An empty queue needs no drain work. Shutdown should return promptly without
+// waiting for the drain deadline or calling the persistence sink.
 func TestAuditWriter_StartReturnsImmediatelyWhenIdle(t *testing.T) {
 	sink := &fakeSink{}
-	aw := newWriterWithSink(t, sink, 16)
+	writer := newWriterWithSink(t, sink, 16)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		aw.Start(ctx)
-		close(done)
-	}()
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	done := startTestAuditWriter(ctx, writer)
 
 	time.Sleep(10 * time.Millisecond)
 	cancel()
-	select {
-	case <-done:
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("idle Start did not return within 500ms of cancel")
-	}
+	waitForAuditWriter(t, done, 500*time.Millisecond)
 	if got := sink.calls.Load(); got != 0 {
 		t.Fatalf("idle writer made %d calls, want 0", got)
 	}
 }
 
-// TestAuditWriter_PanicInWriteIsRecovered verifies a panicking sink does not
-// crash the audit pipeline; subsequent entries continue to be written.
+// Two queued entries reach a panicking sink. Seeing both calls verifies that a
+// panic in one write does not prevent the writer from attempting the next entry.
 func TestAuditWriter_PanicInWriteIsRecovered(t *testing.T) {
 	var calls atomic.Int64
 	sink := panickingSink{calls: &calls}
-	aw := newWriterWithSink(t, sink, 16)
+	writer := newWriterWithSink(t, sink, 16)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		aw.Start(ctx)
-		close(done)
-	}()
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	done := startTestAuditWriter(ctx, writer)
 
-	aw.ch <- &store.AuditLog{Action: "test.panic"}
-	aw.ch <- &store.AuditLog{Action: "test.panic"}
+	writer.ch <- &store.AuditLog{Action: "test.panic"}
+	writer.ch <- &store.AuditLog{Action: "test.panic"}
 	time.Sleep(50 * time.Millisecond)
 
 	cancel()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("Start did not return after panic recovery")
-	}
+	waitForAuditWriter(t, done, 2*time.Second)
 	if got := calls.Load(); got != 2 {
 		t.Fatalf("sink saw %d calls, want 2", got)
 	}
 }
 
-// TestAuditWriter_WriteSyncErrorPropagated verifies WriteSync surfaces sink errors.
+// Synchronous audit callers must receive the original persistence error so they
+// can detect a failed write instead of assuming the entry was saved.
 func TestAuditWriter_WriteSyncErrorPropagated(t *testing.T) {
 	wantErr := errors.New("db down")
 	sink := &fakeSink{createErr: wantErr}
-	aw := newWriterWithSink(t, sink, 1)
+	writer := newWriterWithSink(t, sink, 1)
 
-	err := aw.WriteSync(&store.AuditLog{Action: "auth.login"})
+	err := writer.WriteSync(&store.AuditLog{Action: "auth.login"})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("WriteSync error = %v, want %v", err, wantErr)
 	}

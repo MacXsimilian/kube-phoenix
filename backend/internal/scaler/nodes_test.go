@@ -23,6 +23,8 @@ func pod(name, namespace, nodeName, priorityClass string, daemon bool) corev1.Po
 	return p
 }
 
+// System DaemonSets run on ordinary worker nodes too. Their presence must
+// not mark every node critical or count as an application pod to drain.
 func TestClassifyNodes_IgnoresDaemonSetPodsForCriticality(t *testing.T) {
 	pods := []corev1.Pod{
 		pod("kube-proxy", "kube-system", "node-a", "system-node-critical", true),
@@ -39,6 +41,8 @@ func TestClassifyNodes_IgnoresDaemonSetPodsForCriticality(t *testing.T) {
 	}
 }
 
+// A critical application pod must protect its node even when DaemonSet
+// pods on the same node are excluded from classification.
 func TestClassifyNodes_MarksCriticalForNonDaemonCriticalPriority(t *testing.T) {
 	pods := []corev1.Pod{
 		pod("kube-proxy", "kube-system", "node-a", "system-node-critical", true),
@@ -55,6 +59,8 @@ func TestClassifyNodes_MarksCriticalForNonDaemonCriticalPriority(t *testing.T) {
 	}
 }
 
+// Namespace protection applies independently of the critical-priority flag.
+// An ordinary pod in a protected namespace still protects its node.
 func TestClassifyNodes_MarksCriticalForProtectedNamespace(t *testing.T) {
 	pods := []corev1.Pod{
 		pod("vmselect", "victoriametrics", "node-a", "", false),
@@ -67,6 +73,8 @@ func TestClassifyNodes_MarksCriticalForProtectedNamespace(t *testing.T) {
 	}
 }
 
+// Disabling critical-priority protection must affect node classification
+// when no namespace rule independently protects the pod.
 func TestClassifyNodes_RespectsProtectCriticalPodNodesFlag(t *testing.T) {
 	pods := []corev1.Pod{
 		pod("coredns", "kube-system", "node-a", "system-cluster-critical", false),
@@ -79,6 +87,8 @@ func TestClassifyNodes_RespectsProtectCriticalPodNodesFlag(t *testing.T) {
 	}
 }
 
+// Ordinary application pods should contribute to the drain workload count
+// without making an otherwise unprotected node critical.
 func TestClassifyNodes_UnprotectedNodeIsDrainable(t *testing.T) {
 	pods := []corev1.Pod{
 		pod("app", "default", "node-a", "", false),

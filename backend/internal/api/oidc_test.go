@@ -16,6 +16,8 @@ import (
 	"github.com/macxsimilian/kube-phoenix/backend/internal/auth"
 )
 
+// Only the configured groups claim may grant a role. Missing custom groups
+// must not fall back to unrelated standard groups that could elevate access.
 func TestOIDCExtractClaims_ConfiguredGroupsAreAuthoritative(t *testing.T) {
 	verify := oidcTestTokenVerifier(t)
 	for _, tt := range []struct {
@@ -61,6 +63,8 @@ func TestOIDCExtractClaims_ConfiguredGroupsAreAuthoritative(t *testing.T) {
 	}
 }
 
+// Group membership without a subject cannot identify a user. Reject such
+// tokens even when the supplied groups would otherwise grant admin access.
 func TestOIDCExtractClaims_RejectsMissingIdentity(t *testing.T) {
 	token := oidcTestTokenVerifier(t)(t, `"groups":["admins"]`)
 	if _, ok := oidcExtractClaims(token, "groups"); ok {
