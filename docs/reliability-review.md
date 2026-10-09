@@ -1,7 +1,22 @@
 # Reliability verification and fixes
 
-Reviewed branch: `master`. Initial full commit: `eac56428b6c3248e33ccdc3de5c0f3818cbcff42`.
+Initial review branch: `master`. Initial full commit: `eac56428b6c3248e33ccdc3de5c0f3818cbcff42`.
 The checkout happened to match the historical reference; it was not reset. Initial user changes were `frontend/next-env.d.ts` and untracked `frontend/AGENTS.md`; they remain outside the commits. No root AGENTS.md was present. Architecture, backend development, execution/data-flow, testing, CI, and frontend guidance were inspected.
+
+This is a historical review and validation record. The current-contract summary below reflects branch changes through `5c70b60` on 2026-10-09. Commands and test counts later in the document describe their original runs; they are not a new validation run of the final branch.
+
+## Current branch contract
+
+| Area | Current behavior |
+|---|---|
+| Sleep/wake recovery | Persist `prepared` intent before scaling, mark applied sleep, and retain the original replica baseline across retries. Sleep, wake, and corrective sleep follow kind/namespace/name. Saved UID metadata does not block legacy or same-name replacement recovery. Scale conflicts use bounded GetScale/UpdateScale retries. |
+| Partial failures and repeat sleep | Any operation error fails the execution and leaves retryable recovery work. Workload failures, unresolved prepared intents outside the selection, or exception protection defer nodes. An ordinary sleep can reapply zero using an existing open snapshot; the historical recommendation to skip applied/legacy snapshots was not implemented. |
+| Exceptions | Namespace, label, and explicit workload filters intersect the parent scope. Scoped actions reconcile separately and preserve baseline policy state on success; they do not suppress other workloads' normal wake or perform node actions. Unscoped force-sleep retains precedence over stay-awake. |
+| Draining | Attempt eviction, then zero-grace pod deletion on errors other than not-found, with ownership/cancellation and pod UID checks. The fallback bypasses PDBs and graceful termination but requires separate core pod-delete permission, absent from the default chart. Failed drain/deletion and startup cleanup recover only owned cordons. |
+| Ownership and startup | Require one database owner for recovery and process lifetime, one application replica, Recreate updates, at least two DB connections, and direct/session-preserving PostgreSQL access. Ownership-session loss exits. Kubernetes client construction may fail without preventing HTTP startup; owned-cordon recovery failure after successful client construction prevents startup. |
+| Health | `/livez` checks the serving process; `/readyz` and compatibility `/healthz` check the database with a two-second deadline. Dedicated ownership-session loss can still terminate the process. |
+
+Current source: [workload operations](../backend/internal/scaler/workloads.go), [scale retries](../backend/internal/k8s/operations.go), [draining](../backend/internal/k8s/nodes.go), [exception targeting](../backend/internal/scaler/targeting.go), [scheduler](../backend/internal/scheduler/policy_scheduler.go), [execution finalization](../backend/internal/scheduler/execution.go), [ownership](../backend/internal/store/ownership.go), and [snapshot queries](../backend/internal/store/snapshots.go). The later readability refactor split these responsibilities out of the older file locations cited in the historical findings.
 
 ## Subsequent workload identity decision
 
@@ -15,9 +30,9 @@ Validation: `go test -p=1 ./...`, `go test -race -p=1 ./internal/scaler ./intern
 
 A follow-up audit compared every changed area against the original implementation, commit messages, tests, and documentation. Several initial findings below incorrectly classified deliberate behavior as defects. A test written to expect different behavior establishes a difference; it does not establish that the original behavior was wrong. This section supersedes those classifications.
 
-Recommendation: preserve documented product behavior and repair failures within that contract. Keep best-effort shutdown, the double-sleep guard, exception precedence, and the original rollout objective. Retain changes that make those operations recoverable or implement targeting already promised. The force-delete fallback has already been restored. Other restorations below are recommendations from this audit, not implemented changes.
+The audit recommended preserving documented product behavior and repairing failures within that contract: best-effort shutdown, the double-sleep guard, exception precedence, and the original rollout objective. Force-delete fallback and name-based workload scaling with conflict retries were subsequently restored. The other recommendations below remain historical proposals, not the current contract; the summary above records what the branch actually implements.
 
-### Deliberate behavior to restore
+### Historical restoration recommendations
 
 | Area | Original evidence | Recommendation |
 |---|---|---|
@@ -44,7 +59,7 @@ Recommendation: preserve documented product behavior and repair failures within 
 
 ### Additional compatibility concerns
 
-- **Legacy snapshots:** refusing every nonzero record without a UID prevents automatic wake of pre-upgrade snapshots, including unchanged workloads. Previously restoration used names; no explicit motive for restoring replacements was found. Keep UID checks for new records and provide an explicit legacy recovery path. Missing historical identity cannot be reconstructed with certainty.
+- **Legacy snapshots (superseded):** the audit objected to blocking nonzero records without a UID and proposed a legacy recovery path while retaining UID checks for new records. The subsequent workload identity decision instead restored name-based recovery for both new and legacy snapshots, including replacements.
 - **DB requirements:** reserving one connection, requiring at least two pooled connections, requiring session-preserving access, and exiting on ownership-session loss are new constraints. `9c4a4d6` deliberately exposed pool tuning. Keep scheduler exclusion without describing these requirements as unchanged behavior. Enforcing the documented one-replica limit is distinct from removing rolling updates.
 - **Startup cleanup:** failure to list/recover cordons now stops startup, whereas earlier Kubernetes initialization could warn and allow the API to start. Cleanup should retry under valid ownership without a transient cleanup failure alone preventing the UI/API from serving.
 - **Intent within an execution:** `012246d` rejected mid-execution override rechecks to avoid half-finished operations. Those overrides were later removed, so this is not conclusive evidence about exceptions. Nevertheless, new per-workload exception queries deserve review; prefer a consistent exception view per execution while retaining cancellation and identity checks.
@@ -61,9 +76,9 @@ Validation of the restored fallback: `go test -race ./internal/k8s ./internal/sc
 
 ## Initial findings and evidence
 
-These are the initial review's dispositions and implemented changes. The compatibility audit above corrects classifications and separates current behavior from recommended restorations. “Reproduced” below identifies the actual test level. No production cluster was contacted and no Kubernetes rollout or real PDB rejection was reproduced.
+These are the initial review's dispositions and implementation evidence. Source line numbers refer to the review checkout before the readability refactor; `k8s/identity.go` and its conditional patch path were subsequently removed. The compatibility audit corrects classifications, while the current-contract summary records the final behavior. In particular, the UID enforcement described in rows 4B and 7 is historical and superseded. “Reproduced” below identifies the actual test level. No production cluster was contacted and no Kubernetes rollout or real PDB rejection was reproduced.
 
-| Issue | Disposition | Current evidence | Reproduction / verification | Fix or decision |
+| Issue | Initial disposition | Historical evidence location | Reproduction / verification at review time | Initial fix or subsequent decision |
 |---|---|---|---|---|
 | 1. Recovery record after destructive scale | Confirmed defect | `backend/internal/scaler/policy_scaler.go:171`; `backend/internal/store/policies.go:341` | Original code failed `TestSleepPersistsBeforeMutation` and `TestSleepScaleFailureRetainsIntent`. Both now pass. Restart-before/after-mutation and applied-write failure cases also pass with a fake store. | Durable prepared intent before scaling; retain original UID and replicas on retry; reconcile live replicas; applied/restored phases; required persistence failures are errors; incomplete work defers nodes. |
 | 2. Eviction permission, force deletion, cordons | RBAC and cordon recovery defects; force deletion is intentional shutdown behavior with conditional impact | `backend/internal/k8s/client.go:469`, `evictPods`; `backend/internal/k8s/cordon.go:14` | Original eviction-only regressions passed at review time; the restored contract is covered by zero-grace fallback and failed-fallback cordon-recovery tests. No real service-account/PDB integration. | Correct core eviction permission and owned-cordon recovery retained. Original force-delete fallback restored by explicit request, with its PDB and termination tradeoff documented in code. Default pod-delete permissions unchanged. |
@@ -91,21 +106,29 @@ e9279a9 fix(exceptions): enforce target boundaries through reconciliation
 e5eef8f ci: run frontend and rendered chart reliability regressions
 bbb1544 test(exceptions): verify corrective scope across wake boundaries
 5ccae06 fix(scheduler): preserve exception scope during startup recovery
+8903fb3 fix(k8s): restore force-delete fallback for sleep drains
+3ec922c fix(scaler): restore name-based workload recovery and retries
+fc134bd test: clarify Go tests and strengthen regression coverage
+6d5175a refactor: improve Go backend readability
+c50f1f7 fix(docker): preserve build caches and gate releases on image smoke tests
+5c70b60 fix(helm): correct discovery, disruption budgets and database configuration
 ```
 
 ## Changes and migration
 
 - Scaler workload entries and snapshot model/query methods: durable replica intent and name-based restoration with bounded scale conflict retries. UID metadata remains informational. `k8s/mutation_guard.go` retains scheduler ownership checks.
-- `k8s/client.go`, `k8s/cordon.go`, scaler node operations and chart ClusterRole: eviction-first draining with the restored zero-grace deletion fallback, explicit failure results, cordon ownership and recovery.
+- `k8s/nodes.go`, `k8s/cordon.go`, scaler node operations and chart ClusterRole: eviction-first draining with the restored zero-grace deletion fallback, explicit failure results, cordon ownership and recovery.
 - `store/ownership.go`, server startup/shutdown, scheduler stale-transition checks and Helm values/schema/helpers: one database owner throughout recovery and execution, Recreate upgrades.
 - Shared target matching in `store/targeting.go`; API create/update/import, scaler sleep/wake/reconciliation and scheduler startup/evaluation: consistent exception scope and baseline scheduling.
 - Health handlers, probe values and OpenAPI: independent liveness and bounded readiness.
 - Focused unit, fake-client, scheduler, real PostgreSQL and chart tests; CI invokes existing frontend regressions and all chart tests. Architecture and execution documentation describe the resulting contract.
 - Snapshot columns `workload_uid varchar(128) DEFAULT ''` and `phase varchar(20) DEFAULT ''` are additive AutoMigrate changes. `backend/migrations/20261008_snapshot_intents.sql` provides the same idempotent additions for `AUTO_MIGRATE=false`. Historical migrations and existing recovery rows are not rewritten.
+- Later chart corrections make ServiceMonitor selectors match the application service, preserve explicit zero disruption-budget settings, and align PostgreSQL credentials/database overrides with the application DSN. See [deployment](deployment.md) and [configuration](configuration.md) for current settings.
+- Image smoke checks exercise startup, the binary's healthcheck, `/readyz`, embedded version metadata, and frontend HTML/JavaScript before releases. Their workflow wiring and build-cache behavior are described in [contributing](../CONTRIBUTING.md); these newer checks are not included in the historical command results below.
 
 ## Commands and actual results
 
-Tool paths used:
+Historical results from the initial review and its stated follow-ups follow. Later added/refined tests and final-branch CI should be assessed from their own runs; these counts have not been relabeled as current. Tool paths used:
 
 - Go: `/home/macxsimilian/.local/share/kube-phoenix-toolchain/go/bin/go` (abbreviated `$GO` below).
 - Node/npm directory added to PATH: `/home/macxsimilian/.local/share/kube-phoenix-toolchain/node-v26.11.1-linux-x64/bin`.

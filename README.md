@@ -26,13 +26,17 @@ kube-phoenix uses policies to scale Deployments and StatefulSets to zero during 
 ## What It Does
 
 - **Policies and exceptions:** recurring sleep windows, namespace/workload selectors, and one-time stay-awake or force-sleep exceptions.
-- **Replica restoration:** PostgreSQL snapshots preserve pre-sleep replica counts across process restarts.
+- **Replica restoration:** durable PostgreSQL intents save replica counts before scaling; retries and wake follow workload kind, namespace, and name, including recreated workloads.
 - **Guardrails:** protected namespaces, node labels/taints, priority ordering, and configurable scaling concurrency.
 - **Recovery and drift handling:** startup reconciliation, corrective wakes, and optional sleep enforcement.
 - **Operator visibility:** cluster inventories, pod details/logs, execution history, audit logs, and Prometheus metrics.
 - **Access and portability:** session authentication, admin/operator/viewer roles, optional OIDC, and per-resource JSON export/import.
 
-Sleep also considers cordoning, draining, and deleting unprotected nodes **across the cluster**. A namespace filter scopes workload scaling; node protection is separate. Wake restores workloads and relies on an external autoscaler such as Karpenter for missing capacity. It does not uncordon or recreate nodes.
+Ordinary sleep also considers cordoning, draining, and deleting unprotected nodes **across the cluster**. A namespace filter scopes workload scaling; node protection is separate. Node operations are skipped for scoped exception actions, when exception protections exclude workloads, or when workload sleep is incomplete. Draining tries eviction first, then zero-grace pod deletion on eviction errors; that fallback bypasses PodDisruptionBudgets and requires additional pod-delete permission. See [node-operation behavior](docs/configuration.md#guardrails).
+
+Wake restores workloads and relies on an external autoscaler such as Karpenter for missing capacity. It does not recreate nodes. Failed drains/deletions and startup recovery undo cordons owned by kube-phoenix; wake itself does not uncordon nodes.
+
+Run one application replica with the chart's `Recreate` strategy. PostgreSQL provides exclusive scheduler ownership, so upgrades have brief application downtime. Before upgrading an older installation, review [deployment and migration requirements](docs/deployment.md#upgrading), including the additive snapshot migration when automatic migrations are disabled.
 
 The Metrics Dashboard is alpha. API Rivers is a cosmetic/mock visualization. See [observability](docs/observability.md) for the distinction between measurements, estimates, and illustrative animation.
 

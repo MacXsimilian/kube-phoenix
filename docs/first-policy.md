@@ -40,6 +40,8 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,UNSCHEDULABLE:.spec.unsc
 
 Open **Cluster State** and find the `team-backend` workloads. Leave `team-backend` out of **Protected Namespaces** for this exercise; preserve the existing protection for system/application namespaces.
 
+If prior filters hide the fixtures, use **Clear filters**. This resets search, namespace, status, and protection filters, including a status filter from the URL.
+
 ![Workloads view with illustrative mock data](images/screenshots/workloads.png)
 
 *Illustrative mock screenshot: use your actual `team-backend` inventory and captured replica counts.*
@@ -83,6 +85,8 @@ Open **Policies**, create a policy, and enter:
 | Enabled | **Off** |
 
 Select days and times in the window editor; policies use windows rather than cron expressions. Keeping **Enabled** off prevents scheduled transitions while you work through the manual steps. Manual sleep/wake triggers are still available. Do not create exceptions for this tutorial.
+
+The disabled card explains that scheduling is off and mutes its timeline and statistics; permitted manual actions remain available. The savings ring describes the percentage of a recurring week covered by configured sleep windows, not measured savings. Hover, focus, or click it for an explanation; exceptions and actual executions are excluded.
 
 ![Policy editor with illustrative mock data](images/screenshots/policy-editor.png)
 

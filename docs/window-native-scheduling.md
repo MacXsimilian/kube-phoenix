@@ -8,7 +8,7 @@ A policy's sleep windows define when its matching workloads should sleep. The sc
 
 The evaluation interval defaults to 30 seconds and is configurable through guardrails. A boundary makes a transition eligible for evaluation; it does not guarantee that scaling starts or finishes at that exact instant. Execution mode, enabled state, guardrails, API availability, ongoing executions, and retry delays affect the outcome.
 
-Workload targeting and node protection are separate. A normal sleep execution scales matching Deployments/StatefulSets and then considers cluster-wide node drain/deletion. A namespace filter does not restrict that node phase. Wake restores replicas from database snapshots and does not recreate or uncordon nodes. See [node protection in the tutorial](first-policy.md#2-protect-every-node).
+Workload targeting and node protection are separate. A normal sleep execution scales matching Deployments/StatefulSets and then considers cluster-wide node drain/deletion. A namespace filter does not restrict that node phase. Scoped exception executions, protected opposite-exception targets, or incomplete workload operations defer node actions. Wake restores replicas from database snapshots; it does not recreate nodes. Failed drain/deletion and startup recovery separately restore owned cordons. See [node protection in the tutorial](first-policy.md#2-protect-every-node).
 
 ## 2. Data Model
 
@@ -21,7 +21,7 @@ Workload targeting and node protection are separate. A normal sleep execution sc
 | `timezone` | IANA timezone; the API defaults an omitted value to `UTC` |
 | `mode` | `plan` previews actions; `apply` changes cluster resources |
 | `enabled` | Controls automatic evaluation; manual triggers remain available when disabled |
-| `currentState` | Stored execution/scheduler state, not a live measurement of every workload |
+| `currentState` | Stored baseline execution/scheduler state; scoped exceptions can leave individual workloads in a different state |
 | `nextTransitionAt` | Computed prediction of the next change in the union of sleep windows; see below |
 
 An exception belongs to a policy and carries an absolute start/end time, a type (`stay_awake` or `force_sleep`), optional targeting filters, and `sleepOnEnd`. It has a separate lifecycle from the policy.
@@ -71,7 +71,7 @@ Each tick first processes exception lifecycle changes, then evaluates enabled po
 
 ### Exception Precedence
 
-The policy engine uses the following precedence for active, time-bounded exceptions:
+For baseline policy intent, the scheduler supplies active, time-bounded exceptions without targeting filters to the policy engine:
 
 | Priority | Input | Intended state |
 | :------- | :---- | :------------- |
@@ -80,15 +80,19 @@ The policy engine uses the following precedence for active, time-bounded excepti
 | 3 | Union of policy sleep windows | Sleeping or awake |
 | 4 | No windows and no applicable exception | Unknown |
 
-Namespace/label-scoped exceptions still hold the **policy-level** intended state. Their actions use their targeting filters, but the engine does not maintain a separate state per workload. The API normally rejects overlapping opposite-type exceptions on the same policy; precedence also defines how the engine handles an existing conflicting set.
+Exceptions with namespaces, labels, or explicit workload targets reconcile separately. Filters intersect each other and the parent policy's namespace/label boundary. A successful scoped action preserves the baseline policy state, and ordinary sleep/wake preserves workloads protected by an active opposite exception. For example, a 06:00–08:00 stay-awake exception for namespace A does not suppress namespace B's scheduled 07:00 wake. The policy still has one baseline state; it does not persist a state per workload.
 
-Sources: [policy engine](../backend/internal/scheduler/policy_engine.go), [active-exception queries](../backend/internal/store/policies.go), [exception validation](../backend/internal/api/exceptions.go).
+The API normally rejects overlapping opposite-type exceptions on the same policy. If stored inputs conflict, force-sleep takes precedence over stay-awake for a matching workload as well as for unscoped policy intent.
+
+Sources: [policy engine](../backend/internal/scheduler/policy_engine.go), [active-exception queries](../backend/internal/store/exceptions.go), [shared target matching](../backend/internal/store/targeting.go), [exception validation](../backend/internal/api/exceptions.go).
 
 ### State Transition Detection
 
 When stored and intended states differ, the scheduler attempts a sleep or wake execution. Normal scheduled wakes respect **Auto Wake**. A failed scheduled transition waits at least five minutes before another scheduled attempt for that policy; this is a fixed minimum delay, not exponential backoff.
 
 When state already matches, optional reconciliation handles open snapshots left by partial wakes, and optional sleep enforcement handles workloads externally scaled up during sleep. Corrective attempts also use a five-minute minimum delay. Corrective wake bypasses Auto Wake because it repairs a partial wake.
+
+Active scoped exceptions have a separate five-minute retry clock per exception. Their corrective actions run before the optional baseline reconciliation paths and are independent of those guardrail switches. Failed or interrupted executions reset policy state to `unknown`; partial scaling errors retain counters and open snapshots for retry rather than reporting success.
 
 A policy left `transitioning` past its configured execution timeout plus five minutes, with a minimum threshold of fifteen minutes, is reset to `unknown` for re-evaluation.
 
@@ -102,9 +106,11 @@ Manual triggers may explicitly override the policy's stored mode and remain avai
 
 ### Startup Recovery
 
-Startup marks leftover running executions interrupted and resets stored transitioning policies before starting the scheduler. Recovery compares enabled policies' stored states with current windows and active exceptions, queues mismatches, then the tick loop starts. Completion time depends on actual scaling, failures, and retries; there is no fixed two-tick recovery guarantee.
+Startup first acquires a dedicated PostgreSQL session advisory lock. The owning session marks leftover running executions interrupted and resets stored transitioning policies; a second process cannot run this recovery while the owner is alive. Recovery compares enabled policies' stored states with current windows and unscoped exceptions, queues baseline mismatches, and reconciles scoped exceptions without broadening them. The tick loop follows. Completion time depends on actual scaling, failures, and retries; there is no fixed two-tick recovery guarantee.
 
-Sources: [application startup](../backend/cmd/server/main.go), [scheduler lifecycle and execution](../backend/internal/scheduler/policy_scheduler.go), [atomic store transitions](../backend/internal/store/policies.go).
+Ownership stays held until shutdown and execution completion; mutation checks and a watchdog stop work when its database session is lost. This requires one application replica, Recreate upgrades, and session-preserving PostgreSQL access. See [upgrade requirements](reliability-review.md#upgrade-and-remaining-decisions).
+
+Sources: [application startup](../backend/cmd/server/main.go), [scheduler lifecycle](../backend/internal/scheduler/policy_scheduler.go), [execution/finalization](../backend/internal/scheduler/execution.go), [ownership](../backend/internal/store/ownership.go), [atomic store transitions](../backend/internal/store/policies.go).
 
 ### Exception Ticker
 
@@ -114,7 +120,9 @@ Active exceptions become completed on a tick strictly after `endsAt`; active-sta
 
 Cancelling an active exception through the API uses the same schedule-based end action when `sleepOnEnd=true`. With `sleepOnEnd=false`, there is no explicit end action, but ordinary policy evaluation resumes; the flag does not freeze the resulting state indefinitely. Other active exceptions still affect subsequent normal evaluation.
 
-Sources: `TickExceptions`, `RunExceptionAction`, and `RevertExceptionAction` in [policy_scheduler.go](../backend/internal/scheduler/policy_scheduler.go); cancellation in [exceptions.go](../backend/internal/api/exceptions.go).
+Expiry records completion before dispatching the end action; API cancellation attempts the action before recording cancelled status. A dispatch failure is logged without retrying that lifecycle action; baseline scheduling/reconciliation remains subject to its usual gates. This differs from activation, whose dispatch failure returns the exception to pending.
+
+Sources: `TickExceptions`, `RunExceptionAction`, and `RevertExceptionAction` in [scheduler/exceptions.go](../backend/internal/scheduler/exceptions.go); cancellation in [api/exceptions.go](../backend/internal/api/exceptions.go).
 
 ## 5. API
 
@@ -164,7 +172,7 @@ After conversion attempts, the migration drops `sleep_cron`, `wake_cron`, `next_
 
 Column-existence checks and conditional drops allow later startups to skip already-completed conversion work. This is not a promise of atomic, lossless conversion: the helper performs best-effort reads/updates and later attempts column drops. Keep a database backup when migrating an older installation.
 
-Sources: [runMigrations and conversion](../backend/internal/store/store.go), [CronsToWindows and parser](../backend/internal/policy/windows.go).
+Sources: [runMigrations and conversion](../backend/internal/store/migrations.go), [CronsToWindows and parser](../backend/internal/policy/windows.go).
 
 ## 8. Deleted Code
 

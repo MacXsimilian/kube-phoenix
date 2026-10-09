@@ -115,6 +115,7 @@ target environment, the backend returns:
   endpoint — a window that collides with an existing opposite-type
   exception on the same policy is rejected with 409 in both preview
   and apply.
+- Exception selectors and explicit workload targets are validated in both preview and apply. Targets must use kind `Deployment` or `StatefulSet` and valid namespace/name pairs. Namespace, label, and explicit target filters intersect with the destination parent policy; an import cannot expand that parent's workload scope.
 - Exception imports require a non-blank `policyName`. Missing, null, or
   blank names are rejected with 400 in both preview and apply because
   parentless exceptions cannot run.

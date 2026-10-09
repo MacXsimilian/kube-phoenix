@@ -16,7 +16,7 @@ Start with the path that matches your task. Setup guides explain how to run the 
 
 | Guide | Use it for |
 | :---- | :--------- |
-| [Deployment](deployment.md) | Helm installation, PostgreSQL, HTTPS/ingress, OIDC, upgrades |
+| [Deployment](deployment.md) | Helm installation, singleton/Recreate upgrades, PostgreSQL, HTTPS/ingress, OIDC |
 | [PostgreSQL upgrade](postgresql-upgrade.md) | Move bundled PostgreSQL 17 data to 18 with retained storage and rollback |
 | [First policy](first-policy.md) | A scoped manual plan → apply → wake exercise |
 | [Configuration](configuration.md) | Environment defaults, authentication, policy fields, guardrails |
@@ -39,7 +39,7 @@ Read [architecture](../ARCHITECTURE.md) for boundaries, then use the relevant co
 
 | Reference | Use it for |
 | :-------- | :--------- |
-| [API guide](api.md) | Session/CSRF client setup, resource navigation, streaming behavior |
+| [API guide](api.md) | Session/CSRF setup, health probes, snapshot recovery, exception targeting, streaming |
 | [OpenAPI](../openapi.yaml) | Canonical endpoint, request, response, parameter, and error schemas |
 | [Window scheduling](window-native-scheduling.md) | Current timezone/window semantics and separately labeled legacy cron migration |
 | [Policy smoke test](testing/policy-smoke-test.md) | Short, repeatable manual verification on a disposable cluster |
@@ -51,6 +51,8 @@ Read [architecture](../ARCHITECTURE.md) for boundaries, then use the relevant co
 ## Design Records
 
 [Policy-based scaling requirements](feature-policy-based-scaling.md) is a design record, with current implementation status called out. Its success criteria describe intended verification, not a report of completed tests. The [window scheduling reference](window-native-scheduling.md) keeps cron conversion history separate from the current scheduling contract.
+
+The [reliability review](reliability-review.md) records findings, compatibility decisions, and the validation actually performed. Its historical observations and proposed changes must be read alongside its current-status section; use the operator and developer guides for the implemented contract.
 
 ## Where Facts Live
 

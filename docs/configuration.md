@@ -20,7 +20,7 @@ This page owns runtime defaults, authentication settings, policy fields, and gua
 | `DATABASE_URL` | -- | Yes | PostgreSQL DSN (e.g., `host=localhost user=kube_phoenix password=secret dbname=kube_phoenix port=5432 sslmode=disable`) |
 | `ADMIN_USER` | -- | No | Seed admin username, used with `ADMIN_PASSWORD` only when the users table is empty |
 | `ADMIN_PASSWORD` | -- | No | Seed admin password; changing it does not reset an existing account |
-| `SESSION_IDLE_TIMEOUT` | `8h` | No | Sliding-window session timeout, extended on each request |
+| `SESSION_IDLE_TIMEOUT` | `8h` | No | Sliding idle expiry; refresh writes are normally limited to once per minute, or every request for timeouts of one minute or less |
 | `SESSION_MAX_LIFETIME` | `24h` | No | Absolute session hard cap, regardless of activity |
 | `AUDIT_RETENTION_DAYS` | `90` | No | Auto-delete audit entries older than this many days (`0` = keep forever) |
 | `COOKIE_SECURE` | `true` | No | Set to `false` for HTTP-only dev environments |
@@ -29,10 +29,12 @@ This page owns runtime defaults, authentication settings, policy fields, and gua
 | `CLUSTER_NAME` | -- | No | Human-readable cluster name returned by `GET /api/cluster/info`. When unset, the endpoint omits the field. |
 | `K8S_QPS` | `100` | No | Sustained K8s API requests per second (client-go default: 5). Higher values speed up large scaling events but increase control plane load. |
 | `K8S_BURST` | `200` | No | Short spike allowance above `K8S_QPS` (client-go default: 10). The K8s API server's own APF throttling acts as a server-side safety net. |
-| `AUTO_MIGRATE` | `true` | No | Set to `false` to skip startup AutoMigrate. The database schema must already match the application; this flag does not provide a separate migration workflow. |
-| `DB_MAX_OPEN_CONNS` | `10` | No | Maximum number of open database connections. Raise for clusters with many parallel policies or large workload counts. |
+| `AUTO_MIGRATE` | `true` | No | Set to `false` to skip GORM AutoMigrate. Other startup migration SQL and seeding still run. The schema must already match; apply [the snapshot-intent migration](../backend/migrations/20261008_snapshot_intents.sql) before upgrading with this flag disabled. |
+| `DB_MAX_OPEN_CONNS` | `10` | No | Maximum open database connections, including one reserved for scheduler ownership. A finite limit must be at least `2`; `1` prevents startup. `0` means unlimited. |
 | `DB_MAX_IDLE_CONNS` | `5` | No | Maximum number of idle database connections retained in the pool. |
 | `DB_CONN_MAX_LIFETIME_MIN` | `5` | No | Connection maximum lifetime in minutes. Connections older than this are closed and replaced. |
+
+Only one backend process may own a database at a time. It holds a PostgreSQL session advisory lock on a dedicated connection for its lifetime. A second process exits with `another live scheduler owns this database`; if the owner loses its connection, it exits and must reacquire ownership on restart. Use a database connection that preserves session identity for the lock; transaction-pooling proxies cannot provide that ownership contract.
 
 ### OIDC Variables
 
@@ -69,6 +71,8 @@ services:
     healthcheck:
       test: ["CMD", "/usr/local/bin/kube-phoenix", "-healthcheck", "-port", "9090"]
 ```
+
+The unauthenticated `/livez` route reports HTTP-process liveness without a database check. `/readyz` and the compatibility route `/healthz` ping PostgreSQL with a two-second timeout and return HTTP 503 when it is unavailable. Helm uses `/livez` for startup/liveness and `/readyz` for readiness; the container's `-healthcheck` retains `/healthz`. These checks do not validate cluster access or policy execution.
 
 Use the exec-form `CMD` array: the distroless image has no shell for `CMD-SHELL`.
 With Helm, keep the default port unless you also update the container/service
@@ -145,6 +149,7 @@ Role mapping uses only the claim configured by `OIDC_GROUPS_CLAIM` (default `gro
 - Session cookies are HTTP-only, Secure by default, and SameSite=Strict. HTTP-only prevents scripts from reading the session cookie; it does not prevent all consequences of script injection.
 - CSRF protection uses the double-submit cookie pattern: `__kp_csrf` cookie + `X-CSRF-Token` header on authenticated mutating requests (POST, PUT, DELETE). Login starts a session without an existing CSRF token.
 - WebSocket connections authenticate via cookies automatically on same-origin upgrades.
+- Authenticated requests load the user's current role and enabled state from the database. Permission changes apply to subsequent requests; session writes do not overwrite the user record.
 
 ## RBAC Roles and Permissions
 
@@ -203,19 +208,25 @@ Exceptions are one-time windows for planned events such as release weekends or o
 | Ticket Ref | External ticket reference (e.g., `JIRA-1234`, `GH#567`) |
 | Reason | Free-text reason |
 | Sleep on End | If true (default), re-evaluates the normal schedule when the window ends and triggers sleep or wake accordingly |
-| Namespace Filter / Label Selector | Optional narrowing filters; defaults to the policy's own targeting |
+| Namespace Filter / Label Selector | Optional filters intersect the parent policy boundary; they cannot expand its target set |
+| Workload Targets | Optional exact `Deployment`/`StatefulSet` targets identified by kind, namespace, and name; combined with namespace and label filters by intersection |
+
+When multiple exceptions match a workload, `force_sleep` takes precedence over `stay_awake`. Exceptions with targeting filters act only on matching workloads; the parent policy keeps its baseline state after a successful scoped execution. Ordinary sleep/wake and reconciliation preserve active exceptions for each workload. Invalid selectors or target kinds/names are rejected on create, update, and import; malformed stored targeting causes an error rather than widening the scope. In updates, `workloadTargets: []` clears the exact-target list, while omission preserves it.
 
 **Lifecycle:** `pending` -> `active` (when `startsAt` is reached) -> `completed` (when `endsAt` is reached). Deleting an active exception with `sleepOnEnd=true` also requests a return to the schedule's current intended state. The return action is skipped for a disabled parent or an unknown intended state.
 
 ## Recovery and State Transitions
 
-On startup, kube-phoenix evaluates each enabled policy's sleep windows and active exceptions to compute the **intended state** at the current time. If this differs from the persisted `currentState`, a recovery execution is queued automatically.
+After acquiring exclusive scheduler ownership, startup atomically marks leftover `running` executions `interrupted` and resets `transitioning` policies to `unknown`. It then repairs nodes carrying its `kube-phoenix.io/cordon-owner` annotation before starting the scheduler. kube-phoenix evaluates each enabled policy's sleep windows and unscoped active exceptions to compute the **intended state** at the current time; scoped exceptions are evaluated for their own targets. If this differs from the persisted `currentState`, a recovery execution is queued automatically.
 
 Key behaviors:
 
 - Legacy or malformed stored policies without sleep windows have no window-derived intended state. Current create/import endpoints require windows.
 - If recovery cannot determine the intended state, the state remains `unknown`. Use **Sleep Now** or **Wake Now** to set a known state.
 - Recovery runs respect the current mode (`plan` or `apply`). Verify guardrails and namespace filters before switching to `apply` mode.
+- Apply-mode sleep persists a `prepared` snapshot before scaling, then marks it `applied`. A database write failure prevents the initial scale; a later error leaves the original baseline available for retry. Plan runs do not create or close recovery snapshots.
+- Full-policy wake restores open snapshots within the current namespace filter by kind, namespace, and name even when labels or the Kubernetes UID changed. Missing workloads are marked deleted-at-wake; already restored workloads can close their snapshots without another scale. Active `force_sleep` exceptions still protect matching targets from ordinary wake.
+- Partial execution errors produce a failed execution and an `unknown` policy state. Retained intents let a later apply-mode wake or reconciliation retry without replacing the original replica baseline.
 
 ## Guardrails
 
@@ -232,14 +243,18 @@ Guardrail updates and imports reject invalid Kubernetes namespace names, label k
 | Scaling Concurrency | Max workloads scaled in parallel during sleep/wake (1–50, default 10). Higher values increase throughput but generate more concurrent K8s API calls. |
 | Protect Critical Pod Nodes | Opt-in, off by default. Protects nodes running non-DaemonSet pods with system-node-critical or system-cluster-critical priority. |
 | Scheduler Eval Interval | How often all enabled policies are evaluated. Accepts Go duration strings (`30s`, `1m`, `2m`). Changes take effect immediately — the ticker restarts with the new interval. |
-| Auto Wake | When disabled, the scheduler will only trigger sleep executions automatically. Wake transitions must be triggered manually. |
+| Auto Wake | Gates ordinary scheduled wake transitions. When disabled, use manual wake for those transitions; startup recovery, corrective wakes, and exception actions have separate paths and can still wake workloads. |
 | Reconcile While Awake | When enabled (default), the scheduler detects drift from failed or partial wake executions — workloads left at zero despite the policy being awake — and runs a corrective wake to restore them. Corrective wakes back off at 5-minute intervals per policy and bypass the Auto Wake gate. When disabled, the scheduler skips reconciliation for policies already awake, reducing database load between sleep windows. |
 | Enforce Sleep | When enabled (default), the scheduler detects workloads manually scaled up during a sleep window and scales them back to zero. Uses targeted K8s GETs against open snapshots to detect drift, then runs a corrective sleep. Backs off at 5-minute intervals per policy. Respects system namespace guardrails and active stay_awake exceptions. |
 
 > **Tip:** Scheduler settings take effect immediately on save — no server restart required.
 
+Active scoped exceptions have their own five-minute corrective retry clock, independent of Auto Wake, Reconcile While Awake, and Enforce Sleep. Enforce Sleep controls periodic drift checks; an ordinary sleep execution can still scale a selected workload with an existing nonzero replica baseline back to zero.
+
 > **Tip:** Guardrails are evaluated at execution time, not at policy creation time. Adding a namespace to Skip Namespaces protects it from future sleep/scaling-down operations. Wake still restores existing snapshots in that namespace.
 
-Namespace and workload selectors scope workload scaling. They do not limit the node-drain phase to those namespaces: configure node protection separately. Wake restores replica counts from open database snapshots; it does not uncordon or recreate nodes. If sleep removed capacity, an external autoscaler must supply it. Follow the [first-policy walkthrough](first-policy.md) for a disposable-cluster exercise with explicit node protection.
+Namespace and workload selectors scope workload scaling. They do not limit the node-drain phase to those namespaces: configure node protection separately. Wake restores replica counts from open database snapshots; it does not recreate nodes. Failed or interrupted drain operations separately recover kube-phoenix-owned cordons; pre-existing operator cordons are left intact. If sleep removed capacity, an external autoscaler must supply it. Follow the [first-policy walkthrough](first-policy.md) for a disposable-cluster exercise with explicit node protection.
+
+Node operations are skipped for scoped exception actions, when exception protections exclude selected workloads, when workload sleep has errors or is cancelled, or when unresolved prepared intents are outside the selection. Eligible drains try eviction first, then zero-grace pod deletion after eviction errors other than not-found. The fallback bypasses PodDisruptionBudgets and graceful termination, and needs core `pods` delete permission that the default chart does not grant. Failed drains prevent node deletion; inspect the execution logs and [drain troubleshooting](troubleshooting.md) when cleanup is incomplete.
 
 Implementation defaults: [runtime configuration](../backend/internal/config/config.go), [seeded guardrails](../backend/internal/store/queries.go), [guardrail model defaults](../backend/internal/store/models.go), and [role permissions](../backend/internal/auth/permissions.go).

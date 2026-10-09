@@ -65,7 +65,7 @@ erDiagram
     USER ||--o{ AUDIT_LOG : identifies
 ```
 
-A policy combines workload targeting, timezone, sleep windows, mode, enabled status, and recorded state. Executions hold direction, trigger, result, and counters; log records carry an ordered per-execution sequence. Open workload snapshots retain the pre-sleep replica baseline until restoration or a terminal skip.
+A policy combines workload targeting, timezone, sleep windows, mode, enabled status, and recorded state. Executions hold direction, trigger, result, and counters; log records carry an ordered per-execution sequence. Open workload snapshots retain the pre-sleep replica baseline until restoration or a terminal skip. Their phase records prepared intent, applied sleep, or completed restoration. Workload UIDs are informational: restoration follows kind/namespace/name, including legacy snapshots and same-name replacements.
 
 Guardrails are global database-backed settings. Sessions and audit identity support authentication and accountability. Observability snapshots/thresholds form a separate monitoring store.
 
@@ -92,7 +92,7 @@ Wake does not recreate nodes. Failed drain/deletion and startup recovery undo on
 
 ### 3. Policy Evaluation Loop
 
-The scheduler evaluates enabled policies on a configurable interval, defaulting to 30 seconds. Active `force_sleep` takes precedence over `stay_awake`, then the window evaluator supplies intent. The scheduler compares this with recorded state and uses transition claims to prevent duplicate work on a policy.
+The scheduler evaluates enabled policies on a configurable interval, defaulting to 30 seconds. Unscoped `force_sleep` takes precedence over unscoped `stay_awake`, then the window evaluator supplies baseline intent. Scoped exceptions intersect the parent's workload boundary and reconcile separately, so an exception for one namespace does not suppress another namespace's scheduled wake. The scheduler compares baseline intent with recorded state and uses transition claims to prevent duplicate work on a policy.
 
 Recovery runs at startup after acquiring exclusive database ownership. Optional reconciliation retries incomplete wakes; sleep enforcement detects external scale-ups during sleeping periods. These paths have distinct gates and backoff. Manual triggers remain available when scheduling is disabled.
 
@@ -121,9 +121,9 @@ The source tree owns file/function inventories. These boundaries explain where b
 
 ## Design Decisions
 
-### Why GORM with AutoMigrate (no migration files)
+### Why GORM with AutoMigrate
 
-GORM supplies models and queries; startup AutoMigrate handles routine additions. Legacy repair/conversion SQL also exists in the store. Schema upgrades need review against existing data, especially destructive changes. `AUTO_MIGRATE=false` skips AutoMigrate, not every legacy startup SQL statement.
+GORM supplies models and queries; startup AutoMigrate handles routine additions. Legacy repair/conversion SQL lives in [migrations.go](backend/internal/store/migrations.go). Explicit SQL in [backend/migrations](backend/migrations) supports managed upgrades, including the snapshot UID/phase additions when `AUTO_MIGRATE=false`. Schema upgrades need review against existing data, especially destructive changes. Disabling AutoMigrate does not skip every legacy startup SQL statement.
 
 ### Why Chi (not net/http ServeMux)
 
