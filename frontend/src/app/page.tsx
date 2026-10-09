@@ -13,7 +13,9 @@ export default function Home() {
     router.replace('/overview/')
   }, [router])
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+    <Box
+      sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}
+    >
       <CircularProgress />
     </Box>
   )

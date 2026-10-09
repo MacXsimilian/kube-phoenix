@@ -20,10 +20,22 @@ function ClusterTabs() {
     setTab(searchParams.get('tab') === 'nodes' ? 1 : 0)
   }, [searchParams])
 
-  const { data: workloads = [], isError: workloadsError } = useQuery({ queryKey: queryKeys.workloads(), queryFn: getWorkloads, refetchInterval: WORKLOADS_REFETCH_MS })
-  const { data: nodes = [], isError: nodesError } = useQuery({ queryKey: queryKeys.nodes(), queryFn: getNodes, refetchInterval: NODES_REFETCH_MS })
+  const { data: workloads = [], isError: workloadsError } = useQuery({
+    queryKey: queryKeys.workloads(),
+    queryFn: getWorkloads,
+    refetchInterval: WORKLOADS_REFETCH_MS,
+  })
+  const { data: nodes = [], isError: nodesError } = useQuery({
+    queryKey: queryKeys.nodes(),
+    queryFn: getNodes,
+    refetchInterval: NODES_REFETCH_MS,
+  })
 
-  const workloadLabel = workloadsError ? 'Workloads (?)' : workloads.length ? `Workloads (${workloads.length})` : 'Workloads'
+  const workloadLabel = workloadsError
+    ? 'Workloads (?)'
+    : workloads.length
+      ? `Workloads (${workloads.length})`
+      : 'Workloads'
   const nodeLabel = nodesError ? 'Nodes (?)' : nodes.length ? `Nodes (${nodes.length})` : 'Nodes'
 
   return (
@@ -48,5 +60,5 @@ export default function ClusterPage() {
     <Suspense fallback={<PageHeader title="Cluster State" />}>
       <ClusterTabs />
     </Suspense>
-  );
+  )
 }

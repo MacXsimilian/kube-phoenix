@@ -53,9 +53,9 @@ export default function PageHeaderPrototype() {
         PageHeader — mockup
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-        Unified header for every top-level route. Replaces the ad-hoc
-        Typography h5 patterns currently duplicated across Overview, Policies,
-        Cluster, Observability, etc. Variants below from minimal to full.
+        Unified header for every top-level route. Replaces the ad-hoc Typography h5 patterns
+        currently duplicated across Overview, Policies, Cluster, Observability, etc. Variants below
+        from minimal to full.
       </Typography>
 
       <VariantFrame label="01 · Minimal">
@@ -106,8 +106,12 @@ export default function PageHeaderPrototype() {
           subtitle="Pauses autoscaler · Fri 22:00 → Sat 02:00 UTC"
           actions={
             <>
-              <Button variant="outlined" size="small">Disable</Button>
-              <Button variant="contained" size="small">Edit</Button>
+              <Button variant="outlined" size="small">
+                Disable
+              </Button>
+              <Button variant="contained" size="small">
+                Edit
+              </Button>
             </>
           }
         />
@@ -129,10 +133,7 @@ export default function PageHeaderPrototype() {
 
       <VariantFrame label="07 · Kitchen sink">
         <PageHeader
-          breadcrumbs={[
-            { label: 'Observability', href: '/observability' },
-            { label: 'Scheduler' },
-          ]}
+          breadcrumbs={[{ label: 'Observability', href: '/observability' }, { label: 'Scheduler' }]}
           title="Scheduler"
           subtitle="Decision latency, throughput, and queue depth."
           meta={
@@ -171,8 +172,12 @@ export default function PageHeaderPrototype() {
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
         <Paper variant="outlined" sx={{ p: 3, flex: 1 }}>
           <Chip label="Today" size="small" sx={{ mb: 2 }} />
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-            <Typography variant="h5" sx={{ fontWeight: 700 }}>Policies</Typography>
+          <Box
+            sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}
+          >
+            <Typography variant="h5" sx={{ fontWeight: 700 }}>
+              Policies
+            </Typography>
             <Button variant="contained" startIcon={<AddIcon />} size="small">
               Create
             </Button>

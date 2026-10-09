@@ -28,29 +28,41 @@ export default function ObservabilityPage() {
   const router = useRouter()
 
   const [activeTab, setActiveTab] = useState(() => parseTabParam(searchParams.get('tab')))
-  const [timeRange, setTimeRange] = useState<TimeRange>(() => parseRangeParam(searchParams.get('range')))
+  const [timeRange, setTimeRange] = useState<TimeRange>(() =>
+    parseRangeParam(searchParams.get('range')),
+  )
 
-  const updateUrl = useCallback((tab: number, range: TimeRange) => {
-    const params = new URLSearchParams()
-    params.set('tab', TAB_NAMES[tab])
-    params.set('range', range)
-    router.replace(`?${params.toString()}`)
-  }, [router])
+  const updateUrl = useCallback(
+    (tab: number, range: TimeRange) => {
+      const params = new URLSearchParams()
+      params.set('tab', TAB_NAMES[tab])
+      params.set('range', range)
+      router.replace(`?${params.toString()}`)
+    },
+    [router],
+  )
 
-  const handleTabChange = useCallback((tab: number) => {
-    setActiveTab(tab)
-    updateUrl(tab, timeRange)
-  }, [timeRange, updateUrl])
+  const handleTabChange = useCallback(
+    (tab: number) => {
+      setActiveTab(tab)
+      updateUrl(tab, timeRange)
+    },
+    [timeRange, updateUrl],
+  )
 
-  const handleTimeRangeChange = useCallback((range: TimeRange) => {
-    setTimeRange(range)
-    updateUrl(activeTab, range)
-  }, [activeTab, updateUrl])
+  const handleTimeRangeChange = useCallback(
+    (range: TimeRange) => {
+      setTimeRange(range)
+      updateUrl(activeTab, range)
+    },
+    [activeTab, updateUrl],
+  )
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+        return
 
       if (e.key === 't') {
         handleTabChange(activeTab === 0 ? 1 : 0)
@@ -67,7 +79,9 @@ export default function ObservabilityPage() {
 
       if (e.key === 'Escape') {
         document.querySelectorAll<HTMLElement>('[role="dialog"]').forEach((el) => {
-          const closeBtn = el.querySelector<HTMLButtonElement>('button[aria-label="close"]') ?? el.querySelector<HTMLButtonElement>('button')
+          const closeBtn =
+            el.querySelector<HTMLButtonElement>('button[aria-label="close"]') ??
+            el.querySelector<HTMLButtonElement>('button')
           closeBtn?.click()
         })
         return
@@ -104,10 +118,7 @@ export default function ObservabilityPage() {
 
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         {activeTab === 0 && (
-          <MetricsDashboard
-            timeRange={timeRange}
-            onTimeRangeChange={handleTimeRangeChange}
-          />
+          <MetricsDashboard timeRange={timeRange} onTimeRangeChange={handleTimeRangeChange} />
         )}
         {activeTab === 1 && <ApiRivers />}
       </Box>

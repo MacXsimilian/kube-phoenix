@@ -40,10 +40,6 @@ import { canManageUsers } from '@/lib/rbac'
 import type { User, Role } from '@/lib/types'
 import { TABLE_HEAD_CELL_SX, TABLE_BODY_CELL_SX } from '@/lib/tableStyles'
 
-const ROLE_COLORS: Record<string, 'error' | 'warning' | 'default'> = {
-  admin: 'error', operator: 'warning', viewer: 'default',
-}
-
 const ROLE_CHIP_SX: Record<string, { bgcolor: string; color: string }> = {
   admin: { bgcolor: 'rgba(239,68,68,0.12)', color: 'error.main' },
   operator: { bgcolor: 'rgba(245,158,11,0.12)', color: 'warning.main' },
@@ -51,32 +47,37 @@ const ROLE_CHIP_SX: Record<string, { bgcolor: string; color: string }> = {
 }
 
 function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
-  const hours = Math.floor(mins / 60)
+  const elapsedMilliseconds = Date.now() - new Date(iso).getTime()
+  const minutes = Math.floor(elapsedMilliseconds / 60000)
+  const hours = Math.floor(minutes / 60)
   const days = Math.floor(hours / 24)
   if (days > 30) return new Date(iso).toLocaleDateString()
   if (days > 0) return `${days}d ago`
   if (hours > 0) return `${hours}h ago`
-  if (mins > 0) return `${mins}m ago`
+  if (minutes > 0) return `${minutes}m ago`
   return 'Just now'
 }
 
 export default function UsersPage() {
-  const { user: me } = useAuth()
+  const { user: currentUser } = useAuth()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { data: users, isLoading, isError } = useQuery({ queryKey: queryKeys.users(), queryFn: getUsers })
+  const {
+    data: users,
+    isLoading,
+    isError,
+  } = useQuery({ queryKey: queryKeys.users(), queryFn: getUsers })
 
   const [search, setSearch] = useState('')
   const filteredUsers = useMemo(() => {
     if (!users) return []
-    const q = search.toLowerCase()
-    if (!q) return users
-    return users.filter(u =>
-      u.username.toLowerCase().includes(q) ||
-      (u.givenName?.toLowerCase().includes(q)) ||
-      (u.familyName?.toLowerCase().includes(q))
+    const searchTerm = search.toLowerCase()
+    if (!searchTerm) return users
+    return users.filter(
+      (user) =>
+        user.username.toLowerCase().includes(searchTerm) ||
+        user.givenName?.toLowerCase().includes(searchTerm) ||
+        user.familyName?.toLowerCase().includes(searchTerm),
     )
   }, [users, search])
 
@@ -89,27 +90,43 @@ export default function UsersPage() {
 
   const createMutation = useMutation({
     mutationFn: () => createUser(form),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: queryKeys.users() }); setCreateOpen(false); setForm({ username: '', email: '', password: '', role: 'viewer' }); setCreateError('') },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.users() })
+      setCreateOpen(false)
+      setForm({ username: '', email: '', password: '', role: 'viewer' })
+      setCreateError('')
+    },
     onError: (err: Error) => setCreateError(err.message),
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<Pick<User, 'role' | 'enabled'>> }) => updateUser(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: queryKeys.users() }); setMutationError('') },
+    mutationFn: ({ id, data }: { id: number; data: Partial<Pick<User, 'role' | 'enabled'>> }) =>
+      updateUser(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.users() })
+      setMutationError('')
+    },
     onError: (err: Error) => setMutationError(err.message),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => deleteUser(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: queryKeys.users() }); setDeleteTarget(null); setMutationError('') },
-    onError: (err: Error) => { setMutationError(err.message); setDeleteTarget(null) },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.users() })
+      setDeleteTarget(null)
+      setMutationError('')
+    },
+    onError: (err: Error) => {
+      setMutationError(err.message)
+      setDeleteTarget(null)
+    },
   })
 
   useEffect(() => {
-    if (me && !canManageUsers(me.permissions)) router.replace('/overview')
-  }, [me, router])
+    if (currentUser && !canManageUsers(currentUser.permissions)) router.replace('/overview')
+  }, [currentUser, router])
 
-  if (me && !canManageUsers(me.permissions)) return null
+  if (currentUser && !canManageUsers(currentUser.permissions)) return null
 
   return (
     <Box>
@@ -117,20 +134,43 @@ export default function UsersPage() {
         title="Users"
         subtitle={`${users?.length ?? 0} users total`}
         actions={
-          <Button variant="contained" startIcon={<PersonAddOutlinedIcon />} onClick={() => { setCreateOpen(true); setCreateError('') }}>
+          <Button
+            variant="contained"
+            startIcon={<PersonAddOutlinedIcon />}
+            onClick={() => {
+              setCreateOpen(true)
+              setCreateError('')
+            }}
+          >
             Add User
           </Button>
         }
       />
-      {isError && <Alert severity="error" sx={{ mb: 2 }}>Failed to load users. You may not have permission to view this page.</Alert>}
-      {mutationError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setMutationError('')}>{mutationError}</Alert>}
+      {isError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Failed to load users. You may not have permission to view this page.
+        </Alert>
+      )}
+      {mutationError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setMutationError('')}>
+          {mutationError}
+        </Alert>
+      )}
       <TextField
         size="small"
         placeholder="Search by username or name…"
         value={search}
-        onChange={e => setSearch(e.target.value)}
+        onChange={(e) => setSearch(e.target.value)}
         sx={{ mb: 2, width: 320 }}
-        slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }}
+        slotProps={{
+          input: {
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          },
+        }}
       />
       <Card>
         <TableContainer>
@@ -147,45 +187,68 @@ export default function UsersPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {isLoading && Array.from({ length: 3 }).map((_, i) => (
-                <TableRow key={i}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>
-              ))}
-              {filteredUsers.map(u => (
-                <TableRow key={u.id} hover>
+              {isLoading &&
+                Array.from({ length: 3 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell colSpan={7}>
+                      <Skeleton />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              {filteredUsers.map((user) => (
+                <TableRow key={user.id} hover>
                   <TableCell sx={TABLE_BODY_CELL_SX}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <Avatar sx={{ width: 28, height: 28, fontSize: 11, fontWeight: 700 }}>
-                        {(u.givenName?.[0] ?? u.username[0]).toUpperCase()}
+                        {(user.givenName?.[0] ?? user.username[0]).toUpperCase()}
                       </Avatar>
                       <Box>
                         <Typography
                           variant="body2"
                           sx={{
                             fontWeight: 600,
-                            fontSize: 13
-                          }}>{u.username}</Typography>
+                            fontSize: 13,
+                          }}
+                        >
+                          {user.username}
+                        </Typography>
                         <Typography
                           variant="caption"
                           sx={{
-                            color: "text.secondary",
-                            fontSize: 11
-                          }}>
-                          {[u.givenName, u.familyName].filter(Boolean).join(' ') || '—'}
+                            color: 'text.secondary',
+                            fontSize: 11,
+                          }}
+                        >
+                          {[user.givenName, user.familyName].filter(Boolean).join(' ') || '—'}
                         </Typography>
                       </Box>
                     </Box>
                   </TableCell>
-                  <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>{u.email || '—'}</TableCell>
+                  <TableCell sx={{ fontSize: 13, color: 'text.secondary' }}>
+                    {user.email || '—'}
+                  </TableCell>
                   <TableCell>
-                    {u.source === 'oidc' ? (
+                    {user.source === 'oidc' ? (
                       <Tooltip title="Role managed by AD groups">
-                        <Chip label={u.role} size="small" sx={{ fontSize: 10, height: 20, ...(ROLE_CHIP_SX[u.role] ?? {}) }} />
+                        <Chip
+                          label={user.role}
+                          size="small"
+                          sx={{ fontSize: 10, height: 20, ...(ROLE_CHIP_SX[user.role] ?? {}) }}
+                        />
                       </Tooltip>
                     ) : (
                       <TextField
-                        select size="small" variant="standard" value={u.role}
-                        disabled={u.id === me?.id || updateMutation.isPending}
-                        onChange={e => updateMutation.mutate({ id: u.id, data: { role: e.target.value as Role } })}
+                        select
+                        size="small"
+                        variant="standard"
+                        value={user.role}
+                        disabled={user.id === currentUser?.id || updateMutation.isPending}
+                        onChange={(e) =>
+                          updateMutation.mutate({
+                            id: user.id,
+                            data: { role: e.target.value as Role },
+                          })
+                        }
                         sx={{ minWidth: 90 }}
                       >
                         <MenuItem value="admin">admin</MenuItem>
@@ -195,45 +258,78 @@ export default function UsersPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Tooltip title={u.source === 'oidc' ? 'Authenticated via OIDC / Single Sign-On — role managed by AD groups' : 'Local account — password stored in the application database'} arrow>
-                      <Box sx={{
-                        display: 'inline-flex', alignItems: 'center', gap: 0.4, px: 0.75, py: 0.25,
-                        borderRadius: 2, border: '1.5px solid',
-                        borderColor: u.source === 'oidc' ? 'primary.main' : 'divider',
-                      }}>
-                        {u.source === 'oidc'
-                          ? <KeyOutlinedIcon sx={{ fontSize: 13, color: 'primary.main' }} />
-                          : <StorageOutlinedIcon sx={{ fontSize: 13, color: 'text.disabled' }} />
-                        }
-                        <Typography sx={{ fontSize: 10, fontWeight: 600, color: u.source === 'oidc' ? 'primary.main' : 'text.secondary' }}>
-                          {u.source === 'oidc' ? 'SSO' : 'Local'}
+                    <Tooltip
+                      title={
+                        user.source === 'oidc'
+                          ? 'Authenticated via OIDC / Single Sign-On — role managed by AD groups'
+                          : 'Local account — password stored in the application database'
+                      }
+                      arrow
+                    >
+                      <Box
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.4,
+                          px: 0.75,
+                          py: 0.25,
+                          borderRadius: 2,
+                          border: '1.5px solid',
+                          borderColor: user.source === 'oidc' ? 'primary.main' : 'divider',
+                        }}
+                      >
+                        {user.source === 'oidc' ? (
+                          <KeyOutlinedIcon sx={{ fontSize: 13, color: 'primary.main' }} />
+                        ) : (
+                          <StorageOutlinedIcon sx={{ fontSize: 13, color: 'text.disabled' }} />
+                        )}
+                        <Typography
+                          sx={{
+                            fontSize: 10,
+                            fontWeight: 600,
+                            color: user.source === 'oidc' ? 'primary.main' : 'text.secondary',
+                          }}
+                        >
+                          {user.source === 'oidc' ? 'SSO' : 'Local'}
                         </Typography>
                       </Box>
                     </Tooltip>
                   </TableCell>
                   <TableCell>
                     <Switch
-                      aria-label={`Toggle ${u.username} enabled`}
-                      checked={u.enabled} size="small"
-                      disabled={u.id === me?.id || updateMutation.isPending}
-                      onChange={(_, checked) => updateMutation.mutate({ id: u.id, data: { enabled: checked } })}
+                      aria-label={`Toggle ${user.username} enabled`}
+                      checked={user.enabled}
+                      size="small"
+                      disabled={user.id === currentUser?.id || updateMutation.isPending}
+                      onChange={(_, checked) =>
+                        updateMutation.mutate({ id: user.id, data: { enabled: checked } })
+                      }
                     />
                   </TableCell>
                   <TableCell>
-                    <Tooltip title={u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : ''}>
+                    <Tooltip
+                      title={user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : ''}
+                    >
                       <Typography
                         variant="caption"
                         sx={{
-                          color: "text.disabled",
-                          fontVariantNumeric: 'tabular-nums'
-                        }}>
-                        {u.lastLoginAt ? relativeTime(u.lastLoginAt) : 'Never'}
+                          color: 'text.disabled',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {user.lastLoginAt ? relativeTime(user.lastLoginAt) : 'Never'}
                       </Typography>
                     </Tooltip>
                   </TableCell>
                   <TableCell>
-                    {u.id !== me?.id && (
-                      <IconButton aria-label={`Delete user ${u.username}`} size="small" color="error" onClick={() => setDeleteTarget(u)} sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                    {user.id !== currentUser?.id && (
+                      <IconButton
+                        aria-label={`Delete user ${user.username}`}
+                        size="small"
+                        color="error"
+                        onClick={() => setDeleteTarget(user)}
+                        sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}
+                      >
                         <DeleteOutlineIcon fontSize="small" />
                       </IconButton>
                     )}
@@ -247,12 +343,42 @@ export default function UsersPage() {
       {/* Create user dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Add User</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
+        <DialogContent
+          sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}
+        >
           {createError && <Alert severity="error">{createError}</Alert>}
-          <TextField label="Username" fullWidth size="small" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} autoFocus />
-          <TextField label="Email (optional)" fullWidth size="small" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
-          <TextField label="Password" type="password" fullWidth size="small" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} helperText="Minimum 8 characters" />
-          <TextField label="Role" select fullWidth size="small" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+          <TextField
+            label="Username"
+            fullWidth
+            size="small"
+            value={form.username}
+            onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+            autoFocus
+          />
+          <TextField
+            label="Email (optional)"
+            fullWidth
+            size="small"
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+          />
+          <TextField
+            label="Password"
+            type="password"
+            fullWidth
+            size="small"
+            value={form.password}
+            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+            helperText="Minimum 8 characters"
+          />
+          <TextField
+            label="Role"
+            select
+            fullWidth
+            size="small"
+            value={form.role}
+            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+          >
             <MenuItem value="admin">admin</MenuItem>
             <MenuItem value="operator">operator</MenuItem>
             <MenuItem value="viewer">viewer</MenuItem>
@@ -273,20 +399,29 @@ export default function UsersPage() {
       <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Delete user?</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" sx={{
-            color: "text.secondary"
-          }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+            }}
+          >
             Are you sure you want to delete <strong>{deleteTarget?.username}</strong>?
-            {deleteTarget?.source === 'oidc' && ' This user may be re-created on next SSO login. Consider disabling instead.'}
+            {deleteTarget?.source === 'oidc' &&
+              ' This user may be re-created on next SSO login. Consider disabling instead.'}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
-          <Button variant="contained" color="error" disabled={deleteMutation.isPending} onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}>
+          <Button
+            variant="contained"
+            color="error"
+            disabled={deleteMutation.isPending}
+            onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+          >
             Delete
           </Button>
         </DialogActions>
       </Dialog>
     </Box>
-  );
+  )
 }

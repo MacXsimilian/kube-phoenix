@@ -21,14 +21,31 @@ function AppContent({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, checking, backendError } = useAuth()
   if (checking) {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Box
+        sx={{
+          minHeight: '100vh',
+          bgcolor: 'background.default',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
         <CircularProgress />
       </Box>
     )
   }
   if (backendError) {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}>
+      <Box
+        sx={{
+          minHeight: '100vh',
+          bgcolor: 'background.default',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          p: 3,
+        }}
+      >
         <Alert severity="error">Backend unavailable — please check the server and try again.</Alert>
       </Box>
     )

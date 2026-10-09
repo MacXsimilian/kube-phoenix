@@ -30,7 +30,11 @@ export default function PoliciesPage() {
   const [importOpen, setImportOpen] = useState(false)
   const { notify, SnackbarAlert } = useSnackbar()
 
-  const { data: policies, isLoading, error } = useQuery({
+  const {
+    data: policies,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: queryKeys.policies(),
     queryFn: getPolicies,
     refetchInterval: POLICIES_REFETCH_MS,
@@ -93,7 +97,9 @@ export default function PoliciesPage() {
         </Box>
       )}
       {error && (
-        <Alert severity="error">{error instanceof Error ? error.message : 'Failed to load policies'}</Alert>
+        <Alert severity="error">
+          {error instanceof Error ? error.message : 'Failed to load policies'}
+        </Alert>
       )}
       {policies && policies.length === 0 && (
         <EmptyState
@@ -103,7 +109,7 @@ export default function PoliciesPage() {
       )}
       {policies && policies.length > 0 && (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {policies.map(p => (
+          {policies.map((p) => (
             <PolicyCard
               key={p.id}
               policy={p}
@@ -129,5 +135,5 @@ export default function PoliciesPage() {
       />
       {SnackbarAlert}
     </Box>
-  );
+  )
 }
