@@ -5,9 +5,9 @@ info:
   description: |
     REST API for the kube-phoenix cluster sleep/wake policy engine.
 
-    All `/api/*` and `/ws/*` endpoints require session-based authentication
-    via HTTP-only cookies. `/healthz` and `/metrics` are always open.
-    `/api/auth/login` and `/api/auth/oidc/*` are unauthenticated.
+    Protected `/api/*` and `/ws/*` endpoints require session-based authentication
+    via HTTP-only cookies. `/livez`, `/readyz`, `/healthz`, and `/metrics` are always open.
+    `/api/version`, `/api/auth/login`, and `/api/auth/oidc/*` are unauthenticated.
 
     Authenticate by calling `POST /api/auth/login` with username/password.
     The server sets a `__kp_session` HTTP-only cookie and a `__kp_csrf`
@@ -932,7 +932,7 @@ components:
           type: integer
 
     WorkloadSnapshot:
-      description: A record of a workload's replica count at the time it was scaled down.
+      description: A durable replica baseline persisted before scale-down. Failed or interrupted operations retain open records for retry and restoration by workload kind, namespace, and name.
       type: object
       properties:
         id:
@@ -952,11 +952,11 @@ components:
           type: string
         workloadUid:
           type: string
-          description: Original Kubernetes UID. Empty legacy identities require operator review before restore.
+          description: Original Kubernetes UID, retained as informational metadata. Recovery follows kind, namespace, and name even when the UID changes or is empty on a legacy snapshot.
         phase:
           type: string
           enum: ["", prepared, applied, restored]
-          description: Durable sleep intent phase; empty denotes a legacy snapshot.
+          description: Durable sleep intent phase; prepared precedes scaling, applied records sleep, and restored records closure through restoration. Empty denotes a legacy snapshot. Use wakeExecutionId and outcome flags to determine closure, since deleted workloads need not enter restored phase.
         replicasBefore:
           type: integer
         replicasRestored:
@@ -987,7 +987,7 @@ components:
           type: string
 
     ScheduledException:
-      description: A one-time exception window that overrides normal scheduling (e.g. keep workloads running over a release weekend).
+      description: A one-time exception window that overrides normal scheduling for matching workloads. Namespace, label, and explicit target filters intersect with the parent policy boundary; scoped actions do not replace the policy's baseline schedule state.
       type: object
       properties:
         id:
@@ -1088,7 +1088,7 @@ components:
         - endsAt
 
     ScheduledExceptionUpdate:
-      description: Partial update of a pending exception. Omitted fields are preserved. Empty strings clear ticketRef, reason, namespaceFilter, and labelSelector. The parent policy cannot be changed.
+      description: Partial update of a pending exception. Omitted fields are preserved. Empty strings clear ticketRef, reason, namespaceFilter, and labelSelector; an empty workloadTargets array clears explicit targets. The parent policy cannot be changed.
       type: object
       properties:
         exceptionType:
@@ -1112,7 +1112,7 @@ components:
           type: string
         workloadTargets:
           type: array
-          description: Only non-empty target lists replace the current targets.
+          description: Replaces the current targets when supplied, including an empty array to clear them. Omitted targets are preserved. Targets intersect namespace and label filters and the parent policy scope.
           items:
             $ref: "#/components/schemas/WorkloadTarget"
 
@@ -1404,27 +1404,56 @@ paths:
     get:
       operationId: livenessCheck
       summary: Process liveness without dependency checks
+      description: Returns 200 while the process serves HTTP, without checking PostgreSQL or Kubernetes. Used by startup and liveness probes.
       security: []
       tags: [Health]
       responses:
         "200":
           description: Process is serving HTTP
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
   /readyz:
     get:
       operationId: readinessCheck
       summary: Database-dependent readiness
+      description: Pings PostgreSQL with a two-second deadline. Does not check Kubernetes connectivity or informer synchronization.
       security: []
       tags: [Health]
       responses:
         "200":
           description: Database reachable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
         "503":
           description: Database unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  error:
+                    type: string
+                    example: database unavailable
   /healthz:
     get:
       operationId: healthCheck
-      summary: Health check
-      description: Returns 200 if the server is running and the database is reachable. No authentication required.
+      summary: Compatibility alias for database readiness
+      description: Identical to /readyz. Returns 200 if PostgreSQL responds within the two-second deadline, or 503 otherwise. No authentication required; Kubernetes connectivity is not checked.
       security: []
       tags: [Health]
       responses:

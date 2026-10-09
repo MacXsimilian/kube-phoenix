@@ -61,7 +61,7 @@ These groups are a navigation aid. Consult [OpenAPI](../openapi.yaml) for the ex
 
 | Resource | Entry points | Access |
 | :------- | :----------- | :----- |
-| Health, metrics, version | `/healthz`, `/metrics`, `/api/version` | No session required; health checks database connectivity |
+| Health, metrics, version | `/livez`, `/readyz`, `/healthz`, `/metrics`, `/api/version` | No session required; liveness checks HTTP serving, readiness checks PostgreSQL |
 | Login and OIDC | `/api/auth/login`, `/api/auth/oidc/*` | No existing session required |
 | Account and sessions | `/api/auth/me`, `/api/auth/sessions`, `/api/auth/password`, `/api/auth/settings`, `/api/auth/logout` | Authenticated account; password change applies to local accounts |
 | Cluster | `/api/overview`, `/api/cluster/*` | All authenticated roles |
@@ -81,6 +81,24 @@ The role-to-permission mapping is in [configuration](configuration.md#rbac-roles
 ### Policy Responses
 
 Policies return `sleepWindows` as an array and `nextTransitionAt` as the next predicted state change. Scheduling uses days, times, and a timezone. The API does not accept cron expressions for current policy scheduling. Read [window semantics](window-native-scheduling.md) for overnight and all-day windows.
+
+### Health Checks
+
+`GET /livez` returns `200` with `{"status":"ok"}` while the process serves HTTP, without checking dependencies. `GET /readyz` pings PostgreSQL with a two-second deadline: success returns the same `200` body; failure returns `503` with `{"status":"error","error":"database unavailable"}`. `/healthz` remains an alias of readiness for existing consumers. Readiness does not check Kubernetes access or informer synchronization.
+
+The chart uses `/livez` for startup/liveness and `/readyz` for readiness. Loss of the dedicated scheduler-ownership database session still terminates the process; liveness separation does not override that ownership safeguard.
+
+### Snapshot Recovery
+
+Snapshot responses include `workloadUid` and `phase`. New snapshots are persisted as `prepared` before scale-down, become `applied` when sleep is recorded, and become `restored` when closed through restoration. Empty phases identify legacy rows. Already-zero and deleted-workload outcomes have separate flags; use `wakeExecutionId` and those flags to determine closure, not phase alone.
+
+`workloadUid` is informational. Recovery identifies workloads by kind, namespace, and name, so legacy snapshots and same-name replacements remain eligible for restoration. Failed operations retain open snapshots and their original replica baseline. Partial operation errors fail the execution; a timeout or cancellation records it as interrupted. Consult logs and counts before retrying.
+
+### Exception Targets
+
+An exception's namespace filter, label selector, and explicit `workloadTargets` intersect with each other and with its parent policy. Entries within a namespace or workload-target list are alternatives. Explicit targets support only `Deployment` and `StatefulSet` with valid namespace/name pairs; invalid targets or selectors are rejected on create, update, and import.
+
+When updating a pending exception, omitted targeting fields preserve their values. Empty strings clear namespace/label filters, and `workloadTargets: []` clears the explicit target list. A scoped action preserves the policy's baseline schedule state after success, so one card state does not describe every workload while a scoped exception is active. Ordinary transitions and recovery respect active exception protections.
 
 ### Pagination and Filters
 
