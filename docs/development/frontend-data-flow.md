@@ -10,6 +10,8 @@ This reference explains how browser state and backend data reach the UI. Start w
 
 Each exported route serves its own HTML. `/policies/` resolves to `policies/index.html`, `/policies` redirects to the slash form, and existing assets are served directly. Unknown paths retain the root HTML fallback. Browser navigation working in development is therefore insufficient on its own: a new route must also survive export, a direct request, and reload.
 
+The Go embed pattern includes underscore-prefixed directories such as `_next/static/`, so the compiled JavaScript and CSS ship with the HTML. The final-image smoke check fetches the root page and a referenced Next.js script to catch missing assets or assets incorrectly served as the HTML fallback.
+
 Resource IDs that exist only at runtime use query strings, such as `/policies/detail/?id=4&exec=14`. A dynamic path can be exported when all of its values are known at build time. [`observability/[component]/page.tsx`](../../frontend/src/app/observability/[component]/page.tsx) does this with `generateStaticParams()`.
 
 Keep browser hooks in client components and follow the existing `Suspense` boundary pattern when using `useSearchParams()`. The production application has no Next.js request-time server functions or API handlers; API work belongs in the Go backend.
@@ -43,6 +45,8 @@ The observability route layout adds its own `ObservabilityStreamProvider`. It st
 | Observability live samples, calls and connection state | Route-scoped stream contexts | One stream with separate subscriptions for different consumers |
 
 TanStack Query is the default for REST server state, not a container for every kind of application state. Reuse the existing owners before adding another global context or store.
+
+The workloads table filters its cached collection locally. Its status filter also reads the `status` URL parameter on navigation; clearing filters therefore updates both local state and the URL with `history.replaceState`. Other filters remain component state. Preserve this boundary so a cleared deep link does not reapply a stale filter or trigger an unnecessary API request.
 
 ## Authentication and permissions
 

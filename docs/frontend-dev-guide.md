@@ -70,7 +70,7 @@ npm run lint
 npm run build
 ```
 
-The build checks static export as well as compilation and writes `frontend/out/`. Preserve the repository's `.npmrc` and install-time patches when changing dependencies. For the production path, use the Go-backed setup in the [Local Development Guide](local-development.md); the static export does not use `next start`.
+The build checks static export as well as compilation and writes `frontend/out/`. Preserve the repository's `.npmrc` and install-time patches when changing dependencies. For the production path, use the Go-backed setup in the [Local Development Guide](local-development.md); the static export does not use `next start`. CI runs lint, typecheck, all three regression commands below, and the export build on pull requests and pushes to `master`.
 
 Run the relevant regression checks when their area changes:
 
@@ -86,6 +86,10 @@ node --test mock-api/tests/exceptions.test.mjs
 ```
 
 These checks cover specific behaviors; they are not an end-to-end UI suite. For an interface change, exercise its main path and its loading, empty, and error states in the browser. Check keyboard activation, focus after closing a dialog, light/dark themes, and a narrow viewport where relevant. For streaming changes, switch resources and close the viewer while data is arriving. Use a real backend for changes to sessions, permissions, API contracts, or Kubernetes behavior; mock success alone does not establish those contracts.
+
+For policy cards, include a disabled policy, a long name, reduced-motion settings, and narrow layouts. Check the savings explanation with hover, focus, tap, Escape, and click-away. For workload filters, open a `status` deep link, combine it with the other filters, then clear: the status parameter should disappear, every filter should reset, and Search should regain focus.
+
+Changes to embedded assets or Docker builds also need the [final-image smoke check](local-development.md#final-image-smoke-check). It exercises the built Go server and a referenced Next.js script from the final container, which a successful standalone frontend build does not cover.
 
 Follow the [contribution review checklist](../CONTRIBUTING.md#before-requesting-review). Keep unrelated formatting out of the change; the package's formatting scripts operate across the source tree.
 
