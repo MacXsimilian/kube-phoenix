@@ -24,7 +24,7 @@ Run the examples from the repository root. All modes use Git and Make; install o
 
 | Tool | Version | macOS install example |
 | :--- | :------ | :-------------------- |
-| Go | 1.27.1+; minimum from `backend/go.mod` | `brew install go` |
+| Go | 1.27.2+; minimum from `backend/go.mod` | `brew install go` |
 | Node.js | 26 (Current); use Node 26 on `PATH` to match Docker and CI | `brew install node` |
 | Docker | Docker Engine/Desktop with Buildx and Compose | [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/) |
 | minikube | No repository pin | `brew install minikube` |

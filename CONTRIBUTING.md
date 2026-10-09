@@ -22,7 +22,7 @@ and navigate the review process.
 
 | Tool | Version | Purpose |
 | :--- | :------ | :------ |
-| Go | 1.27.1+ | Backend compilation and tests; minimum from `backend/go.mod` |
+| Go | 1.27.2+ | Backend compilation and tests; minimum from `backend/go.mod` |
 | Node.js | 26 (Current) | Frontend build (Next.js); matches Docker and CI |
 | Docker | any | Local PostgreSQL via `docker compose` |
 | golangci-lint | v2.14.0 | Matches CI (`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0`) |
