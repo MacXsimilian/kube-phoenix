@@ -1,7 +1,7 @@
 # ── Stage 1: Build frontend ───────────────────────────────────────────────────
 # Always build on the host platform — Next.js output is arch-independent.
 # Digest pins the exact image; update with: docker pull node:26.11.1-alpine && docker inspect --format='{{index .RepoDigests 0}}' node:26.11.1-alpine
-FROM --platform=$BUILDPLATFORM node:26.11.1-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:26.13.0-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS frontend-builder
 
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
@@ -21,7 +21,7 @@ RUN --mount=type=cache,target=/app/frontend/.next/cache \
 
 # ── Stage 2: Build backend ────────────────────────────────────────────────────
 # Always compile on the host platform using Go cross-compilation (no QEMU).
-FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine@sha256:85dc1069ac644ea3c527b177303a406eb3358192816cd7f9e5848eb658851673 AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS backend-builder
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 
